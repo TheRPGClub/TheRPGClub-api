@@ -12,10 +12,18 @@ module Api
       end
 
       def show
-        model = RpgClubUser.find(params[:user_id])
+        model = RpgClubUser.includes(socials: :social_platform).find(params[:user_id])
         user = RpgClubUser.without_images.find(params[:user_id]).as_json
+        socials = model.socials.map do |social|
+          social.as_json.merge("social_platform" => social.social_platform.as_json)
+        end
 
-        render json: { data: user.merge("membership" => model.membership) }
+        render json: {
+          data: user.merge(
+            "membership" => model.membership,
+            "socials"    => socials
+          )
+        }
       end
 
       def avatar

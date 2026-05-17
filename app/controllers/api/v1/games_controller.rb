@@ -5,6 +5,7 @@ module Api
     class GamesController < ApplicationController
       def index
         scope = params[:q].present? ? GamedbGame.search(params[:q]) : GamedbGame.without_images.order(:title)
+        scope = apply_winner_filter(scope)
         records = scope.preload(:images).limit(limit).offset(offset)
 
         render json: {
@@ -19,7 +20,24 @@ module Api
       end
 
       def show
-        render json: { data: GamedbGame.without_images.find(params[:id]).as_json }
+        game = GamedbGame.without_images.find(params[:id])
+        now_playing = UserNowPlaying
+          .where(gamedb_game_id: game.game_id)
+          .includes(:user)
+          .order(added_at: :desc)
+        completions = UserGameCompletion
+          .where(gamedb_game_id: game.game_id)
+          .includes(:user)
+          .order(completed_at: :desc)
+
+        render json: {
+          data: game.as_json.merge(
+            "gotm_month_year" => game.gotm_won ? game.gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
+            "nr_gotm_month_year" => game.nr_gotm_won ? game.nr_gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
+            "now_playing" => now_playing.map { |e| entry_with_user(e) },
+            "completions" => completions.map { |e| entry_with_user(e) }
+          )
+        }
       end
 
       def refresh_images
@@ -65,6 +83,19 @@ module Api
       end
 
       private
+
+      def entry_with_user(entry)
+        entry.as_json.merge("user" => entry.user&.as_json(except: RpgClubUser::BINARY_COLUMNS))
+      end
+
+      def apply_winner_filter(scope)
+        case params[:winner]
+        when "gotm" then scope.gotm_winners
+        when "nr_gotm" then scope.nr_gotm_winners
+        when "any" then scope.any_winners
+        else scope
+        end
+      end
 
       def releases_for(game)
         game

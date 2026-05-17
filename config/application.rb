@@ -41,6 +41,8 @@ module RpgClub
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
     config.active_record.schema_format = :sql
+    config.active_record.async_query_executor = :global_thread_pool
+    config.active_record.global_executor_concurrency = 4
 
     config.session_store(
       :cookie_store,

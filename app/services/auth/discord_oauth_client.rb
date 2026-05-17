@@ -11,6 +11,7 @@ module Auth
     TOKEN_URL = "https://discord.com/api/oauth2/token"
     USER_URL = "https://discord.com/api/users/@me"
     USER_GUILDS_URL = "https://discord.com/api/users/@me/guilds"
+    USER_GUILD_MEMBER_URL = "https://discord.com/api/users/@me/guilds/%<guild_id>s/member"
 
     def authorization_url(state:, redirect_uri:)
       query = {
@@ -65,6 +66,16 @@ module Auth
       parse_response!(response)
     end
 
+    def fetch_rpgclub_member_roles!(access_token)
+      ensure_guild_members_read_scope!
+      url = format(USER_GUILD_MEMBER_URL, guild_id: rpgclub_guild_id)
+      response = Faraday.get(url) do |request|
+        request.headers["Authorization"] = "Bearer #{access_token}"
+      end
+      payload = parse_response!(response)
+      Array(payload["roles"]).map(&:to_s)
+    end
+
     private
 
     def fetch_current_user_guilds!(access_token)
@@ -115,13 +126,19 @@ module Auth
     end
 
     def oauth_scopes
-      ENV.fetch("DISCORD_OAUTH_SCOPES", "identify email guilds").split
+      ENV.fetch("DISCORD_OAUTH_SCOPES", "identify email guilds guilds.members.read").split
     end
 
     def ensure_guilds_scope!
       return if oauth_scopes.include?("guilds")
 
       raise ConfigurationError, "DISCORD_OAUTH_SCOPES must include guilds to verify TheRPGClub membership"
+    end
+
+    def ensure_guild_members_read_scope!
+      return if oauth_scopes.include?("guilds.members.read")
+
+      raise ConfigurationError, "DISCORD_OAUTH_SCOPES must include guilds.members.read to read guild member roles"
     end
 
     def parse_response!(response)

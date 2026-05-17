@@ -5,10 +5,17 @@ module Api
     class SessionsController < ApplicationController
       def show
         user = RpgClubUser.find_by(user_id: current_principal.discord_id) if current_principal.discord_user?
+        membership = user&.membership
+        if membership
+          membership = membership.merge(
+            dev: current_principal.dev?,
+            longstanding: current_principal.longstanding?
+          )
+        end
 
         render json: {
           principal: current_principal,
-          membership: user&.membership
+          membership: membership
         }
       end
     end

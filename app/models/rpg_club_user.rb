@@ -32,6 +32,22 @@ class RpgClubUser < ApplicationRecord
     dependent: nil,
     inverse_of: :uploaded_by
 
+  has_many :socials,
+    class_name: "UserSocial",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: :destroy,
+    inverse_of: :user
+  has_many :platforms,
+    through: :socials,
+    source: :social_platform
+  has_many :created_social_platforms,
+    class_name: "SocialPlatform",
+    foreign_key: :created_by_user_id,
+    primary_key: :user_id,
+    dependent: :nullify,
+    inverse_of: :created_by_user
+
   scope :without_images, -> { select(*(column_names - BINARY_COLUMNS)) }
 
   validates :user_id, presence: true

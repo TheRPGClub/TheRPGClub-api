@@ -29,6 +29,20 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: _rpg_club_users_socials_backup; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public._rpg_club_users_socials_backup (
+    user_id character varying(30),
+    completionator_url character varying(512),
+    psn_username character varying(100),
+    xbl_username character varying(100),
+    nsw_friend_code character varying(50),
+    steam_url character varying(512)
+);
+
+
+--
 -- Name: ar_internal_metadata; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1601,11 +1615,6 @@ CREATE TABLE public.rpg_club_users (
     created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
     updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
     message_count bigint DEFAULT 0,
-    completionator_url character varying(512),
-    psn_username character varying(100),
-    xbl_username character varying(100),
-    nsw_friend_code character varying(50),
-    steam_url character varying(512),
     server_left_at timestamp(6) with time zone,
     donor_notify_on_claim boolean DEFAULT false NOT NULL,
     profile_image_at timestamp(6) with time zone,
@@ -1815,6 +1824,39 @@ CREATE TABLE public.schema_migrations (
 
 
 --
+-- Name: social_platforms; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.social_platforms (
+    id bigint NOT NULL,
+    label character varying(80) NOT NULL,
+    "position" integer DEFAULT 1000 NOT NULL,
+    created_by_user_id character varying(30),
+    created_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: social_platforms_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.social_platforms_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: social_platforms_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.social_platforms_id_seq OWNED BY public.social_platforms.id;
+
+
+--
 -- Name: thread_game_links; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1989,7 +2031,9 @@ CREATE TABLE public.user_session_tokens (
     user_id character varying NOT NULL,
     expires_at timestamp(6) without time zone NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    is_dev boolean DEFAULT false NOT NULL,
+    is_longstanding boolean DEFAULT false NOT NULL
 );
 
 
@@ -2010,6 +2054,40 @@ CREATE SEQUENCE public.user_session_tokens_id_seq
 --
 
 ALTER SEQUENCE public.user_session_tokens_id_seq OWNED BY public.user_session_tokens.id;
+
+
+--
+-- Name: user_socials; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_socials (
+    id bigint NOT NULL,
+    user_id character varying(30) NOT NULL,
+    platform_id bigint NOT NULL,
+    display_text character varying(80) NOT NULL,
+    url character varying(512),
+    created_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: user_socials_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_socials_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_socials_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_socials_id_seq OWNED BY public.user_socials.id;
 
 
 --
@@ -2041,6 +2119,13 @@ ALTER TABLE ONLY public.rpg_club_xbox_title_gamedb_map ALTER COLUMN map_id SET D
 
 
 --
+-- Name: social_platforms id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.social_platforms ALTER COLUMN id SET DEFAULT nextval('public.social_platforms_id_seq'::regclass);
+
+
+--
 -- Name: user_now_playing entry_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -2059,6 +2144,13 @@ ALTER TABLE ONLY public.user_reminders ALTER COLUMN reminder_id SET DEFAULT next
 --
 
 ALTER TABLE ONLY public.user_session_tokens ALTER COLUMN id SET DEFAULT nextval('public.user_session_tokens_id_seq'::regclass);
+
+
+--
+-- Name: user_socials id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_socials ALTER COLUMN id SET DEFAULT nextval('public.user_socials_id_seq'::regclass);
 
 
 --
@@ -2734,6 +2826,14 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: social_platforms social_platforms_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.social_platforms
+    ADD CONSTRAINT social_platforms_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: thread_game_links thread_game_links_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2787,6 +2887,14 @@ ALTER TABLE ONLY public.user_reminders
 
 ALTER TABLE ONLY public.user_session_tokens
     ADD CONSTRAINT user_session_tokens_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_socials user_socials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_socials
+    ADD CONSTRAINT user_socials_pkey PRIMARY KEY (id);
 
 
 --
@@ -2853,6 +2961,20 @@ CREATE INDEX idx_ggp_platform ON public.gamedb_game_platforms USING btree (platf
 
 
 --
+-- Name: idx_gotm_entries_game; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_gotm_entries_game ON public.gotm_entries USING btree (gamedb_game_id);
+
+
+--
+-- Name: idx_nr_gotm_entries_game; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_nr_gotm_entries_game ON public.nr_gotm_entries USING btree (gamedb_game_id);
+
+
+--
 -- Name: idx_rpg_club_presence_prompt_hist_user; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2902,6 +3024,20 @@ CREATE UNIQUE INDEX index_gamedb_game_images_on_object_key ON public.gamedb_game
 
 
 --
+-- Name: index_social_platforms_on_lower_label; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_social_platforms_on_lower_label ON public.social_platforms USING btree (lower((label)::text));
+
+
+--
+-- Name: index_social_platforms_on_position; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_social_platforms_on_position ON public.social_platforms USING btree ("position");
+
+
+--
 -- Name: index_user_session_tokens_on_token; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2913,6 +3049,27 @@ CREATE UNIQUE INDEX index_user_session_tokens_on_token ON public.user_session_to
 --
 
 CREATE INDEX index_user_session_tokens_on_user_id ON public.user_session_tokens USING btree (user_id);
+
+
+--
+-- Name: index_user_socials_on_platform_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_user_socials_on_platform_id ON public.user_socials USING btree (platform_id);
+
+
+--
+-- Name: index_user_socials_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_user_socials_on_user_id ON public.user_socials USING btree (user_id);
+
+
+--
+-- Name: index_user_socials_on_user_platform_display_text; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_user_socials_on_user_platform_display_text ON public.user_socials USING btree (user_id, platform_id, display_text);
 
 
 --
@@ -3630,6 +3787,11 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260517000300'),
+('20260517000200'),
+('20260517000100'),
+('20260515000100'),
+('20260514000100'),
 ('20260507000800'),
 ('20260507000700'),
 ('20260507000600'),

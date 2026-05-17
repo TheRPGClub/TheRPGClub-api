@@ -22,11 +22,6 @@ class CreateRpgClubUsers < ActiveRecord::Migration[8.1]
       table.datetime :updated_at, precision: 6, default: -> { "CURRENT_TIMESTAMP" }, null: false
       table.datetime :server_left_at, precision: 6
       table.integer :message_count, default: 0
-      table.string :completionator_url, limit: 512
-      table.string :psn_username, limit: 100
-      table.string :xbl_username, limit: 100
-      table.string :nsw_friend_code, limit: 50
-      table.string :steam_url, limit: 512
       table.binary :profile_image
       table.datetime :profile_image_at, precision: 6
       table.boolean :donor_notify_on_claim, default: false, null: false

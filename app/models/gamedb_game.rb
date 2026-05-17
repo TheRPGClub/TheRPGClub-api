@@ -110,7 +110,22 @@ class GamedbGame < ApplicationRecord
     thumbnail_bad thumbnail_approved
   ].freeze
 
-  scope :without_images, -> { select(*SUMMARY_COLUMNS) }
+  GOTM_WON_SQL = <<~SQL.squish.freeze
+    EXISTS (SELECT 1 FROM gotm_entries WHERE gotm_entries.gamedb_game_id = gamedb_games.game_id)
+  SQL
+  NR_GOTM_WON_SQL = <<~SQL.squish.freeze
+    EXISTS (SELECT 1 FROM nr_gotm_entries WHERE nr_gotm_entries.gamedb_game_id = gamedb_games.game_id)
+  SQL
+
+  scope :without_images, lambda {
+    select(*SUMMARY_COLUMNS,
+      "(#{GOTM_WON_SQL}) AS gotm_won",
+      "(#{NR_GOTM_WON_SQL}) AS nr_gotm_won")
+  }
+
+  scope :gotm_winners, -> { where(GOTM_WON_SQL) }
+  scope :nr_gotm_winners, -> { where(NR_GOTM_WON_SQL) }
+  scope :any_winners, -> { where("#{GOTM_WON_SQL} OR #{NR_GOTM_WON_SQL}") }
 
   validates :title, presence: true
 

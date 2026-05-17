@@ -56,10 +56,28 @@ class ApplicationController < ActionController::API
 
   def require_admin_or_service!
     return true if current_principal&.service?
-    return true if current_principal&.discord_user? && RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
+    if current_principal&.discord_user?
+      return true if current_principal.dev?
+      return true if RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
+    end
 
     render json: { error: "forbidden" }, status: :forbidden
     false
+  end
+
+  def require_owner!
+    owner_id = resolve_owner_id
+
+    return true if current_principal&.service?
+    return true if current_principal&.discord_user? && owner_id.present? && current_principal.id.to_s == owner_id.to_s
+
+    render json: { error: "forbidden" }, status: :forbidden
+    false
+  end
+
+  # Override in controllers that need a non-default lookup. Defaults to params[:user_id].
+  def resolve_owner_id
+    params[:user_id]
   end
 
   def pagination_limit(default: 50, max: 500)

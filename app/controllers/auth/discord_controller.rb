@@ -22,10 +22,16 @@ module Auth
       oauth_client.ensure_rpgclub_member!(access_token, discord_user_id: discord_user.fetch("id", nil))
       user = RpgClubUser.upsert_from_discord!(discord_user)
 
-      request.env["warden"].set_user(Auth::Principal.discord_user(user, discord_user))
+      role_ids = fetch_member_role_ids(access_token)
+      is_dev = role_assigned?(role_ids, DiscordRoles::DEV)
+      is_longstanding = role_assigned?(role_ids, DiscordRoles::LONGSTANDING)
+
+      request.env["warden"].set_user(
+        Auth::Principal.discord_user(user, discord_user, is_dev: is_dev, is_longstanding: is_longstanding)
+      )
       session.delete(:discord_oauth_state)
 
-      raw_token = UserSessionToken.generate_for(user)
+      raw_token = UserSessionToken.generate_for(user, is_dev: is_dev, is_longstanding: is_longstanding)
       redirect_to "#{success_redirect_url}?token=#{CGI.escape(raw_token)}", allow_other_host: true
     rescue Auth::DiscordOauthClient::ConfigurationError => e
       render json: { error: "discord_oauth_not_configured", detail: e.message }, status: :unprocessable_entity
@@ -62,6 +68,19 @@ module Auth
         params[:state].to_s,
         session[:discord_oauth_state].to_s
       )
+    end
+
+    def fetch_member_role_ids(access_token)
+      oauth_client.fetch_rpgclub_member_roles!(access_token)
+    rescue StandardError => e
+      Rails.logger.warn({ event: "discord_oauth.member_roles_fetch_failed", error: e.message }.to_json)
+      []
+    end
+
+    def role_assigned?(role_ids, role_id)
+      return false if role_id.to_s.empty?
+
+      role_ids.include?(role_id.to_s)
     end
   end
 end

@@ -12,6 +12,7 @@ Rails.application.routes.draw do
     namespace :v1 do
       get "health", to: "health#show"
       get "session", to: "sessions#show"
+      get "dashboard", to: "dashboards#show"
 
       resources :games, only: %i[index show] do
         resources :images, only: %i[index create update destroy], controller: "game_images"
@@ -36,11 +37,15 @@ Rails.application.routes.draw do
           post "collections", to: "collections#create"
           get "completions", to: "completions#index"
           post "completions", to: "completions#create"
+          get "socials", to: "user_socials#index"
+          post "socials", to: "user_socials#create"
         end
       end
 
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy]
+      resources :social_platforms, only: %i[index create]
+      resources :user_socials, only: %i[show update destroy]
       resources :gotm_entries, only: %i[index show]
       resources :nr_gotm_entries, only: %i[index show]
       resources :suggestions, only: %i[index show create destroy]
