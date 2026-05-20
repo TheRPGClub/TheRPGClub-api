@@ -93,6 +93,11 @@ class GamedbGame < ApplicationRecord
     foreign_key: :gamedb_game_id,
     dependent: nil,
     inverse_of: :game
+  has_many :user_favorites,
+    class_name: "UserGameFavorite",
+    foreign_key: :gamedb_game_id,
+    dependent: nil,
+    inverse_of: :game
   has_many :gotm_entries,
     class_name: "GotmEntry",
     foreign_key: :gamedb_game_id,
