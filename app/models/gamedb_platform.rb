@@ -27,6 +27,11 @@ class GamedbPlatform < ApplicationRecord
     foreign_key: :platform_id,
     dependent: nil,
     inverse_of: :platform
+  has_many :user_backlog_entries,
+    class_name: "UserGameBacklog",
+    foreign_key: :platform_id,
+    dependent: nil,
+    inverse_of: :platform
 
   validates :platform_code, :platform_name, presence: true
 end
