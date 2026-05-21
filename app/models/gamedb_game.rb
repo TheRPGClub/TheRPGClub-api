@@ -100,6 +100,9 @@ class GamedbGame < ApplicationRecord
     inverse_of: :game
   has_many :reviews,
     class_name: "UserGameReview",
+    foreign_key: :gamedb_game_id,
+    dependent: nil,
+    inverse_of: :game
   has_many :user_backlog_entries,
     class_name: "UserGameBacklog",
     foreign_key: :gamedb_game_id,
