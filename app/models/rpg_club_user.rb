@@ -31,6 +31,12 @@ class RpgClubUser < ApplicationRecord
     primary_key: :user_id,
     dependent: nil,
     inverse_of: :user
+  has_many :game_backlog_entries,
+    class_name: "UserGameBacklog",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil,
+    inverse_of: :user
   has_many :uploaded_game_images,
     class_name: "GamedbGameImage",
     foreign_key: :uploaded_by_user_id,
