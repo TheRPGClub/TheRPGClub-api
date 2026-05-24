@@ -3,8 +3,22 @@
 module Api
   module V1
     class CompletionsController < ApplicationController
+      include GameEntrySerialization
+
+      before_action :require_owner!, only: %i[create update destroy]
+
       def index
-        render_collection(UserGameCompletion.where(user_id: params[:user_id]), default_order: { completed_at: :desc })
+        scope = UserGameCompletion.where(user_id: params[:user_id]).preload(:game, :platform)
+        total = scope.count
+        records = scope
+          .order(completed_at: :desc, created_at: :desc)
+          .limit(pagination_limit)
+          .offset(pagination_offset)
+
+        render json: {
+          data: records.map { |entry| serialize_with_game_and_platform(entry) },
+          meta: { limit: pagination_limit, offset: pagination_offset, total: total }
+        }
       end
 
       def game_index
@@ -22,23 +36,35 @@ module Api
       end
 
       def show
-        render json: { data: UserGameCompletion.find(params[:id]).as_json }
+        record = UserGameCompletion.includes(:game, :platform).find(params[:id])
+        render json: { data: serialize_with_game_and_platform(record) }
       end
 
       def create
         record = UserGameCompletion.create!(request_data.merge("user_id" => params[:user_id]))
-        render json: { data: record.as_json }, status: :created
+        record.reload
+        render json: { data: serialize_with_game_and_platform(record) }, status: :created
       end
 
       def update
         record = UserGameCompletion.find(params[:id])
         record.update!(request_data)
-        render json: { data: record.as_json }
+        record.reload
+        render json: { data: serialize_with_game_and_platform(record) }
       end
 
       def destroy
         UserGameCompletion.find(params[:id]).destroy!
         render json: { deleted: true }
+      end
+
+      private
+
+      def resolve_owner_id
+        return params[:user_id] if params[:user_id].present?
+        return nil unless params[:id].present?
+
+        UserGameCompletion.find_by(completion_id: params[:id])&.user_id
       end
     end
   end
