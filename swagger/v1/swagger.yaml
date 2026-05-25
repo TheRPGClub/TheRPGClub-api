@@ -1,0 +1,4512 @@
+---
+openapi: 3.0.1
+info:
+  title: The RPG Club API
+  version: v1
+  description: Backend API for The RPG Club. Authentication is performed with a bearer
+    `UserSessionToken` issued after Discord OAuth, or a service token for the bot.
+servers:
+- url: "{host}"
+  description: Development
+  variables:
+    host:
+      default: http://localhost:3000
+- url: "{host}"
+  description: Production
+  variables:
+    host:
+      default: https://api.example.com
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: UserSessionToken
+      description: Bearer token issued by `POST /auth/discord/callback` (user session)
+        or the service-account token used by the Discord bot.
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: not_found
+        message:
+          type: string
+          example: Couldn't find Record with id=42
+      required:
+      - error
+    PaginationMeta:
+      type: object
+      properties:
+        limit:
+          type: integer
+          example: 50
+        offset:
+          type: integer
+          example: 0
+        total:
+          type: integer
+          example: 123
+          nullable: true
+    DeletedResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+          example: true
+      required:
+      - deleted
+security:
+- bearerAuth: []
+paths:
+  "/api/v1/users/{user_id}/backlog":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a user's backlog
+      tags:
+      - Backlog
+      description: Ordered by `sort_order` ascending then `created_at` descending.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: backlog list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add to backlog
+      tags:
+      - Backlog
+      description: Owner-only.
+      parameters: []
+      responses:
+        '201':
+          description: backlog entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: UserGameBacklog attributes (`gamedb_game_id`, `platform_id`,
+                    `sort_order`, `notes`).
+              required:
+              - data
+        required: true
+  "/api/v1/backlog/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserGameBacklog entry_id.
+    get:
+      summary: Show a backlog entry
+      tags:
+      - Backlog
+      responses:
+        '200':
+          description: backlog entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a backlog entry
+      tags:
+      - Backlog
+      description: Owner-only.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a backlog entry (alias)
+      tags:
+      - Backlog
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a backlog entry
+      tags:
+      - Backlog
+      description: Owner-only.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/collections":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Owning RpgClubUser id.
+    get:
+      summary: List a user's collections
+      tags:
+      - Collections
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: collections list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a collection entry
+      tags:
+      - Collections
+      description: Adds a game to the user's collection. The caller must be the user
+        (or a service principal).
+      parameters: []
+      responses:
+        '201':
+          description: collection entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: UserGameCollection attributes (e.g. `gamedb_game_id`,
+                    `platform_id`, `notes`).
+              required:
+              - data
+        required: true
+  "/api/v1/collections/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserGameCollection id.
+    get:
+      summary: Show a collection entry
+      tags:
+      - Collections
+      responses:
+        '200':
+          description: collection entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a collection entry
+      tags:
+      - Collections
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a collection entry (alias)
+      tags:
+      - Collections
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a collection entry
+      tags:
+      - Collections
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/completions":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a user's completions
+      tags:
+      - Completions
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: completions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Record a completion
+      tags:
+      - Completions
+      description: Owner-only. Sends the request payload under a top-level `data`
+        key.
+      parameters: []
+      responses:
+        '201':
+          description: completion created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: UserGameCompletion attributes (e.g. `gamedb_game_id`,
+                    `platform_id`, `completed_at`, `rating`, `notes`).
+              required:
+              - data
+        required: true
+  "/api/v1/completions/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserGameCompletion completion_id.
+    get:
+      summary: Show a completion
+      tags:
+      - Completions
+      responses:
+        '200':
+          description: completion detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a completion
+      tags:
+      - Completions
+      description: Owner-only.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a completion (alias)
+      tags:
+      - Completions
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a completion
+      tags:
+      - Completions
+      description: Owner-only.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/dashboard":
+    get:
+      summary: Front-page dashboard
+      tags:
+      - Dashboard
+      description: Returns the most recent Game of the Month (GOTM) and Non-Retro
+        GOTM entries used to populate the front page.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 10
+        required: false
+        description: Number of entries to return for each list (default 10, max 20).
+      responses:
+        '200':
+          description: dashboard payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      gotm:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      nr_gotm:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                  meta:
+                    type: object
+                    properties:
+                      limit:
+                        type: integer
+                        example: 10
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/favorites":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a user's favorites
+      tags:
+      - Favorites
+      description: Ordered by `sort_order` ascending, then `created_at` descending.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: favorites list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add a favorite
+      tags:
+      - Favorites
+      description: Owner-only.
+      parameters: []
+      responses:
+        '201':
+          description: favorite created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: UserGameFavorite attributes (`gamedb_game_id`, `sort_order`).
+              required:
+              - data
+        required: true
+  "/api/v1/favorites/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserGameFavorite entry_id.
+    get:
+      summary: Show a favorite
+      tags:
+      - Favorites
+      responses:
+        '200':
+          description: favorite detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a favorite
+      tags:
+      - Favorites
+      description: Owner-only.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a favorite (alias)
+      tags:
+      - Favorites
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a favorite
+      tags:
+      - Favorites
+      description: Owner-only.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{game_id}/images":
+    parameters:
+    - name: game_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    get:
+      summary: List images for a game
+      tags:
+      - Game Images
+      description: Returns images attached to the game, primary entries first.
+      responses:
+        '200':
+          description: images list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Upload a game image
+      tags:
+      - Game Images
+      description: Uploads an image to Backblaze B2 and links it to the game. Restricted
+        to admins or the service account. Send as `multipart/form-data` with the `image`
+        parameter.
+      parameters: []
+      responses:
+        '201':
+          description: image created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unprocessable (invalid image or missing config)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: Backblaze request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Binary image data.
+                kind:
+                  type: string
+                  description: Image kind, e.g. `cover`, `screenshot`, `artwork`.
+                is_primary:
+                  type: boolean
+                  description: Whether this is the primary image for its kind. Defaults
+                    to true on create.
+              required:
+              - file
+              - kind
+        required: true
+  "/api/v1/games/{game_id}/images/{id}":
+    parameters:
+    - name: game_id
+      in: path
+      schema:
+        type: string
+      required: true
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGameImage id.
+    patch:
+      summary: Update a game image
+      tags:
+      - Game Images
+      description: Updates image metadata (primary flag, position). Marking primary
+        clears the flag on siblings of the same kind. Admin or service only.
+      parameters: []
+      responses:
+        '200':
+          description: image updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: image not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unprocessable entity
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    is_primary:
+                      type: boolean
+                    position:
+                      type: integer
+              required:
+              - data
+        required: true
+    put:
+      summary: Update a game image (alias)
+      tags:
+      - Game Images
+      description: Equivalent to `PATCH` on the same path.
+      parameters: []
+      responses:
+        '200':
+          description: image updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    is_primary:
+                      type: boolean
+                    position:
+                      type: integer
+        required: true
+    delete:
+      summary: Delete a game image
+      tags:
+      - Game Images
+      description: Removes the image from Backblaze and the database. Admin or service
+        only.
+      responses:
+        '200':
+          description: image deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: image not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: Backblaze not configured
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: Backblaze request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games":
+    get:
+      summary: List games
+      tags:
+      - Games
+      description: Returns games from the local GameDB. Supports search and a `winner`
+        filter for GOTM / Non-Retro GOTM history.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Full-text search against game titles.
+      - name: winner
+        in: query
+        schema:
+          type: string
+          enum:
+          - gotm
+          - nr_gotm
+          - any
+        required: false
+        description: Filter to past GOTM winners, Non-Retro GOTM winners, or either.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 25
+          minimum: 1
+          maximum: 100
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+          minimum: 0
+        required: false
+      responses:
+        '200':
+          description: games list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    type: object
+                    properties:
+                      resource:
+                        type: string
+                        example: gamedb_games
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+                      total:
+                        type: integer
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    get:
+      summary: Show game
+      tags:
+      - Games
+      description: Returns a game with related GOTM/NR-GOTM month info plus now-playing
+        and completion previews.
+      responses:
+        '200':
+          description: game detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      gotm_month_year:
+                        type: string
+                        nullable: true
+                      nr_gotm_month_year:
+                        type: string
+                        nullable: true
+                      now_playing:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      completions:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/refresh-images":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    post:
+      summary: Refresh images from IGDB
+      tags:
+      - Games
+      description: Re-imports cover/screenshot artwork from IGDB into Backblaze B2
+        storage. Restricted to admins or the service account.
+      responses:
+        '200':
+          description: images refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: IGDB game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unprocessable (missing IGDB id, invalid image, missing config)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: upstream (IGDB or Backblaze) request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/relations":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Show game relations
+      tags:
+      - Games
+      description: Returns platforms, releases, companies, franchises, genres, modes,
+        perspectives, themes, and alternate titles for a game.
+      responses:
+        '200':
+          description: game relations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      platforms:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      releases:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      companies:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      franchises:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      genres:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      modes:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      perspectives:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      themes:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      alternates:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/releases":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List game releases
+      tags:
+      - Games
+      description: Returns release rows for a game, sorted by date then platform/region.
+      responses:
+        '200':
+          description: releases list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/now_playing":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List users currently playing this game
+      tags:
+      - Games
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      responses:
+        '200':
+          description: now-playing entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/completions":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List completions for this game
+      tags:
+      - Games
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      responses:
+        '200':
+          description: completions for game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/reviews":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List reviews for this game
+      tags:
+      - Games
+      description: Reviews are sorted so those with non-null bodies appear first.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      responses:
+        '200':
+          description: reviews for game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_entries":
+    get:
+      summary: List Game of the Month entries
+      tags:
+      - GOTM
+      description: Returns GOTM (Game of the Month) entries, newest round first. Use
+        `include=game` to eager-load the related game record and its images.
+      parameters:
+      - name: round_number
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to a specific round number.
+      - name: include
+        in: query
+        schema:
+          type: string
+          example: game
+        required: false
+        description: Comma-separated includes. Currently `game` is supported.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: GOTM entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_entries/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GotmEntry id.
+    get:
+      summary: Show a Game of the Month entry
+      tags:
+      - GOTM
+      parameters:
+      - name: include
+        in: query
+        schema:
+          type: string
+          example: game
+        required: false
+      responses:
+        '200':
+          description: GOTM entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/health":
+    get:
+      summary: Health check
+      tags:
+      - Health
+      description: Verifies the API is up and the database connection is alive. Does
+        not require authentication.
+      security: []
+      responses:
+        '200':
+          description: service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                required:
+                - ok
+  "/api/v1/users/{user_id}/now_playing":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a user's now-playing games
+      tags:
+      - Now Playing
+      description: Returns the games a specific user is currently playing, newest
+        first.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: now-playing list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/nr_gotm_entries":
+    get:
+      summary: List Non-Retro Game of the Month entries
+      tags:
+      - Non-Retro GOTM
+      description: Returns Non-Retro GOTM entries, newest round first. Use `include=game`
+        to eager-load the related game record and its images.
+      parameters:
+      - name: round_number
+        in: query
+        schema:
+          type: integer
+        required: false
+      - name: include
+        in: query
+        schema:
+          type: string
+          example: game
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: Non-Retro GOTM entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/nr_gotm_entries/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: NrGotmEntry id.
+    get:
+      summary: Show a Non-Retro GOTM entry
+      tags:
+      - Non-Retro GOTM
+      parameters:
+      - name: include
+        in: query
+        schema:
+          type: string
+          example: game
+        required: false
+      responses:
+        '200':
+          description: Non-Retro GOTM entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/platforms":
+    get:
+      summary: List platforms
+      tags:
+      - Platforms
+      description: Returns gaming platforms (consoles, PC, mobile, etc.). Supports
+        `q` for case-insensitive name/code search.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Search term against `platform_name` or `platform_code`.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: platforms list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/platforms/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbPlatform id.
+    get:
+      summary: Show platform
+      tags:
+      - Platforms
+      responses:
+        '200':
+          description: platform
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: platform not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/public_reminders":
+    get:
+      summary: List public reminders
+      tags:
+      - Public Reminders
+      description: Returns reminders the bot will post to the public channel. Pass
+        `enabled=true|false` to filter.
+      parameters:
+      - name: enabled
+        in: query
+        schema:
+          type: boolean
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: public reminders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a public reminder
+      tags:
+      - Public Reminders
+      parameters: []
+      responses:
+        '201':
+          description: reminder created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: RpgClubPublicReminder attributes (`message`, `due_at`,
+                    `enabled`).
+              required:
+              - data
+        required: true
+  "/api/v1/public_reminders/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubPublicReminder id.
+    get:
+      summary: Show a public reminder
+      tags:
+      - Public Reminders
+      responses:
+        '200':
+          description: reminder detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a public reminder
+      tags:
+      - Public Reminders
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a public reminder (alias)
+      tags:
+      - Public Reminders
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a public reminder
+      tags:
+      - Public Reminders
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/regions":
+    get:
+      summary: List regions
+      tags:
+      - Regions
+      description: Returns release regions (NA, JP, EU, ...).
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: regions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/regions/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbRegion id.
+    get:
+      summary: Show region
+      tags:
+      - Regions
+      responses:
+        '200':
+          description: region
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: region not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/reviews":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a user's reviews
+      tags:
+      - Reviews
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: reviews list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Write a review
+      tags:
+      - Reviews
+      description: Owner-only.
+      parameters: []
+      responses:
+        '201':
+          description: review created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: UserGameReview attributes (`gamedb_game_id`, `rating`,
+                    `body`).
+              required:
+              - data
+        required: true
+  "/api/v1/reviews/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserGameReview review_id.
+    get:
+      summary: Show a review
+      tags:
+      - Reviews
+      responses:
+        '200':
+          description: review detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a review
+      tags:
+      - Reviews
+      description: Owner-only.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a review (alias)
+      tags:
+      - Reviews
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a review
+      tags:
+      - Reviews
+      description: Owner-only.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/rss_feeds":
+    get:
+      summary: List RSS feeds
+      tags:
+      - RSS Feeds
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: rss feeds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create an RSS feed
+      tags:
+      - RSS Feeds
+      parameters: []
+      responses:
+        '201':
+          description: feed created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: RpgClubRssFeed attributes (`feed_name`, `feed_url`,
+                    `enabled`).
+              required:
+              - data
+        required: true
+  "/api/v1/rss_feeds/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubRssFeed id.
+    get:
+      summary: Show an RSS feed
+      tags:
+      - RSS Feeds
+      responses:
+        '200':
+          description: feed detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update an RSS feed
+      tags:
+      - RSS Feeds
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace an RSS feed (alias)
+      tags:
+      - RSS Feeds
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete an RSS feed
+      tags:
+      - RSS Feeds
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/session":
+    get:
+      summary: Current session
+      tags:
+      - Sessions
+      description: Returns the authenticated principal (Discord user or service account)
+        and, when applicable, RPG Club membership info.
+      responses:
+        '200':
+          description: current session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  principal:
+                    type: object
+                    description: Auth::Principal payload — shape varies between Discord-user
+                      and service principals.
+                    additionalProperties: true
+                  membership:
+                    type: object
+                    nullable: true
+                    description: RPG Club membership info merged with dev/longstanding
+                      role flags.
+                    additionalProperties: true
+                required:
+                - principal
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/social_platforms":
+    get:
+      summary: List social platforms
+      tags:
+      - Social Platforms
+      description: Returns the catalog of social-network platforms users can link
+        on their profile.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: social platforms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a social platform
+      tags:
+      - Social Platforms
+      description: Creates a new social platform. If a unique-label conflict is raised,
+        the existing matching record is returned with status 200 instead of an error.
+      parameters: []
+      responses:
+        '201':
+          description: platform created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '200':
+          description: duplicate label — returning existing platform
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: SocialPlatform attributes (`label`, `icon`, `position`,
+                    etc.).
+              required:
+              - data
+        required: true
+  "/api/v1/starboard":
+    get:
+      summary: List starboard entries
+      tags:
+      - Starboard
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: starboard entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a starboard entry
+      tags:
+      - Starboard
+      description: Records a starred Discord message. Sent by the bot service principal.
+      parameters: []
+      responses:
+        '201':
+          description: entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: RpgClubStarboardEntry attributes (`message_id`, `channel_id`,
+                    `author_id`, `content`).
+              required:
+              - data
+        required: true
+  "/api/v1/starboard/{message_id}":
+    parameters:
+    - name: message_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord message id (also the primary key for the starboard entry).
+    get:
+      summary: Show a starboard entry
+      tags:
+      - Starboard
+      responses:
+        '200':
+          description: entry detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a starboard entry
+      tags:
+      - Starboard
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a starboard entry (alias)
+      tags:
+      - Starboard
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a starboard entry
+      tags:
+      - Starboard
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/suggestions":
+    get:
+      summary: List suggestions
+      tags:
+      - Suggestions
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: suggestions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a suggestion
+      tags:
+      - Suggestions
+      parameters: []
+      responses:
+        '201':
+          description: suggestion created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: RpgClubSuggestion attributes (`title`, `body`, `submitted_by`).
+              required:
+              - data
+        required: true
+  "/api/v1/suggestions/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    get:
+      summary: Show a suggestion
+      tags:
+      - Suggestions
+      responses:
+        '200':
+          description: suggestion detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Delete a suggestion
+      tags:
+      - Suggestions
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/todos":
+    get:
+      summary: List todos
+      tags:
+      - Todos
+      description: Returns todo items. Pass `completed=true|false` to filter by completion
+        state.
+      parameters:
+      - name: completed
+        in: query
+        schema:
+          type: boolean
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: todos list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a todo
+      tags:
+      - Todos
+      parameters: []
+      responses:
+        '201':
+          description: todo created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: RpgClubTodo attributes (`title`, `body`, `is_completed`).
+              required:
+              - data
+        required: true
+  "/api/v1/todos/summary":
+    get:
+      summary: Todo counts summary
+      tags:
+      - Todos
+      description: Returns counts of total, completed, and open todos.
+      responses:
+        '200':
+          description: summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      completed:
+                        type: integer
+                      open:
+                        type: integer
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/todos/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubTodo id.
+    get:
+      summary: Show a todo
+      tags:
+      - Todos
+      responses:
+        '200':
+          description: todo detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a todo
+      tags:
+      - Todos
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a todo (alias)
+      tags:
+      - Todos
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a todo
+      tags:
+      - Todos
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/socials":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a user's linked socials
+      tags:
+      - User Socials
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: user socials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Link a social account
+      tags:
+      - User Socials
+      description: Owner-only.
+      parameters: []
+      responses:
+        '201':
+          description: social link created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: UserSocial attributes (`social_platform_id`, `handle`,
+                    `url`, etc.).
+              required:
+              - data
+        required: true
+  "/api/v1/user_socials/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserSocial id.
+    get:
+      summary: Show a user social link
+      tags:
+      - User Socials
+      responses:
+        '200':
+          description: user social detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a user social link
+      tags:
+      - User Socials
+      description: Owner-only.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a user social link (alias)
+      tags:
+      - User Socials
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a user social link
+      tags:
+      - User Socials
+      description: Owner-only.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users":
+    get:
+      summary: List users
+      tags:
+      - Users
+      description: Returns RPG Club users. The `q` parameter searches `username`,
+        `global_name`, or an exact `user_id` match.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: users list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubUser id (Discord user id).
+    get:
+      summary: Show user profile
+      tags:
+      - Users
+      description: 'Aggregated profile: user record + membership, socials, and preview
+        lists/counts for now-playing, favorites, reviews, and completions.'
+      parameters:
+      - name: preview_limit
+        in: query
+        schema:
+          type: integer
+          default: 10
+          maximum: 50
+        required: false
+        description: Per-preview-list size cap (now_playing, favorites, reviews, completions).
+      responses:
+        '200':
+          description: user detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      membership:
+                        type: object
+                        nullable: true
+                        additionalProperties: true
+                      socials:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      now_playing:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      favorites:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      reviews:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      completions:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      counts:
+                        type: object
+                        properties:
+                          now_playing:
+                            type: integer
+                          favorites:
+                            type: integer
+                          reviews:
+                            type: integer
+                          completions:
+                            type: integer
+                          backlog:
+                            type: integer
+                          collections:
+                            type: integer
+        '404':
+          description: user not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/avatar":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Stream user avatar
+      tags:
+      - Users
+      description: Returns the cached PNG avatar blob for the user. Public — does
+        not require authentication.
+      security: []
+      responses:
+        '200':
+          description: avatar PNG
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              description: image/png
+        '404':
+          description: avatar not stored
+          content:
+            image/png:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/profile-image":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Stream user profile image
+      tags:
+      - Users
+      description: Returns the user-uploaded profile banner image. Public — does not
+        require authentication.
+      security: []
+      responses:
+        '200':
+          description: profile image PNG
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              description: image/png
+        '404':
+          description: profile image not stored
+          content:
+            image/png:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_info":
+    get:
+      summary: List voting info rounds
+      tags:
+      - Voting Info
+      description: Returns bot-managed voting metadata, newest round first.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+        required: false
+      responses:
+        '200':
+          description: voting info list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create voting info
+      tags:
+      - Voting Info
+      parameters: []
+      responses:
+        '201':
+          description: voting info created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: BotVotingInfo attributes (`round_number`, `theme`,
+                    `voting_opens_at`, `voting_closes_at`).
+              required:
+              - data
+        required: true
+  "/api/v1/voting_info/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: BotVotingInfo id.
+    get:
+      summary: Show voting info
+      tags:
+      - Voting Info
+      responses:
+        '200':
+          description: voting info detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update voting info
+      tags:
+      - Voting Info
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace voting info (alias)
+      tags:
+      - Voting Info
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete voting info
+      tags:
+      - Voting Info
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/auth/discord":
+    get:
+      summary: Start Discord OAuth login
+      tags:
+      - Auth
+      description: Begins the Discord OAuth flow. The endpoint stores a CSRF `state`
+        value in the session and redirects the browser to Discord's authorization
+        URL. Public — does not require authentication.
+      security: []
+      responses:
+        '302':
+          description: redirecting to Discord
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Discord authorization URL with the `state` query parameter
+                set.
+        '422':
+          description: Discord OAuth not configured
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/auth/discord/callback":
+    get:
+      summary: Discord OAuth callback
+      tags:
+      - Auth
+      description: Exchanges the OAuth `code` for tokens, verifies guild membership
+        and roles, upserts the RPG Club user record, issues a `UserSessionToken`,
+        and redirects to the configured success URL with the token in the query string.
+        Public — does not require authentication.
+      security: []
+      parameters:
+      - name: code
+        in: query
+        schema:
+          type: string
+        required: true
+        description: OAuth authorization code from Discord.
+      - name: state
+        in: query
+        schema:
+          type: string
+        required: true
+        description: CSRF state value matching the one set at /auth/discord.
+      responses:
+        '302':
+          description: redirecting to the success URL with `?token=…`
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          description: invalid OAuth state or token exchange failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: caller is not a member of the RPG Club Discord guild
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: Discord OAuth not configured
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/auth/logout":
+    delete:
+      summary: Log out
+      tags:
+      - Auth
+      description: Revokes the bearer `UserSessionToken` (if present), logs out the
+        warden session, and resets the cookie session. Authentication is not required
+        — the endpoint is safe to call when already logged out.
+      security: []
+      responses:
+        '200':
+          description: logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                required:
+                - ok

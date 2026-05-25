@@ -49,12 +49,14 @@ group :development, :test do
 
   # RSpec test framework
   gem "rspec-rails", "~> 8.0"
+
+  gem "dotenv-rails", "~> 3.2"
 end
 
 gem "warden", "~> 1.2"
 gem "rack-cors", "~> 3.0"
 gem "faraday", "~> 2.14"
 
-gem "dotenv-rails", "~> 3.2", groups: [ :development, :test ]
-
 gem "dockerfile-rails", ">= 1.7", group: :development
+
+gem "rswag"
