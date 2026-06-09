@@ -34,10 +34,10 @@ RSpec.describe 'api/v1/users', type: :request do
 
     get 'Show user profile' do
       tags 'Users'
-      description 'Aggregated profile: user record + membership, socials, and preview lists/counts for now-playing, favorites, reviews, and completions.'
+      description 'Aggregated profile: user record + membership, socials, and preview lists/counts for now-playing, favorites, reviews, completions, and journal (recently journaled games).'
       produces 'application/json'
       parameter name: :preview_limit, in: :query, schema: { type: :integer, default: 10, maximum: 50 }, required: false,
-        description: 'Per-preview-list size cap (now_playing, favorites, reviews, completions).'
+        description: 'Per-preview-list size cap (now_playing, favorites, reviews, completions, journal).'
 
       response '200', 'user detail' do
         schema type: :object, properties: {
@@ -51,6 +51,7 @@ RSpec.describe 'api/v1/users', type: :request do
               favorites:   { type: :array, items: { type: :object, additionalProperties: true } },
               reviews:     { type: :array, items: { type: :object, additionalProperties: true } },
               completions: { type: :array, items: { type: :object, additionalProperties: true } },
+              journal:     { type: :array, items: { type: :object, additionalProperties: true } },
               counts: {
                 type: :object,
                 properties: {
@@ -59,7 +60,8 @@ RSpec.describe 'api/v1/users', type: :request do
                   reviews:     { type: :integer },
                   completions: { type: :integer },
                   backlog:     { type: :integer },
-                  collections: { type: :integer }
+                  collections: { type: :integer },
+                  journal:     { type: :integer }
                 }
               }
             }

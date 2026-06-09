@@ -23,6 +23,7 @@ class UserResource
   many :favorites,   resource: FavoriteEntryResource,   source: ->(params) { params[:favorites] || [] }
   many :reviews,     resource: ReviewEntryResource,     source: ->(params) { params[:reviews] || [] }
   many :completions, resource: CompletionEntryResource, source: ->(params) { params[:completions] || [] }
+  many :journal,     resource: JournaledGameResource,   source: ->(params) { params[:journal] || [] }
 
   attribute :counts do
     params[:counts] || {}

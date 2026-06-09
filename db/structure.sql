@@ -2019,6 +2019,40 @@ ALTER SEQUENCE public.user_game_favorites_entry_id_seq OWNED BY public.user_game
 
 
 --
+-- Name: user_game_journal_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_game_journal_entries (
+    entry_id bigint NOT NULL,
+    user_id character varying(50) NOT NULL,
+    gamedb_game_id bigint NOT NULL,
+    entry_title character varying(120),
+    entry_body text NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+--
+-- Name: user_game_journal_entries_entry_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_game_journal_entries_entry_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_game_journal_entries_entry_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.user_game_journal_entries_entry_id_seq OWNED BY public.user_game_journal_entries.entry_id;
+
+
+--
 -- Name: user_game_reviews; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2242,6 +2276,13 @@ ALTER TABLE ONLY public.user_game_backlog ALTER COLUMN entry_id SET DEFAULT next
 --
 
 ALTER TABLE ONLY public.user_game_favorites ALTER COLUMN entry_id SET DEFAULT nextval('public.user_game_favorites_entry_id_seq'::regclass);
+
+
+--
+-- Name: user_game_journal_entries entry_id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_game_journal_entries ALTER COLUMN entry_id SET DEFAULT nextval('public.user_game_journal_entries_entry_id_seq'::regclass);
 
 
 --
@@ -3008,6 +3049,14 @@ ALTER TABLE ONLY public.user_game_favorites
 
 
 --
+-- Name: user_game_journal_entries user_game_journal_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_game_journal_entries
+    ADD CONSTRAINT user_game_journal_entries_pkey PRIMARY KEY (entry_id);
+
+
+--
 -- Name: user_game_reviews user_game_reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3545,6 +3594,27 @@ CREATE INDEX ix_user_game_favorites_sort ON public.user_game_favorites USING btr
 
 
 --
+-- Name: ix_user_game_journal_entries_game; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_user_game_journal_entries_game ON public.user_game_journal_entries USING btree (gamedb_game_id);
+
+
+--
+-- Name: ix_user_game_journal_entries_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_user_game_journal_entries_user ON public.user_game_journal_entries USING btree (user_id);
+
+
+--
+-- Name: ix_user_game_journal_entries_user_game; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_user_game_journal_entries_user_game ON public.user_game_journal_entries USING btree (user_id, gamedb_game_id);
+
+
+--
 -- Name: ix_user_game_reviews_game; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4017,6 +4087,22 @@ ALTER TABLE ONLY public.user_game_favorites
 
 
 --
+-- Name: user_game_journal_entries fk_user_game_journal_entries_gamedb; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_game_journal_entries
+    ADD CONSTRAINT fk_user_game_journal_entries_gamedb FOREIGN KEY (gamedb_game_id) REFERENCES public.gamedb_games(game_id);
+
+
+--
+-- Name: user_game_journal_entries fk_user_game_journal_entries_user; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_game_journal_entries
+    ADD CONSTRAINT fk_user_game_journal_entries_user FOREIGN KEY (user_id) REFERENCES public.rpg_club_users(user_id);
+
+
+--
 -- Name: user_game_reviews fk_user_game_reviews_gamedb; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4063,6 +4149,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260517000700'),
 ('20260517000600'),
 ('20260517000500'),
 ('20260517000400'),

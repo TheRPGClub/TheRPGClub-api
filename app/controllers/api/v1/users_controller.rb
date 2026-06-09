@@ -22,7 +22,8 @@ module Api
           now_playing: user.now_playing_entries.preload(:game, :platform).order(added_at: :desc).limit(limit).to_a,
           favorites:   user.game_favorites.preload(:game).order(:sort_order).limit(limit).to_a,
           reviews:     user.reviews.preload(:game).order(created_at: :desc).limit(limit).to_a,
-          completions: user.game_completions.preload(:game, :platform).order(completed_at: :desc).limit(limit).to_a
+          completions: user.game_completions.preload(:game, :platform).order(completed_at: :desc).limit(limit).to_a,
+          journal:     UserGameJournalEntry.journaled_games_for(user.user_id).order(Arel.sql("last_entry_at DESC")).limit(limit).to_a
         }
 
         counts = {
@@ -31,7 +32,8 @@ module Api
           reviews:     user.reviews.count,
           completions: user.game_completions.count,
           backlog:     user.game_backlog_entries.count,
-          collections: user.game_collections.count
+          collections: user.game_collections.count,
+          journal:     user.journal_entries.distinct.count(:gamedb_game_id)
         }
 
         render json: {

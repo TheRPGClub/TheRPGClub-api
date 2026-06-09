@@ -26,6 +26,7 @@ Rails.application.routes.draw do
           get "now_playing", to: "now_playing#index"
           get "completions", to: "completions#game_index"
           get "reviews", to: "reviews#game_index"
+          get "journal", to: "journal#game_index"
         end
       end
 
@@ -49,6 +50,8 @@ Rails.application.routes.draw do
           get "now_playing", to: "now_playing#user_index"
           get "socials", to: "user_socials#index"
           post "socials", to: "user_socials#create"
+          get "journal", to: "journal#index"
+          post "journal", to: "journal#create"
         end
       end
 
@@ -59,6 +62,7 @@ Rails.application.routes.draw do
       resources :backlog, only: %i[show update destroy]
       resources :social_platforms, only: %i[index create]
       resources :user_socials, only: %i[show update destroy]
+      resources :journal_entries, only: %i[show update destroy], controller: "journal"
       resources :gotm_entries, only: %i[index show]
       resources :nr_gotm_entries, only: %i[index show]
       resources :suggestions, only: %i[index show create destroy]
