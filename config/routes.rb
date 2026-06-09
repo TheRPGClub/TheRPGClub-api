@@ -27,6 +27,7 @@ Rails.application.routes.draw do
           get "completions", to: "completions#game_index"
           get "reviews", to: "reviews#game_index"
           get "journal", to: "journal#game_index"
+          get "release_announcements", to: "release_announcements#game_index"
         end
       end
 
@@ -66,6 +67,9 @@ Rails.application.routes.draw do
       resources :user_socials, only: %i[show update destroy]
       resources :journal_entries, only: %i[show update destroy], controller: "journal"
       resources :reminders, only: %i[show update destroy]
+      resources :release_announcements, only: %i[show create update destroy] do
+        member { post "skip" }
+      end
       resources :gotm_entries, only: %i[index show]
       resources :nr_gotm_entries, only: %i[index show]
       get "gotm_entries/:round/nominations", to: "nominations#gotm", as: :gotm_entry_nominations

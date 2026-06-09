@@ -3182,6 +3182,326 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/release_announcements":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame game_id.
+    get:
+      summary: List a game's scheduled release announcements
+      tags:
+      - Release Announcements
+      description: The scheduled announcements for the game's releases, ordered by
+        `announce_at`. Each row is keyed by `release_id` (1:1 with a release). The
+        delivery columns (`sent_at`, `skipped_at`, `skip_reason`) are bot-managed
+        and read-only.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: release announcements list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/release_announcements":
+    post:
+      summary: Schedule a release announcement
+      tags:
+      - Release Announcements
+      description: Admin/service-only. Schedules the bot to announce a release. The
+        body carries `release_id` (the primary key, 1:1 with the release) and `announce_at`.
+        The delivery columns (`sent_at`, `skipped_at`, `skip_reason`) are bot-managed
+        and ignored on write — use the skip action to skip an announcement.
+      parameters: []
+      responses:
+        '201':
+          description: announcement scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `announce_at` or unknown `release_id`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: GamedbReleaseAnnouncement attributes (`release_id`,
+                    `announce_at`).
+              required:
+              - data
+        required: true
+  "/api/v1/release_announcements/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbReleaseAnnouncement release_id.
+    get:
+      summary: Show a scheduled release announcement
+      tags:
+      - Release Announcements
+      responses:
+        '200':
+          description: announcement detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Reschedule a release announcement
+      tags:
+      - Release Announcements
+      description: Admin/service-only. Reschedule a pending announcement by moving
+        `announce_at`. The bot-managed delivery columns are read-only and ignored
+        on write.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a release announcement (alias)
+      tags:
+      - Release Announcements
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a release announcement
+      tags:
+      - Release Announcements
+      description: Admin/service-only. Removes the scheduled announcement entirely.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/release_announcements/{id}/skip":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbReleaseAnnouncement release_id.
+    post:
+      summary: Skip a release announcement
+      tags:
+      - Release Announcements
+      description: 'Admin/service-only. Marks the announcement skipped so the bot
+        won''t send it: stamps `skipped_at` now and stores the optional `skip_reason`.
+        The body is optional.'
+      parameters: []
+      responses:
+        '200':
+          description: skipped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    skip_reason:
+                      type: string
+                      maxLength: 80
   "/api/v1/users/{user_id}/reminders":
     parameters:
     - name: user_id

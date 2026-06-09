@@ -8,4 +8,6 @@ class GamedbReleaseAnnouncement < ApplicationRecord
     class_name: "GamedbRelease",
     foreign_key: :release_id,
     inverse_of: :announcement
+
+  validates :announce_at, presence: true
 end

@@ -1,0 +1,210 @@
+# frozen_string_literal: true
+
+require 'swagger_helper'
+
+RSpec.describe 'api/v1/release_announcements', type: :request do
+  path '/api/v1/games/{id}/release_announcements' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbGame game_id.'
+
+    get "List a game's scheduled release announcements" do
+      tags 'Release Announcements'
+      description 'The scheduled announcements for the game\'s releases, ordered by `announce_at`. ' \
+                  'Each row is keyed by `release_id` (1:1 with a release). The delivery columns ' \
+                  '(`sent_at`, `skipped_at`, `skip_reason`) are bot-managed and read-only.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'release announcements list' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/release_announcements' do
+    post 'Schedule a release announcement' do
+      tags 'Release Announcements'
+      description 'Admin/service-only. Schedules the bot to announce a release. The body carries ' \
+                  '`release_id` (the primary key, 1:1 with the release) and `announce_at`. The ' \
+                  'delivery columns (`sent_at`, `skipped_at`, `skip_reason`) are bot-managed and ' \
+                  'ignored on write — use the skip action to skip an announcement.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            additionalProperties: true,
+            description: 'GamedbReleaseAnnouncement attributes (`release_id`, `announce_at`).'
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'announcement scheduled' do
+        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed (missing `announce_at` or unknown `release_id`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing `data` parameter' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/release_announcements/{id}' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true,
+              description: 'GamedbReleaseAnnouncement release_id.'
+
+    get 'Show a scheduled release announcement' do
+      tags 'Release Announcements'
+      produces 'application/json'
+
+      response '200', 'announcement detail' do
+        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    patch 'Reschedule a release announcement' do
+      tags 'Release Announcements'
+      description 'Admin/service-only. Reschedule a pending announcement by moving `announce_at`. ' \
+                  'The bot-managed delivery columns are read-only and ignored on write.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: { data: { type: :object, additionalProperties: true } },
+        required: %w[data]
+      }
+
+      response '200', 'updated' do
+        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    put 'Replace a release announcement (alias)' do
+      tags 'Release Announcements'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: { data: { type: :object, additionalProperties: true } }
+      }
+
+      response '200', 'updated' do
+        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    delete 'Delete a release announcement' do
+      tags 'Release Announcements'
+      description 'Admin/service-only. Removes the scheduled announcement entirely.'
+      produces 'application/json'
+
+      response '200', 'deleted' do
+        schema '$ref' => '#/components/schemas/DeletedResponse'
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/release_announcements/{id}/skip' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true,
+              description: 'GamedbReleaseAnnouncement release_id.'
+
+    post 'Skip a release announcement' do
+      tags 'Release Announcements'
+      description 'Admin/service-only. Marks the announcement skipped so the bot won\'t send it: ' \
+                  'stamps `skipped_at` now and stores the optional `skip_reason`. The body is optional.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: false, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: { skip_reason: { type: :string, maxLength: 80 } }
+          }
+        }
+      }
+
+      response '200', 'skipped' do
+        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+end
