@@ -128,6 +128,16 @@ class GamedbGame < ApplicationRecord
     foreign_key: :gamedb_game_id,
     dependent: nil,
     inverse_of: :game
+  has_many :gotm_nominations,
+    class_name: "GotmNomination",
+    foreign_key: :gamedb_game_id,
+    dependent: nil,
+    inverse_of: :game
+  has_many :nr_gotm_nominations,
+    class_name: "NrGotmNomination",
+    foreign_key: :gamedb_game_id,
+    dependent: nil,
+    inverse_of: :game
 
   SUMMARY_COLUMNS = %i[
     game_id title description igdb_id slug total_rating igdb_url created_at updated_at

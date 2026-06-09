@@ -2392,6 +2392,184 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_entries/{round}/nominations":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GOTM voting round number.
+    get:
+      summary: List GOTM nominations for a round
+      tags:
+      - GOTM
+      description: The games nominated for the given GOTM voting round, oldest first,
+        each with its embedded nominator (`user`) and `game`.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: GOTM nominations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nomination_id:
+                          type: integer
+                        round_number:
+                          type: integer
+                        user_id:
+                          type: string
+                        gamedb_game_id:
+                          type: integer
+                          nullable: true
+                        reason:
+                          type: string
+                          nullable: true
+                        nominated_at:
+                          type: string
+                          format: date-time
+                        user:
+                          type: object
+                          nullable: true
+                          additionalProperties: true
+                        game:
+                          type: object
+                          nullable: true
+                          additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/nr_gotm_entries/{round}/nominations":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Non-RPG GOTM voting round number.
+    get:
+      summary: List Non-RPG GOTM nominations for a round
+      tags:
+      - GOTM
+      description: The games nominated for the given Non-RPG GOTM voting round, oldest
+        first, each with its embedded nominator (`user`) and `game`.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: Non-RPG GOTM nominations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        nomination_id:
+                          type: integer
+                        round_number:
+                          type: integer
+                        user_id:
+                          type: string
+                        gamedb_game_id:
+                          type: integer
+                          nullable: true
+                        reason:
+                          type: string
+                          nullable: true
+                        nominated_at:
+                          type: string
+                          format: date-time
+                        user:
+                          type: object
+                          nullable: true
+                          additionalProperties: true
+                        game:
+                          type: object
+                          nullable: true
+                          additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/now_playing":
     parameters:
     - name: user_id

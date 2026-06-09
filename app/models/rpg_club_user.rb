@@ -55,6 +55,18 @@ class RpgClubUser < ApplicationRecord
     primary_key: :user_id,
     dependent: nil,
     inverse_of: :user
+  has_many :gotm_nominations,
+    class_name: "GotmNomination",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil,
+    inverse_of: :user
+  has_many :nr_gotm_nominations,
+    class_name: "NrGotmNomination",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil,
+    inverse_of: :user
   has_many :uploaded_game_images,
     class_name: "GamedbGameImage",
     foreign_key: :uploaded_by_user_id,

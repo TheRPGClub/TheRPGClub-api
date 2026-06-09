@@ -65,6 +65,8 @@ Rails.application.routes.draw do
       resources :journal_entries, only: %i[show update destroy], controller: "journal"
       resources :gotm_entries, only: %i[index show]
       resources :nr_gotm_entries, only: %i[index show]
+      get "gotm_entries/:round/nominations", to: "nominations#gotm", as: :gotm_entry_nominations
+      get "nr_gotm_entries/:round/nominations", to: "nominations#nr_gotm", as: :nr_gotm_entry_nominations
       resources :suggestions, only: %i[index show create destroy]
       resources :todos, only: %i[index show create update destroy] do
         collection { get "summary" }
