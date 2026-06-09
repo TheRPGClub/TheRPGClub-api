@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby.exe
+#!/usr/bin/env ruby
 require_relative "../config/boot"
 require "active_support/continuous_integration"
 

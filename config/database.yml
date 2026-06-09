@@ -61,7 +61,15 @@ development:
 # Do not set this db to the same as development or production.
 test:
   <<: *default
+  # Database name is fixed (never read from RPGCLUB_DATABASE_NAME) so it can
+  # never collide with the development database. Connection params mirror the
+  # development block so the suite is runnable locally and against the CI
+  # PostgreSQL service container.
   database: rpg_club_test
+  username: <%= ENV.fetch("RPGCLUB_DATABASE_USERNAME", "admin") %>
+  password: <%= ENV["RPGCLUB_DATABASE_PASSWORD"].inspect %>
+  host: <%= ENV.fetch("RPGCLUB_DATABASE_HOST", "127.0.0.1") %>
+  port: <%= ENV.fetch("RPGCLUB_DATABASE_PORT", 5432) %>
 
 # As with config/credentials.yml, you never want to store sensitive information,
 # like your database password, in your source code. If your source code is

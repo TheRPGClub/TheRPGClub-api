@@ -1,0 +1,28 @@
+{
+  "ignored_warnings": [
+    {
+      "warning_type": "Mass Assignment",
+      "warning_code": 70,
+      "fingerprint": "d3e70130f7a4afab2ed4afafec31efde9e85d2f52f46f70ad2080ba66481bd8f",
+      "check_name": "MassAssignment",
+      "message": "Specify exact keys allowed for mass assignment instead of using `permit!` which allows any keys",
+      "file": "app/controllers/application_controller.rb",
+      "line": 61,
+      "link": "https://brakemanscanner.org/docs/warning_types/mass_assignment/",
+      "code": "params.require(:data).permit!",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "ApplicationController",
+        "method": "request_data"
+      },
+      "user_input": null,
+      "confidence": "Medium",
+      "cwe_id": [
+        915
+      ],
+      "note": "Acknowledged, not fixed. `request_data` is a generic JSON:API-style helper that permits the whole `data` payload; the controllers that consume it are responsible for whitelisting attributes before mass assignment. Tightening this into per-endpoint key allowlists is real security-hardening work tracked in issue #56 (suppression added alongside the CI setup in #55). Remove this entry when #56 lands."
+    }
+  ],
+  "brakeman_version": "8.0.4"
+}

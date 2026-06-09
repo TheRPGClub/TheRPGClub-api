@@ -7,3 +7,12 @@ db/schema.rb linguist-generated
 vendor/* linguist-vendored
 config/credentials/*.yml.enc diff=rails_credentials
 config/credentials.yml.enc diff=rails_credentials
+
+# Binstubs must stay LF with a portable shebang so the Linux CI runner can
+# execute them. Do NOT regenerate binstubs on Windows (`bin/rails app:update:bin`,
+# `bundle binstubs`, etc.) — Windows rewrites the shebang to `ruby.exe` and may
+# strip the executable bit. If you must, re-fix afterwards:
+#   sed -i '1s|ruby.exe|ruby|' bin/*           # portable shebang
+#   git update-index --chmod=+x bin/<stub>     # restore exec bit
+bin/* text eol=lf
+bin/*.cmd text eol=crlf

@@ -50,3 +50,51 @@ jobs:
       - name: Lint code for consistent style
         run: bin/rubocop -f github
 
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # PG 17: db/structure.sql uses `SET transaction_timeout` (PostgreSQL 17+),
+        # so an older server fails db:test:prepare under psql's ON_ERROR_STOP.
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      # Wire the app's DB config (config/database.yml test block) to the
+      # Postgres service container above.
+      RPGCLUB_DATABASE_HOST: localhost
+      RPGCLUB_DATABASE_PORT: 5432
+      RPGCLUB_DATABASE_USERNAME: postgres
+      RPGCLUB_DATABASE_PASSWORD: postgres
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # `schema_format = :sql` means db:test:prepare loads db/structure.sql via
+      # the psql client, so the PostgreSQL client tools must be on PATH.
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Prepare test database from db/structure.sql
+        run: bin/rails db:test:prepare
+
+      - name: Run RSpec test suite
+        run: bundle exec rspec
+
