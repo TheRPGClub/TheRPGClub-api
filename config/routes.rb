@@ -52,6 +52,8 @@ Rails.application.routes.draw do
           post "socials", to: "user_socials#create"
           get "journal", to: "journal#index"
           post "journal", to: "journal#create"
+          get "reminders", to: "reminders#index"
+          post "reminders", to: "reminders#create"
         end
       end
 
@@ -63,6 +65,7 @@ Rails.application.routes.draw do
       resources :social_platforms, only: %i[index create]
       resources :user_socials, only: %i[show update destroy]
       resources :journal_entries, only: %i[show update destroy], controller: "journal"
+      resources :reminders, only: %i[show update destroy]
       resources :gotm_entries, only: %i[index show]
       resources :nr_gotm_entries, only: %i[index show]
       get "gotm_entries/:round/nominations", to: "nominations#gotm", as: :gotm_entry_nominations
