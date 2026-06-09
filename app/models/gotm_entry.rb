@@ -9,10 +9,4 @@ class GotmEntry < ApplicationRecord
     foreign_key: :gamedb_game_id,
     optional: true,
     inverse_of: :gotm_entries
-
-  def as_json(options = nil)
-    payload = super(options)
-    payload["game"] = game&.as_json if association(:game).loaded?
-    payload
-  end
 end

@@ -20,8 +20,8 @@ module Api
 
         render json: {
           data: {
-            gotm: gotm.as_json,
-            nr_gotm: nr_gotm.as_json
+            gotm: GotmEntryResource.new(gotm, params: { include_game: true }).serializable_hash,
+            nr_gotm: NrGotmEntryResource.new(nr_gotm, params: { include_game: true }).serializable_hash
           },
           meta: { limit: limit }
         }

@@ -19,7 +19,7 @@ module Gamedb
           igdb_id: igdb_id,
           title: title,
           igdb_title: igdb_title,
-          images: images.map(&:as_json)
+          images: GameImageResource.new(images).serializable_hash
         }
       end
     end

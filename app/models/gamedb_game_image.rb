@@ -28,8 +28,4 @@ class GamedbGameImage < ApplicationRecord
   def url
     Backblaze::Client.public_url_for(object_key)
   end
-
-  def as_json(options = nil)
-    super(options).merge("url" => url)
-  end
 end

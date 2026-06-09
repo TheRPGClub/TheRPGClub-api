@@ -6,7 +6,7 @@ module Api
       before_action :set_game
 
       def index
-        render json: { data: @game.images.primary_first.as_json }
+        render json: { data: GameImageResource.new(@game.images.primary_first).serializable_hash }
       end
 
       def create
@@ -20,7 +20,7 @@ module Api
           primary: boolean_param(image_params[:is_primary], default: true)
         )
 
-        render json: { data: image.as_json }, status: :created
+        render json: { data: GameImageResource.new(image).serializable_hash }, status: :created
       rescue KeyError, Gamedb::GameImageStorage::InvalidImageError => error
         render json: { error: error.message }, status: :unprocessable_entity
       rescue Backblaze::Client::ConfigurationError => error
@@ -45,7 +45,7 @@ module Api
           image.update!(attrs)
         end
 
-        render json: { data: image.as_json }
+        render json: { data: GameImageResource.new(image).serializable_hash }
       end
 
       def destroy
