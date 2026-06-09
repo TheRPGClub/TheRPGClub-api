@@ -3,8 +3,6 @@
 module Api
   module V1
     class FavoritesController < ApplicationController
-      include GameEntrySerialization
-
       before_action :require_owner!, only: %i[create update destroy]
 
       def index
@@ -16,14 +14,14 @@ module Api
           .offset(pagination_offset)
 
         render json: {
-          data: records.map { |entry| serialize_with_game(entry) },
+          data: FavoriteEntryResource.new(records).serializable_hash,
           meta: { limit: pagination_limit, offset: pagination_offset, total: total }
         }
       end
 
       def show
         record = UserGameFavorite.includes(:game).find(params[:id])
-        render json: { data: serialize_with_game(record) }
+        render json: { data: FavoriteEntryResource.new(record).serializable_hash }
       end
 
       def create
@@ -32,14 +30,14 @@ module Api
         # is materialized for the serializer (otherwise it would re-query
         # lazily during JSON encoding, which is fine but masks load failures).
         record.reload
-        render json: { data: serialize_with_game(record) }, status: :created
+        render json: { data: FavoriteEntryResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = UserGameFavorite.find(params[:id])
         record.update!(request_data)
         record.reload
-        render json: { data: serialize_with_game(record) }
+        render json: { data: FavoriteEntryResource.new(record).serializable_hash }
       end
 
       def destroy

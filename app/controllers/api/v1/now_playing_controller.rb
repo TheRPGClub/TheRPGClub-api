@@ -3,8 +3,6 @@
 module Api
   module V1
     class NowPlayingController < ApplicationController
-      include GameEntrySerialization
-
       def index
         entries = UserNowPlaying
           .where(gamedb_game_id: params[:id])
@@ -14,7 +12,7 @@ module Api
           .offset(pagination_offset)
 
         render json: {
-          data: entries.map { |e| e.as_json.merge("user" => e.user&.as_json(except: RpgClubUser::BINARY_COLUMNS)) },
+          data: NowPlayingUserEntryResource.new(entries).serializable_hash,
           meta: { limit: pagination_limit, offset: pagination_offset }
         }
       end
@@ -28,7 +26,7 @@ module Api
           .offset(pagination_offset)
 
         render json: {
-          data: records.map { |entry| serialize_with_game_and_platform(entry) },
+          data: NowPlayingEntryResource.new(records).serializable_hash,
           meta: { limit: pagination_limit, offset: pagination_offset, total: total }
         }
       end

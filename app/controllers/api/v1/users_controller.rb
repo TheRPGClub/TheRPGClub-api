@@ -3,8 +3,6 @@
 module Api
   module V1
     class UsersController < ApplicationController
-      include GameEntrySerialization
-
       skip_before_action :require_authentication!, only: %i[avatar profile_image]
 
       PREVIEW_LIMIT_DEFAULT = 10
@@ -42,10 +40,10 @@ module Api
           data: user.as_json.merge(
             "membership"  => user.membership,
             "socials"     => socials,
-            "now_playing" => now_playing.map { |e| serialize_with_game_and_platform(e) },
-            "favorites"   => favorites.map   { |e| serialize_with_game(e) },
-            "reviews"     => reviews.map     { |e| serialize_with_game(e) },
-            "completions" => completions.map { |e| serialize_with_game_and_platform(e) },
+            "now_playing" => NowPlayingEntryResource.new(now_playing).serializable_hash,
+            "favorites"   => FavoriteEntryResource.new(favorites).serializable_hash,
+            "reviews"     => ReviewEntryResource.new(reviews).serializable_hash,
+            "completions" => CompletionEntryResource.new(completions).serializable_hash,
             "counts"      => counts
           )
         }
@@ -68,7 +66,7 @@ module Api
       def preview_limit
         raw = params[:preview_limit].to_i
         raw = PREVIEW_LIMIT_DEFAULT if raw <= 0
-        [raw, PREVIEW_LIMIT_MAX].min
+        [ raw, PREVIEW_LIMIT_MAX ].min
       end
 
       def send_user_image(column)

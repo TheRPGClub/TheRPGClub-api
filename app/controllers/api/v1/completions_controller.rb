@@ -3,8 +3,6 @@
 module Api
   module V1
     class CompletionsController < ApplicationController
-      include GameEntrySerialization
-
       before_action :require_owner!, only: %i[create update destroy]
 
       def index
@@ -16,7 +14,7 @@ module Api
           .offset(pagination_offset)
 
         render json: {
-          data: records.map { |entry| serialize_with_game_and_platform(entry) },
+          data: CompletionEntryResource.new(records).serializable_hash,
           meta: { limit: pagination_limit, offset: pagination_offset, total: total }
         }
       end
@@ -30,27 +28,27 @@ module Api
           .offset(pagination_offset)
 
         render json: {
-          data: entries.map { |e| e.as_json.merge("user" => e.user&.as_json(except: RpgClubUser::BINARY_COLUMNS)) },
+          data: CompletionUserEntryResource.new(entries).serializable_hash,
           meta: { limit: pagination_limit, offset: pagination_offset }
         }
       end
 
       def show
         record = UserGameCompletion.includes(:game, :platform).find(params[:id])
-        render json: { data: serialize_with_game_and_platform(record) }
+        render json: { data: CompletionEntryResource.new(record).serializable_hash }
       end
 
       def create
         record = UserGameCompletion.create!(request_data.merge("user_id" => params[:user_id]))
         record.reload
-        render json: { data: serialize_with_game_and_platform(record) }, status: :created
+        render json: { data: CompletionEntryResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = UserGameCompletion.find(params[:id])
         record.update!(request_data)
         record.reload
-        render json: { data: serialize_with_game_and_platform(record) }
+        render json: { data: CompletionEntryResource.new(record).serializable_hash }
       end
 
       def destroy

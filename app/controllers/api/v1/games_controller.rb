@@ -34,8 +34,8 @@ module Api
           data: game.as_json.merge(
             "gotm_month_year" => game.gotm_won ? game.gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
             "nr_gotm_month_year" => game.nr_gotm_won ? game.nr_gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
-            "now_playing" => now_playing.map { |e| entry_with_user(e) },
-            "completions" => completions.map { |e| entry_with_user(e) }
+            "now_playing" => NowPlayingUserEntryResource.new(now_playing).serializable_hash,
+            "completions" => CompletionUserEntryResource.new(completions).serializable_hash
           )
         }
       end
@@ -83,10 +83,6 @@ module Api
       end
 
       private
-
-      def entry_with_user(entry)
-        entry.as_json.merge("user" => entry.user&.as_json(except: RpgClubUser::BINARY_COLUMNS))
-      end
 
       def apply_winner_filter(scope)
         case params[:winner]
