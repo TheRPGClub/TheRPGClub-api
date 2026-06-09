@@ -2073,6 +2073,308 @@ paths:
                     example: true
                 required:
                 - ok
+  "/api/v1/users/{user_id}/journal":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a user's journaled games
+      tags:
+      - Journal
+      description: Games the user has journal entries for, with per-game entry counts
+        and the last-entry timestamp. Ordered by game title; not paginated.
+      responses:
+        '200':
+          description: journaled games list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        game:
+                          type: object
+                          additionalProperties: true
+                        entry_count:
+                          type: integer
+                        last_entry_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Write a journal entry
+      tags:
+      - Journal
+      description: Owner-only. Creates an entry for the given game.
+      parameters: []
+      responses:
+        '201':
+          description: entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: UserGameJournalEntry attributes (`gamedb_game_id`,
+                    `entry_body`, optional `entry_title`).
+              required:
+              - data
+        required: true
+  "/api/v1/games/{id}/journal":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame game_id.
+    get:
+      summary: List journal entries for a game
+      tags:
+      - Journal
+      description: Journal entries across users for the game. Pass `user_id` to filter
+        to a single author.
+      parameters:
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter to one author.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: journal entries list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/journal_entries/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserGameJournalEntry entry_id.
+    get:
+      summary: Show a journal entry
+      tags:
+      - Journal
+      responses:
+        '200':
+          description: entry detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a journal entry
+      tags:
+      - Journal
+      description: Owner-only.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a journal entry (alias)
+      tags:
+      - Journal
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+        required: true
+    delete:
+      summary: Delete a journal entry
+      tags:
+      - Journal
+      description: Owner-only.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/now_playing":
     parameters:
     - name: user_id

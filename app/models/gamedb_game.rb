@@ -108,6 +108,11 @@ class GamedbGame < ApplicationRecord
     foreign_key: :gamedb_game_id,
     dependent: nil,
     inverse_of: :game
+  has_many :journal_entries,
+    class_name: "UserGameJournalEntry",
+    foreign_key: :gamedb_game_id,
+    dependent: nil,
+    inverse_of: :game
   has_many :user_backlog_entries,
     class_name: "UserGameBacklog",
     foreign_key: :gamedb_game_id,
