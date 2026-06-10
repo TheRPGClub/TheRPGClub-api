@@ -39,6 +39,7 @@ Rails.application.routes.draw do
         member do
           get "avatar"
           get "profile-image"
+          get "nick_history", to: "user_nick_history#index"
           get "collections", to: "collections#index"
           post "collections", to: "collections#create"
           get "completions", to: "completions#index"

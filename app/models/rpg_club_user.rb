@@ -18,6 +18,12 @@ class RpgClubUser < ApplicationRecord
     primary_key: :user_id,
     dependent: nil,
     inverse_of: :user
+  has_many :nick_history,
+    class_name: "RpgClubUserNickHistory",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil,
+    inverse_of: :user
 
   has_many :game_collections,
     class_name: "UserGameCollection",
