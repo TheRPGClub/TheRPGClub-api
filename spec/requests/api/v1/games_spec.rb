@@ -7,7 +7,7 @@ RSpec.describe 'api/v1/games', type: :request do
     get 'List games' do
       tags 'Games'
       description 'Returns games from the local GameDB. Supports search, a `winner` filter for GOTM / ' \
-                  'Non-Retro GOTM history, and taxonomy filters (genre/theme/perspective/mode/franchise/company). ' \
+                  'Non-Retro GOTM history, and taxonomy filters (genre/engine/theme/perspective/mode/franchise/company). ' \
                   'Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`) to match any of several. ' \
                   'Discover valid ids via the `/genres`, `/themes`, … endpoints.'
       produces 'application/json'
@@ -16,6 +16,8 @@ RSpec.describe 'api/v1/games', type: :request do
         description: 'Filter to past GOTM winners, Non-Retro GOTM winners, or either.'
       parameter name: :genre_id, in: :query, required: false, explode: true, style: :form,
         schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this genre id (repeat to match any of several).'
+      parameter name: :engine_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games using this engine id (repeat to match any of several).'
       parameter name: :theme_id, in: :query, required: false, explode: true, style: :form,
         schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this theme id (repeat to match any of several).'
       parameter name: :perspective_id, in: :query, required: false, explode: true, style: :form,
@@ -123,7 +125,7 @@ RSpec.describe 'api/v1/games', type: :request do
 
     get 'Show game relations' do
       tags 'Games'
-      description 'Returns platforms, releases, companies, franchises, genres, modes, perspectives, themes, and alternate titles for a game.'
+      description 'Returns platforms, releases, companies, franchises, genres, engines, modes, perspectives, themes, and alternate titles for a game.'
       produces 'application/json'
 
       response '200', 'game relations' do
@@ -136,6 +138,7 @@ RSpec.describe 'api/v1/games', type: :request do
               companies:    { type: :array, items: { type: :object, additionalProperties: true } },
               franchises:   { type: :array, items: { type: :object, additionalProperties: true } },
               genres:       { type: :array, items: { type: :object, additionalProperties: true } },
+              engines:      { type: :array, items: { type: :object, additionalProperties: true } },
               modes:        { type: :array, items: { type: :object, additionalProperties: true } },
               perspectives: { type: :array, items: { type: :object, additionalProperties: true } },
               themes:       { type: :array, items: { type: :object, additionalProperties: true } },

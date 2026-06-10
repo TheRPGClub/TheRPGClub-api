@@ -56,6 +56,15 @@ class GamedbGame < ApplicationRecord
     through: :game_genres,
     source: :genre
 
+  has_many :game_engines,
+    class_name: "GamedbGameEngine",
+    foreign_key: :game_id,
+    dependent: nil,
+    inverse_of: :game
+  has_many :engines,
+    through: :game_engines,
+    source: :engine
+
   has_many :game_modes,
     class_name: "GamedbGameMode",
     foreign_key: :game_id,

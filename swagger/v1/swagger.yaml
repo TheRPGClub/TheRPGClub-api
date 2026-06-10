@@ -1020,6 +1020,106 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/engines":
+    get:
+      summary: List engines
+      tags:
+      - Engines
+      description: Returns the IGDB-curated game engines. Supports `q` for case-insensitive
+        name search.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Search term against `name`.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: engines list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/engines/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbEngine id.
+    get:
+      summary: Show engine
+      tags:
+      - Engines
+      responses:
+        '200':
+          description: engine
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: engine not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/favorites":
     parameters:
     - name: user_id
@@ -1964,7 +2064,7 @@ paths:
       tags:
       - Games
       description: Returns games from the local GameDB. Supports search, a `winner`
-        filter for GOTM / Non-Retro GOTM history, and taxonomy filters (genre/theme/perspective/mode/franchise/company).
+        filter for GOTM / Non-Retro GOTM history, and taxonomy filters (genre/engine/theme/perspective/mode/franchise/company).
         Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`)
         to match any of several. Discover valid ids via the `/genres`, `/themes`,
         … endpoints.
@@ -1995,6 +2095,17 @@ paths:
           items:
             type: integer
         description: Filter to games in this genre id (repeat to match any of several).
+      - name: engine_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games using this engine id (repeat to match any of
+          several).
       - name: theme_id
         in: query
         required: false
@@ -2224,8 +2335,8 @@ paths:
       summary: Show game relations
       tags:
       - Games
-      description: Returns platforms, releases, companies, franchises, genres, modes,
-        perspectives, themes, and alternate titles for a game.
+      description: Returns platforms, releases, companies, franchises, genres, engines,
+        modes, perspectives, themes, and alternate titles for a game.
       responses:
         '200':
           description: game relations
@@ -2258,6 +2369,11 @@ paths:
                           type: object
                           additionalProperties: true
                       genres:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+                      engines:
                         type: array
                         items:
                           type: object

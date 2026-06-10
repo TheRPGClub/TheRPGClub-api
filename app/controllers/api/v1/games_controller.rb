@@ -75,6 +75,7 @@ module Api
             companies: GameCompanyResource.new(companies).serializable_hash,
             franchises: FranchiseResource.new(game.franchises.order(:name)).serializable_hash,
             genres: GenreResource.new(game.genres.order(:name)).serializable_hash,
+            engines: EngineResource.new(game.engines.order(:name)).serializable_hash,
             modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
             perspectives: PerspectiveResource.new(game.perspectives.order(:name)).serializable_hash,
             themes: ThemeResource.new(game.themes.order(:name)).serializable_hash,
@@ -89,6 +90,7 @@ module Api
       # name (e.g. genre_id -> GamedbGameGenre#genre_id).
       TAXONOMY_FILTERS = {
         genre_id: GamedbGameGenre,
+        engine_id: GamedbGameEngine,
         theme_id: GamedbGameTheme,
         perspective_id: GamedbGamePerspective,
         mode_id: GamedbGameMode,

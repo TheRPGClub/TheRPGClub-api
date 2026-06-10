@@ -40,6 +40,7 @@ Rails.application.routes.draw do
       resources :modes, only: %i[index show]
       resources :franchises, only: %i[index show]
       resources :companies, only: %i[index show]
+      resources :engines, only: %i[index show]
 
       resources :users, param: :user_id, only: %i[index show] do
         member do
