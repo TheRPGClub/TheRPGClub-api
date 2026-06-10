@@ -28,6 +28,7 @@ Rails.application.routes.draw do
           get "reviews", to: "reviews#game_index"
           get "journal", to: "journal#game_index"
           get "release_announcements", to: "release_announcements#game_index"
+          get "threads", to: "threads#game_index"
         end
       end
 
@@ -75,6 +76,13 @@ Rails.application.routes.draw do
       end
       resources :release_announcements, only: %i[show create update destroy] do
         member { post "skip" }
+      end
+      resources :threads, only: %i[show create update] do
+        member do
+          post "links", to: "thread_game_links#create"
+          delete "links", to: "thread_game_links#destroy_all"
+          delete "links/:game_id", to: "thread_game_links#destroy"
+        end
       end
       resources :gotm_entries, only: %i[index show]
       resources :nr_gotm_entries, only: %i[index show]

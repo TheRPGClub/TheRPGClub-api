@@ -5931,6 +5931,390 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/threads":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame game_id.
+    get:
+      summary: List the Discord threads linked to a game
+      tags:
+      - Threads
+      description: The Discord threads mapped to the game through `thread_game_links`
+        (a thread can link to several games), newest thread first. Each row carries
+        the thread metadata (`thread_name`, `forum_channel_id`, `is_archived`, `last_seen_at`)
+        plus a computed `jump_url` deep link.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: threads list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/threads":
+    post:
+      summary: Upsert a Discord thread
+      tags:
+      - Threads
+      description: 'Admin/service-only. Upserts a thread by `thread_id` (a Discord
+        snowflake): inserts a new row, or on an existing one refreshes only `forum_channel_id`,
+        `thread_name`, `is_archived`, `last_seen_at` — `skip_linking` and `created_at`
+        are left untouched so a sync sweep can''t clobber them. The derived `gamedb_game_id`
+        is ignored on write (managed via the link endpoints).'
+      parameters: []
+      responses:
+        '201':
+          description: thread created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '200':
+          description: existing thread updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` or `thread_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: Thread attributes (`thread_id`, `forum_channel_id`,
+                    `thread_name`, `is_archived`, `last_seen_at`, `skip_linking`).
+              required:
+              - data
+        required: true
+  "/api/v1/threads/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Thread thread_id.
+    get:
+      summary: Show a thread and its game links
+      tags:
+      - Threads
+      description: The thread plus its full game-link list under `links` (a thread
+        can map to several games, beyond the derived `gamedb_game_id` primary).
+      responses:
+        '200':
+          description: thread
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: thread not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a thread
+      tags:
+      - Threads
+      description: Admin/service-only. Partial update of any mutable column — `skip_linking`,
+        `is_archived`, `thread_name`, `last_seen_at`. The PK and derived `gamedb_game_id`
+        cannot be changed.
+      parameters: []
+      responses:
+        '200':
+          description: thread updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: thread not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+              required:
+              - data
+        required: true
+  "/api/v1/threads/{id}/links":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Thread thread_id.
+    post:
+      summary: Link a thread to a game
+      tags:
+      - Threads
+      description: Admin/service-only. Idempotent merge — links the thread to the
+        game (or returns the existing link) and recomputes the thread's derived `gamedb_game_id`
+        (the MIN of its links). 201 when newly linked, 200 when it already was.
+      parameters: []
+      responses:
+        '201':
+          description: thread linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '200':
+          description: link already existed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (unknown game)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: thread not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  additionalProperties: true
+                  description: The link target (`gamedb_game_id`).
+              required:
+              - data
+        required: true
+    delete:
+      summary: Remove all of a thread's game links
+      tags:
+      - Threads
+      description: Admin/service-only. Removes every game link from the thread and
+        resets the derived `gamedb_game_id` to null.
+      responses:
+        '200':
+          description: links removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  count:
+                    type: integer
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: thread not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/threads/{id}/links/{game_id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Thread thread_id.
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GamedbGame game_id.
+    delete:
+      summary: Remove one game link from a thread
+      tags:
+      - Threads
+      description: Admin/service-only. Removes a single thread→game link and recomputes
+        the thread's derived `gamedb_game_id` (the MIN of the remaining links).
+      responses:
+        '200':
+          description: link removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  count:
+                    type: integer
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: thread not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/todos":
     get:
       summary: List todos
