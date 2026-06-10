@@ -6,6 +6,7 @@ module Api
       def index
         scope = params[:q].present? ? GamedbGame.search(params[:q]) : GamedbGame.without_images.order(:title)
         scope = apply_winner_filter(scope)
+        scope = apply_taxonomy_filters(scope)
         # The scope carries computed SELECT columns and (for search) a custom
         # ORDER; strip both so the COUNT(*) is plain, then hand it to pagy.
         count = scope.except(:select, :order).count(:all)
@@ -84,6 +85,17 @@ module Api
 
       private
 
+      # Each param maps to the join model whose own FK column shares the param's
+      # name (e.g. genre_id -> GamedbGameGenre#genre_id).
+      TAXONOMY_FILTERS = {
+        genre_id: GamedbGameGenre,
+        theme_id: GamedbGameTheme,
+        perspective_id: GamedbGamePerspective,
+        mode_id: GamedbGameMode,
+        franchise_id: GamedbGameFranchise,
+        company_id: GamedbGameCompany
+      }.freeze
+
       def apply_winner_filter(scope)
         case params[:winner]
         when "gotm" then scope.gotm_winners
@@ -91,6 +103,19 @@ module Api
         when "any" then scope.any_winners
         else scope
         end
+      end
+
+      # Filter via `game_id IN (SELECT game_id FROM <join> WHERE <fk> = ?)` per
+      # present param. AND across dimensions (chained WHEREs), and array values
+      # (`?genre_id[]=1&genre_id[]=2`) become an `IN (1,2)` within a dimension —
+      # both for free via AR, with no joins/`.distinct` to skew `meta.total`.
+      def apply_taxonomy_filters(scope)
+        TAXONOMY_FILTERS.each do |param, join_model|
+          next if params[param].blank?
+
+          scope = scope.where(game_id: join_model.where(param => params[param]).select(:game_id))
+        end
+        scope
       end
 
       def releases_for(game)

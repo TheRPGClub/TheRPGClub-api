@@ -1963,8 +1963,11 @@ paths:
       summary: List games
       tags:
       - Games
-      description: Returns games from the local GameDB. Supports search and a `winner`
-        filter for GOTM / Non-Retro GOTM history.
+      description: Returns games from the local GameDB. Supports search, a `winner`
+        filter for GOTM / Non-Retro GOTM history, and taxonomy filters (genre/theme/perspective/mode/franchise/company).
+        Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`)
+        to match any of several. Discover valid ids via the `/genres`, `/themes`,
+        … endpoints.
       parameters:
       - name: q
         in: query
@@ -1982,6 +1985,69 @@ paths:
           - any
         required: false
         description: Filter to past GOTM winners, Non-Retro GOTM winners, or either.
+      - name: genre_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games in this genre id (repeat to match any of several).
+      - name: theme_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games in this theme id (repeat to match any of several).
+      - name: perspective_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games in this perspective id (repeat to match any of
+          several).
+      - name: mode_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games in this mode id (repeat to match any of several).
+      - name: franchise_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games in this franchise id (repeat to match any of
+          several).
+      - name: company_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games involving this company id (repeat to match any
+          of several).
       - name: page
         in: query
         schema:

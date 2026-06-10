@@ -6,11 +6,26 @@ RSpec.describe 'api/v1/games', type: :request do
   path '/api/v1/games' do
     get 'List games' do
       tags 'Games'
-      description 'Returns games from the local GameDB. Supports search and a `winner` filter for GOTM / Non-Retro GOTM history.'
+      description 'Returns games from the local GameDB. Supports search, a `winner` filter for GOTM / ' \
+                  'Non-Retro GOTM history, and taxonomy filters (genre/theme/perspective/mode/franchise/company). ' \
+                  'Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`) to match any of several. ' \
+                  'Discover valid ids via the `/genres`, `/themes`, … endpoints.'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false, description: 'Full-text search against game titles.'
       parameter name: :winner, in: :query, schema: { type: :string, enum: %w[gotm nr_gotm any] }, required: false,
         description: 'Filter to past GOTM winners, Non-Retro GOTM winners, or either.'
+      parameter name: :genre_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this genre id (repeat to match any of several).'
+      parameter name: :theme_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this theme id (repeat to match any of several).'
+      parameter name: :perspective_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this perspective id (repeat to match any of several).'
+      parameter name: :mode_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this mode id (repeat to match any of several).'
+      parameter name: :franchise_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this franchise id (repeat to match any of several).'
+      parameter name: :company_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games involving this company id (repeat to match any of several).'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 25, maximum: 100 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 100 }, required: false,
