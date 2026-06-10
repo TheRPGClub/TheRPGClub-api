@@ -12,6 +12,12 @@ class RpgClubUser < ApplicationRecord
     primary_key: :user_id,
     dependent: nil,
     inverse_of: :user
+  has_many :activity_icons,
+    class_name: "RpgClubUserActivityIcon",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil,
+    inverse_of: :user
 
   has_many :game_collections,
     class_name: "UserGameCollection",

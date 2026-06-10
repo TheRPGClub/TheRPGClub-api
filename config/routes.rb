@@ -60,6 +60,7 @@ Rails.application.routes.draw do
           get "presence_prompt_opts", to: "presence_prompt_opts#show"
           put "presence_prompt_opts", to: "presence_prompt_opts#update"
           get "game_keys", to: "game_keys#user_index"
+          get "activity_icons", to: "user_activity_icons#index"
         end
       end
 
