@@ -7746,7 +7746,10 @@ paths:
       summary: Link a social account
       tags:
       - User Socials
-      description: Owner-only.
+      description: Owner-only. `platform_id` is required. `url` is optional but, when
+        present, must be unique per (user, platform) — duplicate accounts are rejected
+        with 422. `display_text` is an optional free-form label and may repeat freely
+        (generic labels like "Profile Link" no longer collide).
       parameters: []
       responses:
         '201':
@@ -7786,8 +7789,9 @@ paths:
                 data:
                   type: object
                   additionalProperties: true
-                  description: UserSocial attributes (`social_platform_id`, `handle`,
-                    `url`, etc.).
+                  description: 'UserSocial attributes: `platform_id` (required), `url`
+                    (optional, deduped per user+platform), `display_text` (optional
+                    label).'
               required:
               - data
         required: true
@@ -7830,7 +7834,8 @@ paths:
       summary: Update a user social link
       tags:
       - User Socials
-      description: Owner-only.
+      description: Owner-only. `url` (optional) stays unique per (user, platform);
+        `display_text` is an optional free-form label and may repeat.
       parameters: []
       responses:
         '200':
@@ -7870,6 +7875,8 @@ paths:
                 data:
                   type: object
                   additionalProperties: true
+                  description: 'UserSocial attributes: `platform_id`, `url` (optional,
+                    deduped per user+platform), `display_text` (optional label).'
               required:
               - data
         required: true

@@ -30,7 +30,10 @@ RSpec.describe 'api/v1/user_socials', type: :request do
 
     post 'Link a social account' do
       tags 'User Socials'
-      description 'Owner-only.'
+      description 'Owner-only. `platform_id` is required. `url` is optional but, when ' \
+                  'present, must be unique per (user, platform) — duplicate accounts are ' \
+                  'rejected with 422. `display_text` is an optional free-form label and may ' \
+                  'repeat freely (generic labels like "Profile Link" no longer collide).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -40,7 +43,8 @@ RSpec.describe 'api/v1/user_socials', type: :request do
           data: {
             type: :object,
             additionalProperties: true,
-            description: 'UserSocial attributes (`social_platform_id`, `handle`, `url`, etc.).'
+            description: 'UserSocial attributes: `platform_id` (required), `url` (optional, ' \
+                         'deduped per user+platform), `display_text` (optional label).'
           }
         },
         required: %w[data]
@@ -86,13 +90,21 @@ RSpec.describe 'api/v1/user_socials', type: :request do
 
     patch 'Update a user social link' do
       tags 'User Socials'
-      description 'Owner-only.'
+      description 'Owner-only. `url` (optional) stays unique per (user, platform); ' \
+                  '`display_text` is an optional free-form label and may repeat.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: {
+          data: {
+            type: :object,
+            additionalProperties: true,
+            description: 'UserSocial attributes: `platform_id`, `url` (optional, deduped ' \
+                         'per user+platform), `display_text` (optional label).'
+          }
+        },
         required: %w[data]
       }
 

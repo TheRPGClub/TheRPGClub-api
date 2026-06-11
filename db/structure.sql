@@ -2204,7 +2204,7 @@ CREATE TABLE public.user_socials (
     id bigint NOT NULL,
     user_id character varying(30) NOT NULL,
     platform_id bigint NOT NULL,
-    display_text character varying(80) NOT NULL,
+    display_text character varying(80),
     url character varying(512),
     created_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
@@ -3266,10 +3266,10 @@ CREATE INDEX index_user_socials_on_user_id ON public.user_socials USING btree (u
 
 
 --
--- Name: index_user_socials_on_user_platform_display_text; Type: INDEX; Schema: public; Owner: -
+-- Name: index_user_socials_on_user_platform_url; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX index_user_socials_on_user_platform_display_text ON public.user_socials USING btree (user_id, platform_id, display_text);
+CREATE UNIQUE INDEX index_user_socials_on_user_platform_url ON public.user_socials USING btree (user_id, platform_id, lower((url)::text)) WHERE (url IS NOT NULL);
 
 
 --
@@ -4165,6 +4165,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260611000100'),
 ('20260610000100'),
 ('20260517000700'),
 ('20260517000600'),
