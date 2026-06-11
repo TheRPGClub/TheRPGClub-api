@@ -108,6 +108,7 @@ Rails.application.routes.draw do
       resources :rss_feeds, only: %i[index show create update destroy]
       resources :public_reminders, only: %i[index show create update destroy]
       resources :starboard, param: :message_id, only: %i[index show create update destroy]
+      resources :journal_message_contexts, param: :message_id, only: %i[index show create update destroy]
       resources :voting_info, only: %i[index show create update destroy]
       resources :search_synonyms, only: %i[index show create update destroy]
       resources :search_synonym_groups, only: %i[index show create update destroy]
