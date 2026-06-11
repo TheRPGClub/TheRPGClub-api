@@ -714,6 +714,19 @@ CREATE TABLE public.help (
 
 
 --
+-- Name: journal_message_contexts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.journal_message_contexts (
+    channel_id character varying(30) NOT NULL,
+    message_id character varying(30) NOT NULL,
+    created_at_ms bigint NOT NULL,
+    owner_user_id character varying(30) NOT NULL,
+    game_id bigint NOT NULL
+);
+
+
+--
 -- Name: nr_gotm_entries; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2683,6 +2696,14 @@ ALTER TABLE ONLY public.help
 
 
 --
+-- Name: journal_message_contexts journal_message_contexts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.journal_message_contexts
+    ADD CONSTRAINT journal_message_contexts_pkey PRIMARY KEY (channel_id, message_id);
+
+
+--
 -- Name: nr_gotm_entries nr_gotm_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4166,6 +4187,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260611000300'),
 ('20260611000200'),
 ('20260611000100'),
 ('20260610000100'),
