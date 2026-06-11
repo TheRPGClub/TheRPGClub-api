@@ -1620,7 +1620,8 @@ CREATE TABLE public.rpg_club_users (
     donor_notify_on_claim boolean DEFAULT false NOT NULL,
     profile_image_at timestamp(6) with time zone,
     profile_image bytea,
-    discord_avatar character varying(128)
+    discord_avatar character varying(128),
+    emoji_name character varying(32)
 );
 
 
@@ -4165,6 +4166,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260611000200'),
 ('20260611000100'),
 ('20260610000100'),
 ('20260517000700'),
