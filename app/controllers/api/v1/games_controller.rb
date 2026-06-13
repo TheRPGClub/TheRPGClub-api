@@ -73,6 +73,7 @@ module Api
             platforms: PlatformResource.new(game.platforms.order(:platform_name)).serializable_hash,
             releases: releases_for(game),
             companies: GameCompanyResource.new(companies).serializable_hash,
+            collection: game.collection && CollectionResource.new(game.collection).serializable_hash,
             franchises: FranchiseResource.new(game.franchises.order(:name)).serializable_hash,
             genres: GenreResource.new(game.genres.order(:name)).serializable_hash,
             engines: EngineResource.new(game.engines.order(:name)).serializable_hash,

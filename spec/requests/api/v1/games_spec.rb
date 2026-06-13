@@ -125,7 +125,7 @@ RSpec.describe 'api/v1/games', type: :request do
 
     get 'Show game relations' do
       tags 'Games'
-      description 'Returns platforms, releases, companies, franchises, genres, engines, modes, perspectives, themes, and alternate titles for a game.'
+      description 'Returns platforms, releases, companies, collection (series), franchises, genres, engines, modes, perspectives, themes, and alternate titles for a game.'
       produces 'application/json'
 
       response '200', 'game relations' do
@@ -136,6 +136,7 @@ RSpec.describe 'api/v1/games', type: :request do
               platforms:    { type: :array, items: { type: :object, additionalProperties: true } },
               releases:     { type: :array, items: { type: :object, additionalProperties: true } },
               companies:    { type: :array, items: { type: :object, additionalProperties: true } },
+              collection:   { type: :object, additionalProperties: true, nullable: true },
               franchises:   { type: :array, items: { type: :object, additionalProperties: true } },
               genres:       { type: :array, items: { type: :object, additionalProperties: true } },
               engines:      { type: :array, items: { type: :object, additionalProperties: true } },

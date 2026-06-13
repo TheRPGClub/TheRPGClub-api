@@ -2335,8 +2335,8 @@ paths:
       summary: Show game relations
       tags:
       - Games
-      description: Returns platforms, releases, companies, franchises, genres, engines,
-        modes, perspectives, themes, and alternate titles for a game.
+      description: Returns platforms, releases, companies, collection (series), franchises,
+        genres, engines, modes, perspectives, themes, and alternate titles for a game.
       responses:
         '200':
           description: game relations
@@ -2363,6 +2363,10 @@ paths:
                         items:
                           type: object
                           additionalProperties: true
+                      collection:
+                        type: object
+                        additionalProperties: true
+                        nullable: true
                       franchises:
                         type: array
                         items:
