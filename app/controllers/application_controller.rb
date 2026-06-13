@@ -72,6 +72,13 @@ class ApplicationController < ActionController::API
     false
   end
 
+  def require_service!
+    return true if current_principal&.service?
+
+    render json: { error: "forbidden" }, status: :forbidden
+    false
+  end
+
   def require_owner!
     owner_id = resolve_owner_id
 

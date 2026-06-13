@@ -101,6 +101,17 @@ Rails.application.routes.draw do
       resources :nr_gotm_entries, only: %i[index show]
       get "gotm_entries/:round/nominations", to: "nominations#gotm", as: :gotm_entry_nominations
       get "nr_gotm_entries/:round/nominations", to: "nominations#nr_gotm", as: :nr_gotm_entry_nominations
+      # Suggestion review sessions (bot parity, #91). Declared before
+      # `resources :suggestions` so `/suggestions/review_sessions...` is never
+      # captured by the suggestion `:id` member routes; the two bulk-delete
+      # routes precede the resource so `expired` and the collection DELETE
+      # aren't captured as member `:id` lookups.
+      scope path: "suggestions" do
+        delete "review_sessions/expired", to: "suggestion_review_sessions#destroy_expired"
+        delete "review_sessions", to: "suggestion_review_sessions#destroy_all"
+        resources :review_sessions, only: %i[index show create update destroy],
+          controller: "suggestion_review_sessions"
+      end
       resources :suggestions, only: %i[index show create destroy]
       resources :todos, only: %i[index show create update destroy] do
         collection { get "summary" }
