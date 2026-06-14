@@ -152,6 +152,11 @@ class GamedbGame < ApplicationRecord
     foreign_key: :gamedb_game_id,
     dependent: nil,
     inverse_of: :game
+  has_one :hltb_cache,
+    class_name: "RpgClubHltbCache",
+    foreign_key: :gamedb_game_id,
+    dependent: nil,
+    inverse_of: :game
 
   SUMMARY_COLUMNS = %i[
     game_id title description igdb_id slug total_rating igdb_url created_at updated_at

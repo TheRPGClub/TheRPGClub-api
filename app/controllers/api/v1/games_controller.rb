@@ -19,22 +19,12 @@ module Api
       end
 
       def show
-        game = GamedbGame.without_images.find(params[:id])
-        now_playing = UserNowPlaying
-          .where(gamedb_game_id: game.game_id)
-          .includes(:user)
-          .order(added_at: :desc)
-        completions = UserGameCompletion
-          .where(gamedb_game_id: game.game_id)
-          .includes(:user)
-          .order(completed_at: :desc)
+        game = GamedbGame.without_images.includes(:images).find(params[:id])
 
         render json: {
-          data: GameResource.new(game).serializable_hash.merge(
-            "gotm_month_year" => game.gotm_won ? game.gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
-            "nr_gotm_month_year" => game.nr_gotm_won ? game.nr_gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
-            "now_playing" => NowPlayingUserEntryResource.new(now_playing).serializable_hash,
-            "completions" => CompletionUserEntryResource.new(completions).serializable_hash
+          data: game_record_data(game).merge(
+            "now_playing" => NowPlayingUserEntryResource.new(now_playing_for(game)).serializable_hash,
+            "completions" => CompletionUserEntryResource.new(completions_for(game)).serializable_hash
           )
         }
       end
@@ -65,27 +55,130 @@ module Api
       end
 
       def relations
-        game = GamedbGame.find(params[:id])
-        companies = game.game_companies.includes(:company).sort_by { |game_company| game_company.company.name.to_s }
+        render json: { data: relations_data(GamedbGame.find(params[:id])) }
+      end
+
+      # GET /api/v1/games/:id/profile
+      #
+      # One aggregate payload for the bot's `/gamedb view` (#115): the game
+      # record (same shape as #show), its relations (same shape as #relations),
+      # the full now-playing / completions / threads lists, the resolved primary
+      # image, and the GOTM/NR-GOTM associations, collection owners and HLTB
+      # cache the bot otherwise read via direct SQL. Collapses six HTTP calls
+      # plus three SQL reads into a single request.
+      def profile
+        # Preload images once: GameResource's cover/art/logo URLs and the
+        # primary-image lookup below all read from the same set, and
+        # GamedbGame#primary_image_url resolves in-memory when it's loaded —
+        # collapsing four per-kind image queries into one.
+        game = GamedbGame.without_images.includes(:images).find(params[:id])
 
         render json: {
           data: {
-            platforms: PlatformResource.new(game.platforms.order(:platform_name)).serializable_hash,
-            releases: releases_for(game),
-            companies: GameCompanyResource.new(companies).serializable_hash,
-            collection: game.collection && CollectionResource.new(game.collection).serializable_hash,
-            franchises: FranchiseResource.new(game.franchises.order(:name)).serializable_hash,
-            genres: GenreResource.new(game.genres.order(:name)).serializable_hash,
-            engines: EngineResource.new(game.engines.order(:name)).serializable_hash,
-            modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
-            perspectives: PerspectiveResource.new(game.perspectives.order(:name)).serializable_hash,
-            themes: ThemeResource.new(game.themes.order(:name)).serializable_hash,
-            alternates: GameResource.new(game.alternate_games).serializable_hash
+            game: game_record_data(game),
+            relations: relations_data(game),
+            # The full, unpaginated lists — preferred over a preview for a single
+            # game (#115); the standalone endpoints paginate, these do not.
+            now_playing: NowPlayingUserEntryResource.new(now_playing_for(game)).serializable_hash,
+            completions: CompletionUserEntryResource.new(completions_for(game)).serializable_hash,
+            threads: ThreadResource.new(threads_for(game)).serializable_hash,
+            primary_image: primary_image_for(game),
+            associations: associations_for(game),
+            collection_owners: collection_owners_for(game),
+            hltb: hltb_for(game)
           }
         }
       end
 
       private
+
+      # The game record exactly as #show renders it minus the now-playing /
+      # completions previews (the profile surfaces those as dedicated top-level
+      # lists instead of a redundant second copy): the GameResource shape plus
+      # the GOTM / NR-GOTM month info derived from the winning entries.
+      def game_record_data(game)
+        GameResource.new(game).serializable_hash.merge(
+          "gotm_month_year" => game.gotm_won ? game.gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
+          "nr_gotm_month_year" => game.nr_gotm_won ? game.nr_gotm_entries.order(round_number: :desc).pick(:month_year) : nil
+        )
+      end
+
+      def relations_data(game)
+        companies = game.game_companies.includes(:company).sort_by { |game_company| game_company.company.name.to_s }
+
+        {
+          platforms: PlatformResource.new(game.platforms.order(:platform_name)).serializable_hash,
+          releases: releases_for(game),
+          companies: GameCompanyResource.new(companies).serializable_hash,
+          collection: game.collection && CollectionResource.new(game.collection).serializable_hash,
+          franchises: FranchiseResource.new(game.franchises.order(:name)).serializable_hash,
+          genres: GenreResource.new(game.genres.order(:name)).serializable_hash,
+          engines: EngineResource.new(game.engines.order(:name)).serializable_hash,
+          modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
+          perspectives: PerspectiveResource.new(game.perspectives.order(:name)).serializable_hash,
+          themes: ThemeResource.new(game.themes.order(:name)).serializable_hash,
+          alternates: GameResource.new(game.alternate_games).serializable_hash
+        }
+      end
+
+      # Mirror the game-scoped now_playing / completions / threads endpoints
+      # (NowPlayingController#index, CompletionsController#game_index,
+      # ThreadsController#game_index) so the embedded lists match row-for-row.
+      def now_playing_for(game)
+        UserNowPlaying.where(gamedb_game_id: game.game_id).includes(:user).order(added_at: :desc)
+      end
+
+      def completions_for(game)
+        UserGameCompletion.where(gamedb_game_id: game.game_id).includes(:user).order(completed_at: :desc)
+      end
+
+      def threads_for(game)
+        DiscordThread
+          .joins(:thread_game_links)
+          .where(thread_game_links: { gamedb_game_id: game.game_id })
+          .order(created_at: :desc)
+      end
+
+      # The single resolved primary image (the head of the same `primary_first`
+      # ordering GameImagesController#index returns), as `{ url }`; nil when the
+      # game has no images. Resolved in-memory off the preloaded `images` so it
+      # adds no query.
+      def primary_image_for(game)
+        image = game.images.min_by { |img| [ img.is_primary ? 0 : 1, img.position.to_i, img.image_id.to_i ] }
+        image && { url: image.url }
+      end
+
+      # GOTM / NR-GOTM wins (the rounds the game won) and nominations (the rounds
+      # it was nominated for, with the nominator), currently SQL-only on the bot.
+      def associations_for(game)
+        {
+          gotm_wins: GotmWinResource.new(game.gotm_entries.order(:round_number)).serializable_hash,
+          nr_gotm_wins: GotmWinResource.new(game.nr_gotm_entries.order(:round_number)).serializable_hash,
+          gotm_nominations: GotmNominationSummaryResource.new(
+            game.gotm_nominations.includes(:user).order(:round_number)
+          ).serializable_hash,
+          nr_gotm_nominations: GotmNominationSummaryResource.new(
+            game.nr_gotm_nominations.includes(:user).order(:round_number)
+          ).serializable_hash
+        }
+      end
+
+      # The members who own this game, deduped by user (a member may own it on
+      # several platforms) and ordered by name for a stable display.
+      def collection_owners_for(game)
+        owners = game.user_game_collections
+          .includes(:user)
+          .to_a
+          .uniq(&:user_id)
+          .sort_by { |entry| [ entry.user&.username.to_s.downcase, entry.user_id.to_s ] }
+        CollectionOwnerResource.new(owners).serializable_hash
+      end
+
+      # The scraped HLTB cache row, or nil when none exists.
+      def hltb_for(game)
+        cache = game.hltb_cache
+        cache && HltbResource.new(cache).serializable_hash
+      end
 
       # Each param maps to the join model whose own FK column shares the param's
       # name (e.g. genre_id -> GamedbGameGenre#genre_id).
