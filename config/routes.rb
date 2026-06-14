@@ -22,6 +22,7 @@ Rails.application.routes.draw do
         member do
           post "refresh-images", to: "games#refresh_images"
           get "relations", to: "games#relations"
+          get "profile", to: "games#profile"
           get "releases", to: "games#releases"
           get "now_playing", to: "now_playing#index"
           get "completions", to: "completions#game_index"

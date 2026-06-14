@@ -159,6 +159,58 @@ RSpec.describe 'api/v1/games', type: :request do
     end
   end
 
+  path '/api/v1/games/{id}/profile' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true
+
+    get 'Show aggregate game profile' do
+      tags 'Games'
+      description 'One aggregate payload for the bot\'s game view: the game record (same shape as ' \
+                  '`GET /api/v1/games/{id}`), its relations (same shape as `/relations`), the full ' \
+                  '(unpaginated) now-playing / completions / threads lists, the resolved primary image ' \
+                  '(nullable), and the GOTM/NR-GOTM associations, collection owners and HowLongToBeat ' \
+                  'cache row (nullable). Collapses six HTTP calls plus three direct-SQL reads into one request.'
+      produces 'application/json'
+
+      response '200', 'game profile' do
+        schema type: :object, properties: {
+          data: {
+            type: :object,
+            properties: {
+              game:        { type: :object, additionalProperties: true },
+              relations:   { type: :object, additionalProperties: true },
+              now_playing: { type: :array, items: { type: :object, additionalProperties: true } },
+              completions: { type: :array, items: { type: :object, additionalProperties: true } },
+              threads:     { type: :array, items: { type: :object, additionalProperties: true } },
+              primary_image: {
+                type: :object, nullable: true,
+                properties: { url: { type: :string } }
+              },
+              associations: {
+                type: :object,
+                properties: {
+                  gotm_wins:           { type: :array, items: { type: :object, properties: { round: { type: :integer } } } },
+                  nr_gotm_wins:        { type: :array, items: { type: :object, properties: { round: { type: :integer } } } },
+                  gotm_nominations:    { type: :array, items: { type: :object, additionalProperties: true } },
+                  nr_gotm_nominations: { type: :array, items: { type: :object, additionalProperties: true } }
+                }
+              },
+              collection_owners: { type: :array, items: { type: :object, additionalProperties: true } },
+              hltb:              { type: :object, additionalProperties: true, nullable: true }
+            }
+          }
+        }
+      end
+
+      response '404', 'game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/games/{id}/releases' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true
 
