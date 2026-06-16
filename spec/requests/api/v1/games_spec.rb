@@ -51,6 +51,65 @@ RSpec.describe 'api/v1/games', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    post 'Create a game from IGDB' do
+      tags 'Games'
+      description 'Admin/service-only. Creates a game from IGDB by `igdb_id`: fetches the full IGDB ' \
+                  'payload, upserts the game row plus its taxonomy (genres, themes, perspectives, modes, ' \
+                  'engines, franchises, platforms, developer/publisher companies, collection) and releases ' \
+                  '(one per platform, earliest dated; Japan-only releases are skipped; `format` is left ' \
+                  'null), then imports its cover/artwork/logo images into Backblaze through the same ' \
+                  'importer the jobs use. Idempotent on `igdb_id`: re-POSTing an existing game refreshes ' \
+                  'it and returns 200 instead of 201. Discover ids via `GET /api/v1/igdb/search`.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          igdb_id: { type: :integer, description: 'The IGDB game id to import.' }
+        },
+        required: %w[igdb_id]
+      }
+
+      response '201', 'game created' do
+        schema type: :object, properties: {
+          data: { type: :object, additionalProperties: true },
+          images: { type: :object, additionalProperties: true, description: 'The image-import result (cover/artwork/logo).' }
+        }
+      end
+
+      response '200', 'existing game refreshed (idempotent)' do
+        schema type: :object, properties: {
+          data: { type: :object, additionalProperties: true },
+          images: { type: :object, additionalProperties: true }
+        }
+      end
+
+      response '400', 'missing or non-integer `igdb_id`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'IGDB game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'unprocessable (IGDB/Backblaze not configured, invalid image)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '502', 'upstream (IGDB or Backblaze) request failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/games/{id}' do

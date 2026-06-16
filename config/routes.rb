@@ -16,7 +16,11 @@ Rails.application.routes.draw do
       get "session", to: "sessions#show"
       get "dashboard", to: "dashboards#show"
 
-      resources :games, only: %i[index show] do
+      # IGDB discovery proxy (#122); declared before `resources :games` for
+      # locality with the create-from-IGDB endpoint it feeds.
+      get "igdb/search", to: "igdb#search"
+
+      resources :games, only: %i[index show create] do
         resources :images, only: %i[index create update destroy], controller: "game_images"
 
         member do

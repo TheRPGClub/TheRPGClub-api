@@ -29,6 +29,43 @@ module Api
         }
       end
 
+      # POST /api/v1/games  { "igdb_id": 1234 }
+      #
+      # Admin/service-only. Creates a game from IGDB: fetches the full payload,
+      # upserts the gamedb_games row + taxonomy + releases, then imports its
+      # cover/artwork/logo images into Backblaze through the same importer the
+      # jobs use (#122). Idempotent on `igdb_id` — re-POSTing refreshes the
+      # existing game and returns 200 instead of 201. Mirrors the IGDB/Backblaze
+      # rescue ladder from #refresh_images.
+      def create
+        return unless require_admin_or_service!
+
+        result = Gamedb::IgdbGameImporter.new.import!(igdb_id_param)
+        # Reload through `without_images` so GameResource's gotm_won / nr_gotm_won
+        # SQL aliases and per-kind image URLs resolve (see GameFields), exactly as
+        # #show does.
+        game = GamedbGame.without_images.includes(:images).find(result.game.game_id)
+
+        render json: {
+          data: GameResource.new(game).serializable_hash,
+          images: result.images.as_json
+        }, status: result.created ? :created : :ok
+      rescue Gamedb::IgdbGameImporter::MissingIgdbGameError, Gamedb::IgdbImageImporter::MissingIgdbGameError => error
+        render json: { error: "igdb_game_not_found", message: error.message }, status: :not_found
+      rescue Gamedb::IgdbImageImporter::MissingIgdbIdError => error
+        render json: { error: "missing_igdb_id", message: error.message }, status: :unprocessable_entity
+      rescue Igdb::Client::ConfigurationError => error
+        render json: { error: "igdb_not_configured", message: error.message }, status: :unprocessable_entity
+      rescue Igdb::Client::RequestError => error
+        render json: { error: "igdb_request_failed", message: error.message }, status: :bad_gateway
+      rescue Gamedb::GameImageStorage::InvalidImageError => error
+        render json: { error: "image_import_failed", message: error.message }, status: :unprocessable_entity
+      rescue Backblaze::Client::ConfigurationError => error
+        render json: { error: "backblaze_not_configured", message: error.message }, status: :unprocessable_entity
+      rescue Backblaze::Client::RequestError => error
+        render json: { error: "backblaze_request_failed", message: error.message }, status: :bad_gateway
+      end
+
       def refresh_images
         return unless require_admin_or_service!
 
@@ -91,6 +128,18 @@ module Api
       end
 
       private
+
+      # The IGDB id to import, accepted top-level (`{ "igdb_id": 1234 }`). A
+      # missing or non-integer value is a 400 (ActionController::ParameterMissing
+      # -> render_bad_request), matching the other write endpoints.
+      def igdb_id_param
+        raw = params[:igdb_id].presence
+        raise ActionController::ParameterMissing, :igdb_id if raw.blank?
+
+        Integer(raw)
+      rescue ArgumentError, TypeError
+        raise ActionController::ParameterMissing, :igdb_id
+      end
 
       # The game record exactly as #show renders it minus the now-playing /
       # completions previews (the profile surfaces those as dedicated top-level
