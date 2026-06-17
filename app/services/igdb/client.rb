@@ -40,6 +40,29 @@ module Igdb
       Array(payload).map { |game| search_result(game) }
     end
 
+    # Look specific IGDB games up by `id`, returning the same lightweight
+    # candidate hashes as #search. Lets a caller resolve igdb_ids it already has
+    # (the bot) instead of a fuzzy title match (the web). Ids are deduped;
+    # unknown ids are simply absent from the result. Returns [] for no ids. Like
+    # #search this never touches the database — the controller layers on
+    # `already_imported`.
+    def search_by_ids(ids, limit: 25)
+      wanted = Array(ids).map { |id| Integer(id) }.uniq
+      return [] if wanted.empty?
+
+      capped = limit.to_i.clamp(1, SEARCH_LIMIT)
+      payload = post_igdb(
+        "games",
+        <<~QUERY.squish
+          fields id,name,slug,summary,url,total_rating,first_release_date,cover.image_id;
+          where id = (#{wanted.join(',')});
+          limit #{capped};
+        QUERY
+      )
+
+      Array(payload).map { |game| search_result(game) }
+    end
+
     # Fetch the full game payload for one `igdb_id`, normalized into the shape
     # Gamedb::IgdbGameImporter consumes (metadata + taxonomy refs + release
     # dates + cover/artworks). Field list mirrors the Discord bot's IGDB scan so
