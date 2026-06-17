@@ -64,6 +64,28 @@ RSpec.describe 'api/v1/voting_info', type: :request do
     end
   end
 
+  path '/api/v1/voting_info/current' do
+    get 'Show the current voting info round' do
+      tags 'Voting Info'
+      description 'Returns the current round (the row with the highest `round_number`), or 404 if no ' \
+                  'rounds exist. Lets the bot read the newest round without fetching the full list. ' \
+                  'Open to any authenticated caller.'
+      produces 'application/json'
+
+      response '200', 'current voting info' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/VotingInfo' } }
+      end
+
+      response '404', 'no voting info rounds exist' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/voting_info/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'BotVotingInfo round_number.'
 
