@@ -12,8 +12,66 @@ module Igdb
     API_BASE_URL = "https://api.igdb.com/v4"
     IMAGE_BASE_URL = "https://images.igdb.com/igdb/image/upload"
 
+    # Upper bound on the candidates a single search proxy call may return.
+    SEARCH_LIMIT = 50
+
     def self.image_url(image_id, size:, extension: "jpg")
       "#{IMAGE_BASE_URL}/t_#{size}/#{image_id}.#{extension}"
+    end
+
+    # Proxy an IGDB `games` title search. Returns lightweight candidate hashes
+    # (id, name, dates, cover url) so a caller can pick the right `igdb_id` to
+    # import. The DB-derived `already_imported` flag is layered on by the
+    # controller — this method never touches the database.
+    def search(query, limit: 25)
+      term = query.to_s.strip
+      return [] if term.blank?
+
+      capped = limit.to_i.clamp(1, SEARCH_LIMIT)
+      payload = post_igdb(
+        "games",
+        <<~QUERY.squish
+          fields id,name,slug,summary,url,total_rating,first_release_date,cover.image_id;
+          search "#{escape_search(term)}";
+          limit #{capped};
+        QUERY
+      )
+
+      Array(payload).map { |game| search_result(game) }
+    end
+
+    # Fetch the full game payload for one `igdb_id`, normalized into the shape
+    # Gamedb::IgdbGameImporter consumes (metadata + taxonomy refs + release
+    # dates + cover/artworks). Field list mirrors the Discord bot's IGDB scan so
+    # an API-created game matches a bot-created one. Returns nil when not found.
+    def game(igdb_id)
+      payload = post_igdb(
+        "games",
+        <<~QUERY.squish
+          fields id,name,slug,summary,url,total_rating,first_release_date,
+            parent_game.id,parent_game.name,
+            collection.id,collection.name,
+            cover.image_id,
+            artworks.image_id,artworks.alpha_channel,artworks.artwork_type.slug,
+            genres.id,genres.name,
+            platforms.id,platforms.name,
+            themes.id,themes.name,
+            game_modes.id,game_modes.name,
+            player_perspectives.id,player_perspectives.name,
+            game_engines.id,game_engines.name,
+            franchises.id,franchises.name,
+            involved_companies.company.id,involved_companies.company.name,
+            involved_companies.developer,involved_companies.publisher,
+            release_dates.region,release_dates.date,release_dates.y,release_dates.m,
+            release_dates.platform.id,release_dates.platform.name;
+          where id = #{Integer(igdb_id)};
+          limit 1;
+        QUERY
+      )
+      game = payload.first
+      return if game.blank?
+
+      game_hash(game)
     end
 
     def game_images(igdb_id)
@@ -37,6 +95,106 @@ module Igdb
     end
 
     private
+
+    def search_result(game)
+      cover_image_id = game.dig("cover", "image_id").presence
+      {
+        igdb_id: game["id"],
+        name: game["name"],
+        slug: game["slug"].presence,
+        summary: game["summary"].presence,
+        url: game["url"].presence,
+        total_rating: game["total_rating"],
+        first_release_date: unix_to_time(game["first_release_date"])&.iso8601,
+        cover_url: cover_image_id && self.class.image_url(cover_image_id, size: "cover_big")
+      }
+    end
+
+    def game_hash(game)
+      {
+        igdb_id: game["id"],
+        name: game["name"],
+        slug: game["slug"].presence,
+        summary: game["summary"].presence,
+        url: game["url"].presence,
+        total_rating: game["total_rating"],
+        first_release_date: unix_to_time(game["first_release_date"]),
+        parent_igdb_id: game.dig("parent_game", "id"),
+        parent_game_name: game.dig("parent_game", "name").presence,
+        collection: named_ref(game["collection"]),
+        cover_image_id: game.dig("cover", "image_id").presence,
+        artworks: Array(game["artworks"]).filter_map { |artwork| artwork_hash(artwork) },
+        genres: named_refs(game["genres"]),
+        platforms: named_refs(game["platforms"]),
+        themes: named_refs(game["themes"]),
+        game_modes: named_refs(game["game_modes"]),
+        perspectives: named_refs(game["player_perspectives"]),
+        engines: named_refs(game["game_engines"]),
+        franchises: named_refs(game["franchises"]),
+        companies: Array(game["involved_companies"]).filter_map { |company| company_hash(company) },
+        release_dates: Array(game["release_dates"]).filter_map { |release| release_date_hash(release) }
+      }
+    end
+
+    # An IGDB `{ id, name }` node -> `{ igdb_id:, name: }`, or nil when either is
+    # missing (so a half-populated reference never becomes a nameless lookup row).
+    def named_ref(node)
+      return if node.blank?
+
+      igdb_id = node["id"]
+      name = node["name"].presence
+      return if igdb_id.blank? || name.blank?
+
+      { igdb_id: igdb_id, name: name }
+    end
+
+    def named_refs(nodes)
+      Array(nodes).filter_map { |node| named_ref(node) }
+    end
+
+    def company_hash(involved_company)
+      ref = named_ref(involved_company["company"])
+      return if ref.nil?
+
+      ref.merge(
+        developer: involved_company["developer"] == true,
+        publisher: involved_company["publisher"] == true
+      )
+    end
+
+    def release_date_hash(release)
+      platform = named_ref(release["platform"])
+      return if platform.nil?
+
+      {
+        platform: platform,
+        region: release["region"],
+        date: unix_to_time(release["date"]) || year_month_to_time(release["y"], release["m"])
+      }
+    end
+
+    def unix_to_time(value)
+      return if value.blank?
+
+      Time.at(Integer(value)).utc
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    def year_month_to_time(year, month)
+      return if year.blank?
+
+      Time.utc(Integer(year), month.present? ? Integer(month) : 1, 1)
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    # Defang the user term before it lands inside the quoted apicalypse
+    # `search "..."` clause: drop the quote/backslash chars that would break out
+    # of the string.
+    def escape_search(term)
+      term.gsub(/["\\]/, " ")
+    end
 
     def artwork_hash(artwork)
       image_id = artwork["image_id"].presence

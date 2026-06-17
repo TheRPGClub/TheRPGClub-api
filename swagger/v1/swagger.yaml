@@ -2058,6 +2058,99 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/igdb/search":
+    get:
+      summary: Search IGDB for games
+      tags:
+      - IGDB
+      description: Admin/service-only. Proxies an IGDB games title search and returns
+        candidates so a caller can pick the right `igdb_id` to import via `POST /api/v1/games`.
+        Each candidate carries `already_imported` (whether a local game with that
+        `igdb_id` already exists) so the UI can offer "view" vs "import". A blank
+        `q` returns an empty list.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: true
+        description: Title to search for.
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 25
+          maximum: 50
+        required: false
+        description: Max candidates to return (capped at 50). `limit` is accepted
+          as an alias.
+      responses:
+        '200':
+          description: IGDB candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        igdb_id:
+                          type: integer
+                          example: 1234
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                          nullable: true
+                        summary:
+                          type: string
+                          nullable: true
+                        url:
+                          type: string
+                          nullable: true
+                        total_rating:
+                          type: number
+                          nullable: true
+                        first_release_date:
+                          type: string
+                          nullable: true
+                          description: ISO 8601 timestamp.
+                        cover_url:
+                          type: string
+                          nullable: true
+                        already_imported:
+                          type: boolean
+                      required:
+                      - igdb_id
+                      - name
+                      - already_imported
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: IGDB not configured
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: IGDB request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games":
     get:
       summary: List games
@@ -2216,6 +2309,95 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a game from IGDB
+      tags:
+      - Games
+      description: 'Admin/service-only. Creates a game from IGDB by `igdb_id`: fetches
+        the full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
+        perspectives, modes, engines, franchises, platforms, developer/publisher companies,
+        collection) and releases (one per platform, earliest dated; Japan-only releases
+        are skipped; `format` is left null), then imports its cover/artwork/logo images
+        into Backblaze through the same importer the jobs use. Idempotent on `igdb_id`:
+        re-POSTing an existing game refreshes it and returns 200 instead of 201. Discover
+        ids via `GET /api/v1/igdb/search`.'
+      parameters: []
+      responses:
+        '201':
+          description: game created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                  images:
+                    type: object
+                    additionalProperties: true
+                    description: The image-import result (cover/artwork/logo).
+        '200':
+          description: existing game refreshed (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                  images:
+                    type: object
+                    additionalProperties: true
+        '400':
+          description: missing or non-integer `igdb_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: IGDB game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unprocessable (IGDB/Backblaze not configured, invalid image)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: upstream (IGDB or Backblaze) request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                igdb_id:
+                  type: integer
+                  description: The IGDB game id to import.
+              required:
+              - igdb_id
+        required: true
   "/api/v1/games/{id}":
     parameters:
     - name: id
