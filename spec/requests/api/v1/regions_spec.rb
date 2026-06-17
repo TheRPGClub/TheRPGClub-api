@@ -17,7 +17,7 @@ RSpec.describe 'api/v1/regions', type: :request do
 
       response '200', 'regions list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Region' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -36,7 +36,7 @@ RSpec.describe 'api/v1/regions', type: :request do
       produces 'application/json'
 
       response '200', 'region' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Region' } }
       end
 
       response '404', 'region not found' do

@@ -18,7 +18,7 @@ RSpec.describe 'api/v1/users', type: :request do
 
       response '200', 'users list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/UserSummary' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -40,33 +40,7 @@ RSpec.describe 'api/v1/users', type: :request do
         description: 'Per-preview-list size cap (now_playing, favorites, reviews, completions, journal).'
 
       response '200', 'user detail' do
-        schema type: :object, properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            properties: {
-              membership: { type: :object, nullable: true, additionalProperties: true },
-              socials:    { type: :array, items: { type: :object, additionalProperties: true } },
-              now_playing: { type: :array, items: { type: :object, additionalProperties: true } },
-              favorites:   { type: :array, items: { type: :object, additionalProperties: true } },
-              reviews:     { type: :array, items: { type: :object, additionalProperties: true } },
-              completions: { type: :array, items: { type: :object, additionalProperties: true } },
-              journal:     { type: :array, items: { type: :object, additionalProperties: true } },
-              counts: {
-                type: :object,
-                properties: {
-                  now_playing: { type: :integer },
-                  favorites:   { type: :integer },
-                  reviews:     { type: :integer },
-                  completions: { type: :integer },
-                  backlog:     { type: :integer },
-                  collections: { type: :integer },
-                  journal:     { type: :integer }
-                }
-              }
-            }
-          }
-        }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/User' } }
       end
 
       response '404', 'user not found' do

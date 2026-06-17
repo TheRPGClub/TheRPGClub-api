@@ -3,11 +3,20 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/reviews', type: :request do
+  # The client-writable UserGameReview columns. `user_id` comes from the path.
+  writable = {
+    gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create. Unique per (user, game).' },
+    rating: { type: :integer, description: 'Numeric rating. Required on create.' },
+    body: { type: :object, nullable: true, description: 'Optional structured review body (free-form JSON).' },
+    is_shared: { type: :boolean, description: 'Whether the review is shared. Optional. Write-only — not returned by the curated game-scoped list.' }
+  }
+
   path '/api/v1/users/{user_id}/reviews' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
     get 'List a user\'s reviews' do
       tags 'Reviews'
+      description 'Open to any authenticated caller. Returns the full review records (all columns).'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -18,7 +27,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
       response '200', 'reviews list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Review' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -30,20 +39,19 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     post 'Write a review' do
       tags 'Reviews'
-      description 'Owner-only.'
+      description 'Owner-only. `gamedb_game_id` and `rating` are required; a user may review a ' \
+                  'given game only once (unique per (user, game)). `body` and `is_shared` are optional.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: { type: :object, additionalProperties: true, description: 'UserGameReview attributes (`gamedb_game_id`, `rating`, `body`).' }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id rating] } },
         required: %w[data]
       }
 
       response '201', 'review created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Review' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -72,7 +80,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
       produces 'application/json'
 
       response '200', 'review detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Review' } }
       end
 
       response '404', 'not found' do
@@ -86,18 +94,18 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     patch 'Update a review' do
       tags 'Reviews'
-      description 'Owner-only.'
+      description 'Owner-only. Partial update: send any subset of the writable columns.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Review' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -119,16 +127,17 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     put 'Replace a review (alias)' do
       tags 'Reviews'
+      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Review' } }
       end
 
       response '401', 'unauthenticated' do

@@ -18,7 +18,7 @@ RSpec.describe 'api/v1/genres', type: :request do
 
       response '200', 'genres list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Genre' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -37,7 +37,7 @@ RSpec.describe 'api/v1/genres', type: :request do
       produces 'application/json'
 
       response '200', 'genre' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Genre' } }
       end
 
       response '404', 'genre not found' do

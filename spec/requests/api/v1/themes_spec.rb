@@ -18,7 +18,7 @@ RSpec.describe 'api/v1/themes', type: :request do
 
       response '200', 'themes list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Theme' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -37,7 +37,7 @@ RSpec.describe 'api/v1/themes', type: :request do
       produces 'application/json'
 
       response '200', 'theme' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Theme' } }
       end
 
       response '404', 'theme not found' do

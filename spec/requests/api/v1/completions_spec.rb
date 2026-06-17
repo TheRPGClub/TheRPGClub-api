@@ -3,11 +3,23 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/completions', type: :request do
+  # The client-writable UserGameCompletion columns. `user_id` comes from the path.
+  writable = {
+    gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create.' },
+    completion_type: { type: :string, description: 'How it was completed (e.g. "main", "100%"). Required on create.' },
+    completed_at: { type: :string, format: 'date-time', nullable: true, description: 'When the game was completed.' },
+    final_playtime_hrs: { type: :number, nullable: true, description: 'Final playtime in hours.' },
+    platform_id: { type: :integer, nullable: true, description: 'Optional platform association.' },
+    note: { type: :string, nullable: true, description: 'Optional free-text note.' }
+  }
+
   path '/api/v1/users/{user_id}/completions' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
     get 'List a user\'s completions' do
       tags 'Completions'
+      description 'Ordered by `completed_at` descending, then `created_at` descending. Open to any ' \
+                  'authenticated caller.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -18,7 +30,7 @@ RSpec.describe 'api/v1/completions', type: :request do
 
       response '200', 'completions list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/CompletionEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -30,24 +42,19 @@ RSpec.describe 'api/v1/completions', type: :request do
 
     post 'Record a completion' do
       tags 'Completions'
-      description 'Owner-only. Sends the request payload under a top-level `data` key.'
+      description 'Owner-only. `gamedb_game_id` and `completion_type` are required; `completed_at`, ' \
+                  '`final_playtime_hrs`, `platform_id` and `note` are optional.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            description: 'UserGameCompletion attributes (e.g. `gamedb_game_id`, `platform_id`, `completed_at`, `rating`, `notes`).'
-          }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id completion_type] } },
         required: %w[data]
       }
 
       response '201', 'completion created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionEntry' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -76,7 +83,7 @@ RSpec.describe 'api/v1/completions', type: :request do
       produces 'application/json'
 
       response '200', 'completion detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionEntry' } }
       end
 
       response '404', 'not found' do
@@ -90,18 +97,18 @@ RSpec.describe 'api/v1/completions', type: :request do
 
     patch 'Update a completion' do
       tags 'Completions'
-      description 'Owner-only.'
+      description 'Owner-only. Partial update: send any subset of the writable columns.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionEntry' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -123,16 +130,17 @@ RSpec.describe 'api/v1/completions', type: :request do
 
     put 'Replace a completion (alias)' do
       tags 'Completions'
+      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionEntry' } }
       end
 
       response '401', 'unauthenticated' do

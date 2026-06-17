@@ -3,6 +3,15 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/release_announcements', type: :request do
+  # Client-writable GamedbReleaseAnnouncement columns. The controller's
+  # #writable_data strips the bot-managed delivery columns (`sent_at`,
+  # `skipped_at`, `skip_reason`) — they are read-only and the skip columns are
+  # set only via the dedicated skip action.
+  writable = {
+    release_id: { type: :integer, description: 'The release to announce (gamedb_releases.release_id; also the PK). Required on create.' },
+    announce_at: { type: :string, format: 'date-time', description: 'When to announce. Required on create; move it to reschedule.' }
+  }
+
   path '/api/v1/games/{id}/release_announcements' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbGame game_id.'
 
@@ -17,7 +26,7 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
 
       response '200', 'release announcements list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/ReleaseAnnouncement' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -40,18 +49,12 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            description: 'GamedbReleaseAnnouncement attributes (`release_id`, `announce_at`).'
-          }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[release_id announce_at] } },
         required: %w[data]
       }
 
       response '201', 'announcement scheduled' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ReleaseAnnouncement' } }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
@@ -81,7 +84,7 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
       produces 'application/json'
 
       response '200', 'announcement detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ReleaseAnnouncement' } }
       end
 
       response '404', 'not found' do
@@ -102,12 +105,12 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ReleaseAnnouncement' } }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
@@ -129,16 +132,17 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
 
     put 'Replace a release announcement (alias)' do
       tags 'Release Announcements'
+      description 'Admin/service-only. Alias for PATCH.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ReleaseAnnouncement' } }
       end
 
       response '401', 'unauthenticated' do
@@ -191,7 +195,7 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
       }
 
       response '200', 'skipped' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ReleaseAnnouncement' } }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do

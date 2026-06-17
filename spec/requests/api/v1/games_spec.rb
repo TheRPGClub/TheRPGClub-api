@@ -3,6 +3,41 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/games', type: :request do
+  # The relations payload (GamesController#relations_data), reused by both
+  # GET /games/{id}/relations and the `relations` slice of the profile.
+  relations_shape = {
+    type: :object,
+    properties: {
+      platforms:    { type: :array, items: { '$ref' => '#/components/schemas/Platform' } },
+      releases:     { type: :array, items: { '$ref' => '#/components/schemas/Release' } },
+      companies:    { type: :array, items: { '$ref' => '#/components/schemas/GameCompany' } },
+      collection:   { allOf: [ { '$ref' => '#/components/schemas/Collection' } ], nullable: true },
+      franchises:   { type: :array, items: { '$ref' => '#/components/schemas/Franchise' } },
+      genres:       { type: :array, items: { '$ref' => '#/components/schemas/Genre' } },
+      engines:      { type: :array, items: { '$ref' => '#/components/schemas/Engine' } },
+      modes:        { type: :array, items: { '$ref' => '#/components/schemas/Mode' } },
+      perspectives: { type: :array, items: { '$ref' => '#/components/schemas/Perspective' } },
+      themes:       { type: :array, items: { '$ref' => '#/components/schemas/Theme' } },
+      alternates:   { type: :array, items: { '$ref' => '#/components/schemas/Game' } }
+    }
+  }
+
+  # The game record (GameResource) plus the GOTM/NR-GOTM month-year fields the
+  # controller folds in (GamesController#game_record_data), reused by #show and
+  # the `game` slice of the profile.
+  game_record = {
+    allOf: [
+      { '$ref' => '#/components/schemas/Game' },
+      {
+        type: :object,
+        properties: {
+          gotm_month_year: { type: :string, nullable: true },
+          nr_gotm_month_year: { type: :string, nullable: true }
+        }
+      }
+    ]
+  }
+
   path '/api/v1/games' do
     get 'List games' do
       tags 'Games'
@@ -37,7 +72,7 @@ RSpec.describe 'api/v1/games', type: :request do
 
       response '200', 'games list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Game' } },
           meta: {
             allOf: [
               { '$ref' => '#/components/schemas/PaginationMeta' },
@@ -74,15 +109,15 @@ RSpec.describe 'api/v1/games', type: :request do
 
       response '201', 'game created' do
         schema type: :object, properties: {
-          data: { type: :object, additionalProperties: true },
-          images: { type: :object, additionalProperties: true, description: 'The image-import result (cover/artwork/logo).' }
+          data: { '$ref' => '#/components/schemas/Game' },
+          images: { type: :object, additionalProperties: true, description: 'The image-import result (cover/artwork/logo diagnostics); shape mirrors the importer\'s output.' }
         }
       end
 
       response '200', 'existing game refreshed (idempotent)' do
         schema type: :object, properties: {
-          data: { type: :object, additionalProperties: true },
-          images: { type: :object, additionalProperties: true }
+          data: { '$ref' => '#/components/schemas/Game' },
+          images: { type: :object, additionalProperties: true, description: 'The image-import result (cover/artwork/logo diagnostics).' }
         }
       end
 
@@ -123,14 +158,18 @@ RSpec.describe 'api/v1/games', type: :request do
       response '200', 'game detail' do
         schema type: :object, properties: {
           data: {
-            type: :object,
-            additionalProperties: true,
-            properties: {
-              gotm_month_year: { type: :string, nullable: true },
-              nr_gotm_month_year: { type: :string, nullable: true },
-              now_playing: { type: :array, items: { type: :object, additionalProperties: true } },
-              completions: { type: :array, items: { type: :object, additionalProperties: true } }
-            }
+            allOf: [
+              { '$ref' => '#/components/schemas/Game' },
+              {
+                type: :object,
+                properties: {
+                  gotm_month_year: { type: :string, nullable: true },
+                  nr_gotm_month_year: { type: :string, nullable: true },
+                  now_playing: { type: :array, items: { '$ref' => '#/components/schemas/NowPlayingUserEntry' } },
+                  completions: { type: :array, items: { '$ref' => '#/components/schemas/CompletionUserEntry' } }
+                }
+              }
+            ]
           }
         }
       end
@@ -154,7 +193,9 @@ RSpec.describe 'api/v1/games', type: :request do
       produces 'application/json'
 
       response '200', 'images refreshed' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: {
+          data: { type: :object, additionalProperties: true, description: 'The image-import result (per-kind diagnostics); shape mirrors the importer\'s output.' }
+        }
       end
 
       response '403', 'forbidden — admin or service required' do
@@ -188,24 +229,7 @@ RSpec.describe 'api/v1/games', type: :request do
       produces 'application/json'
 
       response '200', 'game relations' do
-        schema type: :object, properties: {
-          data: {
-            type: :object,
-            properties: {
-              platforms:    { type: :array, items: { type: :object, additionalProperties: true } },
-              releases:     { type: :array, items: { type: :object, additionalProperties: true } },
-              companies:    { type: :array, items: { type: :object, additionalProperties: true } },
-              collection:   { type: :object, additionalProperties: true, nullable: true },
-              franchises:   { type: :array, items: { type: :object, additionalProperties: true } },
-              genres:       { type: :array, items: { type: :object, additionalProperties: true } },
-              engines:      { type: :array, items: { type: :object, additionalProperties: true } },
-              modes:        { type: :array, items: { type: :object, additionalProperties: true } },
-              perspectives: { type: :array, items: { type: :object, additionalProperties: true } },
-              themes:       { type: :array, items: { type: :object, additionalProperties: true } },
-              alternates:   { type: :array, items: { type: :object, additionalProperties: true } }
-            }
-          }
-        }
+        schema type: :object, properties: { data: relations_shape }
       end
 
       response '404', 'game not found' do
@@ -235,11 +259,11 @@ RSpec.describe 'api/v1/games', type: :request do
           data: {
             type: :object,
             properties: {
-              game:        { type: :object, additionalProperties: true },
-              relations:   { type: :object, additionalProperties: true },
-              now_playing: { type: :array, items: { type: :object, additionalProperties: true } },
-              completions: { type: :array, items: { type: :object, additionalProperties: true } },
-              threads:     { type: :array, items: { type: :object, additionalProperties: true } },
+              game:        game_record,
+              relations:   relations_shape,
+              now_playing: { type: :array, items: { '$ref' => '#/components/schemas/NowPlayingUserEntry' } },
+              completions: { type: :array, items: { '$ref' => '#/components/schemas/CompletionUserEntry' } },
+              threads:     { type: :array, items: { '$ref' => '#/components/schemas/Thread' } },
               primary_image: {
                 type: :object, nullable: true,
                 properties: { url: { type: :string } }
@@ -247,14 +271,14 @@ RSpec.describe 'api/v1/games', type: :request do
               associations: {
                 type: :object,
                 properties: {
-                  gotm_wins:           { type: :array, items: { type: :object, properties: { round: { type: :integer } } } },
-                  nr_gotm_wins:        { type: :array, items: { type: :object, properties: { round: { type: :integer } } } },
-                  gotm_nominations:    { type: :array, items: { type: :object, additionalProperties: true } },
-                  nr_gotm_nominations: { type: :array, items: { type: :object, additionalProperties: true } }
+                  gotm_wins:           { type: :array, items: { '$ref' => '#/components/schemas/GotmWin' } },
+                  nr_gotm_wins:        { type: :array, items: { '$ref' => '#/components/schemas/GotmWin' } },
+                  gotm_nominations:    { type: :array, items: { '$ref' => '#/components/schemas/GotmNominationSummary' } },
+                  nr_gotm_nominations: { type: :array, items: { '$ref' => '#/components/schemas/GotmNominationSummary' } }
                 }
               },
-              collection_owners: { type: :array, items: { type: :object, additionalProperties: true } },
-              hltb:              { type: :object, additionalProperties: true, nullable: true }
+              collection_owners: { type: :array, items: { '$ref' => '#/components/schemas/CollectionOwner' } },
+              hltb:              { allOf: [ { '$ref' => '#/components/schemas/Hltb' } ], nullable: true }
             }
           }
         }
@@ -280,7 +304,7 @@ RSpec.describe 'api/v1/games', type: :request do
 
       response '200', 'releases list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } }
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Release' } }
         }
       end
 
@@ -309,7 +333,7 @@ RSpec.describe 'api/v1/games', type: :request do
 
       response '200', 'now-playing entries' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/NowPlayingUserEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -335,7 +359,7 @@ RSpec.describe 'api/v1/games', type: :request do
 
       response '200', 'completions for game' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/CompletionUserEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -362,7 +386,7 @@ RSpec.describe 'api/v1/games', type: :request do
 
       response '200', 'reviews for game' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/ReviewUserEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end

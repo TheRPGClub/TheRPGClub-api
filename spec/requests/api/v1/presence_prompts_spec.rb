@@ -17,7 +17,7 @@ RSpec.describe 'api/v1/presence_prompts', type: :request do
 
       response '200', 'presence prompt history' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/PresencePrompt' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -38,28 +38,7 @@ RSpec.describe 'api/v1/presence_prompts', type: :request do
       produces 'application/json'
 
       response '200', 'opt-out preference' do
-        schema type: :object, properties: {
-          data: {
-            type: :object,
-            properties: {
-              user_id: { type: :string },
-              all: { type: :boolean, description: 'Whether the user is opted out of prompts for every game.' },
-              games: {
-                type: :array,
-                description: 'Per-game opt-outs.',
-                items: {
-                  type: :object,
-                  properties: {
-                    game_title: { type: :string },
-                    game_title_norm: { type: :string },
-                    created_at: { type: :string, format: 'date-time' }
-                  }
-                }
-              }
-            },
-            required: %w[user_id all games]
-          }
-        }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/PresencePromptOpts' } }
       end
 
       response '401', 'unauthenticated' do
@@ -95,7 +74,7 @@ RSpec.describe 'api/v1/presence_prompts', type: :request do
       }
 
       response '200', 'updated opt-out preference' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/PresencePromptOpts' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do

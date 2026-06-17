@@ -3,6 +3,17 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/reminders', type: :request do
+  # The client-writable UserReminder columns. `user_id` is taken from the path
+  # (never the body); `reminder_id`/timestamps are server-managed; and the bot
+  # delivery columns (`sent_at`, `failure_count`, `failed_at`) are read-only —
+  # stripped by the controller's #writable_data, so they are returned in the
+  # response but never accepted in writes.
+  writable = {
+    remind_at: { type: :string, format: 'date-time', description: 'When to fire the reminder. Required on create.' },
+    content: { type: :string, description: 'The reminder text. Required on create.' },
+    is_noisy: { type: :boolean, description: 'Whether the reminder pings noisily. Optional; defaults to false.' }
+  }
+
   path '/api/v1/users/{user_id}/reminders' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
@@ -15,7 +26,7 @@ RSpec.describe 'api/v1/reminders', type: :request do
 
       response '200', 'reminders list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Reminder' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -33,18 +44,12 @@ RSpec.describe 'api/v1/reminders', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            description: 'UserReminder attributes (`remind_at`, `content`, optional `is_noisy`).'
-          }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[remind_at content] } },
         required: %w[data]
       }
 
       response '201', 'reminder created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Reminder' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -73,7 +78,7 @@ RSpec.describe 'api/v1/reminders', type: :request do
       produces 'application/json'
 
       response '200', 'reminder detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Reminder' } }
       end
 
       response '404', 'not found' do
@@ -93,12 +98,12 @@ RSpec.describe 'api/v1/reminders', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Reminder' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -120,16 +125,17 @@ RSpec.describe 'api/v1/reminders', type: :request do
 
     put 'Replace a personal reminder (alias)' do
       tags 'Reminders'
+      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Reminder' } }
       end
 
       response '401', 'unauthenticated' do

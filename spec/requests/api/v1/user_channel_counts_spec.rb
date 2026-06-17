@@ -17,7 +17,7 @@ RSpec.describe 'api/v1/user_channel_counts', type: :request do
 
       response '200', 'channel message counts' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/UserChannelCount' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end

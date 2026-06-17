@@ -18,7 +18,7 @@ RSpec.describe 'api/v1/engines', type: :request do
 
       response '200', 'engines list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Engine' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -37,7 +37,7 @@ RSpec.describe 'api/v1/engines', type: :request do
       produces 'application/json'
 
       response '200', 'engine' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Engine' } }
       end
 
       response '404', 'engine not found' do

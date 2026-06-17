@@ -3,6 +3,12 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/search_synonym_groups', type: :request do
+  # The only client-writable GamedbSearchSynonymGroup column. `group_id` is an
+  # auto PK and `created_at` is server-managed.
+  writable = {
+    created_by: { type: :string, nullable: true, description: 'Optional creator id.' }
+  }
+
   path '/api/v1/search_synonym_groups' do
     get 'List synonym groups' do
       tags 'Search Synonyms'
@@ -17,7 +23,7 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
 
       response '200', 'synonym groups' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/SearchSynonymGroup' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -35,14 +41,12 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: { type: :object, additionalProperties: true, description: 'GamedbSearchSynonymGroup attributes (`created_by`).' }
-        },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '201', 'group created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonymGroup' } }
       end
 
       response '403', 'forbidden — admin or service required' do
@@ -67,7 +71,7 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
       produces 'application/json'
 
       response '200', 'group detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonymGroup' } }
       end
 
       response '404', 'not found' do
@@ -87,12 +91,12 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonymGroup' } }
       end
 
       response '403', 'forbidden — admin or service required' do
@@ -120,11 +124,11 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonymGroup' } }
       end
 
       response '403', 'forbidden — admin or service required' do

@@ -3,6 +3,7 @@
 require 'rails_helper'
 require 'rswag/specs'
 require_relative 'support/rswag_doc_only'
+require_relative 'support/openapi_schemas'
 
 RSpec.configure do |config|
   config.openapi_root = Rails.root.join('swagger').to_s
@@ -46,36 +47,11 @@ RSpec.configure do |config|
                          'the service-account token used by the Discord bot.'
           }
         },
-        schemas: {
-          Error: {
-            type: :object,
-            properties: {
-              error: { type: :string, example: 'not_found' },
-              message: { type: :string, example: 'Couldn\'t find Record with id=42' }
-            },
-            required: %w[error]
-          },
-          PaginationMeta: {
-            type: :object,
-            description: 'Page-native pagination metadata (from pagy).',
-            properties: {
-              page: { type: :integer, example: 1 },
-              pages: { type: :integer, example: 5 },
-              count: { type: :integer, example: 123 },
-              per: { type: :integer, example: 50 },
-              prev: { type: :integer, example: nil, nullable: true },
-              next: { type: :integer, example: 2, nullable: true }
-            },
-            required: %w[page pages count per]
-          },
-          DeletedResponse: {
-            type: :object,
-            properties: {
-              deleted: { type: :boolean, example: true }
-            },
-            required: %w[deleted]
-          }
-        }
+        # Reusable resource/response component schemas, cross-checked against the
+        # models, db/structure.sql and the Alba serializers (#78). Defined in
+        # spec/support/openapi_schemas.rb and referenced from the request specs
+        # via `$ref` so a resource's response shape is documented exactly once.
+        schemas: OpenapiSchemas.definitions
       },
       security: [ { bearerAuth: [] } ],
       paths: {}

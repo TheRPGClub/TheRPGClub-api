@@ -19,7 +19,7 @@ RSpec.describe 'api/v1/modes', type: :request do
 
       response '200', 'modes list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Mode' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -38,7 +38,7 @@ RSpec.describe 'api/v1/modes', type: :request do
       produces 'application/json'
 
       response '200', 'mode' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Mode' } }
       end
 
       response '404', 'mode not found' do

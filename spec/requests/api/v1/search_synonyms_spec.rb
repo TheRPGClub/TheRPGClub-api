@@ -3,6 +3,16 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/search_synonyms', type: :request do
+  # The client-writable GamedbSearchSynonym columns. `term_id` is an auto PK and
+  # `created_at` is server-managed. `term_norm` is the caller-supplied lookup key
+  # (not derived server-side).
+  writable = {
+    group_id: { type: :integer, description: 'Synonym group this term belongs to. Required on create.' },
+    term_text: { type: :string, description: 'The synonym term. Required on create.' },
+    term_norm: { type: :string, description: 'Normalised lookup key (caller-supplied). Required on create.' },
+    created_by: { type: :string, nullable: true, description: 'Optional creator id.' }
+  }
+
   path '/api/v1/search_synonyms' do
     get 'List search synonym terms' do
       tags 'Search Synonyms'
@@ -19,7 +29,7 @@ RSpec.describe 'api/v1/search_synonyms', type: :request do
 
       response '200', 'synonym terms' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/SearchSynonym' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -38,14 +48,12 @@ RSpec.describe 'api/v1/search_synonyms', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: { type: :object, additionalProperties: true, description: 'GamedbSearchSynonym attributes (`group_id`, `term_text`, `term_norm`, `created_by`).' }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[group_id term_text term_norm] } },
         required: %w[data]
       }
 
       response '201', 'term created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonym' } }
       end
 
       response '403', 'forbidden — admin or service required' do
@@ -70,7 +78,7 @@ RSpec.describe 'api/v1/search_synonyms', type: :request do
       produces 'application/json'
 
       response '200', 'term detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonym' } }
       end
 
       response '404', 'not found' do
@@ -90,12 +98,12 @@ RSpec.describe 'api/v1/search_synonyms', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonym' } }
       end
 
       response '403', 'forbidden — admin or service required' do
@@ -123,11 +131,11 @@ RSpec.describe 'api/v1/search_synonyms', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonym' } }
       end
 
       response '403', 'forbidden — admin or service required' do

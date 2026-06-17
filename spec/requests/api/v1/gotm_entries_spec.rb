@@ -20,7 +20,7 @@ RSpec.describe 'api/v1/gotm_entries', type: :request do
 
       response '200', 'GOTM entries' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/GotmEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -40,7 +40,7 @@ RSpec.describe 'api/v1/gotm_entries', type: :request do
       parameter name: :include, in: :query, schema: { type: :string, example: 'game' }, required: false
 
       response '200', 'GOTM entry' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotmEntry' } }
       end
 
       response '404', 'not found' do

@@ -3,6 +3,18 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/threads', type: :request do
+  # The mutable DiscordThread columns a write may set. The derived
+  # `gamedb_game_id` is stripped by #writable_data (managed via the link
+  # endpoints), and `thread_id` (the PK) is only accepted on the upsert create.
+  # `is_archived` and `skip_linking` are stored as strings.
+  mutable = {
+    forum_channel_id: { type: :string, description: 'The forum channel the thread lives in.' },
+    thread_name: { type: :string, description: 'Thread title.' },
+    is_archived: { type: :string, description: 'Archived flag, stored as a string (e.g. "true"/"false").' },
+    last_seen_at: { type: :string, format: 'date-time', nullable: true, description: 'When the bot last saw the thread.' },
+    skip_linking: { type: :string, description: 'When set, the bot will not auto-link this thread to games.' }
+  }
+
   path '/api/v1/games/{id}/threads' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbGame game_id.'
 
@@ -11,7 +23,8 @@ RSpec.describe 'api/v1/threads', type: :request do
       description 'The Discord threads mapped to the game through `thread_game_links` ' \
                   '(a thread can link to several games), newest thread first. Each row ' \
                   'carries the thread metadata (`thread_name`, `forum_channel_id`, ' \
-                  '`is_archived`, `last_seen_at`) plus a computed `jump_url` deep link.'
+                  '`is_archived`, `last_seen_at`) plus a computed `jump_url` deep link. ' \
+                  'Open to any authenticated caller.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -22,7 +35,7 @@ RSpec.describe 'api/v1/threads', type: :request do
 
       response '200', 'threads list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Thread' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -40,7 +53,8 @@ RSpec.describe 'api/v1/threads', type: :request do
                   'inserts a new row, or on an existing one refreshes only `forum_channel_id`, ' \
                   '`thread_name`, `is_archived`, `last_seen_at` — `skip_linking` and `created_at` ' \
                   'are left untouched so a sync sweep can\'t clobber them. The derived ' \
-                  '`gamedb_game_id` is ignored on write (managed via the link endpoints).'
+                  '`gamedb_game_id` is ignored on write (managed via the link endpoints). ' \
+                  '`thread_id`, `forum_channel_id` and `thread_name` are required.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -49,20 +63,19 @@ RSpec.describe 'api/v1/threads', type: :request do
         properties: {
           data: {
             type: :object,
-            additionalProperties: true,
-            description: 'Thread attributes (`thread_id`, `forum_channel_id`, `thread_name`, ' \
-                         '`is_archived`, `last_seen_at`, `skip_linking`).'
+            properties: { thread_id: { type: :string, description: 'Discord thread snowflake (the PK). Required.' } }.merge(mutable),
+            required: %w[thread_id forum_channel_id thread_name]
           }
         },
         required: %w[data]
       }
 
       response '201', 'thread created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Thread' } }
       end
 
       response '200', 'existing thread updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Thread' } }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
@@ -93,7 +106,7 @@ RSpec.describe 'api/v1/threads', type: :request do
       produces 'application/json'
 
       response '200', 'thread' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ThreadWithLinks' } }
       end
 
       response '404', 'thread not found' do
@@ -108,19 +121,19 @@ RSpec.describe 'api/v1/threads', type: :request do
     patch 'Update a thread' do
       tags 'Threads'
       description 'Admin/service-only. Partial update of any mutable column — `skip_linking`, ' \
-                  '`is_archived`, `thread_name`, `last_seen_at`. The PK and derived ' \
-                  '`gamedb_game_id` cannot be changed.'
+                  '`is_archived`, `thread_name`, `forum_channel_id`, `last_seen_at`. The PK ' \
+                  '(`thread_id`) and derived `gamedb_game_id` cannot be changed.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: mutable } },
         required: %w[data]
       }
 
       response '200', 'thread updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Thread' } }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
@@ -154,19 +167,19 @@ RSpec.describe 'api/v1/threads', type: :request do
         properties: {
           data: {
             type: :object,
-            additionalProperties: true,
-            description: 'The link target (`gamedb_game_id`).'
+            properties: { gamedb_game_id: { type: :integer, description: 'The game to link (gamedb_games.game_id).' } },
+            required: %w[gamedb_game_id]
           }
         },
         required: %w[data]
       }
 
       response '201', 'thread linked' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ThreadGameLink' } }
       end
 
       response '200', 'link already existed' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ThreadGameLink' } }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
@@ -193,10 +206,7 @@ RSpec.describe 'api/v1/threads', type: :request do
       produces 'application/json'
 
       response '200', 'links removed' do
-        schema type: :object, properties: {
-          deleted: { type: :boolean },
-          count: { type: :integer }
-        }
+        schema '$ref' => '#/components/schemas/DeletedCountResponse'
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
@@ -224,10 +234,7 @@ RSpec.describe 'api/v1/threads', type: :request do
       produces 'application/json'
 
       response '200', 'link removed' do
-        schema type: :object, properties: {
-          deleted: { type: :boolean },
-          count: { type: :integer }
-        }
+        schema '$ref' => '#/components/schemas/DeletedCountResponse'
       end
 
       response '403', 'forbidden — caller is not an admin or service' do

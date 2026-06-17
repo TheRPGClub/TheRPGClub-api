@@ -16,8 +16,8 @@ RSpec.describe 'api/v1/dashboards', type: :request do
           data: {
             type: :object,
             properties: {
-              gotm: { type: :array, items: { type: :object, additionalProperties: true } },
-              nr_gotm: { type: :array, items: { type: :object, additionalProperties: true } }
+              gotm: { type: :array, items: { '$ref' => '#/components/schemas/GotmEntry' } },
+              nr_gotm: { type: :array, items: { '$ref' => '#/components/schemas/NrGotmEntry' } }
             }
           },
           meta: {

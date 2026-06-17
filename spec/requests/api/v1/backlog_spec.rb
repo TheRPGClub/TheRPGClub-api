@@ -3,12 +3,22 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/backlog', type: :request do
+  # The client-writable UserGameBacklog columns. `user_id` is taken from the
+  # path (never the body), and `entry_id`/timestamps are server-managed.
+  writable = {
+    gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id) to add. Required on create.' },
+    platform_id: { type: :integer, nullable: true, description: 'Optional platform association.' },
+    sort_order: { type: :integer, nullable: true, description: 'Optional manual sort position.' },
+    note: { type: :string, nullable: true, description: 'Optional free-text note.' }
+  }
+
   path '/api/v1/users/{user_id}/backlog' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
     get 'List a user\'s backlog' do
       tags 'Backlog'
-      description 'Ordered by `sort_order` ascending then `created_at` descending.'
+      description 'Ordered by `sort_order` ascending then `created_at` descending. Open to any ' \
+                  'authenticated caller.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -19,7 +29,7 @@ RSpec.describe 'api/v1/backlog', type: :request do
 
       response '200', 'backlog list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/BacklogEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -31,20 +41,20 @@ RSpec.describe 'api/v1/backlog', type: :request do
 
     post 'Add to backlog' do
       tags 'Backlog'
-      description 'Owner-only.'
+      description 'Owner-only (a Discord caller may only write their own backlog; the bot service ' \
+                  'token may write any). `gamedb_game_id` is required; `platform_id`, `sort_order` ' \
+                  'and `note` are optional.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: { type: :object, additionalProperties: true, description: 'UserGameBacklog attributes (`gamedb_game_id`, `platform_id`, `sort_order`, `notes`).' }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id] } },
         required: %w[data]
       }
 
       response '201', 'backlog entry created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/BacklogEntry' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -73,7 +83,7 @@ RSpec.describe 'api/v1/backlog', type: :request do
       produces 'application/json'
 
       response '200', 'backlog entry' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/BacklogEntry' } }
       end
 
       response '404', 'not found' do
@@ -87,18 +97,18 @@ RSpec.describe 'api/v1/backlog', type: :request do
 
     patch 'Update a backlog entry' do
       tags 'Backlog'
-      description 'Owner-only.'
+      description 'Owner-only. Partial update: send any subset of the writable columns.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/BacklogEntry' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -120,16 +130,17 @@ RSpec.describe 'api/v1/backlog', type: :request do
 
     put 'Replace a backlog entry (alias)' do
       tags 'Backlog'
+      description 'Owner-only. Alias for PATCH (the update is applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/BacklogEntry' } }
       end
 
       response '401', 'unauthenticated' do

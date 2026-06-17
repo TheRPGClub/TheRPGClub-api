@@ -18,7 +18,7 @@ RSpec.describe 'api/v1/platforms', type: :request do
 
       response '200', 'platforms list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Platform' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -34,10 +34,12 @@ RSpec.describe 'api/v1/platforms', type: :request do
 
     get 'Show platform' do
       tags 'Platforms'
+      description 'Returns the full platform record (all columns, including the IGDB ' \
+                  'bookkeeping fields the list response trims).'
       produces 'application/json'
 
       response '200', 'platform' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/PlatformDetail' } }
       end
 
       response '404', 'platform not found' do

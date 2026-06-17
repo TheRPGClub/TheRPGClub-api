@@ -3,12 +3,20 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/favorites', type: :request do
+  # The client-writable UserGameFavorite columns. `user_id` comes from the path.
+  writable = {
+    gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create. Unique per (user, game).' },
+    sort_order: { type: :integer, nullable: true, description: 'Optional manual sort position.' },
+    note: { type: :string, nullable: true, description: 'Optional free-text note.' }
+  }
+
   path '/api/v1/users/{user_id}/favorites' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
     get 'List a user\'s favorites' do
       tags 'Favorites'
-      description 'Ordered by `sort_order` ascending, then `created_at` descending.'
+      description 'Ordered by `sort_order` ascending, then `created_at` descending. Open to any ' \
+                  'authenticated caller.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -19,7 +27,7 @@ RSpec.describe 'api/v1/favorites', type: :request do
 
       response '200', 'favorites list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/FavoriteEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -31,20 +39,19 @@ RSpec.describe 'api/v1/favorites', type: :request do
 
     post 'Add a favorite' do
       tags 'Favorites'
-      description 'Owner-only.'
+      description 'Owner-only. `gamedb_game_id` is required and must be unique per user (a game ' \
+                  'can be favorited only once); `sort_order` and `note` are optional.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: { type: :object, additionalProperties: true, description: 'UserGameFavorite attributes (`gamedb_game_id`, `sort_order`).' }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id] } },
         required: %w[data]
       }
 
       response '201', 'favorite created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/FavoriteEntry' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -73,7 +80,7 @@ RSpec.describe 'api/v1/favorites', type: :request do
       produces 'application/json'
 
       response '200', 'favorite detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/FavoriteEntry' } }
       end
 
       response '404', 'not found' do
@@ -87,18 +94,18 @@ RSpec.describe 'api/v1/favorites', type: :request do
 
     patch 'Update a favorite' do
       tags 'Favorites'
-      description 'Owner-only.'
+      description 'Owner-only. Partial update: send any subset of the writable columns.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/FavoriteEntry' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -120,16 +127,17 @@ RSpec.describe 'api/v1/favorites', type: :request do
 
     put 'Replace a favorite (alias)' do
       tags 'Favorites'
+      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/FavoriteEntry' } }
       end
 
       response '401', 'unauthenticated' do
