@@ -11846,6 +11846,36 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/voting_info/current":
+    get:
+      summary: Show the current voting info round
+      tags:
+      - Voting Info
+      description: Returns the current round (the row with the highest `round_number`),
+        or 404 if no rounds exist. Lets the bot read the newest round without fetching
+        the full list. Open to any authenticated caller.
+      responses:
+        '200':
+          description: current voting info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VotingInfo"
+        '404':
+          description: no voting info rounds exist
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/voting_info/{id}":
     parameters:
     - name: id

@@ -131,7 +131,9 @@ Rails.application.routes.draw do
       end
       resources :starboard, param: :message_id, only: %i[index show create update destroy]
       resources :journal_message_contexts, param: :message_id, only: %i[index show create update destroy]
-      resources :voting_info, only: %i[index show create update destroy]
+      resources :voting_info, only: %i[index show create update destroy] do
+        collection { get "current" }
+      end
       resources :search_synonyms, only: %i[index show create update destroy]
       resources :search_synonym_groups, only: %i[index show create update destroy]
       resources :search_synonym_drafts, only: %i[index show create update destroy]
