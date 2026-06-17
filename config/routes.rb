@@ -118,7 +118,9 @@ Rails.application.routes.draw do
         collection { get "summary" }
       end
       resources :rss_feeds, only: %i[index show create update destroy]
-      resources :public_reminders, only: %i[index show create update destroy]
+      resources :public_reminders, only: %i[index show create update destroy] do
+        collection { get "due" }
+      end
       resources :starboard, param: :message_id, only: %i[index show create update destroy]
       resources :journal_message_contexts, param: :message_id, only: %i[index show create update destroy]
       resources :voting_info, only: %i[index show create update destroy]
