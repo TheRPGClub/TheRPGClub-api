@@ -19,7 +19,7 @@ RSpec.describe 'api/v1/now_playing', type: :request do
 
       response '200', 'now-playing list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/NowPlayingEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end

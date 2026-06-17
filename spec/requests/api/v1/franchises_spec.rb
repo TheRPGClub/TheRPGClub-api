@@ -18,7 +18,7 @@ RSpec.describe 'api/v1/franchises', type: :request do
 
       response '200', 'franchises list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Franchise' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -37,7 +37,7 @@ RSpec.describe 'api/v1/franchises', type: :request do
       produces 'application/json'
 
       response '200', 'franchise' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Franchise' } }
       end
 
       response '404', 'franchise not found' do

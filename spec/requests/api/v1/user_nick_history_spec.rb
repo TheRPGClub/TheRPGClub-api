@@ -16,7 +16,7 @@ RSpec.describe 'api/v1/user_nick_history', type: :request do
 
       response '200', 'nickname history' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/UserNickHistory' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end

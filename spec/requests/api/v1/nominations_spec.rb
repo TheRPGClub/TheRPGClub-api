@@ -21,22 +21,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
 
       response '200', 'GOTM nominations' do
         schema type: :object, properties: {
-          data: {
-            type: :array,
-            items: {
-              type: :object,
-              properties: {
-                nomination_id: { type: :integer },
-                round_number: { type: :integer },
-                user_id: { type: :string },
-                gamedb_game_id: { type: :integer, nullable: true },
-                reason: { type: :string, nullable: true },
-                nominated_at: { type: :string, format: 'date-time' },
-                user: { type: :object, nullable: true, additionalProperties: true },
-                game: { type: :object, nullable: true, additionalProperties: true }
-              }
-            }
-          },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Nomination' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -65,22 +50,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
 
       response '200', 'Non-RPG GOTM nominations' do
         schema type: :object, properties: {
-          data: {
-            type: :array,
-            items: {
-              type: :object,
-              properties: {
-                nomination_id: { type: :integer },
-                round_number: { type: :integer },
-                user_id: { type: :string },
-                gamedb_game_id: { type: :integer, nullable: true },
-                reason: { type: :string, nullable: true },
-                nominated_at: { type: :string, format: 'date-time' },
-                user: { type: :object, nullable: true, additionalProperties: true },
-                game: { type: :object, nullable: true, additionalProperties: true }
-              }
-            }
-          },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Nomination' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end

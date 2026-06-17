@@ -19,7 +19,7 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
 
       response '200', 'Non-Retro GOTM entries' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/NrGotmEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -39,7 +39,7 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
       parameter name: :include, in: :query, schema: { type: :string, example: 'game' }, required: false
 
       response '200', 'Non-Retro GOTM entry' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/NrGotmEntry' } }
       end
 
       response '404', 'not found' do

@@ -3,6 +3,13 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/journal', type: :request do
+  # The client-writable UserGameJournalEntry columns. `user_id` comes from the path.
+  writable = {
+    gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create.' },
+    entry_body: { type: :string, description: 'The entry text. Required on create.' },
+    entry_title: { type: :string, nullable: true, description: 'Optional entry title.' }
+  }
+
   path '/api/v1/users/{user_id}/journal' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
@@ -15,17 +22,7 @@ RSpec.describe 'api/v1/journal', type: :request do
 
       response '200', 'journaled games list' do
         schema type: :object, properties: {
-          data: {
-            type: :array,
-            items: {
-              type: :object,
-              properties: {
-                game: { type: :object, additionalProperties: true },
-                entry_count: { type: :integer },
-                last_entry_at: { type: :string, format: 'date-time', nullable: true }
-              }
-            }
-          },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/JournaledGame' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -43,18 +40,12 @@ RSpec.describe 'api/v1/journal', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            description: 'UserGameJournalEntry attributes (`gamedb_game_id`, `entry_body`, optional `entry_title`).'
-          }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id entry_body] } },
         required: %w[data]
       }
 
       response '201', 'entry created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/JournalEntryGame' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -88,7 +79,7 @@ RSpec.describe 'api/v1/journal', type: :request do
 
       response '200', 'journal entries list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/JournalEntryUser' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -107,7 +98,7 @@ RSpec.describe 'api/v1/journal', type: :request do
       produces 'application/json'
 
       response '200', 'entry detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/JournalEntryGame' } }
       end
 
       response '404', 'not found' do
@@ -127,12 +118,12 @@ RSpec.describe 'api/v1/journal', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/JournalEntryGame' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -154,16 +145,17 @@ RSpec.describe 'api/v1/journal', type: :request do
 
     put 'Replace a journal entry (alias)' do
       tags 'Journal'
+      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/JournalEntryGame' } }
       end
 
       response '401', 'unauthenticated' do

@@ -3,11 +3,22 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/user_socials', type: :request do
+  # The client-writable UserSocial columns. NOTE the FK alias: the column is
+  # `platform_id` (belongs_to :social_platform, foreign_key: :platform_id), NOT
+  # `social_platform_id`; and the label column is `display_text`, NOT `handle`.
+  # `user_id` is taken from the path.
+  writable = {
+    platform_id: { type: :integer, description: 'The social platform (social_platforms.id). Required on create.' },
+    url: { type: :string, nullable: true, description: 'Profile URL. Optional; unique per (user, platform) when present (blank URLs skip the check).' },
+    display_text: { type: :string, nullable: true, description: 'Optional free-form label; may repeat.' }
+  }
+
   path '/api/v1/users/{user_id}/socials' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
     get 'List a user\'s linked socials' do
       tags 'User Socials'
+      description 'Open to any authenticated caller. Each row embeds its `social_platform`.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -18,7 +29,7 @@ RSpec.describe 'api/v1/user_socials', type: :request do
 
       response '200', 'user socials' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/UserSocial' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -33,25 +44,18 @@ RSpec.describe 'api/v1/user_socials', type: :request do
       description 'Owner-only. `platform_id` is required. `url` is optional but, when ' \
                   'present, must be unique per (user, platform) — duplicate accounts are ' \
                   'rejected with 422. `display_text` is an optional free-form label and may ' \
-                  'repeat freely (generic labels like "Profile Link" no longer collide).'
+                  'repeat freely.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            description: 'UserSocial attributes: `platform_id` (required), `url` (optional, ' \
-                         'deduped per user+platform), `display_text` (optional label).'
-          }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[platform_id] } },
         required: %w[data]
       }
 
       response '201', 'social link created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/UserSocial' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -76,7 +80,7 @@ RSpec.describe 'api/v1/user_socials', type: :request do
       produces 'application/json'
 
       response '200', 'user social detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/UserSocial' } }
       end
 
       response '404', 'not found' do
@@ -90,26 +94,19 @@ RSpec.describe 'api/v1/user_socials', type: :request do
 
     patch 'Update a user social link' do
       tags 'User Socials'
-      description 'Owner-only. `url` (optional) stays unique per (user, platform); ' \
+      description 'Owner-only. Partial update. `url` (optional) stays unique per (user, platform); ' \
                   '`display_text` is an optional free-form label and may repeat.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            description: 'UserSocial attributes: `platform_id`, `url` (optional, deduped ' \
-                         'per user+platform), `display_text` (optional label).'
-          }
-        },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/UserSocial' } }
       end
 
       response '403', 'forbidden — caller is not the owner' do
@@ -127,16 +124,17 @@ RSpec.describe 'api/v1/user_socials', type: :request do
 
     put 'Replace a user social link (alias)' do
       tags 'User Socials'
+      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/UserSocial' } }
       end
 
       response '401', 'unauthenticated' do

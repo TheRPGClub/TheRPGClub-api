@@ -17,7 +17,7 @@ RSpec.describe 'api/v1/user_activity_icons', type: :request do
 
       response '200', 'activity icons' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/UserActivityIcon' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end

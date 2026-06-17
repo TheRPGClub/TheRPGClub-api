@@ -13,14 +13,38 @@ RSpec.describe 'api/v1/sessions', type: :request do
         schema type: :object, properties: {
           principal: {
             type: :object,
-            description: 'Auth::Principal payload — shape varies between Discord-user and service principals.',
-            additionalProperties: true
+            description: 'The authenticated principal (Auth::Principal#as_json). `kind` is ' \
+                         '"discord_user" or "service"; the name/avatar fields are null for a ' \
+                         'service principal.',
+            properties: {
+              kind: { type: :string, example: 'discord_user' },
+              id: { type: :string },
+              discord_id: { type: :string, nullable: true },
+              username: { type: :string, nullable: true },
+              global_name: { type: :string, nullable: true },
+              avatar: { type: :string, nullable: true },
+              service: { type: :boolean },
+              dev: { type: :boolean },
+              longstanding: { type: :boolean }
+            },
+            required: %w[kind id service dev longstanding]
           },
           membership: {
             type: :object,
             nullable: true,
-            description: 'RPG Club membership info merged with dev/longstanding role flags.',
-            additionalProperties: true
+            description: 'RPG Club membership flags (RpgClubUser#membership) merged with the ' \
+                         'caller\'s dev/longstanding flags. Null for a service principal or an ' \
+                         'unknown user.',
+            properties: {
+              admin: { type: :boolean },
+              moderator: { type: :boolean },
+              regular: { type: :boolean },
+              member: { type: :boolean },
+              newcomer: { type: :boolean },
+              active: { type: :boolean },
+              dev: { type: :boolean },
+              longstanding: { type: :boolean }
+            }
           }
         }, required: %w[principal]
       end

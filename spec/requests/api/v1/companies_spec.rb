@@ -19,7 +19,7 @@ RSpec.describe 'api/v1/companies', type: :request do
 
       response '200', 'companies list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Company' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -38,7 +38,7 @@ RSpec.describe 'api/v1/companies', type: :request do
       produces 'application/json'
 
       response '200', 'company' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Company' } }
       end
 
       response '404', 'company not found' do

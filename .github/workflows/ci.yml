@@ -98,3 +98,15 @@ jobs:
       - name: Run RSpec test suite
         run: bundle exec rspec
 
+      # Drift guard (#78): regenerate the OpenAPI doc from the rswag request
+      # specs and fail if it differs from what's committed. This makes "specs
+      # changed but swagger.yaml wasn't regenerated" impossible to merge —
+      # catching both renamed/wrong fields and whole endpoints absent from the
+      # published contract. Run `rake rswag:specs:swaggerize` locally and commit
+      # the result to fix a failure here.
+      - name: Verify swagger.yaml is in sync with the rswag specs
+        run: |
+          bundle exec rake rswag:specs:swaggerize
+          git diff --exit-code swagger/v1/swagger.yaml \
+            || (echo "::error::swagger/v1/swagger.yaml is out of sync — run 'bundle exec rake rswag:specs:swaggerize' and commit the result." && exit 1)
+

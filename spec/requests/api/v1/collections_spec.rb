@@ -3,11 +3,22 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/collections', type: :request do
+  # The client-writable UserGameCollection columns. `user_id` is taken from the
+  # path; `entry_id`/timestamps are server-managed.
+  writable = {
+    gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create.' },
+    ownership_type: { type: :string, description: 'How the game is owned (e.g. "physical", "digital"). Required on create.' },
+    platform_id: { type: :integer, nullable: true, description: 'Optional platform association.' },
+    note: { type: :string, nullable: true, description: 'Optional free-text note.' },
+    is_shared: { type: :boolean, description: 'Whether the entry is shared. Optional; defaults to false.' }
+  }
+
   path '/api/v1/users/{user_id}/collections' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true, description: 'Owning RpgClubUser id.'
 
     get 'List a user\'s collections' do
       tags 'Collections'
+      description 'Open to any authenticated caller.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -18,7 +29,7 @@ RSpec.describe 'api/v1/collections', type: :request do
 
       response '200', 'collections list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/CollectionEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -30,24 +41,23 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     post 'Create a collection entry' do
       tags 'Collections'
-      description 'Adds a game to the user\'s collection. The caller must be the user (or a service principal).'
+      description 'Adds a game to the user\'s collection. `gamedb_game_id` and `ownership_type` ' \
+                  'are required. NOTE: unlike the other user-game lists (backlog/favorites/…), ' \
+                  'collection writes are currently NOT owner-restricted — any authenticated caller ' \
+                  'may write to any `user_id` (tracked by the controller-hardening companion issue). ' \
+                  'The created entry is always scoped to the path `user_id`. Returns the full record ' \
+                  '(all columns, including `is_shared` and timestamps).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: {
-          data: { type: :object, additionalProperties: true, description: 'UserGameCollection attributes (e.g. `gamedb_game_id`, `platform_id`, `notes`).' }
-        },
+        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id ownership_type] } },
         required: %w[data]
       }
 
       response '201', 'collection entry created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
-      end
-
-      response '403', 'forbidden — caller is not the owner' do
-        schema '$ref' => '#/components/schemas/Error'
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionEntryDetail' } }
       end
 
       response '422', 'validation failed' do
@@ -69,10 +79,11 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     get 'Show a collection entry' do
       tags 'Collections'
+      description 'Returns the full record (all columns).'
       produces 'application/json'
 
       response '200', 'collection entry' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionEntryDetail' } }
       end
 
       response '404', 'not found' do
@@ -86,17 +97,19 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     patch 'Update a collection entry' do
       tags 'Collections'
+      description 'Partial update (any subset of the writable columns). Not owner-restricted — see ' \
+                  'the create note.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionEntryDetail' } }
       end
 
       response '404', 'not found' do
@@ -114,16 +127,17 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     put 'Replace a collection entry (alias)' do
       tags 'Collections'
+      description 'Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionEntryDetail' } }
       end
 
       response '401', 'unauthenticated' do
@@ -133,6 +147,7 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     delete 'Delete a collection entry' do
       tags 'Collections'
+      description 'Not owner-restricted — see the create note.'
       produces 'application/json'
 
       response '200', 'deleted' do

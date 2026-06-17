@@ -3,9 +3,21 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/starboard', type: :request do
+  # The client-writable RpgClubStarboardEntry columns. `message_id` is the
+  # client-supplied Discord message id (the primary key); `created_at` is
+  # server-managed.
+  writable = {
+    message_id: { type: :string, description: 'Discord message id (primary key). Required on create.' },
+    channel_id: { type: :string, description: 'Channel the message is in. Required on create.' },
+    starboard_message_id: { type: :string, description: 'Id of the bot\'s mirrored starboard message. Required on create.' },
+    author_id: { type: :string, description: 'Discord id of the message author. Required on create.' },
+    star_count: { type: :integer, description: 'Number of star reactions. Optional; defaults to 0.' }
+  }
+
   path '/api/v1/starboard' do
     get 'List starboard entries' do
       tags 'Starboard'
+      description 'Open to any authenticated caller. Newest first.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -16,7 +28,7 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
       response '200', 'starboard entries' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/StarboardEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -28,20 +40,22 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
     post 'Create a starboard entry' do
       tags 'Starboard'
-      description 'Records a starred Discord message. Sent by the bot service principal.'
+      description 'Records a starred Discord message (typically sent by the bot service principal). ' \
+                  '`message_id`, `channel_id`, `starboard_message_id` and `author_id` are required; ' \
+                  '`star_count` is optional (defaults to 0).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
         properties: {
-          data: { type: :object, additionalProperties: true, description: 'RpgClubStarboardEntry attributes (`message_id`, `channel_id`, `author_id`, `content`).' }
+          data: { type: :object, properties: writable, required: %w[message_id channel_id starboard_message_id author_id] }
         },
         required: %w[data]
       }
 
       response '201', 'entry created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/StarboardEntry' } }
       end
 
       response '422', 'validation failed' do
@@ -63,7 +77,7 @@ RSpec.describe 'api/v1/starboard', type: :request do
       produces 'application/json'
 
       response '200', 'entry detail' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/StarboardEntry' } }
       end
 
       response '404', 'not found' do
@@ -77,17 +91,18 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
     patch 'Update a starboard entry' do
       tags 'Starboard'
+      description 'Partial update (any subset of the writable columns) — typically bumps `star_count`.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } },
+        properties: { data: { type: :object, properties: writable } },
         required: %w[data]
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/StarboardEntry' } }
       end
 
       response '404', 'not found' do
@@ -105,16 +120,17 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
     put 'Replace a starboard entry (alias)' do
       tags 'Starboard'
+      description 'Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, additionalProperties: true } }
+        properties: { data: { type: :object, properties: writable } }
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/StarboardEntry' } }
       end
 
       response '401', 'unauthenticated' do

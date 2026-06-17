@@ -13,7 +13,7 @@ RSpec.describe 'api/v1/game_images', type: :request do
 
       response '200', 'images list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } }
+          data: { type: :array, items: { '$ref' => '#/components/schemas/GameImage' } }
         }
       end
 
@@ -44,7 +44,7 @@ RSpec.describe 'api/v1/game_images', type: :request do
       }
 
       response '201', 'image created' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameImage' } }
       end
 
       response '403', 'forbidden — admin or service required' do
@@ -90,7 +90,7 @@ RSpec.describe 'api/v1/game_images', type: :request do
       }
 
       response '200', 'image updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameImage' } }
       end
 
       response '403', 'forbidden — admin or service required' do
@@ -130,7 +130,7 @@ RSpec.describe 'api/v1/game_images', type: :request do
       }
 
       response '200', 'image updated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameImage' } }
       end
 
       response '401', 'unauthenticated' do

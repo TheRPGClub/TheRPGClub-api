@@ -22,29 +22,7 @@ RSpec.describe 'api/v1/game_keys', type: :request do
 
       response '200', 'available game keys' do
         schema type: :object, properties: {
-          data: {
-            type: :array,
-            items: {
-              type: :object,
-              properties: {
-                key_id: { type: :integer },
-                game_title: { type: :string },
-                platform: { type: :string },
-                gamedb_game_id: { type: :integer, nullable: true },
-                donor_user_id: { type: :string },
-                claimed_by_user_id: { type: :string, nullable: true },
-                claimed_at: { type: :string, format: 'date-time', nullable: true },
-                donor_notify_on_claim: { type: :boolean },
-                created_at: { type: :string, format: 'date-time' },
-                updated_at: { type: :string, format: 'date-time' },
-                game: {
-                  type: :object, nullable: true, additionalProperties: true,
-                  description: 'The linked GamedbGame (title + cover/art/logo URLs), or null when the ' \
-                               'key only carries a free-text game_title.'
-                }
-              }
-            }
-          },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/GameKey' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -68,15 +46,15 @@ RSpec.describe 'api/v1/game_keys', type: :request do
         properties: {
           data: {
             type: :object,
-            additionalProperties: true,
             description: 'Key attributes. Required: `platform`, `key_value`, `donor_user_id`, plus ' \
                          '`game_title` OR `gamedb_game_id` (when only `gamedb_game_id` is given the ' \
-                         'title is backfilled from that game). Optional: `donor_notify_on_claim`.',
+                         'title is backfilled from that game). Optional: `donor_notify_on_claim`. ' \
+                         'The PK/claim/timestamp columns are server-managed and ignored if sent.',
             properties: {
-              game_title: { type: :string },
-              gamedb_game_id: { type: :integer, description: 'Links the key to a GamedbGame for the embedded game card.' },
+              game_title: { type: :string, description: 'Display label; backfilled from the linked game when omitted.' },
+              gamedb_game_id: { type: :integer, nullable: true, description: 'Links the key to a GamedbGame for the embedded game card.' },
               platform: { type: :string },
-              key_value: { type: :string },
+              key_value: { type: :string, description: 'The key secret.' },
               donor_user_id: { type: :string },
               donor_notify_on_claim: { type: :boolean }
             },
@@ -87,7 +65,7 @@ RSpec.describe 'api/v1/game_keys', type: :request do
       }
 
       response '201', 'key donated' do
-        schema type: :object, properties: { data: { type: :object, additionalProperties: true } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameKey' } }
       end
 
       response '403', 'forbidden — caller is not the named donor' do
@@ -125,7 +103,6 @@ RSpec.describe 'api/v1/game_keys', type: :request do
         properties: {
           data: {
             type: :object,
-            additionalProperties: true,
             description: 'Service-token only: `claimed_by_user_id` names the Discord user ' \
                          'the claim is recorded for. Ignored for Discord callers (they claim ' \
                          'as themselves).',
@@ -135,25 +112,9 @@ RSpec.describe 'api/v1/game_keys', type: :request do
       }
 
       response '200', 'claimed — includes the revealed `key_value`' do
-        schema type: :object, properties: {
-          data: {
-            type: :object,
-            additionalProperties: true,
-            description: 'The claimed key. Unlike every other response, this includes `key_value`.',
-            properties: {
-              key_id: { type: :integer },
-              game_title: { type: :string },
-              platform: { type: :string },
-              gamedb_game_id: { type: :integer, nullable: true },
-              key_value: { type: :string },
-              donor_user_id: { type: :string },
-              claimed_by_user_id: { type: :string },
-              claimed_at: { type: :string, format: 'date-time' },
-              donor_notify_on_claim: { type: :boolean },
-              game: { type: :object, nullable: true, additionalProperties: true }
-            }
-          }
-        }
+        # GameKey, with the otherwise-omitted `key_value` secret populated (the
+        # claim response is the only place the secret is returned).
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameKey' } }
       end
 
       response '409', 'already claimed' do
@@ -189,7 +150,7 @@ RSpec.describe 'api/v1/game_keys', type: :request do
 
       response '200', 'donated game keys' do
         schema type: :object, properties: {
-          data: { type: :array, items: { type: :object, additionalProperties: true } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/GameKey' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
