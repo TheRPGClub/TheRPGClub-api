@@ -11,15 +11,29 @@ module Api
 
       SEARCH_DEFAULT_LIMIT = 25
 
+      # IGDB's multiquery bundles at most 10 sub-queries, so a multi-title search
+      # may name at most this many titles in one request.
+      MAX_QUERY_TERMS = 10
+
       # GET /api/v1/igdb/search?q=<title>  (or ?igdb_id=1234 / ?igdb_id=1,2,3)
       #
       # Two modes, selected by which param the caller passes: `igdb_id` does a
       # direct id lookup (the bot resolves ids it already has), otherwise `q`
-      # runs a fuzzy title search (the web). Both return the same candidate
-      # shape, each tagged with `already_imported` (a gamedb_games row with that
-      # igdb_id exists) so the UI can offer "view" vs "import". Neither a blank
-      # `q` nor an empty `igdb_id` hits IGDB — both yield an empty list.
+      # runs a fuzzy title search (the web). Either accepts several values at
+      # once — `igdb_id=1,2,3` or repeated `q[]=zelda&q[]=mario` (≤10, IGDB's
+      # multiquery cap) — to seed a bulk import; multi-title hits fan out through
+      # one IGDB multiquery and each candidate carries the `matched_query` it
+      # came from. Every candidate is tagged with `already_imported` (a
+      # gamedb_games row with that igdb_id exists) so the UI can offer "view" vs
+      # "import". A blank `q` and an empty `igdb_id` both yield an empty list.
       def search
+        if query_terms.size > MAX_QUERY_TERMS
+          return render json: {
+            error: "too_many_queries",
+            message: "Search at most #{MAX_QUERY_TERMS} titles at once."
+          }, status: :unprocessable_entity
+        end
+
         results = igdb_candidates
         imported_ids = GamedbGame.where(igdb_id: results.map { |result| result[:igdb_id] }).pluck(:igdb_id).to_set
 
@@ -38,8 +52,10 @@ module Api
         client = Igdb::Client.new
         if igdb_ids.present?
           client.search_by_ids(igdb_ids, limit: search_limit(default: igdb_ids.size))
+        elsif query_terms.many?
+          client.multi_search(query_terms, limit: search_limit(default: SEARCH_DEFAULT_LIMIT))
         else
-          client.search(params[:q], limit: search_limit(default: SEARCH_DEFAULT_LIMIT))
+          client.search(query_terms.first, limit: search_limit(default: SEARCH_DEFAULT_LIMIT))
         end
       end
 
@@ -50,6 +66,13 @@ module Api
         @igdb_ids ||= Array(params[:igdb_id])
           .flat_map { |value| value.to_s.split(",") }
           .filter_map { |token| Integer(token.strip, exception: false) }
+      end
+
+      # Title(s) to search, from a single `?q=zelda` or repeated
+      # `?q[]=zelda&q[]=mario`. Not comma-split (game titles contain commas);
+      # blank terms are dropped. More than one term fans out via #multi_search.
+      def query_terms
+        @query_terms ||= Array(params[:q]).map { |value| value.to_s.strip }.reject(&:blank?)
       end
 
       def search_limit(default:)
