@@ -15,6 +15,11 @@ module Igdb
     # Upper bound on the candidates a single search proxy call may return.
     SEARCH_LIMIT = 50
 
+    # Lightweight candidate field list shared by the search paths (#search,
+    # #multi_search, #search_by_ids) — enough for a caller to pick an igdb_id to
+    # import, without the taxonomy/release detail that #game pulls.
+    SEARCH_FIELDS = "id,name,slug,summary,url,total_rating,first_release_date,cover.image_id"
+
     def self.image_url(image_id, size:, extension: "jpg")
       "#{IMAGE_BASE_URL}/t_#{size}/#{image_id}.#{extension}"
     end
@@ -31,8 +36,56 @@ module Igdb
       payload = post_igdb(
         "games",
         <<~QUERY.squish
-          fields id,name,slug,summary,url,total_rating,first_release_date,cover.image_id;
+          fields #{SEARCH_FIELDS};
           search "#{escape_search(term)}";
+          limit #{capped};
+        QUERY
+      )
+
+      Array(payload).map { |game| search_result(game) }
+    end
+
+    # Search several titles in one IGDB multiquery — a single HTTP round-trip
+    # (so it costs the shared credential one request, not one per title).
+    # Returns the same candidate hashes as #search, deduped by igdb_id across
+    # terms (the first term that matched a game keeps it) and each tagged with
+    # the `matched_query` it came from, so a bulk importer can resolve many
+    # titles at once. Blank terms are dropped; [] for none. The caller must keep
+    # the term count within IGDB's 10-query multiquery cap.
+    def multi_search(queries, limit: 25)
+      terms = Array(queries).map { |query| query.to_s.strip }.reject(&:blank?)
+      return [] if terms.empty?
+
+      capped = limit.to_i.clamp(1, SEARCH_LIMIT)
+      body = terms.each_with_index.map do |term, index|
+        <<~QUERY.squish
+          query games "q#{index}" {
+            fields #{SEARCH_FIELDS};
+            search "#{escape_search(term)}";
+            limit #{capped};
+          };
+        QUERY
+      end.join("\n")
+
+      collect_multi_results(post_igdb("multiquery", body), terms)
+    end
+
+    # Look specific IGDB games up by `id`, returning the same lightweight
+    # candidate hashes as #search. Lets a caller resolve igdb_ids it already has
+    # (the bot) instead of a fuzzy title match (the web). Ids are deduped;
+    # unknown ids are simply absent from the result. Returns [] for no ids. Like
+    # #search this never touches the database — the controller layers on
+    # `already_imported`.
+    def search_by_ids(ids, limit: 25)
+      wanted = Array(ids).map { |id| Integer(id) }.uniq
+      return [] if wanted.empty?
+
+      capped = limit.to_i.clamp(1, SEARCH_LIMIT)
+      payload = post_igdb(
+        "games",
+        <<~QUERY.squish
+          fields #{SEARCH_FIELDS};
+          where id = (#{wanted.join(',')});
           limit #{capped};
         QUERY
       )
@@ -95,6 +148,25 @@ module Igdb
     end
 
     private
+
+    # Flatten an IGDB multiquery payload (an array of `{ "name", "result" }`)
+    # back into one candidate list in the original term order, tagging each with
+    # the term that found it and dropping any igdb_id an earlier term already
+    # claimed (so an overlapping title doesn't surface the same game twice).
+    def collect_multi_results(payload, terms)
+      by_name = Array(payload).index_by { |entry| entry["name"] }
+      seen = Set.new
+
+      terms.each_with_index.flat_map do |term, index|
+        Array(by_name["q#{index}"]&.fetch("result", nil)).filter_map do |game|
+          candidate = search_result(game)
+          next if seen.include?(candidate[:igdb_id])
+
+          seen << candidate[:igdb_id]
+          candidate.merge(matched_query: term)
+        end
+      end
+    end
 
     def search_result(game)
       cover_image_id = game.dig("cover", "image_id").presence
