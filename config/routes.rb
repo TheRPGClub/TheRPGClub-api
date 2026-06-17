@@ -117,7 +117,9 @@ Rails.application.routes.draw do
       resources :todos, only: %i[index show create update destroy] do
         collection { get "summary" }
       end
-      resources :rss_feeds, only: %i[index show create update destroy]
+      resources :rss_feeds, only: %i[index show create update destroy] do
+        resources :items, only: %i[index create], controller: "rss_feed_items"
+      end
       resources :public_reminders, only: %i[index show create update destroy] do
         collection { get "due" }
       end

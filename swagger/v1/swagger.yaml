@@ -5327,6 +5327,119 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/rss_feeds/{rss_feed_id}/items":
+    parameters:
+    - name: rss_feed_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubRssFeed id (feed_id).
+    get:
+      summary: List seen item hashes for a feed
+      tags:
+      - RSS Feeds
+      description: |-
+        Returns the subset of the supplied candidate hashes that have already been
+        recorded as seen for this feed, so the bot can dedupe RSS items without
+        fetching every stored hash. The candidate list may be supplied as repeated
+        `?hashes[]=` query params or, for large lists, as a JSON request body
+        `{ "hashes": ["..."] }`. An empty or absent list returns `{ "data": [] }`.
+      parameters:
+      - name: hashes[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+        description: Candidate item_id_hash values to check.
+      responses:
+        '200':
+          description: seen hashes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: string
+                    description: item_id_hash values already seen for this feed.
+        '404':
+          description: feed not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Bulk-mark items as seen
+      tags:
+      - RSS Feeds
+      description: |-
+        Inserts the supplied items for this feed with insert-or-ignore semantics on
+        the (feed_id, item_id_hash) primary key; entries whose hash is already stored
+        are skipped. Returns the number of rows actually inserted.
+      parameters: []
+      responses:
+        '201':
+          description: items marked seen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                    description: Rows actually inserted (duplicates skipped).
+        '404':
+          description: feed not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  description: Items to mark seen.
+                  items:
+                    type: object
+                    properties:
+                      item_id_hash:
+                        type: string
+                      title:
+                        type: string
+                        nullable: true
+                      url:
+                        type: string
+                        nullable: true
+                      published_at:
+                        type: string
+                        format: date-time
+                        nullable: true
+                    required:
+                    - item_id_hash
+              required:
+              - data
+        required: true
   "/api/v1/rss_feeds":
     get:
       summary: List RSS feeds

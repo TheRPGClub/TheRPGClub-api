@@ -1267,10 +1267,10 @@ CREATE TABLE public.rpg_club_raw_modal_sessions (
 CREATE TABLE public.rpg_club_rss_feed_items (
     feed_id bigint NOT NULL,
     item_id_hash character varying(128) NOT NULL,
-    item_guid character varying(512),
-    item_link character varying(512),
+    url character varying(2048),
     published_at timestamp(6) with time zone,
-    first_seen_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL
+    created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
+    title character varying
 );
 
 
@@ -4187,6 +4187,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260617000100'),
 ('20260611000300'),
 ('20260611000200'),
 ('20260611000100'),
