@@ -313,14 +313,18 @@ module OpenapiSchemas
         created_at: ts, updated_at: ts
       ),
       # GameKeyResource. `key_value` (the secret) is omitted from list responses;
-      # it is rendered only in the response to a successful claim.
+      # it is rendered only in the response to a successful claim and to the
+      # restricted single-key GET.
       GameKey: obj(
         key_id: int, game_title: str, platform: str, gamedb_game_id: int(nullable: true),
         donor_user_id: str, claimed_by_user_id: str(nullable: true), claimed_at: ts(nullable: true),
         donor_notify_on_claim: bool, created_at: ts, updated_at: ts,
-        key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim."),
+        key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim and to GET /api/v1/game_keys/{id}."),
         game: ref("GameSummary", nullable: true)
       ),
+      # GiveawaySettingsController. The donor's notify-on-claim preference,
+      # derived from rpg_club_users.donor_notify_on_claim.
+      GiveawaySettings: obj(user_id: str, notify_on_claim: bool),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,
         created_at: ts, created_by: str(nullable: true)
