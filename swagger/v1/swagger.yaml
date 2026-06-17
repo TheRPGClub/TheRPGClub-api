@@ -4826,16 +4826,16 @@ paths:
       summary: Search IGDB for games
       tags:
       - IGDB
-      description: 'Admin/service-only. Returns IGDB game candidates so a caller
-        can pick the right `igdb_id` to import via `POST /api/v1/games`. Two modes,
-        selected by param: pass `igdb_id` to look games up directly by id (single
-        or comma-separated), or `q` for a fuzzy title search. Either accepts several
-        values to seed a bulk import — `igdb_id=1,2,3` or repeated `q[]=zelda&q[]=mario`
-        (max 10, IGDB''s multiquery cap). Multi-title results are deduped by `igdb_id`
-        and each carries `matched_query` (the searched title it matched). Every candidate
-        carries `already_imported` (whether a local game with that `igdb_id` already
-        exists) so the UI can offer "view" vs "import". An empty `igdb_id` and a blank
-        `q` both return an empty list.'
+      description: 'Admin/service-only. Returns IGDB game candidates so a caller can
+        pick the right `igdb_id` to import via `POST /api/v1/games`. Two modes, selected
+        by param: pass `igdb_id` to look games up directly by id (single or comma-separated),
+        or `q` for a fuzzy title search. Either accepts several values to seed a bulk
+        import — `igdb_id=1,2,3` or repeated `q[]=zelda&q[]=mario` (max 10, IGDB''s
+        multiquery cap). Multi-title results are deduped by `igdb_id` and each carries
+        `matched_query` (the searched title it matched). Every candidate carries `already_imported`
+        (whether a local game with that `igdb_id` already exists) so the UI can offer
+        "view" vs "import". An empty `igdb_id` and a blank `q` both return an empty
+        list.'
       parameters:
       - name: q
         in: query
