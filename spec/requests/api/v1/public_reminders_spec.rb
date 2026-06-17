@@ -55,6 +55,30 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
     end
   end
 
+  path '/api/v1/public_reminders/due' do
+    get 'List due public reminders' do
+      tags 'Public Reminders'
+      description 'Service-only poll endpoint. Returns enabled reminders whose `due_at` has passed ' \
+                  '(`<= now`), ordered by `due_at` ascending. Unpaginated — every due reminder is ' \
+                  'returned so the bot can fire them all in one poll cycle.'
+      produces 'application/json'
+
+      response '200', 'due reminders' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { type: :object, additionalProperties: true } }
+        }
+      end
+
+      response '403', 'forbidden — caller is not the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/public_reminders/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubPublicReminder id.'
 

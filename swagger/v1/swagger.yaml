@@ -4221,6 +4221,39 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/public_reminders/due":
+    get:
+      summary: List due public reminders
+      tags:
+      - Public Reminders
+      description: Service-only poll endpoint. Returns enabled reminders whose `due_at`
+        has passed (`<= now`), ordered by `due_at` ascending. Unpaginated — every
+        due reminder is returned so the bot can fire them all in one poll cycle.
+      responses:
+        '200':
+          description: due reminders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/public_reminders/{id}":
     parameters:
     - name: id
