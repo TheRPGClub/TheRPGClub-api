@@ -1220,7 +1220,7 @@ components:
           type: string
           nullable: true
           description: The key secret. Present only in the response to a successful
-            claim.
+            claim and to GET /api/v1/game_keys/{id}.
         game:
           allOf:
           - "$ref": "#/components/schemas/GameSummary"
@@ -1233,6 +1233,16 @@ components:
       - donor_notify_on_claim
       - created_at
       - updated_at
+    GiveawaySettings:
+      type: object
+      properties:
+        user_id:
+          type: string
+        notify_on_claim:
+          type: boolean
+      required:
+      - user_id
+      - notify_on_claim
     SearchSynonym:
       type: object
       properties:
@@ -3674,6 +3684,88 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/game_keys/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubGameKey key_id.
+    get:
+      summary: Get a single game key
+      tags:
+      - Game Keys
+      description: Returns one key with its secret `key_value` revealed. Because the
+        secret is exposed, access is restricted to the key's donor, an admin, or the
+        bot service token — the listing endpoints never expose it, so a key cannot
+        be read out-of-band to bypass the claim flow.
+      responses:
+        '200':
+          description: the game key, with `key_value` revealed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameKey"
+        '403':
+          description: forbidden — caller is not the donor, an admin, or the service
+            token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Revoke a game key
+      tags:
+      - Game Keys
+      description: Revokes (deletes) a key. Restricted to the original donor, an admin,
+        or the bot service token.
+      responses:
+        '200':
+          description: key revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                required:
+                - deleted
+        '403':
+          description: forbidden — caller is not the donor, an admin, or the service
+            token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/game_keys/{id}/claim":
     parameters:
     - name: id
@@ -4688,6 +4780,96 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/giveaway_settings":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the donor.
+    get:
+      summary: Show a user's giveaway notification preference
+      tags:
+      - Game Keys
+      description: 'The donor''s notify-on-claim preference: whether they want to
+        be notified when one of their donated keys is claimed. Defaults to `false`
+        for a user with no stored preference.'
+      responses:
+        '200':
+          description: giveaway settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GiveawaySettings"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a user's giveaway notification preference
+      tags:
+      - Game Keys
+      description: 'Owner-only: a Discord caller may only update their own preference;
+        the bot service token may update on anyone''s behalf. Creates the user record
+        if it does not yet exist.'
+      parameters: []
+      responses:
+        '200':
+          description: updated giveaway settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GiveawaySettings"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: missing `notify_on_claim`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    notify_on_claim:
+                      type: boolean
+                      description: Notify the donor when a donated key is claimed.
+                  required:
+                  - notify_on_claim
+              required:
+              - data
+        required: true
   "/api/v1/gotm_entries":
     get:
       summary: List Game of the Month entries

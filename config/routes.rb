@@ -72,6 +72,8 @@ Rails.application.routes.draw do
           get "presence_prompts", to: "presence_prompts#index"
           get "presence_prompt_opts", to: "presence_prompt_opts#show"
           put "presence_prompt_opts", to: "presence_prompt_opts#update"
+          get "giveaway_settings", to: "giveaway_settings#show"
+          patch "giveaway_settings", to: "giveaway_settings#update"
           get "game_keys", to: "game_keys#user_index"
           get "activity_icons", to: "user_activity_icons#index"
           get "channel_counts", to: "user_channel_counts#index"
@@ -87,7 +89,7 @@ Rails.application.routes.draw do
       resources :user_socials, only: %i[show update destroy]
       resources :journal_entries, only: %i[show update destroy], controller: "journal"
       resources :reminders, only: %i[show update destroy]
-      resources :game_keys, only: %i[index create] do
+      resources :game_keys, only: %i[index create show destroy] do
         member do
           post "claim", to: "game_keys#claim"
         end

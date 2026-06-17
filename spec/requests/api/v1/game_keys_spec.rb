@@ -86,6 +86,59 @@ RSpec.describe 'api/v1/game_keys', type: :request do
     end
   end
 
+  path '/api/v1/game_keys/{id}' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubGameKey key_id.'
+
+    get 'Get a single game key' do
+      tags 'Game Keys'
+      description 'Returns one key with its secret `key_value` revealed. Because ' \
+                  'the secret is exposed, access is restricted to the key\'s ' \
+                  'donor, an admin, or the bot service token — the listing ' \
+                  'endpoints never expose it, so a key cannot be read ' \
+                  'out-of-band to bypass the claim flow.'
+      produces 'application/json'
+
+      response '200', 'the game key, with `key_value` revealed' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameKey' } }
+      end
+
+      response '403', 'forbidden — caller is not the donor, an admin, or the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    delete 'Revoke a game key' do
+      tags 'Game Keys'
+      description 'Revokes (deletes) a key. Restricted to the original donor, an ' \
+                  'admin, or the bot service token.'
+      produces 'application/json'
+
+      response '200', 'key revoked' do
+        schema type: :object, properties: { deleted: { type: :boolean } }, required: %w[deleted]
+      end
+
+      response '403', 'forbidden — caller is not the donor, an admin, or the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/game_keys/{id}/claim' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubGameKey key_id.'
 

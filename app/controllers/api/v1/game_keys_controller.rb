@@ -11,6 +11,7 @@ module Api
     # claims on the same key cannot both win.
     class GameKeysController < ApplicationController
       before_action :require_owner!, only: :create
+      before_action :require_donor_or_admin!, only: %i[show destroy]
 
       # GET /api/v1/game_keys
       # The available (unclaimed) keys, ordered like the bot's listing
@@ -43,6 +44,23 @@ module Api
         render json: { data: GameKeyResource.new(record).serializable_hash }, status: :created
       end
 
+      # GET /api/v1/game_keys/:id
+      # A single key with its secret `key_value` revealed. Unlike the listing
+      # endpoints (which always withhold the secret), this exposes it — so it is
+      # restricted to the key's donor, an admin, or the service token, ensuring a
+      # key can't be read out-of-band to bypass the claim flow.
+      def show
+        render json: { data: GameKeyResource.new(game_key, params: { reveal_key: true }).serializable_hash }
+      end
+
+      # DELETE /api/v1/game_keys/:id
+      # Revoke (delete) a key. Authorized for the original donor, an admin, or
+      # the service token (see require_donor_or_admin!).
+      def destroy
+        game_key.destroy!
+        render json: { deleted: true }
+      end
+
       # POST /api/v1/game_keys/:id/claim
       # Atomically claim an unclaimed key and reveal its `key_value` to the
       # claimer. A Discord caller claims as themselves; the service token claims
@@ -67,6 +85,31 @@ module Api
       end
 
       private
+
+      # The key targeted by the member routes (show/destroy), with its linked
+      # game and images preloaded for the embedded card. Memoized so the
+      # authorization before_action and the action share a single lookup. A
+      # missing key raises RecordNotFound (404) before any authz check runs.
+      def game_key
+        @game_key ||= RpgClubGameKey.includes(game: :images).find(params[:id])
+      end
+
+      # show/destroy operate on a specific key and (for show) reveal its secret,
+      # so they're limited to the service token, the key's donor, or an admin —
+      # the same audience the issue specifies for revocation. Reads stay open on
+      # the listing endpoints, which never expose the secret.
+      def require_donor_or_admin!
+        return true if current_principal&.service?
+
+        if current_principal&.discord_user?
+          return true if current_principal.id.to_s == game_key.donor_user_id.to_s
+          return true if current_principal.dev?
+          return true if RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
+        end
+
+        render json: { error: "forbidden" }, status: :forbidden
+        false
+      end
 
       # Donations set only the offer fields; the claim columns, identity and
       # timestamps are not client-writable (so a key can't be donated
