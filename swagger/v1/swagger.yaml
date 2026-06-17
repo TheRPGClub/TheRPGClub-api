@@ -3696,10 +3696,12 @@ paths:
       summary: Get a single game key
       tags:
       - Game Keys
-      description: Returns one key with its secret `key_value` revealed. Because the
-        secret is exposed, access is restricted to the key's donor, an admin, or the
-        bot service token — the listing endpoints never expose it, so a key cannot
-        be read out-of-band to bypass the claim flow.
+      description: 'Returns one key with its secret `key_value` revealed. Because
+        the secret is exposed, access is restricted to those entitled to the key:
+        its donor, an admin, the bot service token, or the user who has claimed it.
+        An unclaimed key has no claimer, so (beyond donor/admin/service) it cannot
+        be read out-of-band to bypass the claim flow; the listing endpoints never
+        expose the secret at all.'
       responses:
         '200':
           description: the game key, with `key_value` revealed
@@ -3711,8 +3713,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/GameKey"
         '403':
-          description: forbidden — caller is not the donor, an admin, or the service
-            token
+          description: forbidden — caller is not the donor, claimer, an admin, or
+            the service token
           content:
             application/json:
               schema:

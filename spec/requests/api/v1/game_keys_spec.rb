@@ -92,17 +92,19 @@ RSpec.describe 'api/v1/game_keys', type: :request do
     get 'Get a single game key' do
       tags 'Game Keys'
       description 'Returns one key with its secret `key_value` revealed. Because ' \
-                  'the secret is exposed, access is restricted to the key\'s ' \
-                  'donor, an admin, or the bot service token — the listing ' \
-                  'endpoints never expose it, so a key cannot be read ' \
-                  'out-of-band to bypass the claim flow.'
+                  'the secret is exposed, access is restricted to those entitled ' \
+                  'to the key: its donor, an admin, the bot service token, or the ' \
+                  'user who has claimed it. An unclaimed key has no claimer, so ' \
+                  '(beyond donor/admin/service) it cannot be read out-of-band to ' \
+                  'bypass the claim flow; the listing endpoints never expose the ' \
+                  'secret at all.'
       produces 'application/json'
 
       response '200', 'the game key, with `key_value` revealed' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameKey' } }
       end
 
-      response '403', 'forbidden — caller is not the donor, an admin, or the service token' do
+      response '403', 'forbidden — caller is not the donor, claimer, an admin, or the service token' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

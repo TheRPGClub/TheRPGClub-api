@@ -11,7 +11,8 @@ module Api
     # claims on the same key cannot both win.
     class GameKeysController < ApplicationController
       before_action :require_owner!, only: :create
-      before_action :require_donor_or_admin!, only: %i[show destroy]
+      before_action :require_key_reader!, only: :show
+      before_action :require_donor_or_admin!, only: :destroy
 
       # GET /api/v1/game_keys
       # The available (unclaimed) keys, ordered like the bot's listing
@@ -47,8 +48,10 @@ module Api
       # GET /api/v1/game_keys/:id
       # A single key with its secret `key_value` revealed. Unlike the listing
       # endpoints (which always withhold the secret), this exposes it — so it is
-      # restricted to the key's donor, an admin, or the service token, ensuring a
-      # key can't be read out-of-band to bypass the claim flow.
+      # restricted to those entitled to the key: the service token, the donor, an
+      # admin, or the user who has claimed it (see require_key_reader!). An
+      # unclaimed key has no claimer to match, so it can't be read out-of-band to
+      # bypass the claim flow.
       def show
         render json: { data: GameKeyResource.new(game_key, params: { reveal_key: true }).serializable_hash }
       end
@@ -94,19 +97,44 @@ module Api
         @game_key ||= RpgClubGameKey.includes(game: :images).find(params[:id])
       end
 
-      # show/destroy operate on a specific key and (for show) reveal its secret,
-      # so they're limited to the service token, the key's donor, or an admin —
-      # the same audience the issue specifies for revocation. Reads stay open on
-      # the listing endpoints, which never expose the secret.
-      def require_donor_or_admin!
-        return true if current_principal&.service?
-
-        if current_principal&.discord_user?
-          return true if current_principal.id.to_s == game_key.donor_user_id.to_s
-          return true if current_principal.dev?
-          return true if RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
+      # show reveals the secret, so it's limited to those entitled to the key:
+      # the service token, the donor, an admin, or the user who has claimed it. A
+      # claimer reading their own claimed key isn't a bypass — they already own
+      # it — while an unclaimed key has no claimer to match, so it stays locked
+      # to donor/admin/service. The listing endpoints, which never expose the
+      # secret, remain open reads.
+      def require_key_reader!
+        return true if donor_admin_or_service?
+        if current_principal&.discord_user? &&
+            current_principal.id.to_s == game_key.claimed_by_user_id.to_s
+          return true
         end
 
+        forbidden!
+      end
+
+      # destroy (revoke) is limited to the original donor, an admin, or the
+      # service token — the audience the issue specifies for revocation. The
+      # claimer is deliberately excluded (they receive the key, not control over
+      # the donation).
+      def require_donor_or_admin!
+        return true if donor_admin_or_service?
+
+        forbidden!
+      end
+
+      # Shared predicate for the member routes: the service token, the key's
+      # donor, or an admin/dev.
+      def donor_admin_or_service?
+        return true if current_principal&.service?
+        return false unless current_principal&.discord_user?
+        return true if current_principal.id.to_s == game_key.donor_user_id.to_s
+        return true if current_principal.dev?
+
+        RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
+      end
+
+      def forbidden!
         render json: { error: "forbidden" }, status: :forbidden
         false
       end
