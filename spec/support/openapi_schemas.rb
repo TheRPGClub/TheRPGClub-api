@@ -263,17 +263,39 @@ module OpenapiSchemas
         entry_id: int, user_id: str, gamedb_game_id: int, note: str(nullable: true),
         game: ref("GameSummary")
       ),
-      # NowPlayingEntryResource (NowPlayingFields + game + platform). `gamedb_game_id`
-      # is nullable on user_now_playing.
+      # The now-playing embedded game (NowPlayingEmbeds): the GameSummary shape
+      # plus the game's linked Discord thread, derived per-entry (#104).
+      NowPlayingGame: extends("GameSummary", linked_thread_id: str(nullable: true)),
+      # The now-playing embedded platform (NowPlayingEmbeds): the trimmed Platform
+      # shape plus the abbreviation the bot uses in display labels (#104).
+      NowPlayingPlatform: extends("Platform", platform_abbreviation: str(nullable: true)),
+      # NowPlayingEntryResource (NowPlayingFields + game + platform), the user's
+      # own list. `gamedb_game_id` is nullable on user_now_playing. The journal
+      # fields (#104) are correlated aggregates over the (user, game) pair.
       NowPlayingEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int(nullable: true),
         platform_id: int(nullable: true), note: str(nullable: true),
-        game: ref("GameSummary", nullable: true), platform: ref("Platform", nullable: true)
+        sort_order: int(nullable: true), added_at: ts, note_updated_at: ts(nullable: true),
+        has_journal_entry: bool, journal_count: int, last_journal_at: ts(nullable: true),
+        game: ref("NowPlayingGame", nullable: true), platform: ref("NowPlayingPlatform", nullable: true)
       ),
       # NowPlayingUserEntryResource (NowPlayingFields + user), for game-scoped lists.
       NowPlayingUserEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int(nullable: true),
-        platform_id: int(nullable: true), note: str(nullable: true), user: ref("UserSummary")
+        platform_id: int(nullable: true), note: str(nullable: true),
+        sort_order: int(nullable: true), added_at: ts, note_updated_at: ts(nullable: true),
+        has_journal_entry: bool, journal_count: int, last_journal_at: ts(nullable: true),
+        user: ref("UserSummary")
+      ),
+      # NowPlayingMemberEntryResource (NowPlayingFields + user + game + platform),
+      # the cross-member list / single-entry / update shape (#104).
+      NowPlayingMemberEntry: obj(
+        entry_id: int, user_id: str, gamedb_game_id: int(nullable: true),
+        platform_id: int(nullable: true), note: str(nullable: true),
+        sort_order: int(nullable: true), added_at: ts, note_updated_at: ts(nullable: true),
+        has_journal_entry: bool, journal_count: int, last_journal_at: ts(nullable: true),
+        game: ref("NowPlayingGame", nullable: true), platform: ref("NowPlayingPlatform", nullable: true),
+        user: ref("UserSummary")
       ),
       # reviews#index / show / create / update render `as_json` — all columns,
       # including the write-only `is_shared` and `updated_at` the curated shape trims.

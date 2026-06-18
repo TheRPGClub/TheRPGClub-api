@@ -41,7 +41,7 @@ module Api
         limit = preview_limit
 
         previews = {
-          now_playing: user.now_playing_entries.preload(:game, :platform).order(added_at: :desc).limit(limit).to_a,
+          now_playing: user.now_playing_entries.with_now_playing_details.preload(:game, :platform).order(added_at: :desc).limit(limit).to_a,
           favorites:   user.game_favorites.preload(:game).order(:sort_order).limit(limit).to_a,
           reviews:     user.reviews.preload(:game).order(created_at: :desc).limit(limit).to_a,
           completions: user.game_completions.preload(:game, :platform).order(completed_at: :desc).limit(limit).to_a,

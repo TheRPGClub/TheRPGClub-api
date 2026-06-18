@@ -28,7 +28,7 @@ Rails.application.routes.draw do
           get "relations", to: "games#relations"
           get "profile", to: "games#profile"
           get "releases", to: "games#releases"
-          get "now_playing", to: "now_playing#index"
+          get "now_playing", to: "now_playing#game_index"
           get "completions", to: "completions#game_index"
           get "collections", to: "collections#game_index"
           get "reviews", to: "reviews#game_index"
@@ -65,6 +65,7 @@ Rails.application.routes.draw do
           get "backlog", to: "backlog#index"
           post "backlog", to: "backlog#create"
           get "now_playing", to: "now_playing#user_index"
+          post "now_playing", to: "now_playing#create"
           get "socials", to: "user_socials#index"
           post "socials", to: "user_socials#create"
           get "journal/status", to: "journal#status"
@@ -90,6 +91,11 @@ Rails.application.routes.draw do
       resources :favorites, only: %i[show update destroy]
       resources :reviews, only: %i[show update destroy]
       resources :backlog, only: %i[show update destroy]
+      # Cross-member now-playing (bot parity, #104). `index` is the service/admin
+      # all-members list with `game_ids[]` / `q` filters; `:id` is the entry_id
+      # for the single-entry read, note/platform/sort update and delete. The
+      # per-user list + create live under the `users` member block above.
+      resources :now_playing, only: %i[index show update destroy]
       resources :social_platforms, only: %i[index create]
       resources :user_socials, only: %i[show update destroy]
       # Journal search + contributors (bot parity, #103). Declared before the
