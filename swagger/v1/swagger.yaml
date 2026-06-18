@@ -623,6 +623,42 @@ components:
         note:
           type: string
           nullable: true
+        platform_name:
+          type: string
+          nullable: true
+        platform_abbreviation:
+          type: string
+          nullable: true
+      required:
+      - entry_id
+      - user_id
+      - gamedb_game_id
+      - ownership_type
+    CollectionUserEntry:
+      type: object
+      properties:
+        entry_id:
+          type: integer
+        user_id:
+          type: string
+        gamedb_game_id:
+          type: integer
+        platform_id:
+          type: integer
+          nullable: true
+        ownership_type:
+          type: string
+        note:
+          type: string
+          nullable: true
+        platform_name:
+          type: string
+          nullable: true
+        platform_abbreviation:
+          type: string
+          nullable: true
+        user:
+          "$ref": "#/components/schemas/UserSummary"
       required:
       - entry_id
       - user_id
@@ -645,6 +681,12 @@ components:
         note:
           type: string
           nullable: true
+        platform_name:
+          type: string
+          nullable: true
+        platform_abbreviation:
+          type: string
+          nullable: true
         is_shared:
           type: boolean
         created_at:
@@ -661,6 +703,33 @@ components:
       - is_shared
       - created_at
       - updated_at
+    CollectionPlatformCount:
+      type: object
+      properties:
+        platform_id:
+          type: integer
+          nullable: true
+        platform_name:
+          type: string
+          nullable: true
+        platform_abbreviation:
+          type: string
+          nullable: true
+        count:
+          type: integer
+      required:
+      - count
+    CollectionPlatformSummary:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        platform_counts:
+          type: array
+          items:
+            "$ref": "#/components/schemas/CollectionPlatformCount"
+      required:
+      - total_count
     CompletionEntry:
       type: object
       properties:
@@ -2203,8 +2272,40 @@ paths:
       summary: List a user's collections
       tags:
       - Collections
-      description: Open to any authenticated caller.
+      description: 'Open to any authenticated caller. The optional filters mirror
+        the bot''s collection search and AND together: `q` (game title, case-insensitive
+        substring), `platform` (case-insensitive substring of the platform name/abbreviation/code),
+        `ownership_type` (exact) and `game_id` (`gamedb_game_id`).'
       parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by game title (case-insensitive substring).
+      - name: platform
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by platform name/abbreviation/code (case-insensitive substring).
+      - name: ownership_type
+        in: query
+        schema:
+          type: string
+          enum:
+          - Digital
+          - Physical
+          - Subscription
+          - Other
+        required: false
+        description: Filter by exact ownership type.
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter by gamedb_games.game_id.
       - name: page
         in: query
         schema:
@@ -2264,7 +2365,8 @@ paths:
         collection writes are currently NOT owner-restricted — any authenticated caller
         may write to any `user_id` (tracked by the controller-hardening companion
         issue). The created entry is always scoped to the path `user_id`. Returns
-        the full record (all columns, including `is_shared` and timestamps).'
+        the full record (all columns, including `is_shared` and timestamps) plus the
+        joined platform name/abbreviation.'
       parameters: []
       responses:
         '201':
@@ -2328,6 +2430,37 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/collections/platform_summary":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Owning RpgClubUser id.
+    get:
+      summary: Per-platform summary of a user's collection
+      tags:
+      - Collections
+      description: The user's total entry count plus one tally per platform, ordered
+        by count (desc) then platform name. Entries with no platform collapse into
+        a single row whose platform fields are null. Open to any authenticated caller.
+      responses:
+        '200':
+          description: platform summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionPlatformSummary"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/collections/{id}":
     parameters:
     - name: id
@@ -2340,7 +2473,8 @@ paths:
       summary: Show a collection entry
       tags:
       - Collections
-      description: Returns the full record (all columns).
+      description: Returns the full record (all columns) plus the joined platform
+        name/abbreviation.
       responses:
         '200':
           description: collection entry
@@ -4875,6 +5009,70 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/CompletionUserEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/collections":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List collection entries for this game
+      tags:
+      - Games
+      description: Every member's collection entry for this game (the community-ownership
+        view), each with the owning user. Open to any authenticated caller.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: collection entries for game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CollectionUserEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
         '401':

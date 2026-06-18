@@ -204,17 +204,38 @@ module OpenapiSchemas
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
-      # collections#index (CollectionEntryResource): trimmed columns, no embeds.
+      # collections#index (CollectionEntryResource): trimmed columns + the joined
+      # platform name/abbreviation (CollectionFields, #101), no embeds.
       CollectionEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
-        ownership_type: str, note: str(nullable: true)
+        ownership_type: str, note: str(nullable: true),
+        platform_name: str(nullable: true), platform_abbreviation: str(nullable: true)
       ),
-      # collections#show / create / update render `as_json` — all columns,
-      # including `is_shared` and the timestamps the list trims.
+      # collections#game_index (CollectionUserEntryResource): the CollectionEntry
+      # fields + the owning user, for the community-ownership view (#101).
+      CollectionUserEntry: obj(
+        entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
+        ownership_type: str, note: str(nullable: true),
+        platform_name: str(nullable: true), platform_abbreviation: str(nullable: true),
+        user: ref("UserSummary")
+      ),
+      # collections#show / create / update (CollectionEntryDetailResource): the
+      # CollectionEntry fields + the joined platform name/abbreviation (#101)
+      # plus `is_shared` and the timestamps the list trims.
       CollectionEntryDetail: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
-        ownership_type: str, note: str(nullable: true), is_shared: bool,
-        created_at: ts, updated_at: ts
+        ownership_type: str, note: str(nullable: true),
+        platform_name: str(nullable: true), platform_abbreviation: str(nullable: true),
+        is_shared: bool, created_at: ts, updated_at: ts
+      ),
+      # collections#platform_summary: a per-platform tally (CollectionPlatformCount)
+      # plus the user's total, mirroring the bot's `getOverviewForUser` (#101).
+      CollectionPlatformCount: obj(
+        platform_id: int(nullable: true), platform_name: str(nullable: true),
+        platform_abbreviation: str(nullable: true), count: int
+      ),
+      CollectionPlatformSummary: obj(
+        total_count: int, platform_counts: array_of("CollectionPlatformCount")
       ),
       # CompletionEntryResource (CompletionFields + game + platform).
       CompletionEntry: obj(
