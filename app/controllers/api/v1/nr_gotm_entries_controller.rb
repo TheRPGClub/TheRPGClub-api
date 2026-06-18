@@ -2,7 +2,23 @@
 
 module Api
   module V1
+    # Non-Retro Game of the Month entries. Reads are open to any authenticated
+    # caller; the write actions (POST/PATCH/DELETE) are admin/service-gated and
+    # let the bot manage rounds via the API instead of direct SQL (#98). Each row
+    # is one game slot in a round — the bot POSTs once per game for multi-game
+    # months. Primary key is `nr_gotm_id`.
     class NrGotmEntriesController < ApplicationController
+      before_action :require_admin_or_service!, only: %i[create update destroy]
+
+      # Settable on create: the round identity plus the game. `month_year`,
+      # `game_index` and `gamedb_game_id` are required; `reddit_url` is optional.
+      # `voting_results_message_id` is bot-managed delivery state set later via
+      # PATCH, so it starts NULL and is not accepted here.
+      CREATE_ATTRS = %w[round_number month_year game_index gamedb_game_id reddit_url].freeze
+      # Settable on update: the mutable fields only. The round identity
+      # (`round_number`, `month_year`, `game_index`) is fixed once created.
+      UPDATE_ATTRS = %w[reddit_url gamedb_game_id voting_results_message_id].freeze
+
       def index
         scope = NrGotmEntry.all
         scope = scope.where(round_number: params[:round_number]) if params[:round_number].present?
@@ -19,6 +35,24 @@ module Api
         scope = include_game? ? NrGotmEntry.preload(game: :images) : NrGotmEntry
         entry = scope.find(params[:id])
         render json: { data: NrGotmEntryResource.new(entry, params: { include_game: include_game? }).serializable_hash }
+      end
+
+      def create
+        entry = NrGotmEntry.create!(request_data.slice(*CREATE_ATTRS))
+        entry.reload
+        render json: { data: NrGotmEntryResource.new(entry).serializable_hash }, status: :created
+      end
+
+      def update
+        entry = NrGotmEntry.find(params[:id])
+        entry.update!(request_data.slice(*UPDATE_ATTRS))
+        entry.reload
+        render json: { data: NrGotmEntryResource.new(entry).serializable_hash }
+      end
+
+      def destroy
+        NrGotmEntry.find(params[:id]).destroy!
+        render json: { deleted: true }
       end
 
       private

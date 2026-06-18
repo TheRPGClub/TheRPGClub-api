@@ -4943,6 +4943,85 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a Game of the Month entry
+      tags:
+      - GOTM
+      description: Admin/service-only. Inserts one game slot for a round. A round
+        can have several games — POST once per game with an incrementing `game_index`
+        (unique per round). `voting_results_message_id` is bot-managed and set later
+        via PATCH.
+      parameters: []
+      responses:
+        '201':
+          description: entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotmEntry"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing required field or duplicate round/game_index)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    round_number:
+                      type: integer
+                      description: Round number this entry belongs to.
+                    month_year:
+                      type: string
+                      example: January 2026
+                      description: Human-readable month/year label for the round.
+                    game_index:
+                      type: integer
+                      example: 0
+                      description: Game slot within the round (0-based); unique per
+                        round.
+                    gamedb_game_id:
+                      type: integer
+                      description: The GameDB game for this slot (gamedb_games.game_id).
+                    reddit_url:
+                      type: string
+                      nullable: true
+                      description: Optional link to the round's Reddit thread.
+                  required:
+                  - round_number
+                  - month_year
+                  - game_index
+                  - gamedb_game_id
+              required:
+              - data
+        required: true
   "/api/v1/gotm_entries/{id}":
     parameters:
     - name: id
@@ -4972,6 +5051,143 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GotmEntry"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a Game of the Month entry
+      tags:
+      - GOTM
+      description: Admin/service-only. Updates the mutable fields (`reddit_url`, `gamedb_game_id`,
+        `voting_results_message_id`). The round identity is fixed once created.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotmEntry"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    reddit_url:
+                      type: string
+                      nullable: true
+                      description: Link to the round's Reddit thread.
+                    gamedb_game_id:
+                      type: integer
+                      description: The GameDB game for this slot (gamedb_games.game_id).
+                    voting_results_message_id:
+                      type: string
+                      nullable: true
+                      description: Discord message id of the posted voting results.
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a Game of the Month entry (alias)
+      tags:
+      - GOTM
+      description: Admin/service-only. Alias for PATCH.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotmEntry"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    reddit_url:
+                      type: string
+                      nullable: true
+                      description: Link to the round's Reddit thread.
+                    gamedb_game_id:
+                      type: integer
+                      description: The GameDB game for this slot (gamedb_games.game_id).
+                    voting_results_message_id:
+                      type: string
+                      nullable: true
+                      description: Discord message id of the posted voting results.
+        required: true
+    delete:
+      summary: Delete a Game of the Month entry
+      tags:
+      - GOTM
+      description: Admin/service-only. Removes a single round/game slot.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -6098,6 +6314,85 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a Non-Retro GOTM entry
+      tags:
+      - Non-Retro GOTM
+      description: Admin/service-only. Inserts one game slot for a round. A round
+        can have several games — POST once per game with an incrementing `game_index`
+        (unique per round). `voting_results_message_id` is bot-managed and set later
+        via PATCH.
+      parameters: []
+      responses:
+        '201':
+          description: entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NrGotmEntry"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing required field or duplicate round/game_index)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    round_number:
+                      type: integer
+                      description: Round number this entry belongs to.
+                    month_year:
+                      type: string
+                      example: January 2026
+                      description: Human-readable month/year label for the round.
+                    game_index:
+                      type: integer
+                      example: 0
+                      description: Game slot within the round (0-based); unique per
+                        round.
+                    gamedb_game_id:
+                      type: integer
+                      description: The GameDB game for this slot (gamedb_games.game_id).
+                    reddit_url:
+                      type: string
+                      nullable: true
+                      description: Optional link to the round's Reddit thread.
+                  required:
+                  - round_number
+                  - month_year
+                  - game_index
+                  - gamedb_game_id
+              required:
+              - data
+        required: true
   "/api/v1/nr_gotm_entries/{id}":
     parameters:
     - name: id
@@ -6127,6 +6422,143 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/NrGotmEntry"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a Non-Retro GOTM entry
+      tags:
+      - Non-Retro GOTM
+      description: Admin/service-only. Updates the mutable fields (`reddit_url`, `gamedb_game_id`,
+        `voting_results_message_id`). The round identity is fixed once created.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NrGotmEntry"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    reddit_url:
+                      type: string
+                      nullable: true
+                      description: Link to the round's Reddit thread.
+                    gamedb_game_id:
+                      type: integer
+                      description: The GameDB game for this slot (gamedb_games.game_id).
+                    voting_results_message_id:
+                      type: string
+                      nullable: true
+                      description: Discord message id of the posted voting results.
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a Non-Retro GOTM entry (alias)
+      tags:
+      - Non-Retro GOTM
+      description: Admin/service-only. Alias for PATCH.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NrGotmEntry"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    reddit_url:
+                      type: string
+                      nullable: true
+                      description: Link to the round's Reddit thread.
+                    gamedb_game_id:
+                      type: integer
+                      description: The GameDB game for this slot (gamedb_games.game_id).
+                    voting_results_message_id:
+                      type: string
+                      nullable: true
+                      description: Discord message id of the posted voting results.
+        required: true
+    delete:
+      summary: Delete a Non-Retro GOTM entry
+      tags:
+      - Non-Retro GOTM
+      description: Admin/service-only. Removes a single round/game slot.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
