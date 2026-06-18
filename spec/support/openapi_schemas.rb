@@ -516,7 +516,7 @@ module OpenapiSchemas
       ),
 
       # ---- aggregate game-profile sub-shapes (#115) ------------------------
-      GotmWin: obj(round: int),
+      GotmWin: obj(round: int, reddit_url: str(nullable: true)),
       GotmNominationSummary: obj(round: int, user_id: str, username: str(nullable: true)),
       CollectionOwner: obj(user_id: str, username: str(nullable: true)),
       # RpgClubHltbCache surfaced under the bot's logical field names.
