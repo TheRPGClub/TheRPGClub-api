@@ -12,8 +12,12 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
   path '/api/v1/search_synonym_groups' do
     get 'List synonym groups' do
       tags 'Search Synonyms'
-      description 'Synonym groups — each group is an equivalence class that its terms belong to.'
+      description 'Synonym groups — each group is an equivalence class that its terms belong to. ' \
+                  'Pass `q` to search for groups by one of their terms.'
       produces 'application/json'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Free-text search: returns groups having a term that matches `q` by literal ' \
+                     'text (case-insensitive) or normalised key.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
@@ -142,7 +146,7 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
 
     delete 'Delete a synonym group' do
       tags 'Search Synonyms'
-      description 'Restricted to admins or the service account. Fails while the group still has terms (delete those first).'
+      description 'Restricted to admins or the service account. Cascade-deletes the group\'s synonym terms.'
       produces 'application/json'
 
       response '200', 'deleted' do
@@ -157,7 +161,31 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'group still has terms' do
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/search_synonym_groups/{id}/terms' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbSearchSynonymGroup group_id.'
+
+    delete 'Delete all terms in a synonym group' do
+      tags 'Search Synonyms'
+      description 'Bulk-deletes every term in the group, leaving the group itself intact. Restricted ' \
+                  'to admins or the service account. Used to atomically replace a group\'s terms ' \
+                  '(delete all, then re-insert). Returns the number of terms removed.'
+      produces 'application/json'
+
+      response '200', 'terms deleted' do
+        schema '$ref' => '#/components/schemas/DeletedCountResponse'
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'group not found' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -6,6 +6,13 @@ module Api
       def index
         scope = GamedbSearchSynonym.all
         scope = scope.where(group_id: params[:group_id]) if params[:group_id].present?
+        # Exact-match lookup on the normalised key (#108): drives game-search
+        # synonym expansion. The input is normalised the same way `term_norm` is
+        # stored, so `ff7`, `FF7` and `FF-7` all match the `ff7` term.
+        scope = scope.where(term_norm: GamedbSearchSynonym.normalize_term(params[:term])) if params[:term].present?
+        # Free-text search across the flat term list (#108): matches the literal
+        # text case-insensitively and the normalised key by substring.
+        scope = text_search(scope, params[:q]) if params[:q].present?
         render_collection(scope, resource: SearchSynonymResource, default_order: { group_id: :asc, term_text: :asc })
       end
 
@@ -33,6 +40,20 @@ module Api
 
         GamedbSearchSynonym.find(params[:id]).destroy!
         render json: { deleted: true }
+      end
+
+      private
+
+      # `q` matches the literal term case-insensitively (`term_text`) OR the
+      # normalised key by substring (`term_norm`), mirroring the bot's listSynonyms.
+      def text_search(scope, query)
+        text = "%#{sanitize_like(query)}%"
+        norm = "%#{sanitize_like(GamedbSearchSynonym.normalize_term(query))}%"
+        scope.where("term_text ILIKE :text OR term_norm LIKE :norm", text: text, norm: norm)
+      end
+
+      def sanitize_like(value)
+        ActiveRecord::Base.sanitize_sql_like(value.to_s.strip)
       end
     end
   end

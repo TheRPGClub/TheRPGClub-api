@@ -3889,7 +3889,7 @@ ALTER TABLE ONLY public.gamedb_releases
 --
 
 ALTER TABLE ONLY public.gamedb_search_synonyms
-    ADD CONSTRAINT fk_gamedb_search_synonyms_group FOREIGN KEY (group_id) REFERENCES public.gamedb_search_synonym_groups(group_id);
+    ADD CONSTRAINT fk_gamedb_search_synonyms_group FOREIGN KEY (group_id) REFERENCES public.gamedb_search_synonym_groups(group_id) ON DELETE CASCADE;
 
 
 --
@@ -4187,6 +4187,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260618000100'),
 ('20260617000100'),
 ('20260611000300'),
 ('20260611000200'),

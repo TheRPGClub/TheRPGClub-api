@@ -16,10 +16,18 @@ RSpec.describe 'api/v1/search_synonyms', type: :request do
   path '/api/v1/search_synonyms' do
     get 'List search synonym terms' do
       tags 'Search Synonyms'
-      description 'Game-search synonym terms. Pass `group_id` to list the terms in one synonym group.'
+      description 'Game-search synonym terms. Pass `group_id` to list the terms in one synonym group, ' \
+                  '`term` for an exact normalised-key lookup (synonym expansion), or `q` for a free-text search.'
       produces 'application/json'
       parameter name: :group_id, in: :query, schema: { type: :integer }, required: false,
         description: 'Filter to a single synonym group.'
+      parameter name: :term, in: :query, schema: { type: :string }, required: false,
+        description: 'Exact-match lookup on the normalised key (`term_norm`). The value is normalised ' \
+                     'server-side (lowercased, non-alphanumerics stripped) before matching, so `ff7`, ' \
+                     '`FF7` and `FF-7` are equivalent. Drives game-search synonym expansion.'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Free-text search: matches `term_text` case-insensitively and the normalised ' \
+                     '`term_norm` by substring.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
