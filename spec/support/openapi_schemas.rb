@@ -197,6 +197,20 @@ module OpenapiSchemas
       # matched user's platform handles in one call. `socials` is present only
       # on that filtered variant (arrays are already excluded from `required`).
       UserWithSocials: extends("UserSummary", socials: array_of("UserSocial")),
+      # The service-managed user shape (#105, UserServiceResource): UserSummary
+      # plus the three Discord-sync columns the bot reads/writes. Returned by the
+      # service-only upsert/update writes and the `has_emoji_name` index branch.
+      UserService: extends(
+        "UserSummary",
+        server_joined_at: ts(nullable: true),
+        last_seen_at: ts(nullable: true),
+        emoji_name: str(nullable: true)
+      ),
+      # The result of the bulk `users#mark_departed` reconciliation (#105): the
+      # count of users newly stamped as departed.
+      MarkDepartedResult: obj(
+        count: int, _description: "Number of users newly marked departed."
+      ),
 
       # ---- user-game collection entries ------------------------------------
       # BacklogEntryResource: trimmed columns + embedded game/platform.
@@ -461,6 +475,12 @@ module OpenapiSchemas
       UserNickHistory: obj(
         event_id: int, user_id: str, old_nick: str(nullable: true), new_nick: str(nullable: true),
         changed_at: ts
+      ),
+      # UserAvatarHistoryResource (#105): all columns except the binary
+      # `avatar_blob`. `changed_at` is DB-stamped on insert.
+      UserAvatarHistory: obj(
+        event_id: int, user_id: str, avatar_hash: str(nullable: true),
+        avatar_url: str(nullable: true), changed_at: ts
       ),
 
       # ---- GOTM / nominations ----------------------------------------------
