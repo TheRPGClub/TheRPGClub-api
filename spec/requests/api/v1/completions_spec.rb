@@ -19,8 +19,21 @@ RSpec.describe 'api/v1/completions', type: :request do
     get 'List a user\'s completions' do
       tags 'Completions'
       description 'Ordered by `completed_at` descending, then `created_at` descending. Open to any ' \
-                  'authenticated caller.'
+                  'authenticated caller. The optional `game_id`, `year`, `q`, `completed_after` and ' \
+                  '`completed_before` params filter the list (each ANDs in). `meta.count` reflects the ' \
+                  'filtered total, so a count-only caller can request `per=1` and read it without ' \
+                  'fetching every row.'
       produces 'application/json'
+      parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter to completions of this game (`gamedb_game_id`).'
+      parameter name: :year, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter by completion year (`YYYY`); the literal `unknown` matches entries with no `completed_at`.'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter by game title (case-insensitive substring).'
+      parameter name: :completed_after, in: :query, schema: { type: :string, format: 'date-time' }, required: false,
+        description: 'Only completions with `completed_at` on or after this time.'
+      parameter name: :completed_before, in: :query, schema: { type: :string, format: 'date-time' }, required: false,
+        description: 'Only completions with `completed_at` on or before this time.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,

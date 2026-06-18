@@ -6,8 +6,8 @@ module Api
       before_action :require_owner!, only: %i[create update destroy]
 
       def index
-        scope = UserGameCompletion.where(user_id: params[:user_id]).preload(:game, :platform)
-        render_collection(scope, resource: CompletionEntryResource, default_order: { completed_at: :desc, created_at: :desc })
+        scope = filtered_completions(UserGameCompletion.where(user_id: params[:user_id]))
+        render_collection(scope.preload(:game, :platform), resource: CompletionEntryResource, default_order: { completed_at: :desc, created_at: :desc })
       end
 
       def game_index
@@ -25,7 +25,7 @@ module Api
         base = RpgClubUser.where(server_left_at: nil).joins(:game_completions)
         if params[:q].present?
           base = base.joins(game_completions: :game)
-            .where("gamedb_games.title ILIKE ?", "%#{leaderboard_query}%")
+            .where("gamedb_games.title ILIKE ?", "%#{sanitize_like(params[:q])}%")
         end
 
         count = base.distinct.count(:user_id)
@@ -71,8 +71,43 @@ module Api
 
       private
 
-      def leaderboard_query
-        ActiveRecord::Base.sanitize_sql_like(params[:q].to_s.strip)
+      # Optional filters on a user's completions list, mirroring the bot's
+      # `getCompletions` / `countCompletions` / `getCompletionsForGame` /
+      # `getRecentCompletionForGame` (#102). Each present param ANDs in; the `q`
+      # title match goes through a `gamedb_game_id` subquery (no join) so the
+      # paginated `meta.count` stays exact — the bot reads that count (with
+      # `per=1`) in place of `countCompletions`.
+      #
+      # - `game_id`        exact `gamedb_game_id`
+      # - `year`           completion year via `EXTRACT(YEAR FROM completed_at)`;
+      #                    the literal `unknown` matches rows with no
+      #                    `completed_at` (the bot's `year: "unknown"` case)
+      # - `q`              case-insensitive game-title substring
+      # - `completed_after` / `completed_before`  inclusive `completed_at` range
+      def filtered_completions(scope)
+        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
+
+        if params[:year].present?
+          scope =
+            if params[:year].to_s.casecmp?("unknown")
+              scope.where(completed_at: nil)
+            else
+              scope.where("EXTRACT(YEAR FROM completed_at) = ?", params[:year].to_i)
+            end
+        end
+
+        if params[:q].present?
+          titles = GamedbGame.where("title ILIKE ?", "%#{sanitize_like(params[:q])}%").select(:game_id)
+          scope = scope.where(gamedb_game_id: titles)
+        end
+
+        scope = scope.where("completed_at >= ?", params[:completed_after]) if params[:completed_after].present?
+        scope = scope.where("completed_at <= ?", params[:completed_before]) if params[:completed_before].present?
+        scope
+      end
+
+      def sanitize_like(value)
+        ActiveRecord::Base.sanitize_sql_like(value.to_s.strip)
       end
 
       def resolve_owner_id
