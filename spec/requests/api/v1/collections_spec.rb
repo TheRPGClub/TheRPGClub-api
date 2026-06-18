@@ -18,8 +18,19 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     get 'List a user\'s collections' do
       tags 'Collections'
-      description 'Open to any authenticated caller.'
+      description 'Open to any authenticated caller. The optional filters mirror the bot\'s collection ' \
+                  'search and AND together: `q` (game title, case-insensitive substring), `platform` ' \
+                  '(case-insensitive substring of the platform name/abbreviation/code), `ownership_type` ' \
+                  '(exact) and `game_id` (`gamedb_game_id`).'
       produces 'application/json'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter by game title (case-insensitive substring).'
+      parameter name: :platform, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter by platform name/abbreviation/code (case-insensitive substring).'
+      parameter name: :ownership_type, in: :query, schema: { type: :string, enum: %w[Digital Physical Subscription Other] }, required: false,
+        description: 'Filter by exact ownership type.'
+      parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter by gamedb_games.game_id.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
@@ -46,7 +57,7 @@ RSpec.describe 'api/v1/collections', type: :request do
                   'collection writes are currently NOT owner-restricted — any authenticated caller ' \
                   'may write to any `user_id` (tracked by the controller-hardening companion issue). ' \
                   'The created entry is always scoped to the path `user_id`. Returns the full record ' \
-                  '(all columns, including `is_shared` and timestamps).'
+                  '(all columns, including `is_shared` and timestamps) plus the joined platform name/abbreviation.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -74,12 +85,32 @@ RSpec.describe 'api/v1/collections', type: :request do
     end
   end
 
+  path '/api/v1/users/{user_id}/collections/platform_summary' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true, description: 'Owning RpgClubUser id.'
+
+    get 'Per-platform summary of a user\'s collection' do
+      tags 'Collections'
+      description 'The user\'s total entry count plus one tally per platform, ordered by count (desc) then ' \
+                  'platform name. Entries with no platform collapse into a single row whose platform fields ' \
+                  'are null. Open to any authenticated caller.'
+      produces 'application/json'
+
+      response '200', 'platform summary' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionPlatformSummary' } }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/collections/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'UserGameCollection id.'
 
     get 'Show a collection entry' do
       tags 'Collections'
-      description 'Returns the full record (all columns).'
+      description 'Returns the full record (all columns) plus the joined platform name/abbreviation.'
       produces 'application/json'
 
       response '200', 'collection entry' do

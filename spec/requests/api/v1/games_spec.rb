@@ -370,6 +370,34 @@ RSpec.describe 'api/v1/games', type: :request do
     end
   end
 
+  path '/api/v1/games/{id}/collections' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true
+
+    get 'List collection entries for this game' do
+      tags 'Games'
+      description 'Every member\'s collection entry for this game (the community-ownership view), each ' \
+                  'with the owning user. Open to any authenticated caller.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+      parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
+        description: 'Deprecated alias for `per` (transitional, for the unaudited Discord bot).'
+      parameter name: :offset, in: :query, schema: { type: :integer, minimum: 0 }, required: false,
+        description: 'Deprecated; converted to a page number (transitional, for the unaudited Discord bot).'
+
+      response '200', 'collection entries for game' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/CollectionUserEntry' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/games/{id}/reviews' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true
 
