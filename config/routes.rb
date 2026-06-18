@@ -67,6 +67,7 @@ Rails.application.routes.draw do
           get "now_playing", to: "now_playing#user_index"
           get "socials", to: "user_socials#index"
           post "socials", to: "user_socials#create"
+          get "journal/status", to: "journal#status"
           get "journal", to: "journal#index"
           post "journal", to: "journal#create"
           get "reminders", to: "reminders#index"
@@ -91,6 +92,13 @@ Rails.application.routes.draw do
       resources :backlog, only: %i[show update destroy]
       resources :social_platforms, only: %i[index create]
       resources :user_socials, only: %i[show update destroy]
+      # Journal search + contributors (bot parity, #103). Declared before the
+      # `resources` block so the fixed `contributors` sub-path and the bare
+      # `journal_entries` search index are never captured by the `:id` show
+      # route. `search` is the cross-user/global entry search (`q`, `game_id`,
+      # `user_id` filters); `contributors` lists users with at least one entry.
+      get "journal_entries/contributors", to: "journal#contributors"
+      get "journal_entries",              to: "journal#search"
       resources :journal_entries, only: %i[show update destroy], controller: "journal"
       resources :reminders, only: %i[show update destroy]
       resources :game_keys, only: %i[index create show destroy] do

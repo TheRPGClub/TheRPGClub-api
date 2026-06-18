@@ -1040,6 +1040,70 @@ components:
           nullable: true
       required:
       - entry_count
+    JournalEntryGameUser:
+      type: object
+      properties:
+        entry_id:
+          type: integer
+        user_id:
+          type: string
+        gamedb_game_id:
+          type: integer
+        entry_title:
+          type: string
+          nullable: true
+        entry_body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+      required:
+      - entry_id
+      - user_id
+      - gamedb_game_id
+      - entry_body
+      - created_at
+      - updated_at
+    JournalStatus:
+      type: object
+      properties:
+        gamedb_game_id:
+          type: integer
+        entry_count:
+          type: integer
+        last_entry_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - gamedb_game_id
+      - entry_count
+    JournalContributor:
+      type: object
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+          nullable: true
+        global_name:
+          type: string
+          nullable: true
+        game_count:
+          type: integer
+        entry_count:
+          type: integer
+      required:
+      - user_id
+      - game_count
+      - entry_count
     Todo:
       type: object
       properties:
@@ -6133,8 +6197,25 @@ paths:
       tags:
       - Journal
       description: Games the user has journal entries for, with per-game entry counts
-        and the last-entry timestamp. One row per game, ordered by game title.
+        and the last-entry timestamp. One row per game, ordered by game title. The
+        optional `game_id` and `q` filters narrow which games appear (the per-game
+        counts stay the full totals); `q` keeps games where the user has an entry
+        whose title/body matches. Entry-level / cross-user text search lives on `GET
+        /api/v1/journal_entries`.
       parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to a single game (`gamedb_game_id`).
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Keep only games with an entry whose title/body matches (case-insensitive
+          substring).
       - name: page
         in: query
         schema:
@@ -6234,6 +6315,49 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/journal/status":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Per-game journal status for a user
+      tags:
+      - Journal
+      description: For each requested game id, the user's journal entry count and
+        last-entry timestamp. Games with no entries are omitted (treat a missing id
+        as a zero count). Not paginated — pass a bounded set of ids. Powers the journal
+        badge/count in the game-completion list.
+      parameters:
+      - name: game_ids[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: integer
+        description: 'Game ids to report on (`gamedb_game_id`). Repeat the param:
+          `game_ids[]=1&game_ids[]=2`.'
+      responses:
+        '200':
+          description: per-game status list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/JournalStatus"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{id}/journal":
     parameters:
     - name: id
@@ -6281,6 +6405,113 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/JournalEntryUser"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/journal_entries":
+    get:
+      summary: Search journal entries across users
+      tags:
+      - Journal
+      description: Cross-user journal entry search, each entry carrying its embedded
+        game and author. `q` is a case-insensitive substring over `entry_title`/`entry_body`;
+        the optional `game_id` and `user_id` filters narrow further (set `user_id`
+        for per-author search). With no filters this lists all entries. Ordered `created_at
+        DESC, entry_id DESC` and paginated.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Case-insensitive substring over `entry_title`/`entry_body`.
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to a single game (`gamedb_game_id`).
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter to a single author.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: journal entries list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/JournalEntryGameUser"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/journal_entries/contributors":
+    get:
+      summary: List journal contributors
+      tags:
+      - Journal
+      description: Users with at least one journal entry, each with their distinct
+        journaled-game count (`game_count`) and total entry count (`entry_count`),
+        most-journaled first. Bots and members who have left the server are excluded.
+        Paginated like every other collection.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: contributors list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/JournalContributor"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
         '401':

@@ -305,6 +305,26 @@ module OpenapiSchemas
       JournaledGame: obj(
         game: ref("GameSummary"), entry_count: int, last_entry_at: ts(nullable: true)
       ),
+      # JournalEntryGameUserResource (JournalFields + game + author), the
+      # cross-user search list (journal#search).
+      JournalEntryGameUser: obj(
+        entry_id: int, user_id: str, gamedb_game_id: int, entry_title: str(nullable: true),
+        entry_body: str, created_at: ts, updated_at: ts,
+        game: ref("GameSummary"), user: ref("UserSummary")
+      ),
+      # JournalStatusResource (journal#status): a game's per-user entry count and
+      # last-entry timestamp. An aggregate row — `entry_count` is the grouped
+      # `COUNT(*)`, `last_entry_at` the grouped `MAX(created_at)`.
+      JournalStatus: obj(
+        gamedb_game_id: int, entry_count: int, last_entry_at: ts(nullable: true)
+      ),
+      # JournalContributorResource (journal#contributors): a user with at least
+      # one journal entry, ranked by distinct journaled-game count. An aggregate
+      # row — `game_count`/`entry_count` are the grouped `COUNT`s.
+      JournalContributor: obj(
+        user_id: str, username: str(nullable: true), global_name: str(nullable: true),
+        game_count: int, entry_count: int
+      ),
 
       # ---- RPGClub features ------------------------------------------------
       Todo: obj(

@@ -15,8 +15,15 @@ RSpec.describe 'api/v1/journal', type: :request do
 
     get 'List a user\'s journaled games' do
       tags 'Journal'
-      description 'Games the user has journal entries for, with per-game entry counts and the last-entry timestamp. One row per game, ordered by game title.'
+      description 'Games the user has journal entries for, with per-game entry counts and the last-entry timestamp. ' \
+                  'One row per game, ordered by game title. The optional `game_id` and `q` filters narrow which ' \
+                  'games appear (the per-game counts stay the full totals); `q` keeps games where the user has an ' \
+                  'entry whose title/body matches. Entry-level / cross-user text search lives on `GET /api/v1/journal_entries`.'
       produces 'application/json'
+      parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter to a single game (`gamedb_game_id`).'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Keep only games with an entry whose title/body matches (case-insensitive substring).'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
@@ -66,6 +73,31 @@ RSpec.describe 'api/v1/journal', type: :request do
     end
   end
 
+  path '/api/v1/users/{user_id}/journal/status' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true
+
+    get 'Per-game journal status for a user' do
+      tags 'Journal'
+      description 'For each requested game id, the user\'s journal entry count and last-entry timestamp. ' \
+                  'Games with no entries are omitted (treat a missing id as a zero count). Not paginated — ' \
+                  'pass a bounded set of ids. Powers the journal badge/count in the game-completion list.'
+      produces 'application/json'
+      parameter name: 'game_ids[]', in: :query, required: false,
+        schema: { type: :array, items: { type: :integer } },
+        description: 'Game ids to report on (`gamedb_game_id`). Repeat the param: `game_ids[]=1&game_ids[]=2`.'
+
+      response '200', 'per-game status list' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/JournalStatus' } }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/games/{id}/journal' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbGame game_id.'
 
@@ -80,6 +112,59 @@ RSpec.describe 'api/v1/journal', type: :request do
       response '200', 'journal entries list' do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/JournalEntryUser' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/journal_entries' do
+    get 'Search journal entries across users' do
+      tags 'Journal'
+      description 'Cross-user journal entry search, each entry carrying its embedded game and author. `q` is a ' \
+                  'case-insensitive substring over `entry_title`/`entry_body`; the optional `game_id` and ' \
+                  '`user_id` filters narrow further (set `user_id` for per-author search). With no filters this ' \
+                  'lists all entries. Ordered `created_at DESC, entry_id DESC` and paginated.'
+      produces 'application/json'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Case-insensitive substring over `entry_title`/`entry_body`.'
+      parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter to a single game (`gamedb_game_id`).'
+      parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter to a single author.'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'journal entries list' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/JournalEntryGameUser' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/journal_entries/contributors' do
+    get 'List journal contributors' do
+      tags 'Journal'
+      description 'Users with at least one journal entry, each with their distinct journaled-game count ' \
+                  '(`game_count`) and total entry count (`entry_count`), most-journaled first. Bots and ' \
+                  'members who have left the server are excluded. Paginated like every other collection.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'contributors list' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/JournalContributor' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
