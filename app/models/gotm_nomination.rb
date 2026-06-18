@@ -20,4 +20,12 @@ class GotmNomination < ApplicationRecord
     foreign_key: :gamedb_game_id,
     optional: true,
     inverse_of: :gotm_nominations
+
+  # NOT NULL columns; presence-validated so a malformed upsert (#97) returns 422
+  # rather than a raw NotNullViolation 500. `gamedb_game_id` is nullable on the
+  # GOTM table (unlike NR-GOTM), so it is not required here.
+  validates :round_number, :user_id, presence: true
+  # Mirrors the ux_gotm_nominations_round_user unique index — one nomination per
+  # user per round (the conflict target the upsert resolves against).
+  validates :user_id, uniqueness: { scope: :round_number }
 end

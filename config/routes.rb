@@ -106,8 +106,22 @@ Rails.application.routes.draw do
       end
       resources :gotm_entries, only: %i[index show create update destroy]
       resources :nr_gotm_entries, only: %i[index show create update destroy]
-      get "gotm_entries/:round/nominations", to: "nominations#gotm", as: :gotm_entry_nominations
-      get "nr_gotm_entries/:round/nominations", to: "nominations#nr_gotm", as: :nr_gotm_entry_nominations
+      # GOTM / NR-GOTM nominations: the round list (open read) plus single-user
+      # read, upsert and round-scoped deletes for the bot's `/nominate`
+      # migration (bot parity, #97). These hang off the round, not a nomination
+      # id, so they live here rather than under a `resources` block. The
+      # collection POST/DELETE share a path with the GET list — only the verb
+      # differs.
+      get    "gotm_entries/:round/nominations",          to: "nominations#gotm",        as: :gotm_entry_nominations
+      get    "gotm_entries/:round/nominations/:user_id", to: "nominations#show_gotm",   as: :gotm_entry_nomination
+      post   "gotm_entries/:round/nominations",          to: "nominations#create_gotm"
+      delete "gotm_entries/:round/nominations/:user_id", to: "nominations#destroy_gotm"
+      delete "gotm_entries/:round/nominations",          to: "nominations#destroy_all_gotm"
+      get    "nr_gotm_entries/:round/nominations",          to: "nominations#nr_gotm",          as: :nr_gotm_entry_nominations
+      get    "nr_gotm_entries/:round/nominations/:user_id", to: "nominations#show_nr_gotm",     as: :nr_gotm_entry_nomination
+      post   "nr_gotm_entries/:round/nominations",          to: "nominations#create_nr_gotm"
+      delete "nr_gotm_entries/:round/nominations/:user_id", to: "nominations#destroy_nr_gotm"
+      delete "nr_gotm_entries/:round/nominations",          to: "nominations#destroy_all_nr_gotm"
       # Suggestion review sessions (bot parity, #91). Declared before
       # `resources :suggestions` so `/suggestions/review_sessions...` is never
       # captured by the suggestion `:id` member routes; the two bulk-delete

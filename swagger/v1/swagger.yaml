@@ -6116,6 +6116,182 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Upsert a GOTM nomination
+      tags:
+      - GOTM
+      description: Admin/service-only. Creates the caller-supplied user's nomination
+        for the round, or replaces it if they already have one (upsert on `round`+`user_id`).
+        Returns 201 when a new nomination is created, 200 when an existing one is
+        updated.
+      parameters: []
+      responses:
+        '201':
+          description: nomination created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Nomination"
+        '200':
+          description: existing nomination replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Nomination"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing required field)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    user_id:
+                      type: string
+                      description: Nominator (Discord user id). Required; the (round,
+                        user) conflict key.
+                    gamedb_game_id:
+                      type: integer
+                      description: The nominated GameDB game (gamedb_games.game_id).
+                        Required for NR-GOTM; optional for GOTM.
+                    reason:
+                      type: string
+                      nullable: true
+                      description: Free-text reason for the nomination.
+                  required:
+                  - user_id
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete all GOTM nominations for a round
+      tags:
+      - GOTM
+      description: Admin/service-only. Clears every nomination for the round (the
+        `/admin delete-gotm-noms` reset before a voting round opens).
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedCountResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_entries/{round}/nominations/{user_id}":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GOTM voting round number.
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Nominator (Discord user id).
+    get:
+      summary: Show a user's GOTM nomination for a round
+      tags:
+      - GOTM
+      description: The single nomination for the given user in the round, with its
+        embedded nominator (`user`) and `game`, or 404 if the user has none.
+      responses:
+        '200':
+          description: nomination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Nomination"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Delete a user's GOTM nomination for a round
+      tags:
+      - GOTM
+      description: Admin/service-only. Removes the given user's nomination for the
+        round.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/nr_gotm_entries/{round}/nominations":
     parameters:
     - name: round
@@ -6175,6 +6351,183 @@ paths:
                       "$ref": "#/components/schemas/Nomination"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Upsert a Non-RPG GOTM nomination
+      tags:
+      - GOTM
+      description: Admin/service-only. Creates the caller-supplied user's nomination
+        for the round, or replaces it if they already have one (upsert on `round`+`user_id`).
+        Returns 201 when a new nomination is created, 200 when an existing one is
+        updated. `gamedb_game_id` is required for NR-GOTM.
+      parameters: []
+      responses:
+        '201':
+          description: nomination created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Nomination"
+        '200':
+          description: existing nomination replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Nomination"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing required field)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    user_id:
+                      type: string
+                      description: Nominator (Discord user id). Required; the (round,
+                        user) conflict key.
+                    gamedb_game_id:
+                      type: integer
+                      description: The nominated GameDB game (gamedb_games.game_id).
+                        Required for NR-GOTM; optional for GOTM.
+                    reason:
+                      type: string
+                      nullable: true
+                      description: Free-text reason for the nomination.
+                  required:
+                  - user_id
+                  - gamedb_game_id
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete all Non-RPG GOTM nominations for a round
+      tags:
+      - GOTM
+      description: Admin/service-only. Clears every nomination for the round (the
+        `/admin delete-nr-gotm-noms` reset before a voting round opens).
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedCountResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/nr_gotm_entries/{round}/nominations/{user_id}":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Non-RPG GOTM voting round number.
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Nominator (Discord user id).
+    get:
+      summary: Show a user's Non-RPG GOTM nomination for a round
+      tags:
+      - GOTM
+      description: The single nomination for the given user in the round, with its
+        embedded nominator (`user`) and `game`, or 404 if the user has none.
+      responses:
+        '200':
+          description: nomination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Nomination"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Delete a user's Non-RPG GOTM nomination for a round
+      tags:
+      - GOTM
+      description: Admin/service-only. Removes the given user's nomination for the
+        round.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
