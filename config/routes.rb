@@ -60,6 +60,10 @@ Rails.application.routes.draw do
         collection do
           post "upsert"
           post "mark_departed"
+          # Cross-member avatar-history leaderboard (#145). A GET on the
+          # collection — declared here (before the `:user_id` member routes) so
+          # `avatar_history_counts` is never captured as a user id by `show`.
+          get "avatar_history_counts", to: "user_avatar_history#counts"
         end
         member do
           get "avatar"
