@@ -6,8 +6,13 @@ RSpec.describe 'api/v1/regions', type: :request do
   path '/api/v1/regions' do
     get 'List regions' do
       tags 'Regions'
-      description 'Returns release regions (NA, JP, EU, ...).'
+      description 'Returns release regions (NA, JP, EU, ...). Supports exact `code` lookup and `igdb_id` filtering; both ' \
+                  'return the paginated list shape (a single match comes back as a one-element list).'
       produces 'application/json'
+      parameter name: :code, in: :query, schema: { type: :string }, required: false,
+        description: 'Exact `region_code` lookup (e.g. `NA`, `EU`).'
+      parameter name: :igdb_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Lookup by IGDB region id (filters on `igdb_region_id`).'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,

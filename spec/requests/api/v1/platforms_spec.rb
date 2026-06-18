@@ -6,9 +6,18 @@ RSpec.describe 'api/v1/platforms', type: :request do
   path '/api/v1/platforms' do
     get 'List platforms' do
       tags 'Platforms'
-      description 'Returns gaming platforms (consoles, PC, mobile, etc.). Supports `q` for case-insensitive name/code search.'
+      description 'Returns gaming platforms (consoles, PC, mobile, etc.). Supports `q` for case-insensitive name/code search, ' \
+                  'exact `code` lookup, and IGDB-id filtering via `igdb_ids[]` / `igdb_id`. All filters return the paginated ' \
+                  'list shape (a single matching platform comes back as a one-element list).'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false, description: 'Search term against `platform_name` or `platform_code`.'
+      parameter name: :code, in: :query, schema: { type: :string }, required: false,
+        description: 'Exact `platform_code` lookup (e.g. `PS5`, `SWITCH`).'
+      parameter name: 'igdb_ids[]', in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } },
+        description: 'Filter to platforms with any of these `igdb_platform_id`s. Repeat the param: `igdb_ids[]=6&igdb_ids[]=48`.'
+      parameter name: :igdb_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Single-id convenience form of `igdb_ids[]` (filters on `igdb_platform_id`).'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,

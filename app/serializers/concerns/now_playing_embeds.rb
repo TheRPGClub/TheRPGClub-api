@@ -6,15 +6,15 @@
 # variant (NowPlayingUserEntryResource) embeds neither, so it does not include
 # this.
 #
-# Both reuse the shared trimmed resources and merge in the one extra field the
-# bot's now-playing display needs (#104), so the shared GameSummaryResource /
-# PlatformResource contracts used elsewhere are untouched:
-#   - `game.linked_thread_id`        — the game's linked Discord thread, derived
-#                                       by `UserNowPlaying.with_now_playing_details`
-#                                       (null on a record loaded without it).
-#   - `platform.platform_abbreviation` — the abbreviation used in display labels
-#                                       (e.g. "Hades (PC)"), a real column on the
-#                                       preloaded platform.
+# The `game` embed reuses the shared GameSummaryResource and merges in the one
+# extra field the bot's now-playing display needs (#104) — `linked_thread_id`,
+# the game's linked Discord thread derived by
+# `UserNowPlaying.with_now_playing_details` (null on a record loaded without it)
+# — so the shared GameSummaryResource contract used elsewhere is untouched. The
+# `platform` embed is the plain PlatformResource: `platform_abbreviation` (the
+# abbreviation used in display labels, e.g. "Hades (PC)") now lives on that
+# shared resource directly (#106), so no per-entry merge is needed.
+#
 # Each embed renders `null` when the entry has no associated game / platform.
 module NowPlayingEmbeds
   extend ActiveSupport::Concern
@@ -30,12 +30,6 @@ module NowPlayingEmbeds
       )
     end
 
-    attribute :platform do |entry|
-      next nil unless entry.platform
-
-      PlatformResource.new(entry.platform).serializable_hash.merge(
-        "platform_abbreviation" => entry.platform.platform_abbreviation
-      )
-    end
+    one :platform, resource: PlatformResource
   end
 end
