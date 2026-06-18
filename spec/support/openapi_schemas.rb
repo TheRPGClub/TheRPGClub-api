@@ -149,12 +149,22 @@ module OpenapiSchemas
         company_id: int, name: str, igdb_company_id: int(nullable: true), role: str
       ),
       # GamedbReleaseAnnouncement (all columns). The delivery columns
-      # (`sent_at`, `skipped_at`, `skip_reason`) are read-only — set by the bot's
-      # send loop / the #skip action, stripped from create/update writes.
+      # (`sent_at`, `skipped_at`, `skip_reason`) are admin/service-writable (the
+      # bot PATCHes them to mark an announcement sent/missed, #109); the #skip
+      # action remains a convenience for the skip-only path.
       ReleaseAnnouncement: obj(
         release_id: int, announce_at: ts, sent_at: ts(nullable: true),
         skipped_at: ts(nullable: true), skip_reason: str(nullable: true),
         created_at: ts, updated_at: ts
+      ),
+      # A single row of the release-announcements "due" feed
+      # (ReleaseAnnouncementsController#due / DueReleaseAnnouncementResource): the
+      # announcement joined to its release, game and platform. `id` and
+      # `release_id` are the same value (the PK is the release_id, 1:1).
+      DueReleaseAnnouncement: obj(
+        id: int, release_id: int, game_id: int, title: str, release_date: ts,
+        announce_at: ts, platform_name: str(nullable: true),
+        platform_abbreviation: str(nullable: true), igdb_url: str(nullable: true)
       ),
 
       # ---- user shapes -----------------------------------------------------

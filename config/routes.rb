@@ -38,6 +38,7 @@ Rails.application.routes.draw do
           get "journal", to: "journal#game_index"
           get "release_announcements", to: "release_announcements#game_index"
           patch "release_announcements/sync", to: "release_announcements#sync"
+          put "release_announcements/sync", to: "release_announcements#sync"
           get "threads", to: "threads#game_index"
         end
       end
@@ -125,6 +126,9 @@ Rails.application.routes.draw do
           post "claim", to: "game_keys#claim"
         end
       end
+      # Service-only "due" poll feed (#109). Declared before the resource so the
+      # fixed `due` sub-path is never captured by the `:id` show route.
+      get "release_announcements/due", to: "release_announcements#due"
       resources :release_announcements, only: %i[show create update destroy] do
         member { post "skip" }
       end

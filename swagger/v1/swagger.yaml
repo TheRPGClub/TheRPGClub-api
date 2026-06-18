@@ -440,6 +440,39 @@ components:
       - announce_at
       - created_at
       - updated_at
+    DueReleaseAnnouncement:
+      type: object
+      properties:
+        id:
+          type: integer
+        release_id:
+          type: integer
+        game_id:
+          type: integer
+        title:
+          type: string
+        release_date:
+          type: string
+          format: date-time
+        announce_at:
+          type: string
+          format: date-time
+        platform_name:
+          type: string
+          nullable: true
+        platform_abbreviation:
+          type: string
+          nullable: true
+        igdb_url:
+          type: string
+          nullable: true
+      required:
+      - id
+      - release_id
+      - game_id
+      - title
+      - release_date
+      - announce_at
     UserSummary:
       type: object
       properties:
@@ -9768,14 +9801,16 @@ paths:
       summary: Bulk-sync a game's release announcement schedule
       tags:
       - Release Announcements
-      description: 'Admin/service-only bulk upsert of the game''s announcement schedule
-        (the bot''s `syncReleaseAnnouncements`). The body carries the computed pairs
-        as an array under `data`. Each pair is upserted by `release_id`: a new row
-        is created, an existing one is moved only when `announce_at` changes. Rows
-        the bot''s send loop already owns (`sent_at` or `skipped_at` set) are never
-        touched, and pairs whose `release_id` doesn''t belong to the game (or that
-        omit `announce_at`) are ignored. Returns counts of rows written vs left as-is.'
-      parameters: []
+      description: Admin/service-only. Rebuilds the game's announcement schedule from
+        its releases and applies canonicality (the bot's `syncReleaseAnnouncements`
+        + `markNonCanonicalAnnouncements`). Server-side and body-less — everything
+        is computed from `gamedb_releases`. In one transaction it (1) upserts an announcement
+        for every release with a `release_date`, scheduling `announce_at = release_date
+        - 7 days` (a pending row is moved only when its time changes; rows already
+        sent/skipped are left alone); (2) clears the canonicality skip on rows that
+        no longer qualify as port-only / same-day-duplicate; and (3) skips rows that
+        are now non-canonical (`port-only-release` for a later release date, `same-day-platform-duplicate`
+        for a same-day tie).
       responses:
         '200':
           description: schedule synced
@@ -9787,15 +9822,18 @@ paths:
                   data:
                     type: object
                     properties:
-                      synced:
+                      upserted:
                         type: integer
-                        description: Rows created or moved.
+                        description: Announcements inserted or moved.
+                      restored:
+                        type: integer
+                        description: Rows whose canonicality skip was cleared.
                       skipped:
                         type: integer
-                        description: Rows left as-is (already sent/skipped, unchanged,
-                          or not this game's).
+                        description: Rows newly marked non-canonical (skipped).
                     required:
-                    - synced
+                    - upserted
+                    - restored
                     - skipped
         '403':
           description: forbidden — caller is not an admin or service
@@ -9809,30 +9847,86 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: array
-                  items:
+    put:
+      summary: Bulk-sync a game's release announcement schedule (alias)
+      tags:
+      - Release Announcements
+      description: Admin/service-only. Alias for PATCH.
+      responses:
+        '200':
+          description: schedule synced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
                     type: object
                     properties:
-                      release_id:
+                      upserted:
                         type: integer
-                        description: The release to (re)schedule (gamedb_releases.release_id).
-                      announce_at:
-                        type: string
-                        format: date-time
-                        description: When to announce it.
+                      restored:
+                        type: integer
+                      skipped:
+                        type: integer
                     required:
-                    - release_id
-                    - announce_at
-              required:
-              - data
-        required: true
+                    - upserted
+                    - restored
+                    - skipped
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/release_announcements/due":
+    get:
+      summary: List release announcements that are due to post
+      tags:
+      - Release Announcements
+      description: 'Service-only poll feed (the bot''s `listDueAnnouncements`). Returns
+        the announcements ready to post: not yet sent or skipped, whose `announce_at`
+        has passed, whose release is still in the future, and which are the canonical
+        release for their game (earliest release date; on a same-day tie the lowest
+        `release_id`). Any pending announcement whose window has already passed (its
+        release has shipped) is marked skipped (`release-window-missed`) server-side
+        first, so it never appears here. Unpaginated; bounded by `limit`.'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 25
+          minimum: 1
+          maximum: 100
+        description: Max rows to return (default 25, clamped to 100).
+      responses:
+        '200':
+          description: due announcements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/DueReleaseAnnouncement"
+                required:
+                - data
+        '403':
+          description: forbidden — caller is not a service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/release_announcements":
     post:
       summary: Schedule a release announcement
@@ -9840,8 +9934,7 @@ paths:
       - Release Announcements
       description: Admin/service-only. Schedules the bot to announce a release. The
         body carries `release_id` (the primary key, 1:1 with the release) and `announce_at`.
-        The delivery columns (`sent_at`, `skipped_at`, `skip_reason`) are bot-managed
-        and ignored on write — use the skip action to skip an announcement.
+        Delivery state is set later via PATCH (`sent_at`, or `skipped_at` + `skip_reason`).
       parameters: []
       responses:
         '201':
@@ -9893,8 +9986,7 @@ paths:
                     announce_at:
                       type: string
                       format: date-time
-                      description: When to announce. Required on create; move it to
-                        reschedule.
+                      description: When to announce. Required on create.
                   required:
                   - release_id
                   - announce_at
@@ -9936,12 +10028,12 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
     patch:
-      summary: Reschedule a release announcement
+      summary: Reschedule or mark a release announcement
       tags:
       - Release Announcements
-      description: Admin/service-only. Reschedule a pending announcement by moving
-        `announce_at`. The bot-managed delivery columns are read-only and ignored
-        on write.
+      description: 'Admin/service-only. Move `announce_at`, and/or set delivery state:
+        the bot PATCHes `sent_at` to mark an announcement sent, or `skipped_at` +
+        `skip_reason` to mark it missed.'
       parameters: []
       responses:
         '200':
@@ -9986,15 +10078,23 @@ paths:
                 data:
                   type: object
                   properties:
-                    release_id:
-                      type: integer
-                      description: The release to announce (gamedb_releases.release_id;
-                        also the PK). Required on create.
                     announce_at:
                       type: string
                       format: date-time
-                      description: When to announce. Required on create; move it to
-                        reschedule.
+                      description: Move the scheduled announce time.
+                    sent_at:
+                      type: string
+                      format: date-time
+                      description: Mark the announcement sent (set by the bot after
+                        posting).
+                    skipped_at:
+                      type: string
+                      format: date-time
+                      description: Mark the announcement missed/skipped.
+                    skip_reason:
+                      type: string
+                      maxLength: 80
+                      description: Why it was skipped (e.g. `release-window-missed`).
               required:
               - data
         required: true
@@ -10029,15 +10129,23 @@ paths:
                 data:
                   type: object
                   properties:
-                    release_id:
-                      type: integer
-                      description: The release to announce (gamedb_releases.release_id;
-                        also the PK). Required on create.
                     announce_at:
                       type: string
                       format: date-time
-                      description: When to announce. Required on create; move it to
-                        reschedule.
+                      description: Move the scheduled announce time.
+                    sent_at:
+                      type: string
+                      format: date-time
+                      description: Mark the announcement sent (set by the bot after
+                        posting).
+                    skipped_at:
+                      type: string
+                      format: date-time
+                      description: Mark the announcement missed/skipped.
+                    skip_reason:
+                      type: string
+                      maxLength: 80
+                      description: Why it was skipped (e.g. `release-window-missed`).
         required: true
     delete:
       summary: Delete a release announcement
