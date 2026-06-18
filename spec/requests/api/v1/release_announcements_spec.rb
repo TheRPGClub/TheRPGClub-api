@@ -3,13 +3,20 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/release_announcements', type: :request do
-  # Client-writable GamedbReleaseAnnouncement columns. The controller's
-  # #writable_data strips the bot-managed delivery columns (`sent_at`,
-  # `skipped_at`, `skip_reason`) — they are read-only and the skip columns are
-  # set only via the dedicated skip action.
-  writable = {
+  # Create body: a release to schedule plus its announce time.
+  create_writable = {
     release_id: { type: :integer, description: 'The release to announce (gamedb_releases.release_id; also the PK). Required on create.' },
-    announce_at: { type: :string, format: 'date-time', description: 'When to announce. Required on create; move it to reschedule.' }
+    announce_at: { type: :string, format: 'date-time', description: 'When to announce. Required on create.' }
+  }
+
+  # Update body: reschedule and/or set delivery state. The bot PATCHes `sent_at`
+  # to mark an announcement sent, or `skipped_at` + `skip_reason` to mark it
+  # missed (#109); all are optional and admin/service-gated.
+  update_writable = {
+    announce_at: { type: :string, format: 'date-time', description: 'Move the scheduled announce time.' },
+    sent_at: { type: :string, format: 'date-time', description: 'Mark the announcement sent (set by the bot after posting).' },
+    skipped_at: { type: :string, format: 'date-time', description: 'Mark the announcement missed/skipped.' },
+    skip_reason: { type: :string, maxLength: 80, description: 'Why it was skipped (e.g. `release-window-missed`).' }
   }
 
   path '/api/v1/games/{id}/release_announcements' do
@@ -38,47 +45,85 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
 
     patch 'Bulk-sync a game\'s release announcement schedule' do
       tags 'Release Announcements'
-      description 'Admin/service-only bulk upsert of the game\'s announcement schedule (the bot\'s ' \
-                  '`syncReleaseAnnouncements`). The body carries the computed pairs as an array under `data`. ' \
-                  'Each pair is upserted by `release_id`: a new row is created, an existing one is moved only ' \
-                  'when `announce_at` changes. Rows the bot\'s send loop already owns (`sent_at` or ' \
-                  '`skipped_at` set) are never touched, and pairs whose `release_id` doesn\'t belong to the ' \
-                  'game (or that omit `announce_at`) are ignored. Returns counts of rows written vs left as-is.'
-      consumes 'application/json'
+      description 'Admin/service-only. Rebuilds the game\'s announcement schedule from its releases and ' \
+                  'applies canonicality (the bot\'s `syncReleaseAnnouncements` + `markNonCanonicalAnnouncements`). ' \
+                  'Server-side and body-less — everything is computed from `gamedb_releases`. In one transaction ' \
+                  'it (1) upserts an announcement for every release with a `release_date`, scheduling ' \
+                  '`announce_at = release_date - 7 days` (a pending row is moved only when its time changes; rows ' \
+                  'already sent/skipped are left alone); (2) clears the canonicality skip on rows that no longer ' \
+                  'qualify as port-only / same-day-duplicate; and (3) skips rows that are now non-canonical ' \
+                  '(`port-only-release` for a later release date, `same-day-platform-duplicate` for a same-day tie).'
       produces 'application/json'
-
-      parameter name: :body, in: :body, required: true, schema: {
-        type: :object,
-        properties: {
-          data: {
-            type: :array,
-            items: {
-              type: :object,
-              properties: {
-                release_id: { type: :integer, description: 'The release to (re)schedule (gamedb_releases.release_id).' },
-                announce_at: { type: :string, format: 'date-time', description: 'When to announce it.' }
-              },
-              required: %w[release_id announce_at]
-            }
-          }
-        },
-        required: %w[data]
-      }
 
       response '200', 'schedule synced' do
         schema type: :object, properties: {
           data: {
             type: :object,
             properties: {
-              synced: { type: :integer, description: 'Rows created or moved.' },
-              skipped: { type: :integer, description: 'Rows left as-is (already sent/skipped, unchanged, or not this game\'s).' }
+              upserted: { type: :integer, description: 'Announcements inserted or moved.' },
+              restored: { type: :integer, description: 'Rows whose canonicality skip was cleared.' },
+              skipped: { type: :integer, description: 'Rows newly marked non-canonical (skipped).' }
             },
-            required: %w[synced skipped]
+            required: %w[upserted restored skipped]
           }
         }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    put 'Bulk-sync a game\'s release announcement schedule (alias)' do
+      tags 'Release Announcements'
+      description 'Admin/service-only. Alias for PATCH.'
+      produces 'application/json'
+
+      response '200', 'schedule synced' do
+        schema type: :object, properties: {
+          data: {
+            type: :object,
+            properties: {
+              upserted: { type: :integer },
+              restored: { type: :integer },
+              skipped: { type: :integer }
+            },
+            required: %w[upserted restored skipped]
+          }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/release_announcements/due' do
+    get 'List release announcements that are due to post' do
+      tags 'Release Announcements'
+      description 'Service-only poll feed (the bot\'s `listDueAnnouncements`). Returns the announcements ready ' \
+                  'to post: not yet sent or skipped, whose `announce_at` has passed, whose release is still in ' \
+                  'the future, and which are the canonical release for their game (earliest release date; on a ' \
+                  'same-day tie the lowest `release_id`). Any pending announcement whose window has already ' \
+                  'passed (its release has shipped) is marked skipped (`release-window-missed`) server-side ' \
+                  'first, so it never appears here. Unpaginated; bounded by `limit`.'
+      produces 'application/json'
+      parameter name: :limit, in: :query, required: false,
+                schema: { type: :integer, default: 25, minimum: 1, maximum: 100 },
+                description: 'Max rows to return (default 25, clamped to 100).'
+
+      response '200', 'due announcements' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/DueReleaseAnnouncement' } }
+        }, required: %w[data]
+      end
+
+      response '403', 'forbidden — caller is not a service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -92,15 +137,14 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
     post 'Schedule a release announcement' do
       tags 'Release Announcements'
       description 'Admin/service-only. Schedules the bot to announce a release. The body carries ' \
-                  '`release_id` (the primary key, 1:1 with the release) and `announce_at`. The ' \
-                  'delivery columns (`sent_at`, `skipped_at`, `skip_reason`) are bot-managed and ' \
-                  'ignored on write — use the skip action to skip an announcement.'
+                  '`release_id` (the primary key, 1:1 with the release) and `announce_at`. Delivery ' \
+                  'state is set later via PATCH (`sent_at`, or `skipped_at` + `skip_reason`).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable, required: %w[release_id announce_at] } },
+        properties: { data: { type: :object, properties: create_writable, required: %w[release_id announce_at] } },
         required: %w[data]
       }
 
@@ -147,16 +191,16 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
       end
     end
 
-    patch 'Reschedule a release announcement' do
+    patch 'Reschedule or mark a release announcement' do
       tags 'Release Announcements'
-      description 'Admin/service-only. Reschedule a pending announcement by moving `announce_at`. ' \
-                  'The bot-managed delivery columns are read-only and ignored on write.'
+      description 'Admin/service-only. Move `announce_at`, and/or set delivery state: the bot PATCHes ' \
+                  '`sent_at` to mark an announcement sent, or `skipped_at` + `skip_reason` to mark it missed.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable } },
+        properties: { data: { type: :object, properties: update_writable } },
         required: %w[data]
       }
 
@@ -189,7 +233,7 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable } }
+        properties: { data: { type: :object, properties: update_writable } }
       }
 
       response '200', 'updated' do
