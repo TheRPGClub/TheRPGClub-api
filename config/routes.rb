@@ -188,7 +188,11 @@ Rails.application.routes.draw do
       get  "bot_presence",        to: "bot_presence#index"
       post "bot_presence",        to: "bot_presence#create"
       resources :search_synonyms, only: %i[index show create update destroy]
-      resources :search_synonym_groups, only: %i[index show create update destroy]
+      resources :search_synonym_groups, only: %i[index show create update destroy] do
+        # Bulk-delete a group's terms (#108) — service/admin only. The group is
+        # kept; used for the bot's atomic replace-terms flow.
+        member { delete "terms", to: "search_synonym_groups#destroy_terms" }
+      end
       resources :search_synonym_drafts, only: %i[index show create update destroy]
     end
   end

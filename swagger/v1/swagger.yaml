@@ -11425,8 +11425,15 @@ paths:
       tags:
       - Search Synonyms
       description: Synonym groups — each group is an equivalence class that its terms
-        belong to.
+        belong to. Pass `q` to search for groups by one of their terms.
       parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Free-text search: returns groups having a term that matches
+          `q` by literal text (case-insensitive) or normalised key.'
       - name: page
         in: query
         schema:
@@ -11663,8 +11670,8 @@ paths:
       summary: Delete a synonym group
       tags:
       - Search Synonyms
-      description: Restricted to admins or the service account. Fails while the group
-        still has terms (delete those first).
+      description: Restricted to admins or the service account. Cascade-deletes the
+        group's synonym terms.
       responses:
         '200':
           description: deleted
@@ -11684,8 +11691,43 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-        '422':
-          description: group still has terms
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/search_synonym_groups/{id}/terms":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbSearchSynonymGroup group_id.
+    delete:
+      summary: Delete all terms in a synonym group
+      tags:
+      - Search Synonyms
+      description: Bulk-deletes every term in the group, leaving the group itself
+        intact. Restricted to admins or the service account. Used to atomically replace
+        a group's terms (delete all, then re-insert). Returns the number of terms
+        removed.
+      responses:
+        '200':
+          description: terms deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedCountResponse"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: group not found
           content:
             application/json:
               schema:
@@ -11702,7 +11744,8 @@ paths:
       tags:
       - Search Synonyms
       description: Game-search synonym terms. Pass `group_id` to list the terms in
-        one synonym group.
+        one synonym group, `term` for an exact normalised-key lookup (synonym expansion),
+        or `q` for a free-text search.
       parameters:
       - name: group_id
         in: query
@@ -11710,6 +11753,22 @@ paths:
           type: integer
         required: false
         description: Filter to a single synonym group.
+      - name: term
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Exact-match lookup on the normalised key (`term_norm`). The value
+          is normalised server-side (lowercased, non-alphanumerics stripped) before
+          matching, so `ff7`, `FF7` and `FF-7` are equivalent. Drives game-search
+          synonym expansion.
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Free-text search: matches `term_text` case-insensitively and
+          the normalised `term_norm` by substring.'
       - name: page
         in: query
         schema:
