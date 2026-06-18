@@ -92,13 +92,14 @@ module Api
       # The social platforms matching the requested `has_platform` tokens —
       # each token expanded to its alias substrings (or the literal token) and
       # matched case-insensitively against `label`. Returned as an id subquery
-      # for `WHERE user_id IN (… user_socials …)` filtering.
+      # for `WHERE user_id IN (… user_socials …)` filtering. The patterns are
+      # `LIKE`-escaped and bound (`ILIKE ANY (ARRAY[?])`), so no user input
+      # reaches the SQL string.
       def matching_platform_ids
         patterns = platform_tokens
           .flat_map { |t| PLATFORM_LABEL_ALIASES.fetch(t, [ t ]) }
           .map { |p| "%#{ActiveRecord::Base.sanitize_sql_like(p)}%" }
-        clause = Array.new(patterns.size, "label ILIKE ?").join(" OR ")
-        SocialPlatform.where(clause, *patterns).select(:id)
+        SocialPlatform.where("label ILIKE ANY (ARRAY[?])", patterns).select(:id)
       end
 
       def preview_limit
