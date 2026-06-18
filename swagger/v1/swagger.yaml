@@ -838,6 +838,22 @@ components:
       - entry_id
       - user_id
       - gamedb_game_id
+    NowPlayingGame:
+      allOf:
+      - "$ref": "#/components/schemas/GameSummary"
+      - type: object
+        properties:
+          linked_thread_id:
+            type: string
+            nullable: true
+    NowPlayingPlatform:
+      allOf:
+      - "$ref": "#/components/schemas/Platform"
+      - type: object
+        properties:
+          platform_abbreviation:
+            type: string
+            nullable: true
     NowPlayingEntry:
       type: object
       properties:
@@ -854,17 +870,38 @@ components:
         note:
           type: string
           nullable: true
+        sort_order:
+          type: integer
+          nullable: true
+        added_at:
+          type: string
+          format: date-time
+        note_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        has_journal_entry:
+          type: boolean
+        journal_count:
+          type: integer
+        last_journal_at:
+          type: string
+          format: date-time
+          nullable: true
         game:
           allOf:
-          - "$ref": "#/components/schemas/GameSummary"
+          - "$ref": "#/components/schemas/NowPlayingGame"
           nullable: true
         platform:
           allOf:
-          - "$ref": "#/components/schemas/Platform"
+          - "$ref": "#/components/schemas/NowPlayingPlatform"
           nullable: true
       required:
       - entry_id
       - user_id
+      - added_at
+      - has_journal_entry
+      - journal_count
     NowPlayingUserEntry:
       type: object
       properties:
@@ -881,11 +918,82 @@ components:
         note:
           type: string
           nullable: true
+        sort_order:
+          type: integer
+          nullable: true
+        added_at:
+          type: string
+          format: date-time
+        note_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        has_journal_entry:
+          type: boolean
+        journal_count:
+          type: integer
+        last_journal_at:
+          type: string
+          format: date-time
+          nullable: true
         user:
           "$ref": "#/components/schemas/UserSummary"
       required:
       - entry_id
       - user_id
+      - added_at
+      - has_journal_entry
+      - journal_count
+    NowPlayingMemberEntry:
+      type: object
+      properties:
+        entry_id:
+          type: integer
+        user_id:
+          type: string
+        gamedb_game_id:
+          type: integer
+          nullable: true
+        platform_id:
+          type: integer
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        sort_order:
+          type: integer
+          nullable: true
+        added_at:
+          type: string
+          format: date-time
+        note_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        has_journal_entry:
+          type: boolean
+        journal_count:
+          type: integer
+        last_journal_at:
+          type: string
+          format: date-time
+          nullable: true
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/NowPlayingGame"
+          nullable: true
+        platform:
+          allOf:
+          - "$ref": "#/components/schemas/NowPlayingPlatform"
+          nullable: true
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+      required:
+      - entry_id
+      - user_id
+      - added_at
+      - has_journal_entry
+      - journal_count
     Review:
       type: object
       properties:
@@ -7280,8 +7388,8 @@ paths:
       summary: List a user's now-playing games
       tags:
       - Now Playing
-      description: Returns the games a specific user is currently playing, newest
-        first.
+      description: The games a specific user is currently playing, ordered by `sort_order`
+        ascending (nulls last), then newest first. Open to any authenticated caller.
       parameters:
       - name: page
         in: query
@@ -7327,6 +7435,329 @@ paths:
                       "$ref": "#/components/schemas/NowPlayingEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add a now-playing entry
+      tags:
+      - Now Playing
+      description: Owner-only. Adds a game to the user's now-playing list. `gamedb_game_id`
+        is required; `platform_id` and `note` are optional. `sort_order` is assigned
+        server-side (appended last) and the per-user maximum of 10 entries is enforced.
+      parameters: []
+      responses:
+        '201':
+          description: entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NowPlayingEntry"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (duplicate game, max entries reached, or
+            note too long)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    gamedb_game_id:
+                      type: integer
+                      description: The game (gamedb_games.game_id). Required on create.
+                    platform_id:
+                      type: integer
+                      nullable: true
+                      description: Optional platform association.
+                    note:
+                      type: string
+                      nullable: true
+                      description: Optional free-text note (max 500 chars).
+                  required:
+                  - gamedb_game_id
+              required:
+              - data
+        required: true
+  "/api/v1/now_playing":
+    get:
+      summary: List all members' now-playing entries
+      tags:
+      - Now Playing
+      description: Service/admin-only. Every active member's now-playing entries (bots
+        and members who have left are excluded), each with its embedded user, game
+        and platform. The optional `game_ids[]` filter narrows to entries of any of
+        the given games; `q` keeps entries whose game title matches (case-insensitive
+        substring) for the search autocomplete.
+      parameters:
+      - name: game_ids[]
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: integer
+        collectionFormat: multi
+        description: Filter to entries of any of these games (`gamedb_game_id`).
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by game title (case-insensitive substring).
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: now-playing entries across members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NowPlayingMemberEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '403':
+          description: forbidden — caller is not service/admin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/now_playing/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserNowPlaying entry_id.
+    get:
+      summary: Show a now-playing entry
+      tags:
+      - Now Playing
+      responses:
+        '200':
+          description: entry detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NowPlayingMemberEntry"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a now-playing entry
+      tags:
+      - Now Playing
+      description: Owner-only. Partial update of `note`, `platform_id` and/or `sort_order`.
+        `note_updated_at` is stamped server-side when the note changes.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NowPlayingMemberEntry"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    note:
+                      type: string
+                      nullable: true
+                      description: Free-text note (max 500 chars).
+                    platform_id:
+                      type: integer
+                      nullable: true
+                      description: Platform association.
+                    sort_order:
+                      type: integer
+                      nullable: true
+                      description: Ascending display order.
+              required:
+              - data
+        required: true
+    put:
+      summary: Replace a now-playing entry (alias)
+      tags:
+      - Now Playing
+      description: Owner-only. Alias for PATCH (applied as a partial assign).
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NowPlayingMemberEntry"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    note:
+                      type: string
+                      nullable: true
+                      description: Free-text note (max 500 chars).
+                    platform_id:
+                      type: integer
+                      nullable: true
+                      description: Platform association.
+                    sort_order:
+                      type: integer
+                      nullable: true
+                      description: Ascending display order.
+        required: true
+    delete:
+      summary: Delete a now-playing entry
+      tags:
+      - Now Playing
+      description: Owner-only.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
