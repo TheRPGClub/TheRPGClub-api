@@ -88,6 +88,7 @@ Rails.application.routes.draw do
           get "reminders", to: "reminders#index"
           post "reminders", to: "reminders#create"
           get "presence_prompts", to: "presence_prompts#index"
+          post "presence_prompts", to: "presence_prompts#create"
           get "presence_prompt_opts", to: "presence_prompt_opts#show"
           put "presence_prompt_opts", to: "presence_prompt_opts#update"
           get "giveaway_settings", to: "giveaway_settings#show"
@@ -121,6 +122,9 @@ Rails.application.routes.draw do
       get "journal_entries",              to: "journal#search"
       resources :journal_entries, only: %i[show update destroy], controller: "journal"
       resources :reminders, only: %i[show update destroy]
+      # markResolved (#110): service-only resolution of a presence prompt by its
+      # Discord interaction/message id. Creation + listing live under /users.
+      resources :presence_prompts, only: %i[update]
       resources :game_keys, only: %i[index create show destroy] do
         member do
           post "claim", to: "game_keys#claim"

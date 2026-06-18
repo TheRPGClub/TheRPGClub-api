@@ -9092,11 +9092,33 @@ paths:
       summary: List a user's presence prompt history
       tags:
       - Presence Prompts
-      description: Read-only history of presence prompts the bot sent the user after
+      description: 'Read-only history of presence prompts the bot sent the user after
         detecting (via Discord rich presence) that they were playing a game. Ordered
         newest first. The bot owns all writes; the user-settable side is the opt-out
-        preference.
+        preference. The optional `game_title_norm` and `status` filters back the bot''s
+        lookups: pass `game_title_norm` with `per=1` for the last prompt date of a
+        game, or combine with `status=pending` and read `meta.count` for the pending
+        counts.'
       parameters:
+      - name: game_title_norm
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter to a single normalized game title (matches the bot's normalization).
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - ACCEPTED
+          - DECLINED
+          - OPT_OUT_GAME
+          - OPT_OUT_ALL
+        required: false
+        description: Filter by lifecycle status. Case-insensitive (`pending` and `PENDING`
+          both match).
       - name: page
         in: query
         schema:
@@ -9131,6 +9153,155 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a presence prompt
+      tags:
+      - Presence Prompts
+      description: Service-only. Records a new prompt the bot just sent. `prompt_id`
+        is the Discord interaction/message id used to correlate the later resolution.
+        The row starts `PENDING` with a server-stamped `created_at`; `status`/`resolved_at`
+        are ignored if sent.
+      parameters: []
+      responses:
+        '201':
+          description: prompt created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PresencePrompt"
+        '403':
+          description: forbidden — service token required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    prompt_id:
+                      type: string
+                      description: Discord interaction/message id (primary key).
+                    game_title:
+                      type: string
+                      description: The detected game title.
+                    game_title_norm:
+                      type: string
+                      description: Normalized game title (matches the bot's normalization).
+                  required:
+                  - prompt_id
+                  - game_title
+                  - game_title_norm
+              required:
+              - data
+        required: true
+  "/api/v1/presence_prompts/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The prompt_id (Discord interaction/message id).
+    patch:
+      summary: Resolve a presence prompt
+      tags:
+      - Presence Prompts
+      description: Service-only. Marks how the user resolved the prompt and stamps
+        `resolved_at`. Only `status` and `resolved_at` are writable; the prompt identity
+        and game titles are immutable.
+      parameters: []
+      responses:
+        '200':
+          description: prompt resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PresencePrompt"
+        '403':
+          description: forbidden — service token required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - PENDING
+                      - ACCEPTED
+                      - DECLINED
+                      - OPT_OUT_GAME
+                      - OPT_OUT_ALL
+                      description: New lifecycle status.
+                    resolved_at:
+                      type: string
+                      format: date-time
+                      description: When the prompt was resolved.
+              required:
+              - data
+        required: true
   "/api/v1/users/{user_id}/presence_prompt_opts":
     parameters:
     - name: user_id
