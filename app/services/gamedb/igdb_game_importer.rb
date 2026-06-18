@@ -13,6 +13,7 @@ module Gamedb
   # null (IGDB carries no physical/digital signal).
   class IgdbGameImporter
     class MissingIgdbGameError < StandardError; end
+    class MissingIgdbIdError < StandardError; end
 
     Result = Struct.new(:game, :created, :images, keyword_init: true) do
       def as_json(*)
@@ -63,7 +64,41 @@ module Gamedb
       Result.new(game: game, created: created, images: images)
     end
 
+    # Re-fetch the game's release dates from IGDB and rebuild its release rows
+    # (the bot's `refreshReleaseDates`): drop the existing releases plus their
+    # scheduled announcements, then re-run the same one-per-platform sync #import!
+    # uses. Touches releases only — never images or the game's metadata/taxonomy.
+    # Returns the (unchanged) GamedbGame so the caller can re-render its releases.
+    def refresh_releases!(game_id)
+      game = GamedbGame.find(game_id)
+      raise MissingIgdbIdError, "Game #{game_id} has no IGDB id" if game.igdb_id.blank?
+
+      payload = @client.game(game.igdb_id)
+      raise MissingIgdbGameError, "IGDB game #{game.igdb_id} was not found" if payload.blank?
+
+      GamedbGame.transaction do
+        clear_releases!(game)
+        # Drop any cached releases so sync_releases!'s `seen_platform_ids` lookup
+        # reads the now-empty set rather than the pre-clear association cache.
+        game.releases.reset
+        sync_releases!(game, payload)
+      end
+
+      game
+    end
+
     private
+
+    # Delete the game's releases and the announcements that hang off them
+    # (announcements first — they FK to release_id). Mirrors the bot's
+    # `clearReleaseDates`, which wipes both before re-inserting.
+    def clear_releases!(game)
+      release_ids = game.releases.pluck(:release_id)
+      return if release_ids.empty?
+
+      GamedbReleaseAnnouncement.where(release_id: release_ids).delete_all
+      GamedbRelease.where(release_id: release_ids).delete_all
+    end
 
     def upsert_game!(payload)
       GamedbGame.transaction do

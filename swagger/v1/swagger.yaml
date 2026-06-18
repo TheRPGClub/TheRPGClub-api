@@ -3512,6 +3512,72 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert an engine
+      tags:
+      - Engines
+      description: Admin/service-only find-or-create keyed on `igdb_engine_id` (the
+        bot's `ensureEngine`). Returns the existing engine with 200 when the IGDB
+        id is already known, or creates it and returns 201. `name` is applied only
+        when a new row is created.
+      parameters: []
+      responses:
+        '201':
+          description: engine created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Engine"
+        '200':
+          description: existing engine (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Engine"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_engine_id` or blank `name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Engine name (set only on create).
+                    igdb_engine_id:
+                      type: integer
+                      description: IGDB game-engine id. Required; the upsert key.
+                  required:
+                  - igdb_engine_id
+              required:
+              - data
+        required: true
   "/api/v1/engines/{id}":
     parameters:
     - name: id
@@ -3913,6 +3979,72 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a franchise
+      tags:
+      - Franchises
+      description: Admin/service-only find-or-create keyed on `igdb_franchise_id`
+        (the bot's `ensureFranchise`). Returns the existing franchise with 200 when
+        the IGDB id is already known, or creates it and returns 201. `name` is applied
+        only when a new row is created.
+      parameters: []
+      responses:
+        '201':
+          description: franchise created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Franchise"
+        '200':
+          description: existing franchise (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Franchise"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_franchise_id` or blank `name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Franchise name (set only on create).
+                    igdb_franchise_id:
+                      type: integer
+                      description: IGDB franchise id. Required; the upsert key.
+                  required:
+                  - igdb_franchise_id
+              required:
+              - data
+        required: true
   "/api/v1/franchises/{id}":
     parameters:
     - name: id
@@ -4836,6 +4968,69 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a game
+      tags:
+      - Games
+      description: Admin/service-only. Edits the two free-text fields the bot owns
+        (`description`, `featured_video_url`); a partial body updates only the field(s)
+        it carries. All other columns are IGDB-sourced and managed by the create /
+        refresh paths. Also accepts PUT.
+      parameters: []
+      responses:
+        '200':
+          description: game updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Game"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    description:
+                      type: string
+                      nullable: true
+                      description: Game description / summary.
+                    featured_video_url:
+                      type: string
+                      nullable: true
+                      description: Featured video URL.
+              required:
+              - data
+        required: true
   "/api/v1/games/{id}/refresh-images":
     parameters:
     - name: id
@@ -5151,6 +5346,234 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add a release
+      tags:
+      - Games
+      description: Admin/service-only. Adds a release row for the game (the bot's
+        `addReleaseInfo`). `platform_id` and `region_id` are required; `format` must
+        be `Physical`, `Digital` or null; `release_date` and `notes` are optional.
+        A plain insert — duplicates are allowed.
+      parameters: []
+      responses:
+        '201':
+          description: release created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Release"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing/unknown platform or region, bad
+            `format`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    platform_id:
+                      type: integer
+                      description: GamedbPlatform id. Required.
+                    region_id:
+                      type: integer
+                      description: GamedbRegion id. Required.
+                    format:
+                      type: string
+                      enum:
+                      - Physical
+                      - Digital
+                      nullable: true
+                      description: Physical, Digital, or null.
+                    release_date:
+                      type: string
+                      format: date-time
+                      nullable: true
+                      description: Release date.
+                    notes:
+                      type: string
+                      nullable: true
+                      description: Free-text notes.
+                  required:
+                  - platform_id
+                  - region_id
+              required:
+              - data
+        required: true
+  "/api/v1/games/{id}/refresh-releases":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    post:
+      summary: Refresh releases from IGDB
+      tags:
+      - Games
+      description: 'Admin/service-only. Re-fetches the game''s release dates from
+        IGDB and replaces its release rows (the bot''s `refreshReleaseDates`): clears
+        the existing releases plus their scheduled announcements, then re-imports
+        one release per platform (earliest dated; Japan-only releases skipped, undated
+        rows dropped, `format` left null). Returns the rebuilt release list (same
+        shape as GET /api/v1/games/{id}/releases).'
+      responses:
+        '200':
+          description: releases refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Release"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game or IGDB game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unprocessable (game has no IGDB id, or IGDB not configured)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: upstream IGDB request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/alternates":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    post:
+      summary: Link an alternate version
+      tags:
+      - Games
+      description: Admin/service-only. Links the path game and `alt_game_id` as alternate
+        versions of each other (the bot's `linkAlternateVersions`). The link is symmetric
+        and stored once; re-linking is idempotent and returns the existing link with
+        200. Returns the game's full alternates list (same shape as the `alternates`
+        slice of GET /api/v1/games/{id}/relations).
+      parameters: []
+      responses:
+        '201':
+          description: alternate linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Game"
+        '200':
+          description: already linked (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Game"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unprocessable (`alt_game_id` is the game itself, or an unknown
+            game)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` or `alt_game_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    alt_game_id:
+                      type: integer
+                      description: The other GamedbGame to link as an alternate. Required.
+                  required:
+                  - alt_game_id
+              required:
+              - data
+        required: true
   "/api/v1/games/{id}/now_playing":
     parameters:
     - name: id
@@ -5466,6 +5889,72 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a genre
+      tags:
+      - Genres
+      description: Admin/service-only find-or-create keyed on `igdb_genre_id` (the
+        bot's `ensureGenre`). Returns the existing genre with 200 when the IGDB id
+        is already known, or creates it and returns 201. `name` is applied only when
+        a new row is created.
+      parameters: []
+      responses:
+        '201':
+          description: genre created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Genre"
+        '200':
+          description: existing genre (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Genre"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_genre_id` or blank `name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Genre name (set only on create).
+                    igdb_genre_id:
+                      type: integer
+                      description: IGDB genre id. Required; the upsert key.
+                  required:
+                  - igdb_genre_id
+              required:
+              - data
+        required: true
   "/api/v1/genres/{id}":
     parameters:
     - name: id
@@ -6902,6 +7391,72 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a mode
+      tags:
+      - Modes
+      description: Admin/service-only find-or-create keyed on `igdb_game_mode_id`
+        (the bot's `ensureMode`). Returns the existing mode with 200 when the IGDB
+        id is already known, or creates it and returns 201. `name` is applied only
+        when a new row is created.
+      parameters: []
+      responses:
+        '201':
+          description: mode created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Mode"
+        '200':
+          description: existing mode (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Mode"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_game_mode_id` or blank `name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Mode name (set only on create).
+                    igdb_game_mode_id:
+                      type: integer
+                      description: IGDB game mode id. Required; the upsert key.
+                  required:
+                  - igdb_game_mode_id
+              required:
+              - data
+        required: true
   "/api/v1/modes/{id}":
     parameters:
     - name: id
@@ -8196,6 +8751,73 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a perspective
+      tags:
+      - Perspectives
+      description: Admin/service-only find-or-create keyed on `igdb_perspective_id`
+        (the bot's `ensurePerspective`). Returns the existing perspective with 200
+        when the IGDB id is already known, or creates it and returns 201. `name` is
+        applied only when a new row is created.
+      parameters: []
+      responses:
+        '201':
+          description: perspective created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Perspective"
+        '200':
+          description: existing perspective (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Perspective"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_perspective_id` or blank `name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Perspective name (set only on create).
+                    igdb_perspective_id:
+                      type: integer
+                      description: IGDB player-perspective id. Required; the upsert
+                        key.
+                  required:
+                  - igdb_perspective_id
+              required:
+              - data
+        required: true
   "/api/v1/perspectives/{id}":
     parameters:
     - name: id
@@ -8319,6 +8941,77 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a platform
+      tags:
+      - Platforms
+      description: 'Admin/service-only find-or-create keyed on `igdb_platform_id`
+        (the bot''s `ensurePlatform`). The payload fields map onto the columns: `code`
+        -> platform_code, `name` -> platform_name, `igdb_id` -> igdb_platform_id.
+        Returns the existing platform with 200 when the IGDB id is already known,
+        or creates it and returns 201. `code`/`name` are applied only on create.'
+      parameters: []
+      responses:
+        '201':
+          description: platform created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Platform"
+        '200':
+          description: existing platform (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Platform"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_id` or blank `code`/`name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                      description: Internal platform code, e.g. `PS5` (set only on
+                        create).
+                    name:
+                      type: string
+                      description: Platform name (set only on create).
+                    igdb_id:
+                      type: integer
+                      description: IGDB platform id. Required; the upsert key.
+                  required:
+                  - igdb_id
+              required:
+              - data
+        required: true
   "/api/v1/platforms/{id}":
     parameters:
     - name: id
@@ -8916,6 +9609,76 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a region
+      tags:
+      - Regions
+      description: 'Admin/service-only find-or-create keyed on `igdb_region_id` (the
+        bot''s `ensureRegion`). The payload fields map onto the columns: `code` ->
+        region_code, `name` -> region_name, `igdb_id` -> igdb_region_id. Returns the
+        existing region with 200 when the IGDB id is already known, or creates it
+        and returns 201. `code`/`name` are applied only on create.'
+      parameters: []
+      responses:
+        '201':
+          description: region created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Region"
+        '200':
+          description: existing region (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Region"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_id` or blank `code`/`name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                      description: Internal region code, e.g. `NA` (set only on create).
+                    name:
+                      type: string
+                      description: Region name (set only on create).
+                    igdb_id:
+                      type: integer
+                      description: IGDB region id. Required; the upsert key.
+                  required:
+                  - igdb_id
+              required:
+              - data
+        required: true
   "/api/v1/regions/{id}":
     parameters:
     - name: id
@@ -9001,6 +9764,75 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Bulk-sync a game's release announcement schedule
+      tags:
+      - Release Announcements
+      description: 'Admin/service-only bulk upsert of the game''s announcement schedule
+        (the bot''s `syncReleaseAnnouncements`). The body carries the computed pairs
+        as an array under `data`. Each pair is upserted by `release_id`: a new row
+        is created, an existing one is moved only when `announce_at` changes. Rows
+        the bot''s send loop already owns (`sent_at` or `skipped_at` set) are never
+        touched, and pairs whose `release_id` doesn''t belong to the game (or that
+        omit `announce_at`) are ignored. Returns counts of rows written vs left as-is.'
+      parameters: []
+      responses:
+        '200':
+          description: schedule synced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      synced:
+                        type: integer
+                        description: Rows created or moved.
+                      skipped:
+                        type: integer
+                        description: Rows left as-is (already sent/skipped, unchanged,
+                          or not this game's).
+                    required:
+                    - synced
+                    - skipped
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      release_id:
+                        type: integer
+                        description: The release to (re)schedule (gamedb_releases.release_id).
+                      announce_at:
+                        type: string
+                        format: date-time
+                        description: When to announce it.
+                    required:
+                    - release_id
+                    - announce_at
+              required:
+              - data
+        required: true
   "/api/v1/release_announcements":
     post:
       summary: Schedule a release announcement
@@ -12311,6 +13143,72 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create or upsert a theme
+      tags:
+      - Themes
+      description: Admin/service-only find-or-create keyed on `igdb_theme_id` (the
+        bot's `ensureTheme`). Returns the existing theme with 200 when the IGDB id
+        is already known, or creates it and returns 201. `name` is applied only when
+        a new row is created.
+      parameters: []
+      responses:
+        '201':
+          description: theme created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Theme"
+        '200':
+          description: existing theme (matched on IGDB id)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Theme"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed (missing `igdb_theme_id` or blank `name`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Theme name (set only on create).
+                    igdb_theme_id:
+                      type: integer
+                      description: IGDB theme id. Required; the upsert key.
+                  required:
+                  - igdb_theme_id
+              required:
+              - data
+        required: true
   "/api/v1/themes/{id}":
     parameters:
     - name: id

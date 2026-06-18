@@ -35,6 +35,57 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    patch 'Bulk-sync a game\'s release announcement schedule' do
+      tags 'Release Announcements'
+      description 'Admin/service-only bulk upsert of the game\'s announcement schedule (the bot\'s ' \
+                  '`syncReleaseAnnouncements`). The body carries the computed pairs as an array under `data`. ' \
+                  'Each pair is upserted by `release_id`: a new row is created, an existing one is moved only ' \
+                  'when `announce_at` changes. Rows the bot\'s send loop already owns (`sent_at` or ' \
+                  '`skipped_at` set) are never touched, and pairs whose `release_id` doesn\'t belong to the ' \
+                  'game (or that omit `announce_at`) are ignored. Returns counts of rows written vs left as-is.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :array,
+            items: {
+              type: :object,
+              properties: {
+                release_id: { type: :integer, description: 'The release to (re)schedule (gamedb_releases.release_id).' },
+                announce_at: { type: :string, format: 'date-time', description: 'When to announce it.' }
+              },
+              required: %w[release_id announce_at]
+            }
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'schedule synced' do
+        schema type: :object, properties: {
+          data: {
+            type: :object,
+            properties: {
+              synced: { type: :integer, description: 'Rows created or moved.' },
+              skipped: { type: :integer, description: 'Rows left as-is (already sent/skipped, unchanged, or not this game\'s).' }
+            },
+            required: %w[synced skipped]
+          }
+        }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/release_announcements' do

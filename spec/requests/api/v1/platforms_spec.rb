@@ -36,6 +36,52 @@ RSpec.describe 'api/v1/platforms', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    post 'Create or upsert a platform' do
+      tags 'Platforms'
+      description 'Admin/service-only find-or-create keyed on `igdb_platform_id` (the bot\'s `ensurePlatform`). ' \
+                  'The payload fields map onto the columns: `code` -> platform_code, `name` -> platform_name, ' \
+                  '`igdb_id` -> igdb_platform_id. Returns the existing platform with 200 when the IGDB id is ' \
+                  'already known, or creates it and returns 201. `code`/`name` are applied only on create.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              code: { type: :string, description: 'Internal platform code, e.g. `PS5` (set only on create).' },
+              name: { type: :string, description: 'Platform name (set only on create).' },
+              igdb_id: { type: :integer, description: 'IGDB platform id. Required; the upsert key.' }
+            },
+            required: %w[igdb_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'platform created' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Platform' } }
+      end
+
+      response '200', 'existing platform (matched on IGDB id)' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Platform' } }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed (missing `igdb_id` or blank `code`/`name`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/platforms/{id}' do

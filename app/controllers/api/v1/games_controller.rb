@@ -66,6 +66,25 @@ module Api
         render json: { error: "backblaze_request_failed", message: error.message }, status: :bad_gateway
       end
 
+      # PATCH/PUT /api/v1/games/:id  { data: { description, featured_video_url } }
+      #
+      # Admin/service-only. Edits the two free-text fields the bot owns on an
+      # existing game (mirrors its `updateGameDescription` /
+      # `updateFeaturedVideoUrl`). All other columns are IGDB-sourced and managed
+      # by the import/refresh paths, so only these two are writable here; a
+      # partial body updates just the field(s) it carries.
+      def update
+        return unless require_admin_or_service!
+
+        game = GamedbGame.find(params[:id])
+        game.update!(update_data)
+        # Reload through `without_images` so GameResource's gotm_won / nr_gotm_won
+        # SQL aliases and per-kind image URLs resolve, exactly as #show does.
+        game = GamedbGame.without_images.includes(:images).find(game.game_id)
+
+        render json: { data: GameResource.new(game).serializable_hash }
+      end
+
       def refresh_images
         return unless require_admin_or_service!
 
@@ -89,6 +108,29 @@ module Api
 
       def releases
         render json: { data: releases_for(GamedbGame.find(params[:id])) }
+      end
+
+      # POST /api/v1/games/:id/refresh-releases
+      #
+      # Admin/service-only. Re-fetches the game's release dates from IGDB and
+      # replaces its release rows (the bot's `refreshReleaseDates`): clears the
+      # existing releases plus their scheduled announcements, then re-imports one
+      # release per platform (earliest dated; Japan-only releases skipped, undated
+      # rows dropped, `format` left null). Returns the rebuilt release list,
+      # matching GET /api/v1/games/:id/releases.
+      def refresh_releases
+        return unless require_admin_or_service!
+
+        game = Gamedb::IgdbGameImporter.new.refresh_releases!(params[:id])
+        render json: { data: releases_for(game) }
+      rescue Gamedb::IgdbGameImporter::MissingIgdbIdError => error
+        render json: { error: "missing_igdb_id", message: error.message }, status: :unprocessable_entity
+      rescue Gamedb::IgdbGameImporter::MissingIgdbGameError => error
+        render json: { error: "igdb_game_not_found", message: error.message }, status: :not_found
+      rescue Igdb::Client::ConfigurationError => error
+        render json: { error: "igdb_not_configured", message: error.message }, status: :unprocessable_entity
+      rescue Igdb::Client::RequestError => error
+        render json: { error: "igdb_request_failed", message: error.message }, status: :bad_gateway
       end
 
       def relations
@@ -139,6 +181,12 @@ module Api
         Integer(raw)
       rescue ArgumentError, TypeError
         raise ActionController::ParameterMissing, :igdb_id
+      end
+
+      # The two columns #update may set. Everything else on a game is IGDB-sourced
+      # and owned by the import/refresh paths, so it is not writable here.
+      def update_data
+        request_data.slice("description", "featured_video_url")
       end
 
       # The game record exactly as #show renders it minus the now-playing /
