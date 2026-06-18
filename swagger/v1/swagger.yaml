@@ -9302,6 +9302,79 @@ paths:
               required:
               - data
         required: true
+    put:
+      summary: Resolve a presence prompt (alias)
+      tags:
+      - Presence Prompts
+      description: 'Service-only. Alias for PATCH (applied as a partial assign): only
+        `status` and `resolved_at` are writable; the prompt identity and game titles
+        are immutable.'
+      parameters: []
+      responses:
+        '200':
+          description: prompt resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PresencePrompt"
+        '403':
+          description: forbidden — service token required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - PENDING
+                      - ACCEPTED
+                      - DECLINED
+                      - OPT_OUT_GAME
+                      - OPT_OUT_ALL
+                      description: New lifecycle status.
+                    resolved_at:
+                      type: string
+                      format: date-time
+                      description: When the prompt was resolved.
+              required:
+              - data
+        required: true
   "/api/v1/users/{user_id}/presence_prompt_opts":
     parameters:
     - name: user_id

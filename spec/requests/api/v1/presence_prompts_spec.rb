@@ -132,6 +132,52 @@ RSpec.describe 'api/v1/presence_prompts', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    put 'Resolve a presence prompt (alias)' do
+      tags 'Presence Prompts'
+      description 'Service-only. Alias for PATCH (applied as a partial assign): only `status` and ' \
+                  '`resolved_at` are writable; the prompt identity and game titles are immutable.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              status: { type: :string, enum: statuses, description: 'New lifecycle status.' },
+              resolved_at: { type: :string, format: 'date-time', description: 'When the prompt was resolved.' }
+            }
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'prompt resolved' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/PresencePrompt' } }
+      end
+
+      response '403', 'forbidden — service token required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing `data` parameter' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/users/{user_id}/presence_prompt_opts' do
