@@ -581,6 +581,30 @@ components:
             type: array
             items:
               "$ref": "#/components/schemas/UserSocial"
+    UserService:
+      allOf:
+      - "$ref": "#/components/schemas/UserSummary"
+      - type: object
+        properties:
+          server_joined_at:
+            type: string
+            format: date-time
+            nullable: true
+          last_seen_at:
+            type: string
+            format: date-time
+            nullable: true
+          emoji_name:
+            type: string
+            nullable: true
+    MarkDepartedResult:
+      type: object
+      properties:
+        count:
+          type: integer
+      required:
+      - count
+      description: Number of users newly marked departed.
     BacklogEntry:
       type: object
       properties:
@@ -1797,6 +1821,26 @@ components:
           type: string
           nullable: true
         new_nick:
+          type: string
+          nullable: true
+        changed_at:
+          type: string
+          format: date-time
+      required:
+      - event_id
+      - user_id
+      - changed_at
+    UserAvatarHistory:
+      type: object
+      properties:
+        event_id:
+          type: integer
+        user_id:
+          type: string
+        avatar_hash:
+          type: string
+          nullable: true
+        avatar_url:
           type: string
           nullable: true
         changed_at:
@@ -13509,10 +13553,11 @@ paths:
       tags:
       - Users
       description: Returns RPG Club users. The `q` parameter searches `username`,
-        `global_name`, or an exact `user_id` match. `discord_id` and `has_platform`
-        are exact/association filters that stack with `q`. When `has_platform` is
-        given, each user record additionally carries its embedded `socials` list (the
-        `UserWithSocials` shape).
+        `global_name`, or an exact `user_id` match. `discord_id`, `has_platform` and
+        `has_emoji_name` are exact/association filters that stack with `q`. When `has_platform`
+        is given, each user record additionally carries its embedded `socials` list
+        (the `UserWithSocials` shape); when `has_emoji_name` is given (and `has_platform`
+        is not), records use the `UserService` shape so the bot sees each user's `emoji_name`.
       parameters:
       - name: q
         in: query
@@ -13537,6 +13582,15 @@ paths:
           `completionator` map to the bot''s label aliases (e.g. `xbl` → "Xbox", `nsw`
           → "Nintendo"/"Switch"); any other token matches the label literally. Matched
           users include their embedded `socials`.'
+      - name: has_emoji_name
+        in: query
+        schema:
+          type: boolean
+        required: false
+        description: When truthy, returns only users whose `emoji_name` is set. Matched
+          users use the `UserService` shape (which includes `emoji_name`). Used by
+          UserEmojiService to sync emoji display names. Takes effect only when `has_platform`
+          is not also given.
       - name: page
         in: query
         schema:
@@ -13634,6 +13688,317 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update service-managed user fields
+      tags:
+      - Users
+      description: Service-only. Updates the Discord-sync fields the bot owns. `last_seen`
+        maps to `last_seen_at`; `departed` (boolean) toggles `server_left_at` — `true`
+        stamps a departure (preserving an existing one), `false` clears it (a rejoin).
+        `emoji_name` may be set or cleared (null). Only the supplied keys are changed.
+      parameters: []
+      responses:
+        '200':
+          description: user updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/UserService"
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: user not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    emoji_name:
+                      type: string
+                      nullable: true
+                      description: The user's generated Discord emoji name, or null
+                        to clear it.
+                    last_seen:
+                      type: string
+                      format: date-time
+                      description: When the user was last seen active; stored as `last_seen_at`.
+                    departed:
+                      type: boolean
+                      description: true marks the user departed (sets `server_left_at`);
+                        false clears it (rejoin).
+              required:
+              - data
+        required: true
+  "/api/v1/users/upsert":
+    post:
+      summary: Upsert a user by Discord id
+      tags:
+      - Users
+      description: 'Service-only. Creates or updates a user keyed by `discord_id`
+        (the Discord snowflake / `user_id`). Called on guild member join/update events
+        and by the `memberscan` admin command. Passing `server_left_at: null` clears
+        a prior departure (a rejoin). Returns 201 when a new user was created, 200
+        when an existing one was updated.'
+      parameters: []
+      responses:
+        '201':
+          description: user created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/UserService"
+        '200':
+          description: user updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/UserService"
+        '422':
+          description: missing `discord_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    discord_id:
+                      type: string
+                      description: The Discord snowflake. Required; becomes the `user_id`.
+                    username:
+                      type: string
+                      nullable: true
+                    global_name:
+                      type: string
+                      nullable: true
+                    is_bot:
+                      type: boolean
+                      description: Defaults to false on create.
+                    server_joined_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    server_left_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                      description: Set to null to clear a departure (rejoin).
+                  required:
+                  - discord_id
+              required:
+              - data
+        required: true
+  "/api/v1/users/mark_departed":
+    post:
+      summary: Bulk-mark departed users
+      tags:
+      - Users
+      description: Service-only. Marks every currently active user (those with `server_left_at`
+        unset) whose id is NOT in `active_ids` as departed (stamps `server_left_at`).
+        Already-departed users are left untouched. Mirrors the bot's `memberscan`
+        reconciliation. An empty `active_ids` list is rejected. Returns the count
+        of users newly marked.
+      parameters: []
+      responses:
+        '200':
+          description: users marked departed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/MarkDepartedResult"
+        '422':
+          description: empty `active_ids` list
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: The Discord ids of members still present in the guild.
+              required:
+              - active_ids
+        required: true
+  "/api/v1/users/{user_id}/avatar_history":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubUser id (Discord user id).
+    get:
+      summary: List a user's avatar history
+      tags:
+      - Users
+      description: Returns the user's avatar-change log, newest first. Open to any
+        authenticated caller.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: avatar history list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/UserAvatarHistory"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Record an avatar change
+      tags:
+      - Users
+      description: Service-only. Inserts a new avatar-history row. `changed_at` is
+        DB-stamped.
+      parameters: []
+      responses:
+        '201':
+          description: avatar history record created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/UserAvatarHistory"
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    avatar_hash:
+                      type: string
+                      nullable: true
+                      description: The Discord avatar hash.
+                    avatar_url:
+                      type: string
+                      nullable: true
+                      description: The CDN/stored avatar URL.
+              required:
+              - data
+        required: true
   "/api/v1/users/{user_id}/avatar":
     parameters:
     - name: user_id

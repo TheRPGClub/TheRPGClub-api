@@ -48,10 +48,19 @@ Rails.application.routes.draw do
       resources :companies, only: %i[index show]
       resources :engines, only: %i[index show]
 
-      resources :users, param: :user_id, only: %i[index show] do
+      resources :users, param: :user_id, only: %i[index show update] do
+        # Discord member-sync collection writes (#105): upsert-by-discord_id and
+        # the `memberscan` bulk departure reconciliation. Both are POSTs, so they
+        # never collide with the GET `:user_id` show route.
+        collection do
+          post "upsert"
+          post "mark_departed"
+        end
         member do
           get "avatar"
           get "profile-image"
+          get "avatar_history", to: "user_avatar_history#index"
+          post "avatar_history", to: "user_avatar_history#create"
           get "nick_history", to: "user_nick_history#index"
           get "collections/platform_summary", to: "collections#platform_summary"
           get "collections", to: "collections#index"
