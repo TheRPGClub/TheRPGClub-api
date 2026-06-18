@@ -237,18 +237,19 @@ module OpenapiSchemas
       CollectionPlatformSummary: obj(
         total_count: int, platform_counts: array_of("CollectionPlatformCount")
       ),
-      # CompletionEntryResource (CompletionFields + game + platform).
+      # CompletionEntryResource (CompletionFields + game + platform). `created_at`
+      # is the row's insert time (NOT NULL), exposed for the bot's CSV export (#102).
       CompletionEntry: obj(
         completion_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), completion_type: str, completed_at: ts(nullable: true),
-        final_playtime_hrs: num(nullable: true),
+        final_playtime_hrs: num(nullable: true), created_at: ts,
         game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
       # CompletionUserEntryResource (CompletionFields + user), for game-scoped lists.
       CompletionUserEntry: obj(
         completion_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), completion_type: str, completed_at: ts(nullable: true),
-        final_playtime_hrs: num(nullable: true), user: ref("UserSummary")
+        final_playtime_hrs: num(nullable: true), created_at: ts, user: ref("UserSummary")
       ),
       # CompletionsController#leaderboard (CompletionLeaderboardEntryResource):
       # a user ranked by total completion count. An aggregate row, not a model
