@@ -8,10 +8,32 @@ module Api
       PREVIEW_LIMIT_DEFAULT = 10
       PREVIEW_LIMIT_MAX = 50
 
+      # Canonical `has_platform` tokens mapped to the `social_platforms.label`
+      # substrings they match (case-insensitively). This mirrors the Discord
+      # bot's own `SOCIAL_MATCHERS` / `getMembersWithPlatforms` resolution
+      # (RPGClub_GameDB) so a bot caller passing `steam`/`psn`/`xbl`/`nsw`
+      # hits exactly the platforms it resolves locally. Any token not listed
+      # here falls back to a literal case-insensitive label substring match.
+      PLATFORM_LABEL_ALIASES = {
+        "steam" => %w[steam],
+        "psn" => %w[psn playstation],
+        "xbl" => %w[xbox],
+        "nsw" => %w[nintendo switch],
+        "completionator" => %w[completionator]
+      }.freeze
+
       def index
         scope = RpgClubUser.without_images
         scope = scope.where("username ILIKE :term OR global_name ILIKE :term OR user_id = :exact", term: "%#{query}%", exact: params[:q]) if params[:q].present?
-        render_collection(scope, resource: UserSummaryResource, default_order: { username: :asc })
+        scope = scope.where(user_id: discord_ids) if discord_ids.present?
+
+        if platform_tokens.present?
+          scope = scope.where(user_id: UserSocial.where(platform_id: matching_platform_ids).select(:user_id))
+            .includes(socials: :social_platform)
+          render_collection(scope, resource: UserWithSocialsResource, default_order: { username: :asc })
+        else
+          render_collection(scope, resource: UserSummaryResource, default_order: { username: :asc })
+        end
       end
 
       def show
@@ -53,6 +75,30 @@ module Api
 
       def query
         ActiveRecord::Base.sanitize_sql_like(params[:q].to_s.strip)
+      end
+
+      # Exact Discord-snowflake match(es). `user_id` already *is* the Discord
+      # snowflake on this schema, so this is an exact filter (no fuzzy username
+      # match like `q`). Accepts a comma-separated list.
+      def discord_ids
+        @discord_ids ||= params[:discord_id].to_s.split(",").map(&:strip).reject(&:blank?)
+      end
+
+      # The `has_platform` filter tokens (comma-separated), lowercased.
+      def platform_tokens
+        @platform_tokens ||= params[:has_platform].to_s.split(",").map { |t| t.strip.downcase }.reject(&:blank?)
+      end
+
+      # The social platforms matching the requested `has_platform` tokens —
+      # each token expanded to its alias substrings (or the literal token) and
+      # matched case-insensitively against `label`. Returned as an id subquery
+      # for `WHERE user_id IN (… user_socials …)` filtering.
+      def matching_platform_ids
+        patterns = platform_tokens
+          .flat_map { |t| PLATFORM_LABEL_ALIASES.fetch(t, [ t ]) }
+          .map { |p| "%#{ActiveRecord::Base.sanitize_sql_like(p)}%" }
+        clause = Array.new(patterns.size, "label ILIKE ?").join(" OR ")
+        SocialPlatform.where(clause, *patterns).select(:id)
       end
 
       def preview_limit

@@ -572,6 +572,15 @@ components:
               "$ref": "#/components/schemas/JournaledGame"
           counts:
             "$ref": "#/components/schemas/UserCounts"
+    UserWithSocials:
+      allOf:
+      - "$ref": "#/components/schemas/UserSummary"
+      - type: object
+        properties:
+          socials:
+            type: array
+            items:
+              "$ref": "#/components/schemas/UserSocial"
     BacklogEntry:
       type: object
       properties:
@@ -718,6 +727,22 @@ components:
       - user_id
       - gamedb_game_id
       - completion_type
+    CompletionLeaderboardEntry:
+      type: object
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+          nullable: true
+        global_name:
+          type: string
+          nullable: true
+        completion_count:
+          type: integer
+      required:
+      - user_id
+      - completion_count
     FavoriteEntry:
       type: object
       properties:
@@ -2721,6 +2746,72 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/completions/leaderboard":
+    get:
+      summary: Completion leaderboard
+      tags:
+      - Completions
+      description: Active members (`server_left_at` is null) ranked by total completion
+        count, most first (ties broken by `user_id`). Open to any authenticated caller.
+        The optional `q` filters to completions of games whose title matches (case-insensitive
+        substring).
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by game title (case-insensitive substring).
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: leaderboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CompletionLeaderboardEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/completions/{id}":
     parameters:
     - name: id
@@ -12514,13 +12605,34 @@ paths:
       tags:
       - Users
       description: Returns RPG Club users. The `q` parameter searches `username`,
-        `global_name`, or an exact `user_id` match.
+        `global_name`, or an exact `user_id` match. `discord_id` and `has_platform`
+        are exact/association filters that stack with `q`. When `has_platform` is
+        given, each user record additionally carries its embedded `socials` list (the
+        `UserWithSocials` shape).
       parameters:
       - name: q
         in: query
         schema:
           type: string
         required: false
+      - name: discord_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by exact Discord snowflake (the `user_id`). Accepts a
+          comma-separated list.
+      - name: has_platform
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Filter to users with at least one social link on the given platform(s):
+          a comma-separated list of platform tokens matched case-insensitively against
+          `social_platforms.label`. Canonical tokens `steam`, `psn`, `xbl`, `nsw`,
+          `completionator` map to the bot''s label aliases (e.g. `xbl` → "Xbox", `nsw`
+          → "Nintendo"/"Switch"); any other token matches the label literally. Matched
+          users include their embedded `socials`.'
       - name: page
         in: query
         schema:
@@ -12562,7 +12674,7 @@ paths:
                   data:
                     type: array
                     items:
-                      "$ref": "#/components/schemas/UserSummary"
+                      "$ref": "#/components/schemas/UserWithSocials"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
         '401':

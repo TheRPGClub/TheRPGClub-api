@@ -75,6 +75,35 @@ RSpec.describe 'api/v1/completions', type: :request do
     end
   end
 
+  path '/api/v1/completions/leaderboard' do
+    get 'Completion leaderboard' do
+      tags 'Completions'
+      description 'Active members (`server_left_at` is null) ranked by total completion count, most ' \
+                  'first (ties broken by `user_id`). Open to any authenticated caller. The optional ' \
+                  '`q` filters to completions of games whose title matches (case-insensitive substring).'
+      produces 'application/json'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter by game title (case-insensitive substring).'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+      parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
+        description: 'Deprecated alias for `per` (transitional, for the unaudited Discord bot).'
+      parameter name: :offset, in: :query, schema: { type: :integer, minimum: 0 }, required: false,
+        description: 'Deprecated; converted to a page number (transitional, for the unaudited Discord bot).'
+
+      response '200', 'leaderboard' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/CompletionLeaderboardEntry' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/completions/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'UserGameCompletion completion_id.'
 

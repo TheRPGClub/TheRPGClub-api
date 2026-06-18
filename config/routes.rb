@@ -81,7 +81,9 @@ Rails.application.routes.draw do
       end
 
       resources :collections, only: %i[show update destroy]
-      resources :completions, only: %i[show update destroy]
+      resources :completions, only: %i[show update destroy] do
+        collection { get "leaderboard" }
+      end
       resources :favorites, only: %i[show update destroy]
       resources :reviews, only: %i[show update destroy]
       resources :backlog, only: %i[show update destroy]

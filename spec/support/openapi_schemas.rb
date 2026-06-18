@@ -191,6 +191,12 @@ module OpenapiSchemas
         journal: array_of("JournaledGame"),
         counts: ref("UserCounts")
       ),
+      # The members-list shape returned by users#index when filtered by
+      # `has_platform` (#99, UserWithSocialsResource): UserSummary plus the
+      # embedded `socials` list so the bot's `/mp-info` migration gets each
+      # matched user's platform handles in one call. `socials` is present only
+      # on that filtered variant (arrays are already excluded from `required`).
+      UserWithSocials: extends("UserSummary", socials: array_of("UserSocial")),
 
       # ---- user-game collection entries ------------------------------------
       # BacklogEntryResource: trimmed columns + embedded game/platform.
@@ -222,6 +228,13 @@ module OpenapiSchemas
         completion_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), completion_type: str, completed_at: ts(nullable: true),
         final_playtime_hrs: num(nullable: true), user: ref("UserSummary")
+      ),
+      # CompletionsController#leaderboard (CompletionLeaderboardEntryResource):
+      # a user ranked by total completion count. An aggregate row, not a model
+      # record — `completion_count` is the grouped `COUNT(*)`.
+      CompletionLeaderboardEntry: obj(
+        user_id: str, username: str(nullable: true), global_name: str(nullable: true),
+        completion_count: int
       ),
       # FavoriteEntryResource (no platform association).
       FavoriteEntry: obj(

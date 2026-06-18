@@ -6,9 +6,21 @@ RSpec.describe 'api/v1/users', type: :request do
   path '/api/v1/users' do
     get 'List users' do
       tags 'Users'
-      description 'Returns RPG Club users. The `q` parameter searches `username`, `global_name`, or an exact `user_id` match.'
+      description 'Returns RPG Club users. The `q` parameter searches `username`, `global_name`, or an ' \
+                  'exact `user_id` match. `discord_id` and `has_platform` are exact/association filters ' \
+                  'that stack with `q`. When `has_platform` is given, each user record additionally ' \
+                  'carries its embedded `socials` list (the `UserWithSocials` shape).'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false
+      parameter name: :discord_id, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter by exact Discord snowflake (the `user_id`). Accepts a comma-separated list.'
+      parameter name: :has_platform, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter to users with at least one social link on the given platform(s): a ' \
+                     'comma-separated list of platform tokens matched case-insensitively against ' \
+                     '`social_platforms.label`. Canonical tokens `steam`, `psn`, `xbl`, `nsw`, ' \
+                     '`completionator` map to the bot\'s label aliases (e.g. `xbl` → "Xbox", `nsw` → ' \
+                     '"Nintendo"/"Switch"); any other token matches the label literally. Matched users ' \
+                     'include their embedded `socials`.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
@@ -18,7 +30,7 @@ RSpec.describe 'api/v1/users', type: :request do
 
       response '200', 'users list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { '$ref' => '#/components/schemas/UserSummary' } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/UserWithSocials' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
