@@ -104,8 +104,8 @@ Rails.application.routes.draw do
           delete "links/:game_id", to: "thread_game_links#destroy"
         end
       end
-      resources :gotm_entries, only: %i[index show]
-      resources :nr_gotm_entries, only: %i[index show]
+      resources :gotm_entries, only: %i[index show create update destroy]
+      resources :nr_gotm_entries, only: %i[index show create update destroy]
       get "gotm_entries/:round/nominations", to: "nominations#gotm", as: :gotm_entry_nominations
       get "nr_gotm_entries/:round/nominations", to: "nominations#nr_gotm", as: :nr_gotm_entry_nominations
       # Suggestion review sessions (bot parity, #91). Declared before
