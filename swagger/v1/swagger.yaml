@@ -1378,6 +1378,23 @@ components:
       - thread_id
       - gamedb_game_id
       - linked_at
+    BotPresence:
+      type: object
+      properties:
+        activity_name:
+          type: string
+        set_at:
+          type: string
+          format: date-time
+        set_by_user_id:
+          type: string
+          nullable: true
+        set_by_username:
+          type: string
+          nullable: true
+      required:
+      - activity_name
+      - set_at
     PresencePrompt:
       type: object
       properties:
@@ -1985,6 +2002,160 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_presence":
+    get:
+      summary: List bot presence history
+      tags:
+      - Bot Presence
+      description: Service-only. Returns presence history, newest first. `limit` (capped
+        at 50) sizes the page.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 50
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 50
+        required: false
+        description: Max rows to return (capped at 50). Alias for `per`.
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: presence history list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/BotPresence"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Save a bot presence entry
+      tags:
+      - Bot Presence
+      description: Service-only. Records a new presence entry. `set_at` is stamped
+        by the server (defaults to now()).
+      parameters: []
+      responses:
+        '201':
+          description: presence entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotPresence"
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    activity_name:
+                      type: string
+                      description: The presence activity text. Required on create.
+                    set_by_user_id:
+                      type: string
+                      nullable: true
+                      description: Discord user id that set the presence. Optional.
+                    set_by_username:
+                      type: string
+                      nullable: true
+                      description: Discord username that set the presence. Optional.
+                  required:
+                  - activity_name
+              required:
+              - data
+        required: true
+  "/api/v1/bot_presence/latest":
+    get:
+      summary: Get the latest bot presence entry
+      tags:
+      - Bot Presence
+      description: 'Service-only. Returns the most recent presence entry, or `{ "data":
+        null }` when no entries exist.'
+      responses:
+        '200':
+          description: latest presence entry (or null)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                    - "$ref": "#/components/schemas/BotPresence"
+                    nullable: true
+        '403':
+          description: forbidden — caller is not the service principal
           content:
             application/json:
               schema:

@@ -351,6 +351,12 @@ module OpenapiSchemas
       ThreadGameLink: obj(thread_id: str, gamedb_game_id: int, linked_at: ts),
 
       # ---- presence / activity / member history (bot-written, read-only) ---
+      # BotPresenceResource: the four logical columns; the surrogate `id` is
+      # internal-only and never exposed.
+      BotPresence: obj(
+        activity_name: str, set_at: ts,
+        set_by_user_id: str(nullable: true), set_by_username: str(nullable: true)
+      ),
       PresencePrompt: obj(
         prompt_id: str, user_id: str, game_title: str, game_title_norm: str,
         status: str, created_at: ts, resolved_at: ts(nullable: true)

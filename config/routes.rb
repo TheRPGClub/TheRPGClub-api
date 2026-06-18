@@ -148,6 +148,14 @@ Rails.application.routes.draw do
       resources :voting_info, only: %i[index show create update destroy] do
         collection { get "current" }
       end
+      # Bot presence history (service-only, #94). The Discord bot records each
+      # `/setpresence` change and reads back the latest/recent activity as it
+      # migrates `BotPresenceHistory` off direct SQL (RPGClub_GameDB#795). Plain
+      # routes (no `:id` member): the list and create share a path; `latest` is
+      # a fixed sub-path. Every action requires the bot bearer token.
+      get  "bot_presence/latest", to: "bot_presence#latest"
+      get  "bot_presence",        to: "bot_presence#index"
+      post "bot_presence",        to: "bot_presence#create"
       resources :search_synonyms, only: %i[index show create update destroy]
       resources :search_synonym_groups, only: %i[index show create update destroy]
       resources :search_synonym_drafts, only: %i[index show create update destroy]
