@@ -267,6 +267,35 @@ RSpec.describe 'api/v1/users', type: :request do
     end
   end
 
+  path '/api/v1/users/avatar_history_counts' do
+    get 'Avatar-history counts per member' do
+      tags 'Users'
+      description 'Aggregate avatar-change count for every active, non-bot member (`server_left_at` ' \
+                  'is null and `is_bot` is false) who has at least one logged avatar change, ordered ' \
+                  'by display name (`global_name`, then `username`, then `user_id`; ties broken by ' \
+                  '`user_id`). Open to any authenticated caller. Backs the bot\'s avatar-history ' \
+                  'leaderboard (`getAllMembersAvatarHistoryCounts`).'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+      parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
+        description: 'Deprecated alias for `per` (transitional, for the unaudited Discord bot).'
+      parameter name: :offset, in: :query, schema: { type: :integer, minimum: 0 }, required: false,
+        description: 'Deprecated; converted to a page number (transitional, for the unaudited Discord bot).'
+
+      response '200', 'avatar-history counts' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/AvatarHistoryCount' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/users/{user_id}/avatar' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 

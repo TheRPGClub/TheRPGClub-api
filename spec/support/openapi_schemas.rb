@@ -493,6 +493,13 @@ module OpenapiSchemas
         event_id: int, user_id: str, avatar_hash: str(nullable: true),
         avatar_url: str(nullable: true), changed_at: ts
       ),
+      # UserAvatarHistoryController#counts (AvatarHistoryCountResource, #145): a
+      # member's identity plus the grouped `COUNT(*)` of their logged avatar
+      # changes. An aggregate row, not a model record.
+      AvatarHistoryCount: obj(
+        user_id: str, username: str(nullable: true), global_name: str(nullable: true),
+        avatar_change_count: int
+      ),
 
       # ---- GOTM / nominations ----------------------------------------------
       # GotmEntryResource: all columns; `game` is embedded only when the caller
