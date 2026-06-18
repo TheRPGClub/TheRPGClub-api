@@ -31,6 +31,52 @@ RSpec.describe 'api/v1/regions', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    post 'Create or upsert a region' do
+      tags 'Regions'
+      description 'Admin/service-only find-or-create keyed on `igdb_region_id` (the bot\'s `ensureRegion`). ' \
+                  'The payload fields map onto the columns: `code` -> region_code, `name` -> region_name, ' \
+                  '`igdb_id` -> igdb_region_id. Returns the existing region with 200 when the IGDB id is ' \
+                  'already known, or creates it and returns 201. `code`/`name` are applied only on create.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              code: { type: :string, description: 'Internal region code, e.g. `NA` (set only on create).' },
+              name: { type: :string, description: 'Region name (set only on create).' },
+              igdb_id: { type: :integer, description: 'IGDB region id. Required; the upsert key.' }
+            },
+            required: %w[igdb_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'region created' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Region' } }
+      end
+
+      response '200', 'existing region (matched on IGDB id)' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Region' } }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed (missing `igdb_id` or blank `code`/`name`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/regions/{id}' do

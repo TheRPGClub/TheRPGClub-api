@@ -27,6 +27,50 @@ RSpec.describe 'api/v1/themes', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    post 'Create or upsert a theme' do
+      tags 'Themes'
+      description 'Admin/service-only find-or-create keyed on `igdb_theme_id` (the bot\'s `ensureTheme`). ' \
+                  'Returns the existing theme with 200 when the IGDB id is already known, or creates it and ' \
+                  'returns 201. `name` is applied only when a new row is created.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              name: { type: :string, description: 'Theme name (set only on create).' },
+              igdb_theme_id: { type: :integer, description: 'IGDB theme id. Required; the upsert key.' }
+            },
+            required: %w[igdb_theme_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'theme created' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Theme' } }
+      end
+
+      response '200', 'existing theme (matched on IGDB id)' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Theme' } }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed (missing `igdb_theme_id` or blank `name`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/themes/{id}' do

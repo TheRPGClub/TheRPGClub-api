@@ -20,33 +20,37 @@ Rails.application.routes.draw do
       # locality with the create-from-IGDB endpoint it feeds.
       get "igdb/search", to: "igdb#search"
 
-      resources :games, only: %i[index show create] do
+      resources :games, only: %i[index show create update] do
         resources :images, only: %i[index create update destroy], controller: "game_images"
 
         member do
           post "refresh-images", to: "games#refresh_images"
+          post "refresh-releases", to: "games#refresh_releases"
+          post "alternates", to: "game_alternates#create"
           get "relations", to: "games#relations"
           get "profile", to: "games#profile"
           get "releases", to: "games#releases"
+          post "releases", to: "releases#create"
           get "now_playing", to: "now_playing#game_index"
           get "completions", to: "completions#game_index"
           get "collections", to: "collections#game_index"
           get "reviews", to: "reviews#game_index"
           get "journal", to: "journal#game_index"
           get "release_announcements", to: "release_announcements#game_index"
+          patch "release_announcements/sync", to: "release_announcements#sync"
           get "threads", to: "threads#game_index"
         end
       end
 
-      resources :platforms, only: %i[index show]
-      resources :regions, only: %i[index show]
-      resources :genres, only: %i[index show]
-      resources :themes, only: %i[index show]
-      resources :perspectives, only: %i[index show]
-      resources :modes, only: %i[index show]
-      resources :franchises, only: %i[index show]
+      resources :platforms, only: %i[index show create]
+      resources :regions, only: %i[index show create]
+      resources :genres, only: %i[index show create]
+      resources :themes, only: %i[index show create]
+      resources :perspectives, only: %i[index show create]
+      resources :modes, only: %i[index show create]
+      resources :franchises, only: %i[index show create]
       resources :companies, only: %i[index show]
-      resources :engines, only: %i[index show]
+      resources :engines, only: %i[index show create]
 
       resources :users, param: :user_id, only: %i[index show update] do
         # Discord member-sync collection writes (#105): upsert-by-discord_id and

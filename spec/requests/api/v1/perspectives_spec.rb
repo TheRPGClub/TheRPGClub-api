@@ -28,6 +28,50 @@ RSpec.describe 'api/v1/perspectives', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    post 'Create or upsert a perspective' do
+      tags 'Perspectives'
+      description 'Admin/service-only find-or-create keyed on `igdb_perspective_id` (the bot\'s `ensurePerspective`). ' \
+                  'Returns the existing perspective with 200 when the IGDB id is already known, or creates it and ' \
+                  'returns 201. `name` is applied only when a new row is created.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              name: { type: :string, description: 'Perspective name (set only on create).' },
+              igdb_perspective_id: { type: :integer, description: 'IGDB player-perspective id. Required; the upsert key.' }
+            },
+            required: %w[igdb_perspective_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'perspective created' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Perspective' } }
+      end
+
+      response '200', 'existing perspective (matched on IGDB id)' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Perspective' } }
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed (missing `igdb_perspective_id` or blank `name`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/perspectives/{id}' do

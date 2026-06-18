@@ -21,4 +21,9 @@ class GamedbRelease < ApplicationRecord
     foreign_key: :release_id,
     dependent: nil,
     inverse_of: :release
+
+  # `format` is a NULL-or-{Physical,Digital} CHECK constraint in the DB (IGDB
+  # imports leave it null). Validate it in the model so a bad value from the
+  # release-create endpoint is a clean 422 instead of a CHECK violation 500.
+  validates :format, inclusion: { in: %w[Physical Digital] }, allow_nil: true
 end

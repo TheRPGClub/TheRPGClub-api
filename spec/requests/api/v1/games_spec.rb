@@ -182,6 +182,49 @@ RSpec.describe 'api/v1/games', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    patch 'Update a game' do
+      tags 'Games'
+      description 'Admin/service-only. Edits the two free-text fields the bot owns (`description`, ' \
+                  '`featured_video_url`); a partial body updates only the field(s) it carries. All other ' \
+                  'columns are IGDB-sourced and managed by the create / refresh paths. Also accepts PUT.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              description: { type: :string, nullable: true, description: 'Game description / summary.' },
+              featured_video_url: { type: :string, nullable: true, description: 'Featured video URL.' }
+            }
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'game updated' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Game' } }
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing `data` parameter' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/games/{id}/refresh-images' do
@@ -309,6 +352,153 @@ RSpec.describe 'api/v1/games', type: :request do
       end
 
       response '404', 'game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    post 'Add a release' do
+      tags 'Games'
+      description 'Admin/service-only. Adds a release row for the game (the bot\'s `addReleaseInfo`). ' \
+                  '`platform_id` and `region_id` are required; `format` must be `Physical`, `Digital` or ' \
+                  'null; `release_date` and `notes` are optional. A plain insert — duplicates are allowed.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              platform_id: { type: :integer, description: 'GamedbPlatform id. Required.' },
+              region_id: { type: :integer, description: 'GamedbRegion id. Required.' },
+              format: { type: :string, enum: %w[Physical Digital], nullable: true, description: 'Physical, Digital, or null.' },
+              release_date: { type: :string, format: 'date-time', nullable: true, description: 'Release date.' },
+              notes: { type: :string, nullable: true, description: 'Free-text notes.' }
+            },
+            required: %w[platform_id region_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'release created' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Release' } }
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed (missing/unknown platform or region, bad `format`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/games/{id}/refresh-releases' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true
+
+    post 'Refresh releases from IGDB' do
+      tags 'Games'
+      description 'Admin/service-only. Re-fetches the game\'s release dates from IGDB and replaces its ' \
+                  'release rows (the bot\'s `refreshReleaseDates`): clears the existing releases plus their ' \
+                  'scheduled announcements, then re-imports one release per platform (earliest dated; ' \
+                  'Japan-only releases skipped, undated rows dropped, `format` left null). Returns the ' \
+                  'rebuilt release list (same shape as GET /api/v1/games/{id}/releases).'
+      produces 'application/json'
+
+      response '200', 'releases refreshed' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Release' } }
+        }
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'game or IGDB game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'unprocessable (game has no IGDB id, or IGDB not configured)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '502', 'upstream IGDB request failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/games/{id}/alternates' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true
+
+    post 'Link an alternate version' do
+      tags 'Games'
+      description 'Admin/service-only. Links the path game and `alt_game_id` as alternate versions of each ' \
+                  'other (the bot\'s `linkAlternateVersions`). The link is symmetric and stored once; ' \
+                  're-linking is idempotent and returns the existing link with 200. Returns the game\'s full ' \
+                  'alternates list (same shape as the `alternates` slice of GET /api/v1/games/{id}/relations).'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              alt_game_id: { type: :integer, description: 'The other GamedbGame to link as an alternate. Required.' }
+            },
+            required: %w[alt_game_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'alternate linked' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Game' } }
+        }
+      end
+
+      response '200', 'already linked (idempotent)' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Game' } }
+        }
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'unprocessable (`alt_game_id` is the game itself, or an unknown game)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing `data` or `alt_game_id`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
