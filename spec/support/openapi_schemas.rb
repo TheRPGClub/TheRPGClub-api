@@ -100,8 +100,12 @@ module OpenapiSchemas
       # exposed; the IGDB bookkeeping column is dropped.
       Collection: obj(collection_id: int, name: str),
       # The trimmed platform shape (PlatformResource), used by the embedded
-      # `platform` on entries and the platforms list.
-      Platform: obj(platform_id: int, platform_code: str, platform_name: str),
+      # `platform` on entries and the platforms list. `platform_abbreviation` and
+      # `igdb_platform_id` were added for the Game read-path migration (#106).
+      Platform: obj(
+        platform_id: int, platform_code: str, platform_name: str,
+        platform_abbreviation: str(nullable: true), igdb_platform_id: int(nullable: true)
+      ),
       # platforms#show renders `as_json` — all columns, including the IGDB
       # bookkeeping the list trims.
       PlatformDetail: obj(
@@ -280,9 +284,6 @@ module OpenapiSchemas
       # The now-playing embedded game (NowPlayingEmbeds): the GameSummary shape
       # plus the game's linked Discord thread, derived per-entry (#104).
       NowPlayingGame: extends("GameSummary", linked_thread_id: str(nullable: true)),
-      # The now-playing embedded platform (NowPlayingEmbeds): the trimmed Platform
-      # shape plus the abbreviation the bot uses in display labels (#104).
-      NowPlayingPlatform: extends("Platform", platform_abbreviation: str(nullable: true)),
       # NowPlayingEntryResource (NowPlayingFields + game + platform), the user's
       # own list. `gamedb_game_id` is nullable on user_now_playing. The journal
       # fields (#104) are correlated aggregates over the (user, game) pair.
@@ -291,7 +292,7 @@ module OpenapiSchemas
         platform_id: int(nullable: true), note: str(nullable: true),
         sort_order: int(nullable: true), added_at: ts, note_updated_at: ts(nullable: true),
         has_journal_entry: bool, journal_count: int, last_journal_at: ts(nullable: true),
-        game: ref("NowPlayingGame", nullable: true), platform: ref("NowPlayingPlatform", nullable: true)
+        game: ref("NowPlayingGame", nullable: true), platform: ref("Platform", nullable: true)
       ),
       # NowPlayingUserEntryResource (NowPlayingFields + user), for game-scoped lists.
       NowPlayingUserEntry: obj(
@@ -308,7 +309,7 @@ module OpenapiSchemas
         platform_id: int(nullable: true), note: str(nullable: true),
         sort_order: int(nullable: true), added_at: ts, note_updated_at: ts(nullable: true),
         has_journal_entry: bool, journal_count: int, last_journal_at: ts(nullable: true),
-        game: ref("NowPlayingGame", nullable: true), platform: ref("NowPlayingPlatform", nullable: true),
+        game: ref("NowPlayingGame", nullable: true), platform: ref("Platform", nullable: true),
         user: ref("UserSummary")
       ),
       # reviews#index / show / create / update render `as_json` — all columns,

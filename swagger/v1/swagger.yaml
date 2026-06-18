@@ -211,6 +211,12 @@ components:
           type: string
         platform_name:
           type: string
+        platform_abbreviation:
+          type: string
+          nullable: true
+        igdb_platform_id:
+          type: integer
+          nullable: true
       required:
       - platform_id
       - platform_code
@@ -870,14 +876,6 @@ components:
           linked_thread_id:
             type: string
             nullable: true
-    NowPlayingPlatform:
-      allOf:
-      - "$ref": "#/components/schemas/Platform"
-      - type: object
-        properties:
-          platform_abbreviation:
-            type: string
-            nullable: true
     NowPlayingEntry:
       type: object
       properties:
@@ -918,7 +916,7 @@ components:
           nullable: true
         platform:
           allOf:
-          - "$ref": "#/components/schemas/NowPlayingPlatform"
+          - "$ref": "#/components/schemas/Platform"
           nullable: true
       required:
       - entry_id
@@ -1008,7 +1006,7 @@ components:
           nullable: true
         platform:
           allOf:
-          - "$ref": "#/components/schemas/NowPlayingPlatform"
+          - "$ref": "#/components/schemas/Platform"
           nullable: true
         user:
           "$ref": "#/components/schemas/UserSummary"
@@ -8238,7 +8236,9 @@ paths:
       tags:
       - Platforms
       description: Returns gaming platforms (consoles, PC, mobile, etc.). Supports
-        `q` for case-insensitive name/code search.
+        `q` for case-insensitive name/code search, exact `code` lookup, and IGDB-id
+        filtering via `igdb_ids[]` / `igdb_id`. All filters return the paginated list
+        shape (a single matching platform comes back as a one-element list).
       parameters:
       - name: q
         in: query
@@ -8246,6 +8246,29 @@ paths:
           type: string
         required: false
         description: Search term against `platform_name` or `platform_code`.
+      - name: code
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Exact `platform_code` lookup (e.g. `PS5`, `SWITCH`).
+      - name: igdb_ids[]
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: 'Filter to platforms with any of these `igdb_platform_id`s. Repeat
+          the param: `igdb_ids[]=6&igdb_ids[]=48`.'
+      - name: igdb_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Single-id convenience form of `igdb_ids[]` (filters on `igdb_platform_id`).
       - name: page
         in: query
         schema:
@@ -8827,8 +8850,22 @@ paths:
       summary: List regions
       tags:
       - Regions
-      description: Returns release regions (NA, JP, EU, ...).
+      description: Returns release regions (NA, JP, EU, ...). Supports exact `code`
+        lookup and `igdb_id` filtering; both return the paginated list shape (a single
+        match comes back as a one-element list).
       parameters:
+      - name: code
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Exact `region_code` lookup (e.g. `NA`, `EU`).
+      - name: igdb_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Lookup by IGDB region id (filters on `igdb_region_id`).
       - name: page
         in: query
         schema:

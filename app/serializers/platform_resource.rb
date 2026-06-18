@@ -2,14 +2,19 @@
 
 # Serializes a GamedbPlatform.
 #
-# Consumer-audited allowlist (#36): the web frontend reads `platform_id` and
-# `platform_name`; `platform_code` is kept because the Discord bot may key on
-# platform codes (its source is not auditable — see issue #36). The IGDB sync
-# bookkeeping columns (`igdb_platform_id`, `platform_abbreviation`,
-# `platform_slug`, `platform_checksum`, `igdb_updated_at`) are internal and
-# read by no consumer, so they are dropped from output.
+# Consumer-audited allowlist (#36, revised #106): the web frontend reads
+# `platform_id` and `platform_name`; `platform_code` is kept because the Discord
+# bot keys on platform codes. The Game read-path migration (#106) added two more
+# columns the bot now reads off the wire:
+#   - `platform_abbreviation` — completion autocomplete and display labels
+#   - `igdb_platform_id`       — maps IGDB platform ids to internal records on
+#                                CSV / release-date import
+# The remaining IGDB sync bookkeeping (`platform_slug`, `platform_checksum`,
+# `igdb_updated_at`) is still internal, read by no consumer, and dropped here —
+# it stays available on the full record via platforms#show.
 class PlatformResource
   include BaseResource
 
-  attributes :platform_id, :platform_code, :platform_name
+  attributes :platform_id, :platform_code, :platform_name,
+             :platform_abbreviation, :igdb_platform_id
 end
