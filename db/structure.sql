@@ -3792,6 +3792,13 @@ CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_active ON public.rpg_club_admin_wizard
 
 
 --
+-- Name: ux_rpg_club_admin_wiz_one_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_one_active ON public.rpg_club_admin_wizard_sessions USING btree (command_key, owner_user_id, channel_id) WHERE ((status)::text = 'ACTIVE'::text);
+
+
+--
 -- Name: ux_user_reminders_due; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4187,6 +4194,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260706000100'),
 ('20260618000100'),
 ('20260617000100'),
 ('20260611000300'),
