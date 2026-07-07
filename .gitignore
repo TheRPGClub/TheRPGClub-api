@@ -25,3 +25,6 @@
 # Ignore key files for decrypting credentials and more.
 /config/*.key
 /.kamal/secrets
+
+# Ignore claude directory
+/.claude

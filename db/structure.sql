@@ -2139,43 +2139,6 @@ ALTER SEQUENCE public.user_now_playing_entry_id_seq OWNED BY public.user_now_pla
 
 
 --
--- Name: user_reminders; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.user_reminders (
-    reminder_id bigint NOT NULL,
-    user_id character varying(32) NOT NULL,
-    remind_at timestamp(6) with time zone NOT NULL,
-    content character varying(400) NOT NULL,
-    sent_at timestamp(6) with time zone,
-    is_noisy boolean DEFAULT false NOT NULL,
-    failure_count bigint DEFAULT 0 NOT NULL,
-    failed_at timestamp(6) with time zone,
-    created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
-    updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL
-);
-
-
---
--- Name: user_reminders_reminder_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.user_reminders_reminder_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: user_reminders_reminder_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.user_reminders_reminder_id_seq OWNED BY public.user_reminders.reminder_id;
-
-
---
 -- Name: user_session_tokens; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2312,13 +2275,6 @@ ALTER TABLE ONLY public.user_game_reviews ALTER COLUMN review_id SET DEFAULT nex
 --
 
 ALTER TABLE ONLY public.user_now_playing ALTER COLUMN entry_id SET DEFAULT nextval('public.user_now_playing_entry_id_seq'::regclass);
-
-
---
--- Name: user_reminders reminder_id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.user_reminders ALTER COLUMN reminder_id SET DEFAULT nextval('public.user_reminders_reminder_id_seq'::regclass);
 
 
 --
@@ -3096,14 +3052,6 @@ ALTER TABLE ONLY public.user_now_playing
 
 
 --
--- Name: user_reminders user_reminders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.user_reminders
-    ADD CONSTRAINT user_reminders_pkey PRIMARY KEY (reminder_id);
-
-
---
 -- Name: user_session_tokens user_session_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3799,20 +3747,6 @@ CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_one_active ON public.rpg_club_admin_wi
 
 
 --
--- Name: ux_user_reminders_due; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ux_user_reminders_due ON public.user_reminders USING btree (sent_at, remind_at);
-
-
---
--- Name: ux_user_reminders_user; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ux_user_reminders_user ON public.user_reminders USING btree (user_id, remind_at);
-
-
---
 -- Name: ux_xbox_title_gamedb_map_title; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4194,6 +4128,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260707000100'),
 ('20260706000100'),
 ('20260618000100'),
 ('20260617000100'),

@@ -397,13 +397,6 @@ module OpenapiSchemas
         round_number: int, nomination_list_id: int(nullable: true), next_vote_at: ts,
         five_day_reminder_sent: bool, one_day_reminder_sent: bool
       ),
-      # UserReminder (all columns). Delivery columns (`sent_at`, `failure_count`,
-      # `failed_at`) are bot-managed read-only — stripped from writes.
-      Reminder: obj(
-        reminder_id: int, user_id: str, remind_at: ts, content: str,
-        sent_at: ts(nullable: true), is_noisy: bool, failure_count: int,
-        failed_at: ts(nullable: true), created_at: ts, updated_at: ts
-      ),
       PublicReminder: obj(
         reminder_id: int, channel_id: str, message: str, due_at: ts,
         recur_every: int(nullable: true), recur_unit: str(nullable: true), enabled: bool,
