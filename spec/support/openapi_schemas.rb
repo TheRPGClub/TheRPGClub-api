@@ -374,12 +374,6 @@ module OpenapiSchemas
       ),
 
       # ---- RPGClub features ------------------------------------------------
-      Todo: obj(
-        todo_id: int, title: str, details: str(nullable: true), created_by: str(nullable: true),
-        created_at: ts, updated_at: ts, completed_at: ts(nullable: true),
-        completed_by: str(nullable: true), is_completed: bool, category: str,
-        todo_category: str, todo_size: str(nullable: true)
-      ),
       Suggestion: obj(
         suggestion_id: int, title: str, details: str(nullable: true), created_by: str(nullable: true),
         created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true)

@@ -174,9 +174,6 @@ Rails.application.routes.draw do
           controller: "suggestion_review_sessions"
       end
       resources :suggestions, only: %i[index show create destroy]
-      resources :todos, only: %i[index show create update destroy] do
-        collection { get "summary" }
-      end
       resources :rss_feeds, only: %i[index show create update destroy] do
         resources :items, only: %i[index create], controller: "rss_feed_items"
       end
