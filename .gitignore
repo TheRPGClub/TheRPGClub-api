@@ -26,5 +26,5 @@
 /config/*.key
 /.kamal/secrets
 
-# Ignore claude directory
-/.claude
+# Ignore claude worktrees directory
+/.claude/worktrees
