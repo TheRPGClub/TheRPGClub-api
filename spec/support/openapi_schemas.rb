@@ -387,6 +387,12 @@ module OpenapiSchemas
         message_id: str, channel_id: str, starboard_message_id: str, author_id: str,
         star_count: int, created_at: ts
       ),
+      # `state_json` is the stored JSON string, returned verbatim.
+      WizardSession: obj(
+        session_id: str, command_key: str, owner_user_id: str, channel_id: str,
+        guild_id: str(nullable: true), status: str, state_json: str,
+        last_updated_at: ts, created_at: ts, updated_at: ts
+      ),
       VotingInfo: obj(
         round_number: int, nomination_list_id: int(nullable: true), next_vote_at: ts,
         five_day_reminder_sent: bool, one_day_reminder_sent: bool

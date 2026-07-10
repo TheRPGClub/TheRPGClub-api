@@ -98,9 +98,13 @@ Rails.application.routes.draw do
           get "game_keys", to: "game_keys#user_index"
           get "activity_icons", to: "user_activity_icons#index"
           get "channel_counts", to: "user_channel_counts#index"
+          get "wizard_sessions", to: "wizard_sessions#user_index"
+          post "wizard_sessions", to: "wizard_sessions#upsert"
+          delete "wizard_sessions", to: "wizard_sessions#destroy_historical"
         end
       end
 
+      resources :wizard_sessions, only: %i[update destroy]
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
         collection { get "leaderboard" }
