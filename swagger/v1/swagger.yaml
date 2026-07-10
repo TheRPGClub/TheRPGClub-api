@@ -1347,6 +1347,43 @@ components:
       - author_id
       - star_count
       - created_at
+    WizardSession:
+      type: object
+      properties:
+        session_id:
+          type: string
+        command_key:
+          type: string
+        owner_user_id:
+          type: string
+        channel_id:
+          type: string
+        guild_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+        state_json:
+          type: string
+        last_updated_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - session_id
+      - command_key
+      - owner_user_id
+      - channel_id
+      - status
+      - state_json
+      - last_updated_at
+      - created_at
+      - updated_at
     VotingInfo:
       type: object
       properties:
@@ -15050,6 +15087,290 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/wizard_sessions":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubAdminWizardSession owner_user_id.
+    get:
+      summary: Get the active wizard session
+      tags:
+      - Wizard Sessions
+      description: Owner-only (the bot service token counts as owner). Returns the
+        single ACTIVE session for this (command_key, owner, channel), or 404 if none
+        exists.
+      parameters:
+      - name: command_key
+        in: query
+        schema:
+          type: string
+        required: true
+      - name: channel_id
+        in: query
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: active session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/WizardSession"
+        '400':
+          description: missing command_key or channel_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no active session
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Upsert the active wizard session
+      tags:
+      - Wizard Sessions
+      description: Owner-only. Creates or updates the ACTIVE session for this (command_key,
+        owner, channel) — called after every wizard step so the bot can resume after
+        a restart. Reuses the existing session_id when a matching ACTIVE session already
+        exists.
+      parameters: []
+      responses:
+        '200':
+          description: session upserted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/WizardSession"
+        '400':
+          description: missing a required field
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    command_key:
+                      type: string
+                      description: The wizard command this session belongs to (e.g.
+                        nextround-setup). Required.
+                    channel_id:
+                      type: string
+                      description: Discord channel id the wizard is running in. Required.
+                    guild_id:
+                      type: string
+                      description: Discord guild id.
+                      nullable: true
+                    state_json:
+                      type: string
+                      description: JSON-encoded wizard state, stored and returned
+                        verbatim. Required.
+                  required:
+                  - command_key
+                  - channel_id
+                  - state_json
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete historical wizard sessions
+      tags:
+      - Wizard Sessions
+      description: Owner-only. Deletes every non-ACTIVE session for this (command_key,
+        owner, channel) — the cleanup step before promoting a session to COMPLETED/CANCELLED.
+        `command_key`/`channel_id` are required so this can never wipe more than one
+        wizard's history in one call.
+      parameters:
+      - name: command_key
+        in: query
+        schema:
+          type: string
+        required: true
+      - name: channel_id
+        in: query
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedCountResponse"
+        '400':
+          description: missing command_key or channel_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/wizard_sessions/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubAdminWizardSession session_id.
+    patch:
+      summary: Transition a wizard session status
+      tags:
+      - Wizard Sessions
+      description: Owner-only. Transitions the session to a new status (e.g. COMPLETED,
+        CANCELLED).
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/WizardSession"
+        '400':
+          description: missing status
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - ACTIVE
+                      - COMPLETED
+                      - CANCELLED
+                      description: New status for the session. Required.
+                  required:
+                  - status
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a wizard session
+      tags:
+      - Wizard Sessions
+      description: Owner-only. Removes a single wizard session by session_id.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
