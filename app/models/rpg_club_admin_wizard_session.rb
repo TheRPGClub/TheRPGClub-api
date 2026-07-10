@@ -4,7 +4,7 @@ class RpgClubAdminWizardSession < ApplicationRecord
   self.table_name = "rpg_club_admin_wizard_sessions"
   self.primary_key = "session_id"
 
-  STATUSES = %w[ACTIVE COMPLETED CANCELLED].freeze
+  STATUSES = %w[active completed cancelled].freeze
 
   before_validation :assign_session_id, on: :create
 
