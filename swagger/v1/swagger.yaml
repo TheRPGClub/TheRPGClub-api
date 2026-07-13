@@ -1399,11 +1399,25 @@ components:
           type: boolean
         one_day_reminder_sent:
           type: boolean
+        vote_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        vote_deadline:
+          type: string
+          format: date-time
+          nullable: true
+        voting_open:
+          type: boolean
+        voting_ended:
+          type: boolean
       required:
       - round_number
       - next_vote_at
       - five_day_reminder_sent
       - one_day_reminder_sent
+      - voting_open
+      - voting_ended
     PublicReminder:
       type: object
       properties:
@@ -1941,6 +1955,75 @@ components:
       - round_number
       - user_id
       - nominated_at
+    Vote:
+      type: object
+      properties:
+        vote_id:
+          type: integer
+        round_number:
+          type: integer
+        user_id:
+          type: string
+        nomination_id:
+          type: integer
+        gamedb_game_id:
+          type: integer
+        voted_at:
+          type: string
+          format: date-time
+        user:
+          allOf:
+          - "$ref": "#/components/schemas/UserSummary"
+          nullable: true
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameSummary"
+          nullable: true
+      required:
+      - vote_id
+      - round_number
+      - user_id
+      - nomination_id
+      - gamedb_game_id
+      - voted_at
+    VoteTally:
+      type: object
+      properties:
+        nomination_id:
+          type: integer
+        gamedb_game_id:
+          type: integer
+        vote_count:
+          type: integer
+      required:
+      - nomination_id
+      - gamedb_game_id
+      - vote_count
+    VoteCastResult:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - voted
+          - unvoted
+        vote:
+          allOf:
+          - "$ref": "#/components/schemas/Vote"
+          nullable: true
+        removed_votes:
+          type: array
+          items:
+            "$ref": "#/components/schemas/Vote"
+        cap:
+          type: integer
+        warning:
+          type: string
+          nullable: true
+      required:
+      - action
+      - removed_votes
+      - cap
     GotmWin:
       type: object
       properties:
@@ -14772,6 +14855,526 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_entries/{round}/votes":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GOTM voting round number.
+    get:
+      summary: List GOTM votes for a round (identified)
+      tags:
+      - GOTM
+      description: 'The round''s votes with voter identities, oldest first. Votes
+        are anonymous while the voting window is open: until voting has ended this
+        list is admin/service-only (403 otherwise). Use the tally for anonymous counts.'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: GOTM votes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Vote"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '403':
+          description: forbidden — voting is still open and the caller is not admin/service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Cast or toggle a GOTM vote
+      tags:
+      - GOTM
+      description: 'Casts the user''s vote on a nomination, or takes it back. Owner-gated:
+        the service token may cast on behalf of any user, a user session only for
+        themselves. Only allowed while the round''s voting window is open (from `next_vote_at`
+        until `vote_ends_at`, defaulting to the end of the following Sunday, US Eastern).
+        Votes are per game: voting a game the user already voted takes that vote back
+        (`action: unvoted`, 200) — even via a different nomination of the same game.
+        Users hold at most `cap` votes per round (3 when the round has 9+ nominations,
+        else 2); casting a new game at the cap evicts their oldest vote(s), reported
+        in `removed_votes` with a `warning` to surface to the voter. 201 when a vote
+        was placed.'
+      parameters: []
+      responses:
+        '201':
+          description: 'vote placed (`action: voted`; check `removed_votes`/`warning`
+            for evictions)'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VoteCastResult"
+        '200':
+          description: 'vote taken back (`action: unvoted` — the game was already
+            voted)'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VoteCastResult"
+        '403':
+          description: forbidden — caller is neither the named voter nor the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: "`nomination_not_found` — no such nomination in this round"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`voting_closed` (outside the voting window) or `nomination_missing_game`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    user_id:
+                      type: string
+                      description: Voter (Discord user id). Required. Service may
+                        name any user; a user session only their own id.
+                    nomination_id:
+                      type: integer
+                      description: The nomination being voted on (must belong to the
+                        round in the path). Required.
+                  required:
+                  - user_id
+                  - nomination_id
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete all GOTM votes for a round
+      tags:
+      - GOTM
+      description: Admin/service-only. Clears every vote for the round (the reset
+        alongside the nominations one).
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedCountResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_entries/{round}/votes/tally":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GOTM voting round number.
+    get:
+      summary: Tally GOTM votes for a round (anonymous)
+      tags:
+      - GOTM
+      description: Anonymous vote counts per nomination, most-voted first. Open to
+        any authenticated caller at any time — no voter identities. Nominations with
+        zero votes have no row; merge against the round's nominations list. `meta.cap`
+        is the per-user vote cap for the round (3 when the round has 9+ nominations,
+        else 2), for rendering "vote for up to N".
+      responses:
+        '200':
+          description: vote counts per nomination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/VoteTally"
+                  meta:
+                    type: object
+                    properties:
+                      cap:
+                        type: integer
+                        description: Per-user vote cap for this round.
+                    required:
+                    - cap
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_entries/{round}/votes/{user_id}":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GOTM voting round number.
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Voter (Discord user id).
+    get:
+      summary: Show a user's GOTM votes for a round
+      tags:
+      - GOTM
+      description: One voter's votes for the round, oldest first (an empty array when
+        they have none — never 404). While the voting window is open this is limited
+        to the voter themselves and admin/service; once voting has ended it opens
+        to any authenticated caller.
+      responses:
+        '200':
+          description: the user's votes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Vote"
+        '403':
+          description: forbidden — voting is still open and the caller is neither
+            the voter nor admin/service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/nr_gotm_entries/{round}/votes":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Non-RPG GOTM voting round number.
+    get:
+      summary: List Non-RPG GOTM votes for a round (identified)
+      tags:
+      - GOTM
+      description: 'The round''s votes with voter identities, oldest first. Votes
+        are anonymous while the voting window is open: until voting has ended this
+        list is admin/service-only (403 otherwise). Use the tally for anonymous counts.'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Non-RPG GOTM votes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Vote"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '403':
+          description: forbidden — voting is still open and the caller is not admin/service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Cast or toggle a Non-RPG GOTM vote
+      tags:
+      - GOTM
+      description: 'Casts the user''s vote on a nomination, or takes it back. Owner-gated:
+        the service token may cast on behalf of any user, a user session only for
+        themselves. Only allowed while the round''s voting window is open (from `next_vote_at`
+        until `vote_ends_at`, defaulting to the end of the following Sunday, US Eastern).
+        Votes are per game: voting a game the user already voted takes that vote back
+        (`action: unvoted`, 200) — even via a different nomination of the same game.
+        Users hold at most `cap` votes per round (3 when the round has 9+ nominations,
+        else 2); casting a new game at the cap evicts their oldest vote(s), reported
+        in `removed_votes` with a `warning` to surface to the voter. 201 when a vote
+        was placed.'
+      parameters: []
+      responses:
+        '201':
+          description: 'vote placed (`action: voted`; check `removed_votes`/`warning`
+            for evictions)'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VoteCastResult"
+        '200':
+          description: 'vote taken back (`action: unvoted` — the game was already
+            voted)'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VoteCastResult"
+        '403':
+          description: forbidden — caller is neither the named voter nor the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: "`nomination_not_found` — no such nomination in this round"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`voting_closed` (outside the voting window) or `nomination_missing_game`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    user_id:
+                      type: string
+                      description: Voter (Discord user id). Required. Service may
+                        name any user; a user session only their own id.
+                    nomination_id:
+                      type: integer
+                      description: The nomination being voted on (must belong to the
+                        round in the path). Required.
+                  required:
+                  - user_id
+                  - nomination_id
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete all Non-RPG GOTM votes for a round
+      tags:
+      - GOTM
+      description: Admin/service-only. Clears every vote for the round (the reset
+        alongside the nominations one).
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/DeletedCountResponse"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/nr_gotm_entries/{round}/votes/tally":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Non-RPG GOTM voting round number.
+    get:
+      summary: Tally Non-RPG GOTM votes for a round (anonymous)
+      tags:
+      - GOTM
+      description: Anonymous vote counts per nomination, most-voted first. Open to
+        any authenticated caller at any time — no voter identities. Nominations with
+        zero votes have no row; merge against the round's nominations list. `meta.cap`
+        is the per-user vote cap for the round (3 when the round has 9+ nominations,
+        else 2), for rendering "vote for up to N".
+      responses:
+        '200':
+          description: vote counts per nomination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/VoteTally"
+                  meta:
+                    type: object
+                    properties:
+                      cap:
+                        type: integer
+                        description: Per-user vote cap for this round.
+                    required:
+                    - cap
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/nr_gotm_entries/{round}/votes/{user_id}":
+    parameters:
+    - name: round
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Non-RPG GOTM voting round number.
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Voter (Discord user id).
+    get:
+      summary: Show a user's Non-RPG GOTM votes for a round
+      tags:
+      - GOTM
+      description: One voter's votes for the round, oldest first (an empty array when
+        they have none — never 404). While the voting window is open this is limited
+        to the voter themselves and admin/service; once voting has ended it opens
+        to any authenticated caller.
+      responses:
+        '200':
+          description: the user's votes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Vote"
+        '403':
+          description: forbidden — voting is still open and the caller is neither
+            the voter nor admin/service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/voting_info":
     get:
       summary: List voting info rounds
@@ -14888,6 +15491,13 @@ paths:
                       type: boolean
                       description: Whether the 1-day reminder fired. Optional; defaults
                         to false.
+                    vote_ends_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                      description: Explicit voting deadline override. When null, voting
+                        closes at the end of the first Sunday at/after next_vote_at
+                        (US Eastern) — the default Friday-to-Sunday window.
                   required:
                   - round_number
                   - next_vote_at
@@ -15021,6 +15631,13 @@ paths:
                       type: boolean
                       description: Whether the 1-day reminder fired. Optional; defaults
                         to false.
+                    vote_ends_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                      description: Explicit voting deadline override. When null, voting
+                        closes at the end of the first Sunday at/after next_vote_at
+                        (US Eastern) — the default Friday-to-Sunday window.
               required:
               - data
         required: true
@@ -15075,6 +15692,13 @@ paths:
                       type: boolean
                       description: Whether the 1-day reminder fired. Optional; defaults
                         to false.
+                    vote_ends_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                      description: Explicit voting deadline override. When null, voting
+                        closes at the end of the first Sunday at/after next_vote_at
+                        (US Eastern) — the default Friday-to-Sunday window.
         required: true
     delete:
       summary: Delete voting info

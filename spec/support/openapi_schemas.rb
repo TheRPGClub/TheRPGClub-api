@@ -393,9 +393,16 @@ module OpenapiSchemas
         guild_id: str(nullable: true), status: str, state_json: str,
         last_updated_at: ts, created_at: ts, updated_at: ts
       ),
+      # Raw bot_voting_info columns plus the derived voting-window state
+      # (VotingInfoResource): `vote_deadline` is the effective end of voting —
+      # the `vote_ends_at` override or the default end of the first Sunday
+      # at/after `next_vote_at` (US Eastern) — so clients can render
+      # countdowns without re-implementing the timezone-sensitive rule.
       VotingInfo: obj(
         round_number: int, nomination_list_id: int(nullable: true), next_vote_at: ts,
-        five_day_reminder_sent: bool, one_day_reminder_sent: bool
+        five_day_reminder_sent: bool, one_day_reminder_sent: bool,
+        vote_ends_at: ts(nullable: true),
+        vote_deadline: ts(nullable: true), voting_open: bool, voting_ended: bool
       ),
       PublicReminder: obj(
         reminder_id: int, channel_id: str, message: str, due_at: ts,
@@ -513,6 +520,31 @@ module OpenapiSchemas
         nomination_id: int, round_number: int, user_id: str, gamedb_game_id: int(nullable: true),
         reason: str(nullable: true), nominated_at: ts,
         user: ref("UserSummary", nullable: true), game: ref("GameSummary", nullable: true)
+      ),
+      # VoteResource (gotm + nr-gotm share it): the IDENTIFIED vote shape —
+      # only served to admin/service, the voter themselves, or anyone once the
+      # round's voting window has ended. `user`/`game` are FK-unenforced, so
+      # either may be null.
+      Vote: obj(
+        vote_id: int, round_number: int, user_id: str, nomination_id: int,
+        gamedb_game_id: int, voted_at: ts,
+        user: ref("UserSummary", nullable: true), game: ref("GameSummary", nullable: true)
+      ),
+      # VoteTallyResource: one nomination's anonymous vote count. Nominations
+      # with zero votes have no row — merge against the nominations list.
+      VoteTally: obj(nomination_id: int, gamedb_game_id: int, vote_count: int),
+      # The cast response (VotesController#create_*): what the cast did, the
+      # vote it placed (null when it toggled one off), any votes removed to
+      # make room (evicted oldest-first) or taken back by the toggle, the
+      # user's current cap for the round, and a human-readable warning to
+      # surface to the voter whenever votes were removed.
+      VoteCastResult: obj(
+        action: str(enum: %w[voted unvoted]),
+        vote: ref("Vote", nullable: true),
+        removed_votes: array_of("Vote"),
+        cap: int,
+        warning: str(nullable: true),
+        _required: %w[action removed_votes cap]
       ),
 
       # ---- aggregate game-profile sub-shapes (#115) ------------------------

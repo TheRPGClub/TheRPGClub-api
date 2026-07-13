@@ -20,6 +20,12 @@ class GotmNomination < ApplicationRecord
     foreign_key: :gamedb_game_id,
     optional: true,
     inverse_of: :gotm_nominations
+  has_many :votes,
+    class_name: "GotmVote",
+    foreign_key: :nomination_id,
+    primary_key: :nomination_id,
+    dependent: nil,
+    inverse_of: :nomination
 
   # NOT NULL columns; presence-validated so a malformed upsert (#97) returns 422
   # rather than a raw NotNullViolation 500. `gamedb_game_id` is nullable on the
