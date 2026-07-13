@@ -25,6 +25,11 @@ module Api
       # `nominated_at` is a DB default, so neither is accepted in the body.
       WRITABLE_ATTRS = %w[user_id gamedb_game_id reason].freeze
 
+      # Votes (#173) hang off nominations with no DB FK (bot-data precedent),
+      # so the destroy paths below clear them by hand to avoid orphaned
+      # ballots.
+      VOTE_MODELS = { GotmNomination => GotmVote, NrGotmNomination => NrGotmVote }.freeze
+
       # GET /api/v1/gotm_entries/:round/nominations
       def gotm
         render_nominations(GotmNomination)
@@ -108,17 +113,28 @@ module Api
           status: created ? :created : :ok
       end
 
-      # DELETE /.../:user_id — removes one user's nomination for the round.
+      # DELETE /.../:user_id — removes one user's nomination for the round,
+      # along with any votes cast on it. Votes on a different nomination of
+      # the same game are untouched — they reference their own nomination.
       def destroy_nomination(model)
-        round_scope(model).find_by!(user_id: params[:user_id]).destroy!
+        record = round_scope(model).find_by!(user_id: params[:user_id])
+        model.transaction do
+          VOTE_MODELS.fetch(model).where(nomination_id: record.nomination_id).delete_all
+          record.destroy!
+        end
         render json: { deleted: true }
       end
 
       # DELETE /.../nominations — clears every nomination for the round (the
-      # `/admin delete-*-noms` reset before a voting round opens). Always scoped
-      # to the round in the path, so the whole table can never be wiped.
+      # `/admin delete-*-noms` reset before a voting round opens), along with
+      # the round's votes. Always scoped to the round in the path, so the
+      # whole tables can never be wiped.
       def destroy_all_nominations(model)
-        count = round_scope(model).delete_all
+        count = nil
+        model.transaction do
+          VOTE_MODELS.fetch(model).where(round_number: params[:round]).delete_all
+          count = round_scope(model).delete_all
+        end
         render json: { deleted: true, count: count }
       end
 

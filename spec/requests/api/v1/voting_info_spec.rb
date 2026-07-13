@@ -10,7 +10,10 @@ RSpec.describe 'api/v1/voting_info', type: :request do
     next_vote_at: { type: :string, format: 'date-time', description: 'When the next vote opens. Required on create.' },
     nomination_list_id: { type: :integer, nullable: true, description: 'Optional nomination list id.' },
     five_day_reminder_sent: { type: :boolean, description: 'Whether the 5-day reminder fired. Optional; defaults to false.' },
-    one_day_reminder_sent: { type: :boolean, description: 'Whether the 1-day reminder fired. Optional; defaults to false.' }
+    one_day_reminder_sent: { type: :boolean, description: 'Whether the 1-day reminder fired. Optional; defaults to false.' },
+    vote_ends_at: { type: :string, format: 'date-time', nullable: true,
+                    description: 'Explicit voting deadline override. When null, voting closes at the end of the ' \
+                                 'first Sunday at/after next_vote_at (US Eastern) — the default Friday-to-Sunday window.' }
   }
 
   path '/api/v1/voting_info' do

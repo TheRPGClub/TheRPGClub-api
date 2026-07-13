@@ -166,6 +166,21 @@ Rails.application.routes.draw do
       post   "nr_gotm_entries/:round/nominations",          to: "nominations#create_nr_gotm"
       delete "nr_gotm_entries/:round/nominations/:user_id", to: "nominations#destroy_nr_gotm"
       delete "nr_gotm_entries/:round/nominations",          to: "nominations#destroy_all_nr_gotm"
+      # GOTM / NR-GOTM nomination votes (#173): cast/toggle (owner or service), the
+      # anonymous tally, the identified round list, a single voter's votes and
+      # the round-scoped reset. Same round-scoped shape as the nominations
+      # above. `tally` is a fixed sub-path, declared before the `:user_id`
+      # catch-all so it is never captured as a voter id.
+      get    "gotm_entries/:round/votes/tally",    to: "votes#gotm_tally",   as: :gotm_entry_vote_tally
+      get    "gotm_entries/:round/votes",          to: "votes#gotm",         as: :gotm_entry_votes
+      get    "gotm_entries/:round/votes/:user_id", to: "votes#show_gotm",    as: :gotm_entry_user_votes
+      post   "gotm_entries/:round/votes",          to: "votes#create_gotm"
+      delete "gotm_entries/:round/votes",          to: "votes#destroy_all_gotm"
+      get    "nr_gotm_entries/:round/votes/tally",    to: "votes#nr_gotm_tally",   as: :nr_gotm_entry_vote_tally
+      get    "nr_gotm_entries/:round/votes",          to: "votes#nr_gotm",         as: :nr_gotm_entry_votes
+      get    "nr_gotm_entries/:round/votes/:user_id", to: "votes#show_nr_gotm",    as: :nr_gotm_entry_user_votes
+      post   "nr_gotm_entries/:round/votes",          to: "votes#create_nr_gotm"
+      delete "nr_gotm_entries/:round/votes",          to: "votes#destroy_all_nr_gotm"
       # Suggestion review sessions (bot parity, #91). Declared before
       # `resources :suggestions` so `/suggestions/review_sessions...` is never
       # captured by the suggestion `:id` member routes; the two bulk-delete
