@@ -1746,45 +1746,6 @@ components:
       required:
       - user_id
       - all
-    UserActivityIcon:
-      type: object
-      properties:
-        id:
-          type: integer
-        user_id:
-          type: string
-        username:
-          type: string
-          nullable: true
-        activity_name:
-          type: string
-        activity_name_norm:
-          type: string
-        icon_type:
-          type: string
-        source_ref:
-          type: string
-        icon_url:
-          type: string
-        first_seen_at:
-          type: string
-          format: date-time
-        last_seen_at:
-          type: string
-          format: date-time
-        seen_count:
-          type: integer
-      required:
-      - id
-      - user_id
-      - activity_name
-      - activity_name_norm
-      - icon_type
-      - source_ref
-      - icon_url
-      - first_seen_at
-      - last_seen_at
-      - seen_count
     UserChannelCount:
       type: object
       properties:
@@ -13832,55 +13793,6 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/users/{user_id}/activity_icons":
-    parameters:
-    - name: user_id
-      in: path
-      schema:
-        type: string
-      required: true
-    get:
-      summary: List a user's activity icons
-      tags:
-      - User Activity Icons
-      description: Read-only list of activity icons the bot captured from the user's
-        Discord rich presence (the large/small icons of games and apps they were seen
-        running). Ordered by most recently seen first. The bot owns all writes.
-      parameters:
-      - name: page
-        in: query
-        schema:
-          type: integer
-          default: 1
-          minimum: 1
-        required: false
-      - name: per
-        in: query
-        schema:
-          type: integer
-          default: 50
-          maximum: 500
-        required: false
-      responses:
-        '200':
-          description: activity icons
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      "$ref": "#/components/schemas/UserActivityIcon"
-                  meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
         '401':
           description: unauthenticated
           content:
