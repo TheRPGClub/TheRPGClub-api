@@ -474,11 +474,6 @@ module OpenapiSchemas
           )
         }
       ),
-      UserActivityIcon: obj(
-        id: int, user_id: str, username: str(nullable: true), activity_name: str,
-        activity_name_norm: str, icon_type: str, source_ref: str, icon_url: str,
-        first_seen_at: ts, last_seen_at: ts, seen_count: int
-      ),
       UserChannelCount: obj(
         user_id: str, channel_id: str, message_count: int, last_scanned_at: ts(nullable: true),
         created_at: ts, updated_at: ts
