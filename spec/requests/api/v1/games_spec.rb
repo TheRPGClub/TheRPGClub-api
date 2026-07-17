@@ -285,6 +285,59 @@ RSpec.describe 'api/v1/games', type: :request do
     end
   end
 
+  path '/api/v1/games/{id}/hltb' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbGame id.'
+
+    post 'Upsert HowLongToBeat cache' do
+      tags 'Games'
+      description 'Admin/service-only. Upserts the bot\'s scraped HowLongToBeat cache for the game, keyed on ' \
+                  'gamedb_game_id (mirrors the bot\'s `rpg_club_hltb_cache` `ON CONFLICT (gamedb_game_id) DO ' \
+                  'UPDATE`). Fields are accepted under the same logical names returned by the `hltb` slice of ' \
+                  'GET /api/v1/games/{id}/profile.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              name: { type: :string, nullable: true },
+              url: { type: :string, nullable: true },
+              image_url: { type: :string, nullable: true },
+              main: { type: :string, nullable: true },
+              main_sides: { type: :string, nullable: true },
+              completionist: { type: :string, nullable: true },
+              single_player: { type: :string, nullable: true },
+              co_op: { type: :string, nullable: true },
+              vs: { type: :string, nullable: true },
+              source_query: { type: :string, nullable: true },
+              scraped_at: { type: :string, format: 'date-time', nullable: true }
+            }
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'HLTB cache upserted' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Hltb' } }
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/games/{id}/profile' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true
 

@@ -28,6 +28,7 @@ Rails.application.routes.draw do
           post "refresh-releases", to: "games#refresh_releases"
           post "alternates", to: "game_alternates#create"
           get "relations", to: "games#relations"
+          post "hltb", to: "games#upsert_hltb"
           get "profile", to: "games#profile"
           get "releases", to: "games#releases"
           post "releases", to: "releases#create"
