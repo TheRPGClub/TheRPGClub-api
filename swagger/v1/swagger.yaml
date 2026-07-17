@@ -1500,6 +1500,99 @@ components:
       - import_id
       - by_status
       - by_result_reason
+    CompletionatorImport:
+      type: object
+      properties:
+        import_id:
+          type: integer
+        user_id:
+          type: string
+        status:
+          type: string
+        current_index:
+          type: integer
+        total_count:
+          type: integer
+        source_filename:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - import_id
+      - user_id
+      - status
+      - current_index
+      - total_count
+      - created_at
+      - updated_at
+    CompletionatorImportItem:
+      type: object
+      properties:
+        item_id:
+          type: integer
+        import_id:
+          type: integer
+        row_index:
+          type: integer
+        game_title:
+          type: string
+          nullable: true
+        platform_name:
+          type: string
+          nullable: true
+        region_name:
+          type: string
+          nullable: true
+        source_type:
+          type: string
+          nullable: true
+        time_text:
+          type: string
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        completion_type:
+          type: string
+          nullable: true
+        playtime_hrs:
+          type: number
+          nullable: true
+        status:
+          type: string
+        gamedb_game_id:
+          type: integer
+          nullable: true
+        completion_id:
+          type: integer
+          nullable: true
+        error_text:
+          type: string
+          nullable: true
+      required:
+      - item_id
+      - import_id
+      - row_index
+      - status
+    CompletionatorImportSummary:
+      type: object
+      properties:
+        import_id:
+          type: integer
+        by_status:
+          type: object
+          description: Item count keyed by status.
+          additionalProperties:
+            type: integer
+      required:
+      - import_id
+      - by_status
     VotingInfo:
       type: object
       properties:
@@ -3552,6 +3645,450 @@ paths:
                     "$ref": "#/components/schemas/Company"
         '404':
           description: company not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/completionator_import_items/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    get:
+      summary: Show a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only (resolved through the parent import).
+      responses:
+        '200':
+          description: import item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only. Records the match/outcome after the bot processes this
+        row.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - pending
+                      - added
+                      - updated
+                      - skipped
+                      - failed
+                      description: New item status.
+                    gamedb_game_id:
+                      type: integer
+                      nullable: true
+                    completion_id:
+                      type: integer
+                      nullable: true
+                      description: The UserGameCompletion entry created for this row.
+                    error_text:
+                      type: string
+                      nullable: true
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/completionator_imports":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImport owner user_id.
+    post:
+      summary: Start a Completionator import job
+      tags:
+      - Completionator Imports
+      description: Owner-only (the bot service token counts as owner). Creates the
+        import job and inserts all row items — given as `items` — in one call.
+      parameters: []
+      responses:
+        '201':
+          description: import job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    source_filename:
+                      type: string
+                      nullable: true
+                    items:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          row_index:
+                            type: integer
+                            description: Position of this row in the source export.
+                              Defaults to the array index.
+                          game_title:
+                            type: string
+                            nullable: true
+                          platform_name:
+                            type: string
+                            nullable: true
+                          region_name:
+                            type: string
+                            nullable: true
+                          source_type:
+                            type: string
+                            nullable: true
+                          time_text:
+                            type: string
+                            nullable: true
+                          completed_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          completion_type:
+                            type: string
+                            nullable: true
+                          playtime_hrs:
+                            type: number
+                            nullable: true
+                      description: The parsed Completionator export rows to import,
+                        in order.
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/completionator_imports/active":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImport owner user_id.
+    get:
+      summary: Get the user's active or paused import
+      tags:
+      - Completionator Imports
+      description: Owner-only. Returns the user's active or paused import, if any,
+        for resuming after a bot restart, or 404 if none exists.
+      responses:
+        '200':
+          description: active import
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no active or paused import
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/completionator_imports/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImport import_id.
+    get:
+      summary: Show a Completionator import job
+      tags:
+      - Completionator Imports
+      description: Owner-only.
+      responses:
+        '200':
+          description: import job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a Completionator import job
+      tags:
+      - Completionator Imports
+      description: Owner-only. Partial update — typically the status transition and
+        resume checkpoint (`current_index`) as the bot works through the items.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - active
+                      - paused
+                      - completed
+                      - canceled
+                      description: New status for the import job.
+                    current_index:
+                      type: integer
+                      description: Row index the bot has resumed processing through.
+              required:
+              - data
+        required: true
+  "/api/v1/completionator_imports/{id}/summary":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImport import_id.
+    get:
+      summary: Summarize a Completionator import job
+      tags:
+      - Completionator Imports
+      description: Owner-only. Item counts grouped by status, replacing the bot's
+        countItemsByStatus.
+      responses:
+        '200':
+          description: summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportSummary"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/completionator_imports/{id}/items/next_pending":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImport import_id.
+    get:
+      summary: Get the next pending import item
+      tags:
+      - Completionator Imports
+      description: 'Owner-only. Returns the next pending item ordered by row_index,
+        or `data: null` once every row has been processed.'
+      responses:
+        '200':
+          description: next pending item, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: import not found
           content:
             application/json:
               schema:

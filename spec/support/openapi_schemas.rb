@@ -421,6 +421,31 @@ module OpenapiSchemas
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
         by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
       ),
+      # CompletionatorImportResource: every RpgClubCompletionatorImport column
+      # (#164). `current_index`/`total_count` let the bot resume a
+      # paused/interrupted import.
+      CompletionatorImport: obj(
+        import_id: int, user_id: str, status: str, current_index: int, total_count: int,
+        source_filename: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      # CompletionatorImportItemResource: every RpgClubCompletionatorImportItem
+      # column (#164) — the raw parsed Completionator export fields plus the
+      # resolved match and outcome once the bot's matcher has run the row.
+      CompletionatorImportItem: obj(
+        item_id: int, import_id: int, row_index: int,
+        game_title: str(nullable: true), platform_name: str(nullable: true),
+        region_name: str(nullable: true), source_type: str(nullable: true),
+        time_text: str(nullable: true), completed_at: ts(nullable: true),
+        completion_type: str(nullable: true), playtime_hrs: num(nullable: true),
+        status: str, gamedb_game_id: int(nullable: true), completion_id: int(nullable: true),
+        error_text: str(nullable: true)
+      ),
+      # completionator_imports#summary: item counts grouped by status,
+      # replacing the bot's countItemsByStatus.
+      CompletionatorImportSummary: obj(
+        import_id: int,
+        by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } }
+      ),
       # Raw bot_voting_info columns plus the derived voting-window state
       # (VotingInfoResource): `vote_deadline` is the effective end of voting —
       # the `vote_ends_at` override or the default end of the first Sunday
