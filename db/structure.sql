@@ -1564,20 +1564,6 @@ ALTER TABLE public.rpg_club_user_avatar_history ALTER COLUMN event_id ADD GENERA
 
 
 --
--- Name: rpg_club_user_channel_counts; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.rpg_club_user_channel_counts (
-    user_id character varying(30) NOT NULL,
-    channel_id character varying(30) NOT NULL,
-    message_count bigint DEFAULT 0 NOT NULL,
-    last_scanned_at timestamp(6) with time zone,
-    created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
-    updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL
-);
-
-
---
 -- Name: rpg_club_user_nick_history; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2910,14 +2896,6 @@ ALTER TABLE ONLY public.rpg_club_user_avatar_history
 
 
 --
--- Name: rpg_club_user_channel_counts rpg_club_user_channel_counts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.rpg_club_user_channel_counts
-    ADD CONSTRAINT rpg_club_user_channel_counts_pkey PRIMARY KEY (user_id, channel_id);
-
-
---
 -- Name: rpg_club_user_nick_history rpg_club_user_nick_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4144,6 +4122,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260717000200'),
 ('20260717000100'),
 ('20260713000300'),
 ('20260713000200'),

@@ -474,10 +474,6 @@ module OpenapiSchemas
           )
         }
       ),
-      UserChannelCount: obj(
-        user_id: str, channel_id: str, message_count: int, last_scanned_at: ts(nullable: true),
-        created_at: ts, updated_at: ts
-      ),
       UserNickHistory: obj(
         event_id: int, user_id: str, old_nick: str(nullable: true), new_nick: str(nullable: true),
         changed_at: ts

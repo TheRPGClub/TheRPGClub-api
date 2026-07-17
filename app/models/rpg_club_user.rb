@@ -67,12 +67,6 @@ class RpgClubUser < ApplicationRecord
     primary_key: :user_id,
     dependent: nil,
     inverse_of: :user
-  has_many :channel_counts,
-    class_name: "RpgClubUserChannelCount",
-    foreign_key: :user_id,
-    primary_key: :user_id,
-    dependent: nil,
-    inverse_of: :user
   has_many :game_backlog_entries,
     class_name: "UserGameBacklog",
     foreign_key: :user_id,

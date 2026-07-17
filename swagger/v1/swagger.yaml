@@ -1746,31 +1746,6 @@ components:
       required:
       - user_id
       - all
-    UserChannelCount:
-      type: object
-      properties:
-        user_id:
-          type: string
-        channel_id:
-          type: string
-        message_count:
-          type: integer
-        last_scanned_at:
-          type: string
-          format: date-time
-          nullable: true
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-      - user_id
-      - channel_id
-      - message_count
-      - created_at
-      - updated_at
     UserNickHistory:
       type: object
       properties:
@@ -13793,55 +13768,6 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/users/{user_id}/channel_counts":
-    parameters:
-    - name: user_id
-      in: path
-      schema:
-        type: string
-      required: true
-    get:
-      summary: List a user's per-channel message counts
-      tags:
-      - User Channel Counts
-      description: Read-only breakdown of how many messages the user has sent in each
-        channel, as maintained by the bot's channel-history scan. Ordered by message
-        count descending. The bot owns all writes.
-      parameters:
-      - name: page
-        in: query
-        schema:
-          type: integer
-          default: 1
-          minimum: 1
-        required: false
-      - name: per
-        in: query
-        schema:
-          type: integer
-          default: 50
-          maximum: 500
-        required: false
-      responses:
-        '200':
-          description: channel message counts
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      "$ref": "#/components/schemas/UserChannelCount"
-                  meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
         '401':
           description: unauthenticated
           content:
