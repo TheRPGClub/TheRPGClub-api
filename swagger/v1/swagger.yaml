@@ -15574,7 +15574,7 @@ paths:
       tags:
       - Wizard Sessions
       description: Owner-only (the bot service token counts as owner). Returns the
-        single ACTIVE session for this (command_key, owner, channel), or 404 if none
+        single active session for this (command_key, owner, channel), or 404 if none
         exists.
       parameters:
       - name: command_key
@@ -15625,9 +15625,9 @@ paths:
       summary: Upsert the active wizard session
       tags:
       - Wizard Sessions
-      description: Owner-only. Creates or updates the ACTIVE session for this (command_key,
+      description: Owner-only. Creates or updates the active session for this (command_key,
         owner, channel) — called after every wizard step so the bot can resume after
-        a restart. Reuses the existing session_id when a matching ACTIVE session already
+        a restart. Reuses the existing session_id when a matching active session already
         exists.
       parameters: []
       responses:
@@ -15699,8 +15699,8 @@ paths:
       summary: Delete historical wizard sessions
       tags:
       - Wizard Sessions
-      description: Owner-only. Deletes every non-ACTIVE session for this (command_key,
-        owner, channel) — the cleanup step before promoting a session to COMPLETED/CANCELLED.
+      description: Owner-only. Deletes every non-active session for this (command_key,
+        owner, channel) — the cleanup step before promoting a session to completed/cancelled.
         `command_key`/`channel_id` are required so this can never wipe more than one
         wizard's history in one call.
       parameters:
@@ -15751,8 +15751,8 @@ paths:
       summary: Transition a wizard session status
       tags:
       - Wizard Sessions
-      description: Owner-only. Transitions the session to a new status (e.g. COMPLETED,
-        CANCELLED).
+      description: Owner-only. Transitions the session to a new status (e.g. completed,
+        cancelled).
       parameters: []
       responses:
         '200':
@@ -15806,9 +15806,9 @@ paths:
                     status:
                       type: string
                       enum:
-                      - ACTIVE
-                      - COMPLETED
-                      - CANCELLED
+                      - active
+                      - completed
+                      - cancelled
                       description: New status for the session. Required.
                   required:
                   - status

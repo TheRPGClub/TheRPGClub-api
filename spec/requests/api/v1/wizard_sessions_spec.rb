@@ -12,7 +12,7 @@ RSpec.describe 'api/v1/wizard_sessions', type: :request do
     state_json: { type: :string, description: 'JSON-encoded wizard state, stored and returned verbatim. Required.' }
   }
   status_writable = {
-    status: { type: :string, enum: %w[ACTIVE COMPLETED CANCELLED], description: 'New status for the session. Required.' }
+    status: { type: :string, enum: %w[active completed cancelled], description: 'New status for the session. Required.' }
   }
 
   path '/api/v1/users/{user_id}/wizard_sessions' do
@@ -22,7 +22,7 @@ RSpec.describe 'api/v1/wizard_sessions', type: :request do
     get 'Get the active wizard session' do
       tags 'Wizard Sessions'
       description 'Owner-only (the bot service token counts as owner). Returns the single ' \
-                  'ACTIVE session for this (command_key, owner, channel), or 404 if none exists.'
+                  'active session for this (command_key, owner, channel), or 404 if none exists.'
       produces 'application/json'
       parameter name: :command_key, in: :query, schema: { type: :string }, required: true
       parameter name: :channel_id, in: :query, schema: { type: :string }, required: true
@@ -50,10 +50,10 @@ RSpec.describe 'api/v1/wizard_sessions', type: :request do
 
     post 'Upsert the active wizard session' do
       tags 'Wizard Sessions'
-      description 'Owner-only. Creates or updates the ACTIVE session for this ' \
+      description 'Owner-only. Creates or updates the active session for this ' \
                   '(command_key, owner, channel) — called after every wizard step so the bot ' \
                   'can resume after a restart. Reuses the existing session_id when a matching ' \
-                  'ACTIVE session already exists.'
+                  'active session already exists.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -86,8 +86,8 @@ RSpec.describe 'api/v1/wizard_sessions', type: :request do
 
     delete 'Delete historical wizard sessions' do
       tags 'Wizard Sessions'
-      description 'Owner-only. Deletes every non-ACTIVE session for this (command_key, owner, ' \
-                  'channel) — the cleanup step before promoting a session to COMPLETED/CANCELLED. ' \
+      description 'Owner-only. Deletes every non-active session for this (command_key, owner, ' \
+                  'channel) — the cleanup step before promoting a session to completed/cancelled. ' \
                   '`command_key`/`channel_id` are required so this can never wipe more than one ' \
                   "wizard's history in one call."
       produces 'application/json'
@@ -118,7 +118,7 @@ RSpec.describe 'api/v1/wizard_sessions', type: :request do
 
     patch 'Transition a wizard session status' do
       tags 'Wizard Sessions'
-      description 'Owner-only. Transitions the session to a new status (e.g. COMPLETED, CANCELLED).'
+      description 'Owner-only. Transitions the session to a new status (e.g. completed, cancelled).'
       consumes 'application/json'
       produces 'application/json'
 
