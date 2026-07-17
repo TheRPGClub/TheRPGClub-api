@@ -446,6 +446,41 @@ module OpenapiSchemas
         import_id: int,
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } }
       ),
+      # SteamCollectionImportResource: every RpgClubSteamCollectionImport
+      # column (#166). `current_index`/`total_count` let the bot resume a
+      # paused/interrupted import. `test_mode` marks a dry-run session whose
+      # subsequent writes are rolled back instead of persisted.
+      SteamCollectionImport: obj(
+        import_id: int, user_id: str, status: str, current_index: int, total_count: int,
+        steam_id64: str, steam_profile_ref: str(nullable: true), source_profile_name: str(nullable: true),
+        test_mode: bool, created_at: ts, updated_at: ts
+      ),
+      # SteamCollectionImportItemResource: every RpgClubSteamCollectionImportItem
+      # column (#166) — the raw per-platform playtime pulled from the Steam
+      # API plus the resolved match and outcome once the bot's matcher has
+      # run the app.
+      SteamCollectionImportItem: obj(
+        item_id: int, import_id: int, row_index: int, steam_app_id: int, steam_app_name: str,
+        playtime_forever_min: int(nullable: true), playtime_windows_min: int(nullable: true),
+        playtime_mac_min: int(nullable: true), playtime_linux_min: int(nullable: true),
+        playtime_deck_min: int(nullable: true), last_played_at: ts(nullable: true),
+        status: str, match_confidence: str(nullable: true), match_candidate_json: str(nullable: true),
+        gamedb_game_id: int(nullable: true), collection_entry_id: int(nullable: true),
+        error_text: str(nullable: true), result_reason: str(nullable: true)
+      ),
+      # steam_collection_imports#counts: item counts grouped by status and by
+      # result_reason, replacing the bot's countItemsByStatus/countItemsByReason.
+      SteamCollectionImportCounts: obj(
+        import_id: int,
+        by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
+        by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
+      ),
+      # SteamAppGamedbMapResource: every RpgClubSteamAppGamedbMap column
+      # (#166) — the cached Steam app -> GameDB game mapping.
+      SteamAppGamedbMap: obj(
+        map_id: int, steam_app_id: int, gamedb_game_id: int(nullable: true), status: str,
+        created_by: str(nullable: true), created_at: ts, updated_at: ts
+      ),
       # Raw bot_voting_info columns plus the derived voting-window state
       # (VotingInfoResource): `vote_deadline` is the effective end of voting —
       # the `vote_ends_at` override or the default end of the first Sunday

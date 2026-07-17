@@ -1593,6 +1593,150 @@ components:
       required:
       - import_id
       - by_status
+    SteamCollectionImport:
+      type: object
+      properties:
+        import_id:
+          type: integer
+        user_id:
+          type: string
+        status:
+          type: string
+        current_index:
+          type: integer
+        total_count:
+          type: integer
+        steam_id64:
+          type: string
+        steam_profile_ref:
+          type: string
+          nullable: true
+        source_profile_name:
+          type: string
+          nullable: true
+        test_mode:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - import_id
+      - user_id
+      - status
+      - current_index
+      - total_count
+      - steam_id64
+      - test_mode
+      - created_at
+      - updated_at
+    SteamCollectionImportItem:
+      type: object
+      properties:
+        item_id:
+          type: integer
+        import_id:
+          type: integer
+        row_index:
+          type: integer
+        steam_app_id:
+          type: integer
+        steam_app_name:
+          type: string
+        playtime_forever_min:
+          type: integer
+          nullable: true
+        playtime_windows_min:
+          type: integer
+          nullable: true
+        playtime_mac_min:
+          type: integer
+          nullable: true
+        playtime_linux_min:
+          type: integer
+          nullable: true
+        playtime_deck_min:
+          type: integer
+          nullable: true
+        last_played_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        match_confidence:
+          type: string
+          nullable: true
+        match_candidate_json:
+          type: string
+          nullable: true
+        gamedb_game_id:
+          type: integer
+          nullable: true
+        collection_entry_id:
+          type: integer
+          nullable: true
+        error_text:
+          type: string
+          nullable: true
+        result_reason:
+          type: string
+          nullable: true
+      required:
+      - item_id
+      - import_id
+      - row_index
+      - steam_app_id
+      - steam_app_name
+      - status
+    SteamCollectionImportCounts:
+      type: object
+      properties:
+        import_id:
+          type: integer
+        by_status:
+          type: object
+          description: Item count keyed by status.
+          additionalProperties:
+            type: integer
+        by_result_reason:
+          type: object
+          description: Item count keyed by result_reason.
+          additionalProperties:
+            type: integer
+      required:
+      - import_id
+      - by_status
+      - by_result_reason
+    SteamAppGamedbMap:
+      type: object
+      properties:
+        map_id:
+          type: integer
+        steam_app_id:
+          type: integer
+        gamedb_game_id:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        created_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - map_id
+      - steam_app_id
+      - status
+      - created_at
+      - updated_at
     VotingInfo:
       type: object
       properties:
@@ -13668,6 +13812,695 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_app_gamedb_maps/{steam_app_id}":
+    parameters:
+    - name: steam_app_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Steam appid.
+    get:
+      summary: Show a Steam app -> GameDB game mapping
+      tags:
+      - Steam App GameDB Maps
+      description: Open to any authenticated caller.
+      responses:
+        '200':
+          description: mapping
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamAppGamedbMap"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_app_gamedb_maps":
+    post:
+      summary: Upsert a Steam app -> GameDB game mapping
+      tags:
+      - Steam App GameDB Maps
+      description: Admin-or-service-only. Inserts or updates a mapping keyed on steam_app_id,
+        so a repeated Steam app doesn't need to be re-resolved by the bot's matcher.
+        Returns 201 on insert, 200 on update.
+      parameters: []
+      responses:
+        '201':
+          description: mapping created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamAppGamedbMap"
+        '200':
+          description: mapping updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamAppGamedbMap"
+        '403':
+          description: forbidden — caller is not admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing steam_app_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    steam_app_id:
+                      type: integer
+                      description: Steam appid (the upsert key). Required.
+                    gamedb_game_id:
+                      type: integer
+                      nullable: true
+                      description: The matched gamedb_games.game_id.
+                    status:
+                      type: string
+                      enum:
+                      - mapped
+                      - skipped
+                      description: Required.
+                    created_by:
+                      type: string
+                      nullable: true
+                      description: Discord user_id of the caller who resolved this
+                        mapping.
+                  required:
+                  - steam_app_id
+                  - status
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/steam_app_gamedb_maps/historical":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user_id.
+    get:
+      summary: Get a user's historically-mapped GameDB game ids
+      tags:
+      - Steam App GameDB Maps
+      description: 'The distinct gamedb_game_ids this user has previously mapped a
+        Steam app to (status: mapped), so the bot can bias fuzzy matching toward games
+        the user already owns. Open to any authenticated caller.'
+      responses:
+        '200':
+          description: game ids
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: integer
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_collection_imports/{id}/items":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImport import_id.
+    post:
+      summary: Bulk-insert Steam collection import items
+      tags:
+      - Steam Collection Imports
+      description: Owner-only. Inserts all apps — given as `items` — as pending items
+        and bumps the import's total_count. Rolled back instead of persisted if the
+        import is in test_mode.
+      parameters: []
+      responses:
+        '201':
+          description: items inserted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: import not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          row_index:
+                            type: integer
+                            description: Position of this app in the source list.
+                              Defaults to the array index.
+                          steam_app_id:
+                            type: integer
+                            description: Steam appid. Required.
+                          steam_app_name:
+                            type: string
+                            description: Steam app display name. Required.
+                          playtime_forever_min:
+                            type: integer
+                            nullable: true
+                          playtime_windows_min:
+                            type: integer
+                            nullable: true
+                          playtime_mac_min:
+                            type: integer
+                            nullable: true
+                          playtime_linux_min:
+                            type: integer
+                            nullable: true
+                          playtime_deck_min:
+                            type: integer
+                            nullable: true
+                          last_played_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                      description: The Steam library apps to import, in order.
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_imports/{id}/items/next_pending":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImport import_id.
+    get:
+      summary: Get the next pending import item
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only. Returns the next pending item ordered by row_index,
+        or `data: null` once every app has been processed.'
+      responses:
+        '200':
+          description: next pending item, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: import not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_collection_imports/{id}/items/counts":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImport import_id.
+    get:
+      summary: Count Steam collection import items by status and result_reason
+      tags:
+      - Steam Collection Imports
+      description: Owner-only. Item counts grouped by status and by result_reason,
+        replacing the bot's countItemsByStatus/countItemsByReason.
+      responses:
+        '200':
+          description: counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportCounts"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: import not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_collection_import_items/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    get:
+      summary: Show a Steam collection import item
+      tags:
+      - Steam Collection Imports
+      description: Owner-only (resolved through the parent import).
+      responses:
+        '200':
+          description: import item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a Steam collection import item
+      tags:
+      - Steam Collection Imports
+      description: Owner-only. Records the match/outcome after the bot processes this
+        app. Rolled back instead of persisted if the item's import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - pending
+                      - added
+                      - updated
+                      - skipped
+                      - failed
+                      description: New item status.
+                    match_confidence:
+                      type: string
+                      enum:
+                      - exact
+                      - fuzzy
+                      - manual
+                      nullable: true
+                    match_candidate_json:
+                      type: string
+                      nullable: true
+                      description: JSON-encoded match candidate, stored and returned
+                        verbatim.
+                    gamedb_game_id:
+                      type: integer
+                      nullable: true
+                    collection_entry_id:
+                      type: integer
+                      nullable: true
+                      description: The UserGameCollection entry created for this app.
+                    result_reason:
+                      type: string
+                      nullable: true
+                    error_text:
+                      type: string
+                      nullable: true
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_imports":
+    post:
+      summary: Start a Steam collection import job
+      tags:
+      - Steam Collection Imports
+      description: Owner-only (the bot service token counts as owner; owner_id is
+        taken from `user_id` in the body). Creates the import job; apps are bulk-inserted
+        separately via `POST /steam_collection_imports/{id}/items`.
+      parameters: []
+      responses:
+        '201':
+          description: import job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    user_id:
+                      type: string
+                      description: RpgClubSteamCollectionImport owner user_id. Required.
+                    steam_id64:
+                      type: string
+                      description: The user's Steam 64-bit id. Required.
+                    steam_profile_ref:
+                      type: string
+                      nullable: true
+                      description: Vanity URL or profile ref used to resolve steam_id64.
+                    source_profile_name:
+                      type: string
+                      nullable: true
+                      description: Steam display name at import time.
+                    test_mode:
+                      type: boolean
+                      default: false
+                      description: 'Dry-run session (#166): the session row itself
+                        is persisted, but every subsequent write scoped to it (item
+                        inserts/updates, status/current_index updates) is rolled back
+                        instead of committed.'
+                  required:
+                  - user_id
+                  - steam_id64
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/steam_collection_imports/active":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImport owner user_id.
+    get:
+      summary: Get the user's active or paused Steam import
+      tags:
+      - Steam Collection Imports
+      description: Owner-only. Returns the user's active or paused import, if any,
+        for resuming after a bot restart, or 404 if none exists.
+      responses:
+        '200':
+          description: active import
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no active or paused import
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_collection_imports/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImport import_id.
+    get:
+      summary: Show a Steam collection import job
+      tags:
+      - Steam Collection Imports
+      description: Owner-only.
+      responses:
+        '200':
+          description: import job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a Steam collection import job
+      tags:
+      - Steam Collection Imports
+      description: Owner-only. Partial update — typically the status transition and
+        resume checkpoint (`current_index`) as the bot works through the apps. Rolled
+        back instead of persisted if the import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - active
+                      - paused
+                      - completed
+                      - canceled
+                      description: New status for the import job.
+                    current_index:
+                      type: integer
+                      description: App index the bot has resumed processing through.
+              required:
+              - data
+        required: true
   "/api/v1/suggestions/review_sessions":
     get:
       summary: List suggestion review sessions
