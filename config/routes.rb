@@ -101,6 +101,8 @@ Rails.application.routes.draw do
           delete "wizard_sessions", to: "wizard_sessions#destroy_historical"
           post "collection_csv_imports", to: "collection_csv_imports#create"
           get "collection_csv_imports/active", to: "collection_csv_imports#active"
+          post "completionator_imports", to: "completionator_imports#create"
+          get "completionator_imports/active", to: "completionator_imports#active"
         end
       end
 
@@ -116,6 +118,17 @@ Rails.application.routes.draw do
         end
       end
       resources :collection_csv_import_items, only: %i[show update]
+      # Completionator import jobs (#164), same shape as collection_csv_imports
+      # above. The user-scoped create/active reads live under `users`;
+      # `summary` and the nested `items/next_pending` poll are member routes
+      # so they aren't captured by the `:id` show route.
+      resources :completionator_imports, only: %i[show update] do
+        member do
+          get "summary"
+          get "items/next_pending", to: "completionator_import_items#next_pending"
+        end
+      end
+      resources :completionator_import_items, only: %i[show update]
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
         collection { get "leaderboard" }
