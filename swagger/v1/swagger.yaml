@@ -1384,6 +1384,122 @@ components:
       - last_updated_at
       - created_at
       - updated_at
+    CollectionCsvImport:
+      type: object
+      properties:
+        import_id:
+          type: integer
+        user_id:
+          type: string
+        status:
+          type: string
+        current_index:
+          type: integer
+        total_count:
+          type: integer
+        source_file_name:
+          type: string
+          nullable: true
+        source_file_size:
+          type: integer
+          nullable: true
+        template_version:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - import_id
+      - user_id
+      - status
+      - current_index
+      - total_count
+      - created_at
+      - updated_at
+    CollectionCsvImportItem:
+      type: object
+      properties:
+        item_id:
+          type: integer
+        import_id:
+          type: integer
+        row_index:
+          type: integer
+        raw_title:
+          type: string
+          nullable: true
+        raw_platform:
+          type: string
+          nullable: true
+        raw_ownership_type:
+          type: string
+          nullable: true
+        raw_note:
+          type: string
+          nullable: true
+        raw_gamedb_id:
+          type: integer
+          nullable: true
+        raw_igdb_id:
+          type: integer
+          nullable: true
+        platform_id:
+          type: integer
+          nullable: true
+        ownership_type:
+          type: string
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        status:
+          type: string
+        match_confidence:
+          type: string
+          nullable: true
+        match_candidate_json:
+          type: string
+          nullable: true
+        gamedb_game_id:
+          type: integer
+          nullable: true
+        collection_entry_id:
+          type: integer
+          nullable: true
+        result_reason:
+          type: string
+          nullable: true
+        error_text:
+          type: string
+          nullable: true
+      required:
+      - item_id
+      - import_id
+      - row_index
+      - status
+    CollectionCsvImportSummary:
+      type: object
+      properties:
+        import_id:
+          type: integer
+        by_status:
+          type: object
+          description: Item count keyed by status.
+          additionalProperties:
+            type: integer
+        by_result_reason:
+          type: object
+          description: Item count keyed by result_reason.
+          additionalProperties:
+            type: integer
+      required:
+      - import_id
+      - by_status
+      - by_result_reason
     VotingInfo:
       type: object
       properties:
@@ -2498,6 +2614,468 @@ paths:
                     nullable: true
         '403':
           description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/collection_csv_import_items/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImportItem item_id.
+    get:
+      summary: Show a collection CSV import item
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (resolved through the parent import).
+      responses:
+        '200':
+          description: import item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a collection CSV import item
+      tags:
+      - Collection CSV Imports
+      description: Owner-only. Records the match/outcome after the bot processes this
+        row.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - pending
+                      - added
+                      - updated
+                      - skipped
+                      - failed
+                      description: New item status.
+                    platform_id:
+                      type: integer
+                      nullable: true
+                    ownership_type:
+                      type: string
+                      nullable: true
+                    note:
+                      type: string
+                      nullable: true
+                    match_confidence:
+                      type: string
+                      nullable: true
+                    match_candidate_json:
+                      type: string
+                      nullable: true
+                      description: JSON-encoded match candidate, stored and returned
+                        verbatim.
+                    gamedb_game_id:
+                      type: integer
+                      nullable: true
+                    collection_entry_id:
+                      type: integer
+                      nullable: true
+                      description: The UserGameCollection entry created for this row.
+                    result_reason:
+                      type: string
+                      nullable: true
+                    error_text:
+                      type: string
+                      nullable: true
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/collection_csv_imports":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport owner user_id.
+    post:
+      summary: Start a collection CSV import job
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (the bot service token counts as owner). Creates the
+        import job and inserts all row items — given as `items` — in one call.
+      parameters: []
+      responses:
+        '201':
+          description: import job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    source_file_name:
+                      type: string
+                      nullable: true
+                    source_file_size:
+                      type: integer
+                      nullable: true
+                    template_version:
+                      type: string
+                      nullable: true
+                    items:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          row_index:
+                            type: integer
+                            description: Position of this row in the source CSV. Defaults
+                              to the array index.
+                          raw_title:
+                            type: string
+                            nullable: true
+                          raw_platform:
+                            type: string
+                            nullable: true
+                          raw_ownership_type:
+                            type: string
+                            nullable: true
+                          raw_note:
+                            type: string
+                            nullable: true
+                          raw_gamedb_id:
+                            type: integer
+                            nullable: true
+                          raw_igdb_id:
+                            type: integer
+                            nullable: true
+                      description: The parsed CSV rows to import, in order.
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/collection_csv_imports/active":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport owner user_id.
+    get:
+      summary: Get the user's active or paused import
+      tags:
+      - Collection CSV Imports
+      description: Owner-only. Returns the user's active or paused import, if any,
+        for resuming after a bot restart, or 404 if none exists.
+      responses:
+        '200':
+          description: active import
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no active or paused import
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/collection_csv_imports/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport import_id.
+    get:
+      summary: Show a collection CSV import job
+      tags:
+      - Collection CSV Imports
+      description: Owner-only.
+      responses:
+        '200':
+          description: import job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a collection CSV import job
+      tags:
+      - Collection CSV Imports
+      description: Owner-only. Partial update — typically the status transition and
+        resume checkpoint (`current_index`) as the bot works through the items.
+      parameters: []
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum:
+                      - active
+                      - paused
+                      - completed
+                      - canceled
+                      description: New status for the import job.
+                    current_index:
+                      type: integer
+                      description: Row index the bot has resumed processing through.
+              required:
+              - data
+        required: true
+  "/api/v1/collection_csv_imports/{id}/summary":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport import_id.
+    get:
+      summary: Summarize a collection CSV import job
+      tags:
+      - Collection CSV Imports
+      description: Owner-only. Item counts grouped by status and by result_reason,
+        replacing the bot's countItemsByStatus/countItemsByReason.
+      responses:
+        '200':
+          description: summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportSummary"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/collection_csv_imports/{id}/items/next_pending":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport import_id.
+    get:
+      summary: Get the next pending import item
+      tags:
+      - Collection CSV Imports
+      description: 'Owner-only. Returns the next pending item ordered by row_index,
+        or `data: null` once every row has been processed.'
+      responses:
+        '200':
+          description: next pending item, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: import not found
           content:
             application/json:
               schema:
