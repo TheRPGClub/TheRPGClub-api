@@ -224,7 +224,14 @@ Rails.application.routes.draw do
         collection { get "due" }
       end
       resources :starboard, param: :message_id, only: %i[index show create update destroy]
-      resources :journal_message_contexts, param: :message_id, only: %i[index show create update destroy]
+      # Journal message contexts (bot parity, #84/#165). Keyed on the
+      # composite (channel_id, message_id) rather than a single :id, so this
+      # is hand-rolled instead of `resources`. The bulk prune route shares the
+      # bare collection path with #index/#create (distinguished by verb).
+      delete "journal_message_contexts/:channel_id/:message_id", to: "journal_message_contexts#destroy"
+      get    "journal_message_contexts", to: "journal_message_contexts#index"
+      post   "journal_message_contexts", to: "journal_message_contexts#create"
+      delete "journal_message_contexts", to: "journal_message_contexts#prune"
       resources :voting_info, only: %i[index show create update destroy] do
         collection { get "current" }
       end
