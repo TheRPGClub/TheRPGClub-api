@@ -103,6 +103,8 @@ Rails.application.routes.draw do
           get "collection_csv_imports/active", to: "collection_csv_imports#active"
           post "completionator_imports", to: "completionator_imports#create"
           get "completionator_imports/active", to: "completionator_imports#active"
+          get "steam_collection_imports/active", to: "steam_collection_imports#active"
+          get "steam_app_gamedb_maps/historical", to: "steam_app_gamedb_maps#historical"
         end
       end
 
@@ -129,6 +131,26 @@ Rails.application.routes.draw do
         end
       end
       resources :completionator_import_items, only: %i[show update]
+      # Steam collection import jobs (#166), same shape as
+      # collection_csv_imports above, except `create` is not user-nested (the
+      # owner user_id is given in the body) and items are bulk-inserted via a
+      # separate member route rather than as part of `create`. `active` lives
+      # under `users` above; `items/next_pending` and `items/counts` are
+      # member routes so they aren't captured by the `:id` show route.
+      resources :steam_collection_imports, only: %i[create show update] do
+        member do
+          post "items", to: "steam_collection_import_items#create"
+          get "items/next_pending", to: "steam_collection_import_items#next_pending"
+          get "items/counts", to: "steam_collection_import_items#counts"
+        end
+      end
+      resources :steam_collection_import_items, only: %i[show update]
+      # Steam app -> GameDB game mapping cache (#166), shared across every
+      # user's import. `create` upserts keyed on steam_app_id; `show` is
+      # keyed on steam_app_id too (not the internal map_id), so it's declared
+      # manually rather than via `resources`.
+      get "steam_app_gamedb_maps/:steam_app_id", to: "steam_app_gamedb_maps#show"
+      post "steam_app_gamedb_maps", to: "steam_app_gamedb_maps#create"
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
         collection { get "leaderboard" }

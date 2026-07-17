@@ -1406,7 +1406,7 @@ CREATE TABLE public.rpg_club_steam_app_gamedb_map (
     created_by character varying(30),
     created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
     updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
-    CONSTRAINT ck_steam_app_gamedb_map_status CHECK (((status)::text = ANY (ARRAY[('MAPPED'::character varying)::text, ('SKIPPED'::character varying)::text])))
+    CONSTRAINT ck_steam_app_gamedb_map_status CHECK (((status)::text = ANY ((ARRAY['mapped'::character varying, 'skipped'::character varying])::text[])))
 );
 
 
@@ -1447,8 +1447,9 @@ CREATE TABLE public.rpg_club_steam_collection_import_items (
     collection_entry_id bigint,
     error_text character varying(2000),
     result_reason character varying(40),
-    CONSTRAINT ck_steam_coll_items_reason CHECK (((COALESCE((result_reason)::text, ''::text) = ''::text) OR ((result_reason)::text = ANY (ARRAY[('AUTO_MATCH'::character varying)::text, ('MANUAL_REMAP'::character varying)::text, ('DUPLICATE'::character varying)::text, ('MANUAL_SKIP'::character varying)::text, ('SKIP_MAPPED'::character varying)::text, ('NO_CANDIDATE'::character varying)::text, ('INVALID_REMAP'::character varying)::text, ('PLATFORM_UNRESOLVED'::character varying)::text, ('ADD_FAILED'::character varying)::text])))),
-    CONSTRAINT ck_steam_coll_items_status CHECK (((status)::text = ANY (ARRAY[('PENDING'::character varying)::text, ('ADDED'::character varying)::text, ('UPDATED'::character varying)::text, ('SKIPPED'::character varying)::text, ('FAILED'::character varying)::text])))
+    CONSTRAINT ck_steam_coll_items_match_confidence CHECK (((match_confidence IS NULL) OR ((match_confidence)::text = ANY ((ARRAY['exact'::character varying, 'fuzzy'::character varying, 'manual'::character varying])::text[])))),
+    CONSTRAINT ck_steam_coll_items_reason CHECK (((result_reason IS NULL) OR ((result_reason)::text = ANY ((ARRAY['auto_match'::character varying, 'manual_remap'::character varying, 'duplicate'::character varying, 'manual_skip'::character varying, 'skip_mapped'::character varying, 'no_candidate'::character varying, 'invalid_remap'::character varying, 'platform_unresolved'::character varying, 'add_failed'::character varying])::text[])))),
+    CONSTRAINT ck_steam_coll_items_status CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'added'::character varying, 'updated'::character varying, 'skipped'::character varying, 'failed'::character varying])::text[])))
 );
 
 
@@ -1481,7 +1482,8 @@ CREATE TABLE public.rpg_club_steam_collection_imports (
     source_profile_name character varying(255),
     created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
     updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
-    CONSTRAINT ck_steam_coll_imports_status CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('PAUSED'::character varying)::text, ('COMPLETED'::character varying)::text, ('CANCELED'::character varying)::text])))
+    test_mode boolean DEFAULT false NOT NULL,
+    CONSTRAINT ck_steam_coll_imports_status CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'paused'::character varying, 'completed'::character varying, 'canceled'::character varying])::text[])))
 );
 
 
@@ -3449,6 +3451,13 @@ CREATE INDEX ix_rpg_club_user_nick_history_user ON public.rpg_club_user_nick_his
 
 
 --
+-- Name: ix_steam_app_gamedb_map_creator; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_steam_app_gamedb_map_creator ON public.rpg_club_steam_app_gamedb_map USING btree (created_by, status);
+
+
+--
 -- Name: ix_steam_app_gamedb_map_status; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3768,6 +3777,13 @@ CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_active ON public.rpg_club_admin_wizard
 --
 
 CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_one_active ON public.rpg_club_admin_wizard_sessions USING btree (command_key, owner_user_id, channel_id) WHERE ((status)::text = 'ACTIVE'::text);
+
+
+--
+-- Name: ux_steam_coll_items_import_row; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_steam_coll_items_import_row ON public.rpg_club_steam_collection_import_items USING btree (import_id, row_index);
 
 
 --
@@ -4152,6 +4168,8 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260717150000'),
+('20260717140000'),
 ('20260717130000'),
 ('20260717120000'),
 ('20260717000200'),
