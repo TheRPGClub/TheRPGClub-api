@@ -7691,7 +7691,8 @@ paths:
       tags:
       - Journal Message Contexts
       description: Returns Discord messages tagged with game journal context. Optionally
-        filter by channel_id or game_id. Open to any authenticated caller.
+        filter by channel_id, game_id, or created_after_ms (for the active list).
+        Open to any authenticated caller.
       parameters:
       - name: channel_id
         in: query
@@ -7703,6 +7704,12 @@ paths:
         schema:
           type: integer
         required: false
+      - name: created_after_ms
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Only return contexts created at or after this epoch-ms timestamp.
       - name: page
         in: query
         schema:
@@ -7738,15 +7745,25 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
     post:
-      summary: Create a journal message context
+      summary: Upsert a journal message context
       tags:
       - Journal Message Contexts
-      description: Records a Discord message as a journal message context (sent by
-        the bot service principal). All five fields are required.
+      description: Inserts or updates a journal message context keyed on (channel_id,
+        message_id) (sent by the bot service principal). All five fields are required.
+        Returns 201 on insert, 200 on update.
       parameters: []
       responses:
         '201':
           description: context created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/JournalMessageContext"
+        '200':
+          description: context updated
           content:
             application/json:
               schema:
@@ -7777,10 +7794,12 @@ paths:
                   properties:
                     channel_id:
                       type: string
-                      description: Discord channel id. Required.
+                      description: Discord channel id (part of the composite key).
+                        Required.
                     message_id:
                       type: string
-                      description: Discord message id (the record key). Required.
+                      description: Discord message id (part of the composite key).
+                        Required.
                     created_at_ms:
                       type: integer
                       description: Message creation time as epoch milliseconds. Required.
@@ -7799,149 +7818,65 @@ paths:
               required:
               - data
         required: true
-  "/api/v1/journal_message_contexts/{message_id}":
+    delete:
+      summary: Prune journal message contexts
+      tags:
+      - Journal Message Contexts
+      description: 'Service-only maintenance route: bulk-deletes every context created
+        before the given cutoff, replacing the bot manual pruning call. `before_ms`
+        is required.'
+      parameters:
+      - name: before_ms
+        in: query
+        schema:
+          type: integer
+        required: true
+        description: Delete contexts with created_at_ms strictly before this epoch-ms
+          cutoff.
+      responses:
+        '200':
+          description: pruned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                  count:
+                    type: integer
+        '400':
+          description: missing before_ms
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden (not the service principal)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/journal_message_contexts/{channel_id}/{message_id}":
     parameters:
+    - name: channel_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord channel id (part of the composite key).
     - name: message_id
       in: path
       schema:
         type: string
       required: true
-      description: Discord message id (snowflake — globally unique, used as the route
-        key).
-    get:
-      summary: Show a journal message context
-      tags:
-      - Journal Message Contexts
-      responses:
-        '200':
-          description: context detail
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/JournalMessageContext"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-    patch:
-      summary: Update a journal message context
-      tags:
-      - Journal Message Contexts
-      description: 'Partial update: send any subset of the writable columns.'
-      parameters: []
-      responses:
-        '200':
-          description: updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/JournalMessageContext"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '422':
-          description: validation failed
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    channel_id:
-                      type: string
-                      description: Discord channel id. Required.
-                    message_id:
-                      type: string
-                      description: Discord message id (the record key). Required.
-                    created_at_ms:
-                      type: integer
-                      description: Message creation time as epoch milliseconds. Required.
-                    owner_user_id:
-                      type: string
-                      description: Discord id of the journaling user. Required.
-                    game_id:
-                      type: integer
-                      description: The associated gamedb_games.game_id. Required.
-              required:
-              - data
-        required: true
-    put:
-      summary: Replace a journal message context (alias)
-      tags:
-      - Journal Message Contexts
-      description: Alias for PATCH (applied as a partial assign).
-      parameters: []
-      responses:
-        '200':
-          description: updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/JournalMessageContext"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    channel_id:
-                      type: string
-                      description: Discord channel id. Required.
-                    message_id:
-                      type: string
-                      description: Discord message id (the record key). Required.
-                    created_at_ms:
-                      type: integer
-                      description: Message creation time as epoch milliseconds. Required.
-                    owner_user_id:
-                      type: string
-                      description: Discord id of the journaling user. Required.
-                    game_id:
-                      type: integer
-                      description: The associated gamedb_games.game_id. Required.
-        required: true
+      description: Discord message id (part of the composite key).
     delete:
       summary: Delete a journal message context
       tags:
