@@ -6452,6 +6452,97 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/hltb":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    post:
+      summary: Upsert HowLongToBeat cache
+      tags:
+      - Games
+      description: Admin/service-only. Upserts the bot's scraped HowLongToBeat cache
+        for the game, keyed on gamedb_game_id (mirrors the bot's `rpg_club_hltb_cache`
+        `ON CONFLICT (gamedb_game_id) DO UPDATE`). Fields are accepted under the same
+        logical names returned by the `hltb` slice of GET /api/v1/games/{id}/profile.
+      parameters: []
+      responses:
+        '200':
+          description: HLTB cache upserted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Hltb"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      nullable: true
+                    url:
+                      type: string
+                      nullable: true
+                    image_url:
+                      type: string
+                      nullable: true
+                    main:
+                      type: string
+                      nullable: true
+                    main_sides:
+                      type: string
+                      nullable: true
+                    completionist:
+                      type: string
+                      nullable: true
+                    single_player:
+                      type: string
+                      nullable: true
+                    co_op:
+                      type: string
+                      nullable: true
+                    vs:
+                      type: string
+                      nullable: true
+                    source_query:
+                      type: string
+                      nullable: true
+                    scraped_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+              required:
+              - data
+        required: true
   "/api/v1/games/{id}/profile":
     parameters:
     - name: id

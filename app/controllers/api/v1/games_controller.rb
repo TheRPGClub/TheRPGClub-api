@@ -137,6 +137,25 @@ module Api
         render json: { data: relations_data(GamedbGame.find(params[:id])) }
       end
 
+      # POST /api/v1/games/:id/hltb
+      # Body: { "data": { name, url, image_url, main, main_sides, completionist,
+      #                    single_player, co_op, vs, source_query, scraped_at } }
+      #
+      # Admin/service-only. Upserts the bot's scraped HowLongToBeat cache for the
+      # game, keyed on gamedb_game_id (mirrors the bot's `rpg_club_hltb_cache`
+      # `ON CONFLICT (gamedb_game_id) DO UPDATE`). Fields are accepted under the
+      # same logical names HltbResource returns via #relations/#profile.
+      def upsert_hltb
+        return unless require_admin_or_service!
+
+        game = GamedbGame.find(params[:id])
+        cache = RpgClubHltbCache.find_or_initialize_by(gamedb_game_id: game.game_id)
+        cache.assign_attributes(hltb_data)
+        cache.save!
+
+        render json: { data: HltbResource.new(cache).serializable_hash }
+      end
+
       # GET /api/v1/games/:id/profile
       #
       # One aggregate payload for the bot's `/gamedb view` (#115): the game
@@ -187,6 +206,17 @@ module Api
       # and owned by the import/refresh paths, so it is not writable here.
       def update_data
         request_data.slice("description", "featured_video_url")
+      end
+
+      # #upsert_hltb's body, translated from HltbResource's logical names back to
+      # the hltb_-prefixed columns; the remaining fields pass through unchanged.
+      def hltb_data
+        data = request_data
+        data.slice("main", "main_sides", "completionist", "single_player", "co_op", "vs", "source_query", "scraped_at").tap do |mapped|
+          mapped["hltb_name"] = data["name"] if data.key?("name")
+          mapped["hltb_url"] = data["url"] if data.key?("url")
+          mapped["hltb_image_url"] = data["image_url"] if data.key?("image_url")
+        end
       end
 
       # The game record exactly as #show renders it minus the now-playing /
