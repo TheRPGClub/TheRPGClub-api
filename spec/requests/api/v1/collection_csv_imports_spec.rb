@@ -22,7 +22,7 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
              description: 'The parsed CSV rows to import, in order.' }
   }
   update_writable = {
-    status: { type: :string, enum: %w[ACTIVE PAUSED COMPLETED CANCELED], description: 'New status for the import job.' },
+    status: { type: :string, enum: %w[active paused completed canceled], description: 'New status for the import job.' },
     current_index: { type: :integer, description: 'Row index the bot has resumed processing through.' }
   }
 
@@ -71,7 +71,7 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
 
     get "Get the user's active or paused import" do
       tags 'Collection CSV Imports'
-      description 'Owner-only. Returns the user\'s ACTIVE or PAUSED import, if any, for resuming ' \
+      description 'Owner-only. Returns the user\'s active or paused import, if any, for resuming ' \
                   'after a bot restart, or 404 if none exists.'
       produces 'application/json'
 
@@ -188,7 +188,7 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
 
     get 'Get the next pending import item' do
       tags 'Collection CSV Imports'
-      description 'Owner-only. Returns the next PENDING item ordered by row_index, or `data: null` ' \
+      description 'Owner-only. Returns the next pending item ordered by row_index, or `data: null` ' \
                   'once every row has been processed.'
       produces 'application/json'
 

@@ -2718,11 +2718,11 @@ paths:
                     status:
                       type: string
                       enum:
-                      - PENDING
-                      - ADDED
-                      - UPDATED
-                      - SKIPPED
-                      - FAILED
+                      - pending
+                      - added
+                      - updated
+                      - skipped
+                      - failed
                       description: New item status.
                     platform_id:
                       type: integer
@@ -2867,7 +2867,7 @@ paths:
       summary: Get the user's active or paused import
       tags:
       - Collection CSV Imports
-      description: Owner-only. Returns the user's ACTIVE or PAUSED import, if any,
+      description: Owner-only. Returns the user's active or paused import, if any,
         for resuming after a bot restart, or 404 if none exists.
       responses:
         '200':
@@ -2991,10 +2991,10 @@ paths:
                     status:
                       type: string
                       enum:
-                      - ACTIVE
-                      - PAUSED
-                      - COMPLETED
-                      - CANCELED
+                      - active
+                      - paused
+                      - completed
+                      - canceled
                       description: New status for the import job.
                     current_index:
                       type: integer
@@ -3056,7 +3056,7 @@ paths:
       summary: Get the next pending import item
       tags:
       - Collection CSV Imports
-      description: 'Owner-only. Returns the next PENDING item ordered by row_index,
+      description: 'Owner-only. Returns the next pending item ordered by row_index,
         or `data: null` once every row has been processed.'
       responses:
         '200':

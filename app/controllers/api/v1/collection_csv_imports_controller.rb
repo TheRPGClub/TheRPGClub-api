@@ -16,7 +16,7 @@ module Api
       # Body: { "data": { source_file_name, source_file_size, template_version, items: [...] } }
       #
       # Creates the import job and inserts all row items in one call. Each
-      # entry in `items` becomes a PENDING RpgClubCollectionCsvImportItem;
+      # entry in `items` becomes a pending RpgClubCollectionCsvImportItem;
       # `row_index` defaults to the entry's position in the array.
       def create
         data = request_data
@@ -26,7 +26,7 @@ module Api
         ActiveRecord::Base.transaction do
           record = RpgClubCollectionCsvImport.create!(
             user_id: params[:user_id],
-            status: "ACTIVE",
+            status: "active",
             current_index: 0,
             total_count: items.size,
             source_file_name: data["source_file_name"],
@@ -43,11 +43,11 @@ module Api
 
       # GET /api/v1/users/:user_id/collection_csv_imports/active
       #
-      # The user's ACTIVE or PAUSED import, if any, for resuming after a bot
+      # The user's active or paused import, if any, for resuming after a bot
       # restart.
       def active
         record = RpgClubCollectionCsvImport
-          .where(user_id: params[:user_id], status: %w[ACTIVE PAUSED])
+          .where(user_id: params[:user_id], status: %w[active paused])
           .order(created_at: :desc)
           .first!
 
@@ -96,7 +96,7 @@ module Api
           raw_note: item["raw_note"],
           raw_gamedb_id: item["raw_gamedb_id"],
           raw_igdb_id: item["raw_igdb_id"],
-          status: "PENDING"
+          status: "pending"
         }
       end
 

@@ -10,11 +10,11 @@ module Api
 
       # GET /api/v1/collection_csv_imports/:id/items/next_pending
       #
-      # The next PENDING item ordered by row_index, or null once every row has
+      # The next pending item ordered by row_index, or null once every row has
       # been processed.
       def next_pending
         import = RpgClubCollectionCsvImport.find(params[:id])
-        record = import.items.where(status: "PENDING").order(:row_index).first
+        record = import.items.where(status: "pending").order(:row_index).first
 
         render json: { data: record && CollectionCsvImportItemResource.new(record).serializable_hash }
       end

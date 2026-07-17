@@ -8,7 +8,7 @@ RSpec.describe 'api/v1/collection_csv_import_items', type: :request do
   # `row_index` and the `raw_*` fields are set at create time and not editable
   # here.
   update_writable = {
-    status: { type: :string, enum: %w[PENDING ADDED UPDATED SKIPPED FAILED], description: 'New item status.' },
+    status: { type: :string, enum: %w[pending added updated skipped failed], description: 'New item status.' },
     platform_id: { type: :integer, nullable: true },
     ownership_type: { type: :string, nullable: true },
     note: { type: :string, nullable: true },

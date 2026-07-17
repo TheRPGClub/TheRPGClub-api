@@ -27,7 +27,7 @@ class CreateRpgClubCollectionCsvImports < ActiveRecord::Migration[8.1]
     end
 
     add_check_constraint :rpg_club_collection_csv_imports,
-                         "status IN ('ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELED')",
+                         "status IN ('active', 'paused', 'completed', 'canceled')",
                          name: "ck_coll_csv_imports_status"
     add_index :rpg_club_collection_csv_imports, %i[user_id status], name: "ix_coll_csv_imports_user"
   end
@@ -60,7 +60,7 @@ class CreateRpgClubCollectionCsvImports < ActiveRecord::Migration[8.1]
                     primary_key: :import_id,
                     name: "fk_coll_csv_import_items"
     add_check_constraint :rpg_club_collection_csv_import_items,
-                         "status IN ('PENDING', 'ADDED', 'UPDATED', 'SKIPPED', 'FAILED')",
+                         "status IN ('pending', 'added', 'updated', 'skipped', 'failed')",
                          name: "ck_coll_csv_items_status"
     add_index :rpg_club_collection_csv_import_items,
               %i[import_id status row_index],

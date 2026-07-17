@@ -9,7 +9,7 @@ class RpgClubCollectionCsvImportItem < ApplicationRecord
   self.table_name = "rpg_club_collection_csv_import_items"
   self.primary_key = "item_id"
 
-  STATUSES = %w[PENDING ADDED UPDATED SKIPPED FAILED].freeze
+  STATUSES = %w[pending added updated skipped failed].freeze
 
   belongs_to :import,
     class_name: "RpgClubCollectionCsvImport",
