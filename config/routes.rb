@@ -99,10 +99,23 @@ Rails.application.routes.draw do
           get "wizard_sessions", to: "wizard_sessions#user_index"
           post "wizard_sessions", to: "wizard_sessions#upsert"
           delete "wizard_sessions", to: "wizard_sessions#destroy_historical"
+          post "collection_csv_imports", to: "collection_csv_imports#create"
+          get "collection_csv_imports/active", to: "collection_csv_imports#active"
         end
       end
 
       resources :wizard_sessions, only: %i[update destroy]
+      # Collection CSV import jobs (#163). The user-scoped create/active reads
+      # live under `users` above; `summary` and the nested `items/next_pending`
+      # poll are declared as member routes here so they aren't captured by the
+      # `:id` show route.
+      resources :collection_csv_imports, only: %i[show update] do
+        member do
+          get "summary"
+          get "items/next_pending", to: "collection_csv_import_items#next_pending"
+        end
+      end
+      resources :collection_csv_import_items, only: %i[show update]
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
         collection { get "leaderboard" }

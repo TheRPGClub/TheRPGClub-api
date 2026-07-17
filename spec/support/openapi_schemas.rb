@@ -393,6 +393,34 @@ module OpenapiSchemas
         guild_id: str(nullable: true), status: str, state_json: str,
         last_updated_at: ts, created_at: ts, updated_at: ts
       ),
+      # CollectionCsvImportResource: every RpgClubCollectionCsvImport column
+      # (#163). `current_index`/`total_count` let the bot resume a
+      # paused/interrupted import.
+      CollectionCsvImport: obj(
+        import_id: int, user_id: str, status: str, current_index: int, total_count: int,
+        source_file_name: str(nullable: true), source_file_size: int(nullable: true),
+        template_version: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      # CollectionCsvImportItemResource: every RpgClubCollectionCsvImportItem
+      # column (#163) — the raw parsed CSV fields plus the resolved match and
+      # outcome once the bot's matcher has run the row.
+      CollectionCsvImportItem: obj(
+        item_id: int, import_id: int, row_index: int,
+        raw_title: str(nullable: true), raw_platform: str(nullable: true),
+        raw_ownership_type: str(nullable: true), raw_note: str(nullable: true),
+        raw_gamedb_id: int(nullable: true), raw_igdb_id: int(nullable: true),
+        platform_id: int(nullable: true), ownership_type: str(nullable: true), note: str(nullable: true),
+        status: str, match_confidence: str(nullable: true), match_candidate_json: str(nullable: true),
+        gamedb_game_id: int(nullable: true), collection_entry_id: int(nullable: true),
+        result_reason: str(nullable: true), error_text: str(nullable: true)
+      ),
+      # collection_csv_imports#summary: item counts grouped by status and by
+      # result_reason, replacing the bot's countItemsByStatus/countItemsByReason.
+      CollectionCsvImportSummary: obj(
+        import_id: int,
+        by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
+        by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
+      ),
       # Raw bot_voting_info columns plus the derived voting-window state
       # (VotingInfoResource): `vote_deadline` is the effective end of voting —
       # the `vote_ends_at` override or the default end of the first Sunday
