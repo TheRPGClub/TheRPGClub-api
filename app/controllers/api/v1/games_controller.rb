@@ -174,11 +174,16 @@ module Api
         # primary-image lookup below all read from the same set, and
         # GamedbGame#primary_image_url resolves in-memory when it's loaded —
         # collapsing four per-kind image queries into one.
-        game = GamedbGame.without_images.includes(:images).find(params[:id])
+        game = GamedbGame.without_images.includes(:images, :gotm_entries, :nr_gotm_entries).find(params[:id])
+        # Wrapping the preloaded sets in Gamedb::GotmWinSummary (rather than
+        # calling `.order` on them) avoids bypassing the preload with a fresh
+        # query, and gives the derivation a real behavioral spec (#117).
+        gotm_summary = Gamedb::GotmWinSummary.new(game.gotm_entries)
+        nr_gotm_summary = Gamedb::GotmWinSummary.new(game.nr_gotm_entries)
 
         render json: {
           data: {
-            game: game_record_data(game),
+            game: game_record_data(game, gotm_summary:, nr_gotm_summary:),
             relations: relations_data(game),
             # The full, unpaginated lists — preferred over a preview for a single
             # game (#115); the standalone endpoints paginate, these do not.
@@ -186,7 +191,7 @@ module Api
             completions: CompletionUserEntryResource.new(completions_for(game)).serializable_hash,
             threads: ThreadResource.new(threads_for(game)).serializable_hash,
             primary_image: primary_image_for(game),
-            associations: associations_for(game),
+            associations: associations_for(game, gotm_summary:, nr_gotm_summary:),
             collection_owners: collection_owners_for(game),
             hltb: hltb_for(game)
           }
@@ -228,10 +233,15 @@ module Api
       # completions previews (the profile surfaces those as dedicated top-level
       # lists instead of a redundant second copy): the GameResource shape plus
       # the GOTM / NR-GOTM month info derived from the winning entries.
-      def game_record_data(game)
+      #
+      # `gotm_summary` / `nr_gotm_summary` let a caller that already preloaded
+      # the entries (#profile, #117) pass a Gamedb::GotmWinSummary to derive
+      # the month-year in-memory; #show leaves them nil and keeps the
+      # single-column `.pick` query instead of loading full rows.
+      def game_record_data(game, gotm_summary: nil, nr_gotm_summary: nil)
         GameResource.new(game).serializable_hash.merge(
-          "gotm_month_year" => game.gotm_won ? game.gotm_entries.order(round_number: :desc).pick(:month_year) : nil,
-          "nr_gotm_month_year" => game.nr_gotm_won ? game.nr_gotm_entries.order(round_number: :desc).pick(:month_year) : nil
+          "gotm_month_year" => game.gotm_won ? (gotm_summary ? gotm_summary.latest_month_year : game.gotm_entries.order(round_number: :desc).pick(:month_year)) : nil,
+          "nr_gotm_month_year" => game.nr_gotm_won ? (nr_gotm_summary ? nr_gotm_summary.latest_month_year : game.nr_gotm_entries.order(round_number: :desc).pick(:month_year)) : nil
         )
       end
 
@@ -299,10 +309,13 @@ module Api
 
       # GOTM / NR-GOTM wins (the rounds the game won) and nominations (the rounds
       # it was nominated for, with the nominator), currently SQL-only on the bot.
-      def associations_for(game)
+      #
+      # `gotm_summary` / `nr_gotm_summary` let #profile pass its already-preloaded
+      # Gamedb::GotmWinSummary through instead of re-querying entries here (#117).
+      def associations_for(game, gotm_summary: nil, nr_gotm_summary: nil)
         {
-          gotm_wins: GotmWinResource.new(game.gotm_entries.order(:round_number)).serializable_hash,
-          nr_gotm_wins: GotmWinResource.new(game.nr_gotm_entries.order(:round_number)).serializable_hash,
+          gotm_wins: GotmWinResource.new(gotm_summary ? gotm_summary.ordered : game.gotm_entries.order(:round_number)).serializable_hash,
+          nr_gotm_wins: GotmWinResource.new(nr_gotm_summary ? nr_gotm_summary.ordered : game.nr_gotm_entries.order(:round_number)).serializable_hash,
           gotm_nominations: GotmNominationSummaryResource.new(
             game.gotm_nominations.includes(:user).order(:round_number)
           ).serializable_hash,
