@@ -40,6 +40,11 @@ module Api
       def create
         entry = NrGotmEntry.create!(request_data.slice(*CREATE_ATTRS))
         entry.reload
+        # GameResource's nr_gotm_won is a live EXISTS(nr_gotm_entries) subquery,
+        # but GamesController#relations_data caches it on an alternate game's
+        # behalf without touching that game -- bump the shared version so
+        # those caches invalidate.
+        Gamedb::GameRelationsCacheVersion.bump!
         render json: { data: NrGotmEntryResource.new(entry).serializable_hash }, status: :created
       end
 
@@ -47,11 +52,13 @@ module Api
         entry = NrGotmEntry.find(params[:id])
         entry.update!(request_data.slice(*UPDATE_ATTRS))
         entry.reload
+        Gamedb::GameRelationsCacheVersion.bump!
         render json: { data: NrGotmEntryResource.new(entry).serializable_hash }
       end
 
       def destroy
         NrGotmEntry.find(params[:id]).destroy!
+        Gamedb::GameRelationsCacheVersion.bump!
         render json: { deleted: true }
       end
 

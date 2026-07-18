@@ -82,6 +82,10 @@ module Gamedb
         # reads the now-empty set rather than the pre-clear association cache.
         game.releases.reset
         sync_releases!(game, payload)
+        # Bump updated_at so GamesController#relations_data's cache key (keyed
+        # on it) changes -- releases live on a child table, so saving the game
+        # itself wouldn't otherwise happen here.
+        game.touch
       end
 
       game
@@ -101,7 +105,7 @@ module Gamedb
     end
 
     def upsert_game!(payload)
-      GamedbGame.transaction do
+      result = GamedbGame.transaction do
         collection = resolve_collection(payload[:collection])
         game = GamedbGame.find_or_initialize_by(igdb_id: payload[:igdb_id])
         created = game.new_record?
@@ -110,9 +114,24 @@ module Gamedb
 
         sync_taxonomy!(game, payload)
         sync_releases!(game, payload)
+        # sync_taxonomy!/sync_releases! can insert child rows (a platform,
+        # taxonomy join, company role, release) even when the game's own
+        # columns above are unchanged, in which case `save!` above wouldn't
+        # have advanced updated_at. Touch unconditionally so
+        # GamesController#relations_data's cache (keyed on it) always
+        # invalidates after a re-import.
+        game.touch
 
         [ game, created ]
       end
+
+      # title/description/slug/... are GameResource fields embedded in other
+      # games' cached `alternates` slice without touching this game's own row
+      # from their perspective -- bump the shared version (after the
+      # transaction commits) so those caches invalidate too.
+      Gamedb::GameRelationsCacheVersion.bump!
+
+      result
     end
 
     def game_attributes(payload, collection)

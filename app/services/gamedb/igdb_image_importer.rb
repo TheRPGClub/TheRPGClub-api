@@ -41,6 +41,11 @@ module Gamedb
       imported.concat(import_artworks(game, igdb_images[:artworks]))
       imported.compact!
       prune_stale_imported_images!(game, imported)
+      # relations_data never renders this game's own images, only another
+      # game's cached `alternates` slice does (via GameResource) -- bump the
+      # shared version so those caches invalidate instead of touching this
+      # game (which relations_data wouldn't act on anyway).
+      Gamedb::GameRelationsCacheVersion.bump!
 
       Result.new(
         game_id: game.game_id,
