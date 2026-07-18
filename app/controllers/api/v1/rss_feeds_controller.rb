@@ -8,18 +8,18 @@ module Api
       end
 
       def show
-        render json: { data: RpgClubRssFeed.find(params[:id]).as_json }
+        render json: { data: RssFeedResource.new(RpgClubRssFeed.find(params[:id])).serializable_hash }
       end
 
       def create
         record = RpgClubRssFeed.create!(request_data)
-        render json: { data: record.as_json }, status: :created
+        render json: { data: RssFeedResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = RpgClubRssFeed.find(params[:id])
         record.update!(request_data)
-        render json: { data: record.as_json }
+        render json: { data: RssFeedResource.new(record).serializable_hash }
       end
 
       def destroy

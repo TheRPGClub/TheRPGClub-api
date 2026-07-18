@@ -8,12 +8,12 @@ module Api
       end
 
       def show
-        render json: { data: RpgClubSuggestion.find(params[:id]).as_json }
+        render json: { data: SuggestionResource.new(RpgClubSuggestion.find(params[:id])).serializable_hash }
       end
 
       def create
         record = RpgClubSuggestion.create!(request_data)
-        render json: { data: record.as_json }, status: :created
+        render json: { data: SuggestionResource.new(record).serializable_hash }, status: :created
       end
 
       def destroy

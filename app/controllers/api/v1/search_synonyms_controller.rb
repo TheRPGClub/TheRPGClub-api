@@ -17,14 +17,14 @@ module Api
       end
 
       def show
-        render json: { data: GamedbSearchSynonym.find(params[:id]).as_json }
+        render json: { data: SearchSynonymResource.new(GamedbSearchSynonym.find(params[:id])).serializable_hash }
       end
 
       def create
         return unless require_admin_or_service!
 
         record = GamedbSearchSynonym.create!(request_data)
-        render json: { data: record.as_json }, status: :created
+        render json: { data: SearchSynonymResource.new(record).serializable_hash }, status: :created
       end
 
       def update
@@ -32,7 +32,7 @@ module Api
 
         record = GamedbSearchSynonym.find(params[:id])
         record.update!(request_data)
-        render json: { data: record.as_json }
+        render json: { data: SearchSynonymResource.new(record).serializable_hash }
       end
 
       def destroy
