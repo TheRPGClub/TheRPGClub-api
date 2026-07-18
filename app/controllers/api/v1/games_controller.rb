@@ -235,8 +235,17 @@ module Api
       # themes, alternates) -- ~10 queries across as many association tables,
       # which preloading can't collapse for a single parent record. Cached on
       # `updated_at` so any game refresh self-invalidates the entry.
+      #
+      # `alternates` embeds each alternate's own GameResource (title, images,
+      # …), which can change independently of this game -- so the key also
+      # folds in every alternate's `updated_at`. That means alternate_games is
+      # always fetched (not just on a cache miss), but it's the same query the
+      # uncached path already ran, just moved earlier.
       def relations_data(game)
-        Rails.cache.fetch([ "game_relations", game.game_id, game.updated_at ], expires_in: 12.hours) do
+        alternates = game.alternate_games
+        alternates_key = alternates.map { |alt| [ alt.game_id, alt.updated_at ] }
+
+        Rails.cache.fetch([ "game_relations", game.game_id, game.updated_at, alternates_key ], expires_in: 12.hours) do
           companies = game.game_companies.includes(:company).sort_by { |game_company| game_company.company.name.to_s }
 
           {
@@ -250,7 +259,7 @@ module Api
             modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
             perspectives: PerspectiveResource.new(game.perspectives.order(:name)).serializable_hash,
             themes: ThemeResource.new(game.themes.order(:name)).serializable_hash,
-            alternates: GameResource.new(game.alternate_games).serializable_hash
+            alternates: GameResource.new(alternates).serializable_hash
           }
         end
       end

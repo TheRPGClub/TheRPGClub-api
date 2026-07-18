@@ -114,6 +114,13 @@ module Gamedb
 
         sync_taxonomy!(game, payload)
         sync_releases!(game, payload)
+        # sync_taxonomy!/sync_releases! can insert child rows (a platform,
+        # taxonomy join, company role, release) even when the game's own
+        # columns above are unchanged, in which case `save!` above wouldn't
+        # have advanced updated_at. Touch unconditionally so
+        # GamesController#relations_data's cache (keyed on it) always
+        # invalidates after a re-import.
+        game.touch
 
         [ game, created ]
       end

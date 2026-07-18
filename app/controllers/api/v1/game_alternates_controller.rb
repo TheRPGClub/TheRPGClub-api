@@ -21,16 +21,24 @@ module Api
         alt_id = alt_game_id
         return render(json: { error: "a game cannot be its own alternate" }, status: :unprocessable_entity) if alt_id == game.game_id
 
-        low, high = [ game.game_id, alt_id ].minmax
-        link = GamedbGameAlternate
-          .create_with(created_by: current_principal&.id)
-          .find_or_create_by!(game_id: low, alt_game_id: high)
+        # gamedb_game_alternates has no FK on alt_game_id, so an unknown id would
+        # otherwise insert a dangling link before this 404s -- load it first.
+        alt_game = GamedbGame.find(alt_id)
 
-        if link.previously_new_record?
-          # Bump updated_at on both linked games so GamesController#relations_data's
-          # cache (keyed on it) picks up the new alternate on either side.
-          game.touch
-          GamedbGame.find(alt_id).touch
+        low, high = [ game.game_id, alt_id ].minmax
+        link = GamedbGameAlternate.transaction do
+          created = GamedbGameAlternate
+            .create_with(created_by: current_principal&.id)
+            .find_or_create_by!(game_id: low, alt_game_id: high)
+
+          if created.previously_new_record?
+            # Bump updated_at on both linked games so GamesController#relations_data's
+            # cache (keyed on it) picks up the new alternate on either side.
+            game.touch
+            alt_game.touch
+          end
+
+          created
         end
 
         render json: { data: GameResource.new(game.alternate_games).serializable_hash },
@@ -41,7 +49,7 @@ module Api
 
       # The other game to link, from `{ data: { alt_game_id } }`. A missing or
       # non-integer value is a 400 (ParameterMissing -> render_bad_request); a
-      # non-existent id surfaces as a 422 foreign-key error on insert.
+      # non-existent id surfaces as a 404 (RecordNotFound) when #create loads it.
       def alt_game_id
         raw = params.dig(:data, :alt_game_id).presence
         raise ActionController::ParameterMissing, :alt_game_id if raw.blank?
