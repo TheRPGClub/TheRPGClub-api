@@ -230,22 +230,29 @@ module Api
         )
       end
 
+      # The IGDB-sourced taxonomy relations for one game (platforms, releases,
+      # companies, collection, franchises, genres, engines, modes, perspectives,
+      # themes, alternates) -- ~10 queries across as many association tables,
+      # which preloading can't collapse for a single parent record. Cached on
+      # `updated_at` so any game refresh self-invalidates the entry.
       def relations_data(game)
-        companies = game.game_companies.includes(:company).sort_by { |game_company| game_company.company.name.to_s }
+        Rails.cache.fetch([ "game_relations", game.game_id, game.updated_at ], expires_in: 12.hours) do
+          companies = game.game_companies.includes(:company).sort_by { |game_company| game_company.company.name.to_s }
 
-        {
-          platforms: PlatformResource.new(game.platforms.order(:platform_name)).serializable_hash,
-          releases: releases_for(game),
-          companies: GameCompanyResource.new(companies).serializable_hash,
-          collection: game.collection && CollectionResource.new(game.collection).serializable_hash,
-          franchises: FranchiseResource.new(game.franchises.order(:name)).serializable_hash,
-          genres: GenreResource.new(game.genres.order(:name)).serializable_hash,
-          engines: EngineResource.new(game.engines.order(:name)).serializable_hash,
-          modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
-          perspectives: PerspectiveResource.new(game.perspectives.order(:name)).serializable_hash,
-          themes: ThemeResource.new(game.themes.order(:name)).serializable_hash,
-          alternates: GameResource.new(game.alternate_games).serializable_hash
-        }
+          {
+            platforms: PlatformResource.new(game.platforms.order(:platform_name)).serializable_hash,
+            releases: releases_for(game),
+            companies: GameCompanyResource.new(companies).serializable_hash,
+            collection: game.collection && CollectionResource.new(game.collection).serializable_hash,
+            franchises: FranchiseResource.new(game.franchises.order(:name)).serializable_hash,
+            genres: GenreResource.new(game.genres.order(:name)).serializable_hash,
+            engines: EngineResource.new(game.engines.order(:name)).serializable_hash,
+            modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
+            perspectives: PerspectiveResource.new(game.perspectives.order(:name)).serializable_hash,
+            themes: ThemeResource.new(game.themes.order(:name)).serializable_hash,
+            alternates: GameResource.new(game.alternate_games).serializable_hash
+          }
+        end
       end
 
       # Mirror the game-scoped now_playing / completions / threads endpoints
