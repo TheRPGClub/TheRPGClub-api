@@ -55,14 +55,18 @@ module Api
           journal:     UserGameJournalEntry.journaled_games_for(user.user_id).order(Arel.sql("last_entry_at DESC")).limit(limit).to_a
         }
 
+        now_playing = user.now_playing_entries.async_count
+        favorites   = user.game_favorites.async_count
+        reviews     = user.reviews.async_count
+        completions = user.game_completions.async_count
+        backlog     = user.game_backlog_entries.async_count
+        collections = user.game_collections.async_count
+        journal     = user.journal_entries.distinct.async_count(:gamedb_game_id)
+
         counts = {
-          now_playing: user.now_playing_entries.count,
-          favorites:   user.game_favorites.count,
-          reviews:     user.reviews.count,
-          completions: user.game_completions.count,
-          backlog:     user.game_backlog_entries.count,
-          collections: user.game_collections.count,
-          journal:     user.journal_entries.distinct.count(:gamedb_game_id)
+          now_playing: now_playing.value, favorites: favorites.value, reviews: reviews.value,
+          completions: completions.value, backlog: backlog.value, collections: collections.value,
+          journal: journal.value
         }
 
         render json: {
