@@ -3,6 +3,8 @@
 module Api
   module V1
     class CollectionsController < ApplicationController
+      before_action :require_owner!, only: %i[create update destroy]
+
       def index
         scope = filtered_collections(UserGameCollection.where(user_id: params[:user_id]))
         render_collection(scope.preload(:platform), resource: CollectionEntryResource, default_order: { created_at: :desc })
@@ -65,6 +67,13 @@ module Api
       end
 
       private
+
+      def resolve_owner_id
+        return params[:user_id] if params[:user_id].present?
+        return nil unless params[:id].present?
+
+        UserGameCollection.find_by(entry_id: params[:id])&.user_id
+      end
 
       # Optional filters mirroring the bot's collection `searchEntries`
       # (RPGClub_GameDB#839): `q` partial-matches the game title, `platform`

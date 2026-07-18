@@ -3439,13 +3439,11 @@ paths:
       summary: Create a collection entry
       tags:
       - Collections
-      description: 'Adds a game to the user''s collection. `gamedb_game_id` and `ownership_type`
-        are required. NOTE: unlike the other user-game lists (backlog/favorites/…),
-        collection writes are currently NOT owner-restricted — any authenticated caller
-        may write to any `user_id` (tracked by the controller-hardening companion
-        issue). The created entry is always scoped to the path `user_id`. Returns
+      description: Owner-only (a Discord caller may only write their own collection;
+        the bot service token may write any). `gamedb_game_id` and `ownership_type`
+        are required. The created entry is always scoped to the path `user_id`. Returns
         the full record (all columns, including `is_shared` and timestamps) plus the
-        joined platform name/abbreviation.'
+        joined platform name/abbreviation.
       parameters: []
       responses:
         '201':
@@ -3457,6 +3455,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/CollectionEntryDetail"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed
           content:
@@ -3580,8 +3584,7 @@ paths:
       summary: Update a collection entry
       tags:
       - Collections
-      description: Partial update (any subset of the writable columns). Not owner-restricted
-        — see the create note.
+      description: Owner-only. Partial update (any subset of the writable columns).
       parameters: []
       responses:
         '200':
@@ -3593,6 +3596,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/CollectionEntryDetail"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -3646,7 +3655,7 @@ paths:
       summary: Replace a collection entry (alias)
       tags:
       - Collections
-      description: Alias for PATCH (applied as a partial assign).
+      description: Owner-only. Alias for PATCH (applied as a partial assign).
       parameters: []
       responses:
         '200':
@@ -3697,7 +3706,7 @@ paths:
       summary: Delete a collection entry
       tags:
       - Collections
-      description: Not owner-restricted — see the create note.
+      description: Owner-only.
       responses:
         '200':
           description: deleted
@@ -3705,6 +3714,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -8009,9 +8024,9 @@ paths:
       summary: Upsert a journal message context
       tags:
       - Journal Message Contexts
-      description: Inserts or updates a journal message context keyed on (channel_id,
-        message_id) (sent by the bot service principal). All five fields are required.
-        Returns 201 on insert, 200 on update.
+      description: Admin- or service-only. Inserts or updates a journal message context
+        keyed on (channel_id, message_id) (sent by the bot service principal). All
+        five fields are required. Returns 201 on insert, 200 on update.
       parameters: []
       responses:
         '201':
@@ -8032,6 +8047,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/JournalMessageContext"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed
           content:
@@ -8142,6 +8163,7 @@ paths:
       summary: Delete a journal message context
       tags:
       - Journal Message Contexts
+      description: Admin- or service-only.
       responses:
         '200':
           description: deleted
@@ -8149,6 +8171,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -13699,9 +13727,9 @@ paths:
       summary: Create a starboard entry
       tags:
       - Starboard
-      description: Records a starred Discord message (typically sent by the bot service
-        principal). `message_id`, `channel_id`, `starboard_message_id` and `author_id`
-        are required; `star_count` is optional (defaults to 0).
+      description: Admin- or service-only (`rpg_club_starboard` is bot/Discord-maintained).
+        `message_id`, `channel_id`, `starboard_message_id` and `author_id` are required;
+        `star_count` is optional (defaults to 0).
       parameters: []
       responses:
         '201':
@@ -13713,6 +13741,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/StarboardEntry"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed
           content:
@@ -13797,8 +13831,8 @@ paths:
       summary: Update a starboard entry
       tags:
       - Starboard
-      description: Partial update (any subset of the writable columns) — typically
-        bumps `star_count`.
+      description: Admin- or service-only. Partial update (any subset of the writable
+        columns) — typically bumps `star_count`.
       parameters: []
       responses:
         '200':
@@ -13810,6 +13844,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/StarboardEntry"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -13861,7 +13901,7 @@ paths:
       summary: Replace a starboard entry (alias)
       tags:
       - Starboard
-      description: Alias for PATCH (applied as a partial assign).
+      description: Admin- or service-only. Alias for PATCH (applied as a partial assign).
       parameters: []
       responses:
         '200':
@@ -13910,6 +13950,7 @@ paths:
       summary: Delete a starboard entry
       tags:
       - Starboard
+      description: Admin- or service-only.
       responses:
         '200':
           description: deleted
@@ -13917,6 +13958,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -15178,6 +15225,9 @@ paths:
       summary: Delete a suggestion
       tags:
       - Suggestions
+      description: Admin- or service-only (any authenticated caller may create a suggestion,
+        but deleting one is restricted so a member cannot remove another member's
+        suggestion).
       responses:
         '200':
           description: deleted
@@ -15185,6 +15235,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -17277,8 +17333,9 @@ paths:
       summary: Create voting info
       tags:
       - Voting Info
-      description: Open to any authenticated caller. `round_number` (the PK) and `next_vote_at`
-        are required; the reminder flags default to false.
+      description: Admin- or service-only (`BotVotingInfo` is bot-managed scheduling
+        data). `round_number` (the PK) and `next_vote_at` are required; the reminder
+        flags default to false.
       parameters: []
       responses:
         '201':
@@ -17290,6 +17347,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/VotingInfo"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed
           content:
@@ -17412,7 +17475,8 @@ paths:
       summary: Update voting info
       tags:
       - Voting Info
-      description: 'Partial update: send any subset of the writable columns.'
+      description: 'Admin- or service-only. Partial update: send any subset of the
+        writable columns.'
       parameters: []
       responses:
         '200':
@@ -17424,6 +17488,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/VotingInfo"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -17485,7 +17555,7 @@ paths:
       summary: Replace voting info (alias)
       tags:
       - Voting Info
-      description: Alias for PATCH (applied as a partial assign).
+      description: Admin- or service-only. Alias for PATCH (applied as a partial assign).
       parameters: []
       responses:
         '200':
@@ -17544,6 +17614,7 @@ paths:
       summary: Delete voting info
       tags:
       - Voting Info
+      description: Admin- or service-only.
       responses:
         '200':
           description: deleted
@@ -17551,6 +17622,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
+        '403':
+          description: forbidden — admin or service principal required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
