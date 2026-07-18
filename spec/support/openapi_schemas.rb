@@ -395,11 +395,12 @@ module OpenapiSchemas
       ),
       # CollectionCsvImportResource: every RpgClubCollectionCsvImport column
       # (#163). `current_index`/`total_count` let the bot resume a
-      # paused/interrupted import.
+      # paused/interrupted import. `test_mode` marks a dry-run session whose
+      # subsequent writes are rolled back instead of persisted (#187).
       CollectionCsvImport: obj(
         import_id: int, user_id: str, status: str, current_index: int, total_count: int,
         source_file_name: str(nullable: true), source_file_size: int(nullable: true),
-        template_version: str(nullable: true), created_at: ts, updated_at: ts
+        template_version: str(nullable: true), test_mode: bool, created_at: ts, updated_at: ts
       ),
       # CollectionCsvImportItemResource: every RpgClubCollectionCsvImportItem
       # column (#163) — the raw parsed CSV fields plus the resolved match and

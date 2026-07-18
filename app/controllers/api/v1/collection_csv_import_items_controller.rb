@@ -6,6 +6,8 @@ module Api
     # fields plus the resolved match and outcome once the bot's matcher has run
     # a row. Owner-only, resolved through the parent import.
     class CollectionCsvImportItemsController < ApplicationController
+      include TestModeRollback
+
       before_action :require_owner!, only: %i[next_pending show update]
 
       # GET /api/v1/collection_csv_imports/:id/items/next_pending
@@ -30,7 +32,7 @@ module Api
       #                    gamedb_game_id, collection_entry_id, result_reason, error_text } }
       def update
         record = RpgClubCollectionCsvImportItem.find(params[:id])
-        record.update!(request_data)
+        with_test_mode_rollback(record.import.test_mode) { record.update!(request_data) }
         render json: { data: CollectionCsvImportItemResource.new(record).serializable_hash }
       end
 
