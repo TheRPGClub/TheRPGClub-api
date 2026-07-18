@@ -82,6 +82,10 @@ module Gamedb
         # reads the now-empty set rather than the pre-clear association cache.
         game.releases.reset
         sync_releases!(game, payload)
+        # Bump updated_at so GamesController#relations_data's cache key (keyed
+        # on it) changes -- releases live on a child table, so saving the game
+        # itself wouldn't otherwise happen here.
+        game.touch
       end
 
       game
