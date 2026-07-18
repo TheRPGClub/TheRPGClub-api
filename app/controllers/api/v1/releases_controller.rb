@@ -19,6 +19,10 @@ module Api
       def create
         game = GamedbGame.find(params[:id])
         release = GamedbRelease.create!(release_data.merge(game_id: game.game_id))
+        # Bump the game's updated_at so GamesController#relations_data's cache
+        # (keyed on it) picks up the new release -- the release lives on a
+        # child table, so nothing else here saves the game record.
+        game.touch
         # Reload with the associations ReleaseResource flattens (platform/region).
         record = GamedbRelease.includes(:platform, :region).find(release.release_id)
 

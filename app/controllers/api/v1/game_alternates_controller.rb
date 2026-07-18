@@ -26,6 +26,13 @@ module Api
           .create_with(created_by: current_principal&.id)
           .find_or_create_by!(game_id: low, alt_game_id: high)
 
+        if link.previously_new_record?
+          # Bump updated_at on both linked games so GamesController#relations_data's
+          # cache (keyed on it) picks up the new alternate on either side.
+          game.touch
+          GamedbGame.find(alt_id).touch
+        end
+
         render json: { data: GameResource.new(game.alternate_games).serializable_hash },
           status: link.previously_new_record? ? :created : :ok
       end
