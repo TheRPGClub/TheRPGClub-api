@@ -62,7 +62,8 @@ RSpec.describe 'api/v1/user_socials', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed (also returned, instead of a 500, for an unknown ' \
+                      'attribute name in `data` or a duplicate `url` for the (user, platform))' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -113,7 +114,8 @@ RSpec.describe 'api/v1/user_socials', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed (also returned, instead of a 500, for an unknown ' \
+                      'attribute name in `data` or a duplicate `url` for the (user, platform))' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

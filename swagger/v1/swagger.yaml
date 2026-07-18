@@ -15911,7 +15911,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed (also returned, instead of a 500, for an
+            unknown attribute name in `data` or a duplicate `url` for the (user, platform))
           content:
             application/json:
               schema:
@@ -16007,7 +16008,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed (also returned, instead of a 500, for an
+            unknown attribute name in `data` or a duplicate `url` for the (user, platform))
           content:
             application/json:
               schema:

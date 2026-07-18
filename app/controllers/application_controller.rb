@@ -13,6 +13,8 @@ class ApplicationController < ActionController::API
   rescue_from ActiveRecord::InvalidForeignKey, with: :render_unprocessable_entity
   rescue_from ActiveRecord::RecordInvalid, with: :render_unprocessable_entity
   rescue_from ActiveRecord::RecordNotSaved, with: :render_unprocessable_entity
+  rescue_from ActiveRecord::RecordNotUnique, with: :render_duplicate_value
+  rescue_from ActiveModel::UnknownAttributeError, with: :render_unprocessable_entity
   rescue_from ActionController::ParameterMissing, with: :render_bad_request
 
   private
@@ -42,6 +44,13 @@ class ApplicationController < ActionController::API
 
   def render_unprocessable_entity(error)
     render json: { error: error.message }, status: :unprocessable_entity
+  end
+
+  # RecordNotUnique's message embeds the raw DB error (constraint name, and
+  # sometimes the conflicting value), so we render a generic message instead
+  # of exposing it to the client.
+  def render_duplicate_value(_error)
+    render json: { error: "duplicate value violates a unique constraint" }, status: :unprocessable_entity
   end
 
   # Render a paginated collection.
