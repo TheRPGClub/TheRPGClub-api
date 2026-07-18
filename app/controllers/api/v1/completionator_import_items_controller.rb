@@ -7,6 +7,8 @@ module Api
     # the bot's matcher has run a row. Owner-only, resolved through the
     # parent import.
     class CompletionatorImportItemsController < ApplicationController
+      include TestModeRollback
+
       before_action :require_owner!, only: %i[next_pending show update]
 
       # GET /api/v1/completionator_imports/:id/items/next_pending
@@ -30,7 +32,7 @@ module Api
       # Body: { "data": { status, gamedb_game_id, completion_id, error_text } }
       def update
         record = RpgClubCompletionatorImportItem.find(params[:id])
-        record.update!(request_data)
+        with_test_mode_rollback(record.import.test_mode) { record.update!(request_data) }
         render json: { data: CompletionatorImportItemResource.new(record).serializable_hash }
       end
 

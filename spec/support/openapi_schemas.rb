@@ -424,10 +424,11 @@ module OpenapiSchemas
       ),
       # CompletionatorImportResource: every RpgClubCompletionatorImport column
       # (#164). `current_index`/`total_count` let the bot resume a
-      # paused/interrupted import.
+      # paused/interrupted import. `test_mode` marks a dry-run session whose
+      # subsequent writes are rolled back instead of persisted (#188).
       CompletionatorImport: obj(
         import_id: int, user_id: str, status: str, current_index: int, total_count: int,
-        source_filename: str(nullable: true), created_at: ts, updated_at: ts
+        source_filename: str(nullable: true), test_mode: bool, created_at: ts, updated_at: ts
       ),
       # CompletionatorImportItemResource: every RpgClubCompletionatorImportItem
       # column (#164) — the raw parsed Completionator export fields plus the
