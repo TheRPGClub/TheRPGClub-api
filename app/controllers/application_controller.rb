@@ -59,11 +59,22 @@ class ApplicationController < ActionController::API
   # resource; otherwise they fall back to `as_json` (used by endpoints not yet
   # migrated to a resource). `params` is forwarded to the resource for
   # association/conditional injection.
-  def render_collection(scope, resource: nil, default_order:, params: {}, default_per: DEFAULT_PER, max_per: MAX_PER)
-    pagy, records = pagy(scope.order(default_order), **pagy_options(default_per:, max_per:))
-    data = resource ? resource.new(records, params: params).serializable_hash : records.as_json
+  #
+  # When `cache_key` is given, the query and serialization are skipped entirely
+  # on a cache hit (`Rails.cache.fetch`, 1 hour TTL) — callers are responsible
+  # for invalidating the key when the underlying data changes.
+  def render_collection(scope, resource: nil, default_order:, params: {}, default_per: DEFAULT_PER, max_per: MAX_PER,
+    cache_key: nil)
+    build_payload = proc do
+      pagy, records = pagy(scope.order(default_order), **pagy_options(default_per:, max_per:))
+      data = resource ? resource.new(records, params: params).serializable_hash : records.as_json
 
-    render json: { data: data, meta: pagy_meta(pagy) }
+      { data: data, meta: pagy_meta(pagy) }
+    end
+
+    payload = cache_key ? Rails.cache.fetch(cache_key, expires_in: 1.hour, &build_payload) : build_payload.call
+
+    render json: payload
   end
 
   def request_data
