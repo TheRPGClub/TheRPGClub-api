@@ -39,11 +39,17 @@ module TaxonomyEndpoints
         scope = model.all
         scope = scope.where("name ILIKE ?", "%#{taxonomy_query}%") if params[:q].present?
 
-        render_collection(scope, resource: resource, default_order: { name: :asc })
+        cache_key = [ model.name, taxonomy_version(model), params[:q], params[:page], params[:per] ]
+        render_collection(scope, resource: resource, default_order: { name: :asc }, cache_key: cache_key)
       end
 
       define_method(:show) do
-        render json: { data: resource.new(model.find(params[:id])).serializable_hash }
+        cache_key = [ model.name, taxonomy_version(model), params[:id] ]
+        payload = Rails.cache.fetch(cache_key, expires_in: 1.hour) do
+          { data: resource.new(model.find(params[:id])).serializable_hash }
+        end
+
+        render json: payload
       end
 
       return if igdb_id_column.nil?
@@ -62,6 +68,18 @@ module TaxonomyEndpoints
     ActiveRecord::Base.sanitize_sql_like(params[:q].to_s.strip)
   end
 
+  # These tables have no `updated_at` column to derive a cache key from, so a
+  # per-model version counter stands in for one: reads key their cache entries
+  # on it, and `upsert_taxonomy` bumps it on every successful create, which
+  # invalidates all outstanding entries for that model in one step.
+  def taxonomy_version(model)
+    Rails.cache.fetch("taxonomy_version/#{model.name}") { 1 }
+  end
+
+  def bump_taxonomy_version(model)
+    Rails.cache.write("taxonomy_version/#{model.name}", taxonomy_version(model) + 1)
+  end
+
   # Find-or-create `model` keyed on `igdb_id_column`, taking `name` (and the
   # IGDB id) from the `data` envelope. The IGDB id is the upsert key and is
   # required; `name` is applied only when a new row is created (an existing row
@@ -75,6 +93,8 @@ module TaxonomyEndpoints
     record = model
       .create_with(name: data["name"])
       .find_or_create_by!(igdb_id_column => igdb_id)
+
+    bump_taxonomy_version(model) if record.previously_new_record?
 
     render json: { data: resource.new(record).serializable_hash },
       status: record.previously_new_record? ? :created : :ok
