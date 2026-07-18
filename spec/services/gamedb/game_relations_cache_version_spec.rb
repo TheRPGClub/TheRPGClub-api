@@ -24,4 +24,13 @@ RSpec.describe Gamedb::GameRelationsCacheVersion do
     described_class.bump!
     expect(described_class.current).to eq(3)
   end
+
+  it "loses no increments under concurrent bumps (atomic increment, not read-then-write)" do
+    described_class.current # establish the counter before racing writers
+
+    threads = Array.new(20) { Thread.new { described_class.bump! } }
+    threads.each(&:join)
+
+    expect(described_class.current).to eq(21)
+  end
 end

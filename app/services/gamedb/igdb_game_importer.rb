@@ -105,7 +105,7 @@ module Gamedb
     end
 
     def upsert_game!(payload)
-      GamedbGame.transaction do
+      result = GamedbGame.transaction do
         collection = resolve_collection(payload[:collection])
         game = GamedbGame.find_or_initialize_by(igdb_id: payload[:igdb_id])
         created = game.new_record?
@@ -124,6 +124,14 @@ module Gamedb
 
         [ game, created ]
       end
+
+      # title/description/slug/... are GameResource fields embedded in other
+      # games' cached `alternates` slice without touching this game's own row
+      # from their perspective -- bump the shared version (after the
+      # transaction commits) so those caches invalidate too.
+      Gamedb::GameRelationsCacheVersion.bump!
+
+      result
     end
 
     def game_attributes(payload, collection)

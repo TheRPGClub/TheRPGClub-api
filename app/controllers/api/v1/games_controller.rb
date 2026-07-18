@@ -78,6 +78,11 @@ module Api
 
         game = GamedbGame.find(params[:id])
         game.update!(update_data)
+        # `description` is a GameResource field embedded in other games'
+        # cached `alternates` slice (GamesController#relations_data) without
+        # touching this game's own row from their perspective -- bump the
+        # shared version so those caches invalidate too.
+        Gamedb::GameRelationsCacheVersion.bump!
         # Reload through `without_images` so GameResource's gotm_won / nr_gotm_won
         # SQL aliases and per-kind image URLs resolve, exactly as #show does.
         game = GamedbGame.without_images.includes(:images).find(game.game_id)

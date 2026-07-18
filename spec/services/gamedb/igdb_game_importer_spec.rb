@@ -6,12 +6,24 @@ require "rails_helper"
 # refresh_releases! and upsert_game! can insert child rows (releases, taxonomy
 # joins) without the game's own columns changing, in which case `save!` alone
 # would not advance updated_at -- and GamesController#relations_data's cache is
-# keyed on it. Runs against the real test database with plain ActiveRecord
-# setup (no fixtures/factories), matching this repo's precedent for
-# service-level behavioral specs (spec/services/voting/cast_vote_spec.rb);
-# the controllers that also call into these paths stay doc-only.
+# keyed on it. Also covers the Gamedb::GameRelationsCacheVersion bump added to
+# upsert_game!, since a re-import can change GameResource fields (title,
+# description, ...) embedded in *other* games' cached `alternates` slice,
+# which that game's own `updated_at` bump doesn't reach. Runs against the real
+# test database with plain ActiveRecord setup (no fixtures/factories),
+# matching this repo's precedent for service-level behavioral specs
+# (spec/services/voting/cast_vote_spec.rb); the controllers that also call
+# into these paths stay doc-only.
 RSpec.describe Gamedb::IgdbGameImporter do
   include ActiveSupport::Testing::TimeHelpers
+
+  around do |example|
+    original_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    example.run
+  ensure
+    Rails.cache = original_cache
+  end
 
   after { travel_back }
 
@@ -61,6 +73,16 @@ RSpec.describe Gamedb::IgdbGameImporter do
       expect(second_result.game.game_id).to eq(result.game.game_id)
       expect(second_result.game.genres.count).to eq(2)
       expect(second_result.game.updated_at).to be > original_updated_at
+    end
+
+    it "bumps the shared relations-cache version on every import, not just this game's own updated_at" do
+      igdb_id = 604
+      allow(client).to receive(:game).and_return(base_payload(igdb_id: igdb_id))
+
+      original_version = Gamedb::GameRelationsCacheVersion.current
+      importer.import!(igdb_id)
+
+      expect(Gamedb::GameRelationsCacheVersion.current).to eq(original_version + 1)
     end
   end
 
