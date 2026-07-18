@@ -65,7 +65,7 @@ class ApplicationController < ActionController::API
   # for invalidating the key when the underlying data changes.
   def render_collection(scope, resource: nil, default_order:, params: {}, default_per: DEFAULT_PER, max_per: MAX_PER,
     cache_key: nil)
-    build_payload = lambda do
+    build_payload = proc do
       pagy, records = pagy(scope.order(default_order), **pagy_options(default_per:, max_per:))
       data = resource ? resource.new(records, params: params).serializable_hash : records.as_json
 
