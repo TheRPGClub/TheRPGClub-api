@@ -8,18 +8,18 @@ module Api
       end
 
       def show
-        render json: { data: RpgClubStarboardEntry.find(params[:message_id]).as_json }
+        render json: { data: StarboardEntryResource.new(RpgClubStarboardEntry.find(params[:message_id])).serializable_hash }
       end
 
       def create
         record = RpgClubStarboardEntry.create!(request_data)
-        render json: { data: record.as_json }, status: :created
+        render json: { data: StarboardEntryResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = RpgClubStarboardEntry.find(params[:message_id])
         record.update!(request_data)
-        render json: { data: record.as_json }
+        render json: { data: StarboardEntryResource.new(record).serializable_hash }
       end
 
       def destroy

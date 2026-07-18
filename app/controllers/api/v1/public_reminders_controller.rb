@@ -27,18 +27,18 @@ module Api
       end
 
       def show
-        render json: { data: RpgClubPublicReminder.find(params[:id]).as_json }
+        render json: { data: PublicReminderResource.new(RpgClubPublicReminder.find(params[:id])).serializable_hash }
       end
 
       def create
         record = RpgClubPublicReminder.create!(request_data)
-        render json: { data: record.as_json }, status: :created
+        render json: { data: PublicReminderResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = RpgClubPublicReminder.find(params[:id])
         record.update!(request_data)
-        render json: { data: record.as_json }
+        render json: { data: PublicReminderResource.new(record).serializable_hash }
       end
 
       def destroy

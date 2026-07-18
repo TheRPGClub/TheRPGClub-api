@@ -11,11 +11,11 @@ module Api
         record = SocialPlatform.new(request_data.merge("created_by_user_id" => current_principal&.id))
 
         if record.save
-          render json: { data: record.as_json }, status: :created
+          render json: { data: SocialPlatformResource.new(record).serializable_hash }, status: :created
         else
           existing = duplicate_label_match(record)
           if existing
-            render json: { data: existing.as_json }, status: :ok
+            render json: { data: SocialPlatformResource.new(existing).serializable_hash }, status: :ok
           else
             render json: { error: record.errors.full_messages.to_sentence }, status: :unprocessable_entity
           end

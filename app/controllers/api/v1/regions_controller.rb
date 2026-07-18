@@ -17,7 +17,7 @@ module Api
       end
 
       def show
-        render json: { data: GamedbRegion.find(params[:id]).as_json }
+        render json: { data: RegionResource.new(GamedbRegion.find(params[:id])).serializable_hash }
       end
 
       # POST /api/v1/regions  { data: { code, name, igdb_id } }
