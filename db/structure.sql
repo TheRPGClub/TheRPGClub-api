@@ -931,6 +931,7 @@ CREATE TABLE public.rpg_club_collection_csv_imports (
     template_version character varying(20),
     created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
     updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
+    test_mode boolean DEFAULT false NOT NULL,
     CONSTRAINT ck_coll_csv_imports_status CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'paused'::character varying, 'completed'::character varying, 'canceled'::character varying])::text[])))
 );
 
@@ -4168,6 +4169,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260717160000'),
 ('20260717150000'),
 ('20260717140000'),
 ('20260717130000'),

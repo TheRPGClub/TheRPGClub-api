@@ -19,7 +19,11 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
     source_file_size: { type: :integer, nullable: true },
     template_version: { type: :string, nullable: true },
     items: { type: :array, items: { type: :object, properties: create_item_writable },
-             description: 'The parsed CSV rows to import, in order.' }
+             description: 'The parsed CSV rows to import, in order.' },
+    test_mode: { type: :boolean, default: false,
+                 description: 'Dry-run session (#187): the session row itself is persisted, but every ' \
+                             'subsequent write scoped to it (item inserts/updates, status/current_index ' \
+                             'updates) is rolled back instead of committed.' }
   }
   update_writable = {
     status: { type: :string, enum: %w[active paused completed canceled], description: 'New status for the import job.' },
@@ -33,7 +37,9 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
     post 'Start a collection CSV import job' do
       tags 'Collection CSV Imports'
       description 'Owner-only (the bot service token counts as owner). Creates the import job ' \
-                  'and inserts all row items — given as `items` — in one call.'
+                  'and inserts all row items — given as `items` — in one call. `test_mode: true` ' \
+                  'marks this a dry-run session — the session row itself is always persisted, but ' \
+                  'all subsequent writes scoped to it are rolled back.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -122,7 +128,8 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
     patch 'Update a collection CSV import job' do
       tags 'Collection CSV Imports'
       description 'Owner-only. Partial update — typically the status transition and resume ' \
-                  'checkpoint (`current_index`) as the bot works through the items.'
+                  'checkpoint (`current_index`) as the bot works through the items. Rolled back ' \
+                  'instead of persisted if the import is in test_mode.'
       consumes 'application/json'
       produces 'application/json'
 
