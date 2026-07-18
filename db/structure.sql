@@ -1004,7 +1004,8 @@ CREATE TABLE public.rpg_club_completionator_imports (
     total_count bigint DEFAULT 0 NOT NULL,
     source_filename character varying(255),
     created_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
-    updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL
+    updated_at timestamp(6) with time zone DEFAULT statement_timestamp() NOT NULL,
+    test_mode boolean DEFAULT false NOT NULL
 );
 
 
@@ -4169,6 +4170,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260717170000'),
 ('20260717160000'),
 ('20260717150000'),
 ('20260717140000'),

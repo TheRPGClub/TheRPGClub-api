@@ -1519,6 +1519,8 @@ components:
         source_filename:
           type: string
           nullable: true
+        test_mode:
+          type: boolean
         created_at:
           type: string
           format: date-time
@@ -1531,6 +1533,7 @@ components:
       - status
       - current_index
       - total_count
+      - test_mode
       - created_at
       - updated_at
     CompletionatorImportItem:
@@ -3858,7 +3861,7 @@ paths:
       tags:
       - Completionator Imports
       description: Owner-only. Records the match/outcome after the bot processes this
-        row.
+        row. Rolled back instead of persisted if the item's import is in test_mode.
       parameters: []
       responses:
         '200':
@@ -3937,8 +3940,10 @@ paths:
       summary: Start a Completionator import job
       tags:
       - Completionator Imports
-      description: Owner-only (the bot service token counts as owner). Creates the
-        import job and inserts all row items — given as `items` — in one call.
+      description: 'Owner-only (the bot service token counts as owner). Creates the
+        import job and inserts all row items — given as `items` — in one call. `test_mode:
+        true` marks this a dry-run session — the session row itself is always persisted,
+        but all subsequent writes scoped to it are rolled back.'
       parameters: []
       responses:
         '201':
@@ -4022,6 +4027,13 @@ paths:
                             nullable: true
                       description: The parsed Completionator export rows to import,
                         in order.
+                    test_mode:
+                      type: boolean
+                      default: false
+                      description: 'Dry-run session (#188): the session row itself
+                        is persisted, but every subsequent write scoped to it (item
+                        inserts/updates, status/current_index updates) is rolled back
+                        instead of committed.'
               required:
               - data
         required: true
@@ -4113,7 +4125,8 @@ paths:
       tags:
       - Completionator Imports
       description: Owner-only. Partial update — typically the status transition and
-        resume checkpoint (`current_index`) as the bot works through the items.
+        resume checkpoint (`current_index`) as the bot works through the items. Rolled
+        back instead of persisted if the import is in test_mode.
       parameters: []
       responses:
         '200':

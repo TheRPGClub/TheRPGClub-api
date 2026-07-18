@@ -42,7 +42,8 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
 
     patch 'Update a Completionator import item' do
       tags 'Completionator Imports'
-      description 'Owner-only. Records the match/outcome after the bot processes this row.'
+      description 'Owner-only. Records the match/outcome after the bot processes this row. ' \
+                  'Rolled back instead of persisted if the item\'s import is in test_mode.'
       consumes 'application/json'
       produces 'application/json'
 

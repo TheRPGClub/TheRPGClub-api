@@ -11,28 +11,34 @@ module Api
     # counts as the owner, per `require_owner!`) — this is private per-user
     # working data.
     class CompletionatorImportsController < ApplicationController
+      include TestModeRollback
+
       before_action :require_owner!, only: %i[create active show update summary]
 
       # POST /api/v1/users/:user_id/completionator_imports
-      # Body: { "data": { source_filename, items: [...] } }
+      # Body: { "data": { source_filename, items: [...], test_mode } }
       #
       # Creates the import job and inserts all row items in one call. Each
       # entry in `items` becomes a pending RpgClubCompletionatorImportItem;
-      # `row_index` defaults to the entry's position in the array.
+      # `row_index` defaults to the entry's position in the array. `test_mode:
+      # true` marks this a dry-run session — the session row itself is always
+      # persisted, but all subsequent writes scoped to it are rolled back
+      # (see TestModeRollback).
       def create
         data = request_data
         items = Array(data["items"])
+        test_mode = ActiveModel::Type::Boolean.new.cast(data["test_mode"])
 
-        record = nil
-        ActiveRecord::Base.transaction do
-          record = RpgClubCompletionatorImport.create!(
-            user_id: params[:user_id],
-            status: "active",
-            current_index: 0,
-            total_count: items.size,
-            source_filename: data["source_filename"]
-          )
+        record = RpgClubCompletionatorImport.create!(
+          user_id: params[:user_id],
+          status: "active",
+          current_index: 0,
+          total_count: items.size,
+          source_filename: data["source_filename"],
+          test_mode: test_mode
+        )
 
+        with_test_mode_rollback(test_mode) do
           rows = items.each_with_index.map { |item, index| item_row(record.import_id, item, index) }
           RpgClubCompletionatorImportItem.insert_all(rows) if rows.any?
         end
@@ -63,7 +69,7 @@ module Api
       # Body: { "data": { status, current_index } }
       def update
         record = RpgClubCompletionatorImport.find(params[:id])
-        record.update!(request_data)
+        with_test_mode_rollback(record.test_mode) { record.update!(request_data) }
         render json: { data: CompletionatorImportResource.new(record).serializable_hash }
       end
 
