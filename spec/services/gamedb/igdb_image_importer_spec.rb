@@ -2,15 +2,19 @@
 
 require "rails_helper"
 
-# Behavioral coverage for the game.touch fix (#154 review): images live on a
-# child table (gamedb_game_images), so import! must bump the game's
-# updated_at itself -- otherwise GamesController#relations_data's cache (keyed
-# on updated_at) would keep rendering a stale cover/art/logo URL for this game
-# wherever it appears in another game's cached `alternates` list.
+# Behavioral coverage for the Gamedb::GameRelationsCacheVersion bump fix
+# (#154 review): images live on a child table (gamedb_game_images), and
+# relations_data never renders this game's own image URLs -- only another
+# game's cached `alternates` slice does (via GameResource). import! must bump
+# the shared version so those other caches invalidate.
 RSpec.describe Gamedb::IgdbImageImporter do
-  include ActiveSupport::Testing::TimeHelpers
-
-  after { travel_back }
+  around do |example|
+    original_cache = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    example.run
+  ensure
+    Rails.cache = original_cache
+  end
 
   let(:game) { GamedbGame.create!(title: "Game A", igdb_id: 555) }
   let(:fake_image) { instance_double(GamedbGameImage, kind: "cover", image_id: 1) }
@@ -18,12 +22,11 @@ RSpec.describe Gamedb::IgdbImageImporter do
   let(:client) { instance_double(Igdb::Client, game_images: { cover_image_id: 123, artworks: [] }) }
   subject(:importer) { described_class.new(client: client, storage: storage) }
 
-  it "bumps the game's updated_at on a successful import" do
-    original_updated_at = game.updated_at
-    travel 1.second
+  it "bumps the shared relations-cache version on a successful import" do
+    original_version = Gamedb::GameRelationsCacheVersion.current
 
     importer.import!(game)
 
-    expect(game.reload.updated_at).to be > original_updated_at
+    expect(Gamedb::GameRelationsCacheVersion.current).to eq(original_version + 1)
   end
 end

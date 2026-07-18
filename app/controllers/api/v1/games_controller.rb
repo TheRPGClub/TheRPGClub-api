@@ -237,15 +237,16 @@ module Api
       # `updated_at` so any game refresh self-invalidates the entry.
       #
       # `alternates` embeds each alternate's own GameResource (title, images,
-      # …), which can change independently of this game -- so the key also
-      # folds in every alternate's `updated_at`. That means alternate_games is
-      # always fetched (not just on a cache miss), but it's the same query the
-      # uncached path already ran, just moved earlier.
+      # gotm_won/nr_gotm_won, …), which can change independently of this game
+      # without touching that alternate's own `updated_at` (a GOTM entry
+      # move/create/destroy, a manual image upload/edit/delete) -- so the key
+      # also folds in Gamedb::GameRelationsCacheVersion, a single cache-backed
+      # counter those write paths bump. That keeps this a cache-read, not a
+      # query, on every request (including a hit).
       def relations_data(game)
-        alternates = game.alternate_games
-        alternates_key = alternates.map { |alt| [ alt.game_id, alt.updated_at ] }
+        version = Gamedb::GameRelationsCacheVersion.current
 
-        Rails.cache.fetch([ "game_relations", game.game_id, game.updated_at, alternates_key ], expires_in: 12.hours) do
+        Rails.cache.fetch([ "game_relations", game.game_id, game.updated_at, version ], expires_in: 12.hours) do
           companies = game.game_companies.includes(:company).sort_by { |game_company| game_company.company.name.to_s }
 
           {
@@ -259,7 +260,7 @@ module Api
             modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
             perspectives: PerspectiveResource.new(game.perspectives.order(:name)).serializable_hash,
             themes: ThemeResource.new(game.themes.order(:name)).serializable_hash,
-            alternates: GameResource.new(alternates).serializable_hash
+            alternates: GameResource.new(game.alternate_games).serializable_hash
           }
         end
       end
