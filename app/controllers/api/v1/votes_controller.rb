@@ -164,17 +164,6 @@ module Api
         params.dig(:data, :user_id).presence
       end
 
-      # Non-rendering twin of require_admin_or_service! (which renders on
-      # failure), for combining with the window checks above. Same audience:
-      # the service token, a dev, or a role_admin user.
-      def admin_or_service?
-        return true if current_principal&.service?
-        return false unless current_principal&.discord_user?
-        return true if current_principal.dev?
-
-        RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
-      end
-
       def own_votes?
         current_principal&.discord_user? && current_principal.id.to_s == params[:user_id].to_s
       end

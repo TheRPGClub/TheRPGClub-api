@@ -12,6 +12,22 @@ RSpec.describe 'api/v1/nominations', type: :request do
     reason: { type: :string, nullable: true, description: 'Free-text reason for the nomination.' }
   }
 
+  upsert_description =
+    'Creates the named user\'s nomination for the round, or replaces it if they already have one ' \
+    '(upsert on `round`+`user_id`). Owner-gated: the service token and admins may upsert for any ' \
+    'user at any time; a user session only for themselves, and only while the round\'s nomination ' \
+    'window is open — nominations collect for the round after the current one and close when the ' \
+    'current round\'s vote opens (`next_vote_at`). Returns 201 when a new nomination is created, ' \
+    '200 when an existing one is updated.'
+
+  destroy_one_description =
+    'Removes the given user\'s nomination for the round, along with any votes cast on it. ' \
+    'Owner-gated like the upsert: service/admin may remove any user\'s at any time, a user ' \
+    'session only their own and only while the round\'s nomination window is open.'
+
+  owner_forbidden = 'forbidden — caller is neither the named user nor admin/service'
+  window_closed = '`nominations_closed` — outside the nomination window (non-admin callers)'
+
   path '/api/v1/gotm_entries/{round}/nominations' do
     parameter name: :round, in: :path, schema: { type: :integer }, required: true,
       description: 'GOTM voting round number.'
@@ -42,9 +58,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
 
     post 'Upsert a GOTM nomination' do
       tags 'GOTM'
-      description 'Admin/service-only. Creates the caller-supplied user\'s nomination for the ' \
-                  'round, or replaces it if they already have one (upsert on `round`+`user_id`). ' \
-                  'Returns 201 when a new nomination is created, 200 when an existing one is updated.'
+      description upsert_description
       consumes 'application/json'
       produces 'application/json'
 
@@ -62,11 +76,11 @@ RSpec.describe 'api/v1/nominations', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Nomination' } }
       end
 
-      response '403', 'forbidden — caller is not an admin or service' do
+      response '403', owner_forbidden do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed (missing required field)' do
+      response '422', "#{window_closed}, or validation failed" do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -126,14 +140,18 @@ RSpec.describe 'api/v1/nominations', type: :request do
 
     delete 'Delete a user\'s GOTM nomination for a round' do
       tags 'GOTM'
-      description 'Admin/service-only. Removes the given user\'s nomination for the round.'
+      description destroy_one_description
       produces 'application/json'
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
       end
 
-      response '403', 'forbidden — caller is not an admin or service' do
+      response '403', owner_forbidden do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', window_closed do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -177,10 +195,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
 
     post 'Upsert a Non-RPG GOTM nomination' do
       tags 'GOTM'
-      description 'Admin/service-only. Creates the caller-supplied user\'s nomination for the ' \
-                  'round, or replaces it if they already have one (upsert on `round`+`user_id`). ' \
-                  'Returns 201 when a new nomination is created, 200 when an existing one is updated. ' \
-                  '`gamedb_game_id` is required for NR-GOTM.'
+      description "#{upsert_description} `gamedb_game_id` is required for NR-GOTM."
       consumes 'application/json'
       produces 'application/json'
 
@@ -198,11 +213,11 @@ RSpec.describe 'api/v1/nominations', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Nomination' } }
       end
 
-      response '403', 'forbidden — caller is not an admin or service' do
+      response '403', owner_forbidden do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed (missing required field)' do
+      response '422', "#{window_closed}, or validation failed" do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -262,14 +277,18 @@ RSpec.describe 'api/v1/nominations', type: :request do
 
     delete 'Delete a user\'s Non-RPG GOTM nomination for a round' do
       tags 'GOTM'
-      description 'Admin/service-only. Removes the given user\'s nomination for the round.'
+      description destroy_one_description
       produces 'application/json'
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
       end
 
-      response '403', 'forbidden — caller is not an admin or service' do
+      response '403', owner_forbidden do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', window_closed do
         schema '$ref' => '#/components/schemas/Error'
       end
 

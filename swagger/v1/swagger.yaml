@@ -8897,10 +8897,13 @@ paths:
       summary: Upsert a GOTM nomination
       tags:
       - GOTM
-      description: Admin/service-only. Creates the caller-supplied user's nomination
-        for the round, or replaces it if they already have one (upsert on `round`+`user_id`).
-        Returns 201 when a new nomination is created, 200 when an existing one is
-        updated.
+      description: 'Creates the named user''s nomination for the round, or replaces
+        it if they already have one (upsert on `round`+`user_id`). Owner-gated: the
+        service token and admins may upsert for any user at any time; a user session
+        only for themselves, and only while the round''s nomination window is open
+        — nominations collect for the round after the current one and close when the
+        current round''s vote opens (`next_vote_at`). Returns 201 when a new nomination
+        is created, 200 when an existing one is updated.'
       parameters: []
       responses:
         '201':
@@ -8922,13 +8925,14 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Nomination"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: forbidden — caller is neither the named user nor admin/service
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed (missing required field)
+          description: "`nominations_closed` — outside the nomination window (non-admin
+            callers), or validation failed"
           content:
             application/json:
               schema:
@@ -9042,8 +9046,10 @@ paths:
       summary: Delete a user's GOTM nomination for a round
       tags:
       - GOTM
-      description: Admin/service-only. Removes the given user's nomination for the
-        round.
+      description: 'Removes the given user''s nomination for the round, along with
+        any votes cast on it. Owner-gated like the upsert: service/admin may remove
+        any user''s at any time, a user session only their own and only while the
+        round''s nomination window is open.'
       responses:
         '200':
           description: deleted
@@ -9052,7 +9058,14 @@ paths:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: forbidden — caller is neither the named user nor admin/service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`nominations_closed` — outside the nomination window (non-admin
+            callers)"
           content:
             application/json:
               schema:
@@ -9138,10 +9151,14 @@ paths:
       summary: Upsert a Non-RPG GOTM nomination
       tags:
       - GOTM
-      description: Admin/service-only. Creates the caller-supplied user's nomination
-        for the round, or replaces it if they already have one (upsert on `round`+`user_id`).
-        Returns 201 when a new nomination is created, 200 when an existing one is
-        updated. `gamedb_game_id` is required for NR-GOTM.
+      description: 'Creates the named user''s nomination for the round, or replaces
+        it if they already have one (upsert on `round`+`user_id`). Owner-gated: the
+        service token and admins may upsert for any user at any time; a user session
+        only for themselves, and only while the round''s nomination window is open
+        — nominations collect for the round after the current one and close when the
+        current round''s vote opens (`next_vote_at`). Returns 201 when a new nomination
+        is created, 200 when an existing one is updated. `gamedb_game_id` is required
+        for NR-GOTM.'
       parameters: []
       responses:
         '201':
@@ -9163,13 +9180,14 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Nomination"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: forbidden — caller is neither the named user nor admin/service
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed (missing required field)
+          description: "`nominations_closed` — outside the nomination window (non-admin
+            callers), or validation failed"
           content:
             application/json:
               schema:
@@ -9284,8 +9302,10 @@ paths:
       summary: Delete a user's Non-RPG GOTM nomination for a round
       tags:
       - GOTM
-      description: Admin/service-only. Removes the given user's nomination for the
-        round.
+      description: 'Removes the given user''s nomination for the round, along with
+        any votes cast on it. Owner-gated like the upsert: service/admin may remove
+        any user''s at any time, a user session only their own and only while the
+        round''s nomination window is open.'
       responses:
         '200':
           description: deleted
@@ -9294,7 +9314,14 @@ paths:
               schema:
                 "$ref": "#/components/schemas/DeletedResponse"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: forbidden — caller is neither the named user nor admin/service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`nominations_closed` — outside the nomination window (non-admin
+            callers)"
           content:
             application/json:
               schema:
