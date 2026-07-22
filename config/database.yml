@@ -110,10 +110,16 @@ production:
   # always-on machine (fly.toml) and polls its database every few seconds
   # around the clock -- on Neon that steady polling would reset the
   # autosuspend timer forever and keep the compute awake 24/7. The file is
-  # recreated from db/queue_schema.rb by bin/docker-entrypoint's db:prepare
-  # on every fresh machine boot (the rootfs is ephemeral), so pending jobs
-  # don't survive a deploy -- fine for this app's enqueue-and-run-now jobs.
+  # recreated from db/queue_schema.rb by bin/docker-entrypoint's
+  # db:queue:bootstrap on every fresh machine boot (the rootfs is ephemeral),
+  # so pending jobs don't survive a deploy -- fine for this app's
+  # enqueue-and-run-now jobs.
   queue:
     adapter: sqlite3
     database: storage/production_queue.sqlite3
     migrations_paths: db/queue_migrate
+    # SQLite busy handler (ms), as in stock Rails sqlite configs. Without it,
+    # the supervisor's forked processes racing to register at boot can raise
+    # SQLite3::BusyException ("database is locked") -- v66 lost its first
+    # Scheduler child to exactly that (the supervisor replaced it).
+    timeout: 5000
