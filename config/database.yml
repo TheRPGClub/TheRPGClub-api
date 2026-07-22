@@ -19,6 +19,21 @@ default: &default
   # For details on connection pooling, see Rails configuration guide
   # https://guides.rubyonrails.org/configuring.html#database-pooling
   max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  # Fail fast on dead Neon connections. Neon drops connections on compute
+  # restarts/migrations; without these, Puma threads block forever on the dead
+  # sockets, /up stops answering, the Fly health check goes critical, and the
+  # proxy 503s every request until a manual machine restart (2026-07-22
+  # outage). Keepalives detect a silent peer after idle+interval*count
+  # (~25s); tcp_user_timeout bounds how long an unacknowledged write may
+  # block (Linux-only, ignored elsewhere, milliseconds). Lives in the shared
+  # block because DATABASE_URL merges onto every environment's primary, so
+  # local development against Neon is covered too.
+  connect_timeout: 5
+  keepalives: 1
+  keepalives_idle: 10
+  keepalives_interval: 5
+  keepalives_count: 3
+  tcp_user_timeout: 15000
 
 
 development:
