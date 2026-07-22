@@ -10,7 +10,11 @@ console_command = '/rails/bin/rails console'
 [build]
 
 [deploy]
-  release_command = './bin/rails db:prepare'
+  # db:cache:bootstrap covers what db:prepare silently skips: with
+  # schema_format = :sql it looks for db/cache_structure.sql, which doesn't
+  # exist (Solid Cache ships db/cache_schema.rb), so a fresh cache database
+  # would come up empty. No-op when the schema is already there.
+  release_command = './bin/rails db:prepare db:cache:bootstrap'
 
 [env]
   PORT = '8080'
