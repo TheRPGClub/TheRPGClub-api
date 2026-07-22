@@ -9,6 +9,11 @@ gem "pg", "~> 1.1"
 gem "sqlite3", ">= 2.1"
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
+# Reap request threads stuck past 30s (config/environments/production.rb) so a
+# stalled Neon can't pin the whole Puma pool and fail the Fly health check.
+# rack/timeout/base skips the railtie's auto-insertion (15s default in every
+# environment); the middleware is added explicitly, production-only.
+gem "rack-timeout", require: "rack/timeout/base"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 # gem "jbuilder"
 
