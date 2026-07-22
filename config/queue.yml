@@ -14,5 +14,18 @@ development:
 test:
   <<: *default
 
+# Production polls the Neon queue database from inside Puma
+# (SOLID_QUEUE_IN_PUMA, fly.toml), so polling only happens while the Fly
+# machine is awake — but the default 0.1s worker interval would still fire
+# ~10 queries/sec at Neon the whole time for a queue that is almost always
+# empty. Jobs here are enqueued by web requests and worked within one poll,
+# so multi-second pickup latency costs nothing.
 production:
-  <<: *default
+  dispatchers:
+    - polling_interval: 5
+      batch_size: 500
+  workers:
+    - queues: "*"
+      threads: 3
+      processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
+      polling_interval: 2
