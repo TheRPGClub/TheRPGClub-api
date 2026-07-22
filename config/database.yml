@@ -106,8 +106,14 @@ production:
     database: rpg_club_production_cache
     migrations_paths: db/cache_migrate
     url: <%= URI.parse(ENV["DATABASE_URL"]).tap { |url| url.path += "_cache" } if ENV["DATABASE_URL"] %>
+  # Machine-local SQLite, not Neon: Solid Queue runs inside Puma on an
+  # always-on machine (fly.toml) and polls its database every few seconds
+  # around the clock -- on Neon that steady polling would reset the
+  # autosuspend timer forever and keep the compute awake 24/7. The file is
+  # recreated from db/queue_schema.rb by bin/docker-entrypoint's db:prepare
+  # on every fresh machine boot (the rootfs is ephemeral), so pending jobs
+  # don't survive a deploy -- fine for this app's enqueue-and-run-now jobs.
   queue:
-    <<: *primary_production
-    database: rpg_club_production_queue
+    adapter: sqlite3
+    database: storage/production_queue.sqlite3
     migrations_paths: db/queue_migrate
-    url: <%= URI.parse(ENV["DATABASE_URL"]).tap { |url| url.path += "_queue" } if ENV["DATABASE_URL"] %>

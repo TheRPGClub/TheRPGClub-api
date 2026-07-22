@@ -37,3 +37,7 @@
 # Ignore Docker-related files
 /.dockerignore
 /Dockerfile*
+
+# Never bake local SQLite databases into the image
+/storage/*
+!/storage/.keep

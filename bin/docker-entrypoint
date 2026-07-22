@@ -1,3 +1,12 @@
 #!/bin/bash -e
 
+# Prepare databases when booting the web server. The release_command already
+# ran db:prepare for the Neon databases, but the Solid Queue SQLite file
+# (config/database.yml) lives on the machine's ephemeral rootfs and must be
+# recreated from db/queue_schema.rb on every fresh boot -- release machines
+# can't do that for us. Idempotent for the Neon primary/cache databases.
+if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
+  ./bin/rails db:prepare
+fi
+
 exec "${@}"
