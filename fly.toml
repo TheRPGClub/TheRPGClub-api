@@ -14,6 +14,11 @@ console_command = '/rails/bin/rails console'
 
 [env]
   PORT = '8080'
+  # Run the Solid Queue supervisor inside Puma (config/puma.rb) instead of a
+  # dedicated worker machine: jobs are only enqueued by web requests, so the
+  # machine is always awake to work them, and a standalone worker would keep
+  # both a Fly machine and the Neon queue DB awake 24/7 polling for nothing.
+  SOLID_QUEUE_IN_PUMA = 'true'
 
 [processes]
   app = './bin/rails server -b 0.0.0.0 -p 8080'
