@@ -89,14 +89,21 @@ class ApplicationController < ActionController::API
   end
 
   def require_admin_or_service!
-    return true if current_principal&.service?
-    if current_principal&.discord_user?
-      return true if current_principal.dev?
-      return true if RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
-    end
+    return true if admin_or_service?
 
     render json: { error: "forbidden" }, status: :forbidden
     false
+  end
+
+  # Non-rendering twin of require_admin_or_service!, for combining with other
+  # checks (e.g. the voting/nomination window gates). Same audience: the
+  # service token, a dev, or a role_admin user.
+  def admin_or_service?
+    return true if current_principal&.service?
+    return false unless current_principal&.discord_user?
+    return true if current_principal.dev?
+
+    RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
   end
 
   def require_service!

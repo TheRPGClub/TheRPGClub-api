@@ -7,17 +7,30 @@ module Api
     # field of candidates behind a round, each with its nominator and game.
     #
     # Reads (the round list and a single user's nomination) are open to any
-    # authenticated caller. The writes — upsert and delete — are admin/service
-    # gated and back the bot's `/nominate` command and the `/admin
-    # delete-*-noms` clears as it migrates off direct SQL (RPGClub_GameDB#833).
+    # authenticated caller.
+    #
+    # Writes are owner-gated so members can nominate from the web: the service
+    # token (the bot's `/nominate`) may upsert/delete for any user at any
+    # time; a logged-in member only for themselves, and only while the round's
+    # nomination window is open (see BotVotingInfo.nominations_open_for? —
+    # nominations collect for the round after the current one and close when
+    # the current round's vote opens). Admins share the service exemption for
+    # fixups. The round-scoped destroy_all stays admin/service-only (the
+    # `/admin delete-*-noms` reset).
     #
     # The two backing tables share an identical shape, so each public action is
     # a thin GOTM/NR-GOTM pair that delegates to a model-agnostic private
     # helper.
     class NominationsController < ApplicationController
-      before_action :require_admin_or_service!, only: %i[
+      before_action :require_nomination_owner!, only: %i[
         create_gotm create_nr_gotm
         destroy_gotm destroy_nr_gotm
+      ]
+      before_action :require_nomination_window!, only: %i[
+        create_gotm create_nr_gotm
+        destroy_gotm destroy_nr_gotm
+      ]
+      before_action :require_admin_or_service!, only: %i[
         destroy_all_gotm destroy_all_nr_gotm
       ]
 
@@ -140,6 +153,37 @@ module Api
 
       def round_scope(model)
         model.where(round_number: params[:round])
+      end
+
+      # Owner-or-admin gate for the single-nomination writes: the service
+      # token and admins act for any user, a member only for themselves. The
+      # owner id comes from the body on upsert and the path on delete.
+      def require_nomination_owner!
+        return true if admin_or_service?
+        return true if current_principal&.discord_user? &&
+          resolve_owner_id.present? &&
+          current_principal.id.to_s == resolve_owner_id.to_s
+
+        render json: { error: "forbidden" }, status: :forbidden
+        false
+      end
+
+      def resolve_owner_id
+        action_name.start_with?("destroy") ? params[:user_id] : params.dig(:data, :user_id).presence
+      end
+
+      # Members may only write while the round's nomination window is open.
+      # Service/admin bypass it: the bot enforces its own window and admins
+      # need out-of-band fixups (mirrors the votes reset precedent).
+      def require_nomination_window!
+        return true if admin_or_service?
+        return true if BotVotingInfo.nominations_open_for?(params[:round])
+
+        render json: {
+          error: "nominations_closed",
+          message: "nominations for round #{params[:round]} are not open"
+        }, status: :unprocessable_entity
+        false
       end
     end
   end
