@@ -9,11 +9,13 @@ class ApplicationController < ActionController::API
 
   before_action :require_authentication!
 
+  rescue_from StandardError, with: :render_internal_server_error
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
   rescue_from ActiveRecord::InvalidForeignKey, with: :render_unprocessable_entity
   rescue_from ActiveRecord::RecordInvalid, with: :render_unprocessable_entity
   rescue_from ActiveRecord::RecordNotSaved, with: :render_unprocessable_entity
   rescue_from ActiveRecord::RecordNotUnique, with: :render_duplicate_value
+  rescue_from ActiveRecord::ValueTooLong, with: :render_unprocessable_entity
   rescue_from ActiveModel::UnknownAttributeError, with: :render_unprocessable_entity
   rescue_from ActionController::ParameterMissing, with: :render_bad_request
 
@@ -44,6 +46,11 @@ class ApplicationController < ActionController::API
 
   def render_unprocessable_entity(error)
     render json: { error: error.message }, status: :unprocessable_entity
+  end
+
+  def render_internal_server_error(error)
+    Rails.logger.error("#{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}")
+    render json: { error: "internal_server_error" }, status: :internal_server_error
   end
 
   # RecordNotUnique's message embeds the raw DB error (constraint name, and

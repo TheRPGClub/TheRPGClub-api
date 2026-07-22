@@ -262,7 +262,8 @@ module Api
         version = Gamedb::GameRelationsCacheVersion.current
 
         Rails.cache.fetch([ "game_relations", game.game_id, game.updated_at, version ], expires_in: 12.hours) do
-          companies = game.game_companies.includes(:company).sort_by { |game_company| game_company.company.name.to_s }
+          companies = game.game_companies.includes(:company).select { |game_company| game_company.company.present? }
+          companies.sort_by! { |game_company| game_company.company.name.to_s }
 
           {
             platforms: PlatformResource.new(game.platforms.order(:platform_name)).serializable_hash,
@@ -380,6 +381,7 @@ module Api
         releases = game
           .releases
           .includes(:platform, :region)
+          .select { |release| release.platform.present? && release.region.present? }
           .sort_by { |release| [ release.release_date || Date.new(9999, 12, 31), release.platform.platform_name, release.region.region_name ] }
         ReleaseResource.new(releases).serializable_hash
       end
