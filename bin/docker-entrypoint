@@ -5,15 +5,16 @@
 # db:prepare silently never ran. Keep the received args visible in boot logs.
 echo "docker-entrypoint args: $*"
 
-# Prepare the databases before any command except the release command's own
-# db:prepare (which would only repeat it). Unconditional on purpose -- see
-# above for what guessing at the argv shape cost. The Solid Queue SQLite file
-# (config/database.yml) lives on the machine's ephemeral rootfs and must be
-# recreated from db/queue_schema.rb on every boot; the Neon primary/cache
-# databases are prepared idempotently in the same pass, exactly as the
-# release command already does on every deploy.
+# Recreate the Solid Queue SQLite schema before any command except the
+# release command's own db:prepare run (the release machine has no use for
+# a throwaway queue file). The file lives on the machine's ephemeral rootfs,
+# and db:prepare can't be trusted with it: this app dumps :sql schemas
+# (config/application.rb), so prepare hunts for db/queue_structure.sql and
+# silently skips the load when it's missing -- db/queue_schema.rb is what
+# Solid Queue actually ships. See lib/tasks/queue_database.rake and the
+# #204/#205 postmortems.
 if [[ "$*" != *"db:prepare"* ]]; then
-  ./bin/rails db:prepare
+  ./bin/rails db:queue:bootstrap
 fi
 
 exec "${@}"
