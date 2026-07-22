@@ -289,6 +289,8 @@ module Igdb
       end
 
       parse_json_response!(response, "IGDB #{path} request")
+    rescue Faraday::Error => error
+      raise RequestError, "IGDB #{path} request failed: #{error.message}"
     end
 
     def access_token
@@ -308,6 +310,8 @@ module Igdb
       @access_token = payload.fetch("access_token")
       @access_token_expires_at = Time.current + payload.fetch("expires_in").to_i - 60
       @access_token
+    rescue Faraday::Error => error
+      raise RequestError, "IGDB token request failed: #{error.message}"
     end
 
     def client_id
