@@ -28,3 +28,7 @@
 
 # Ignore claude directory
 /.claude
+
+# SQLite databases (Solid Queue in production) live outside version control
+/storage/*
+!/storage/.keep
