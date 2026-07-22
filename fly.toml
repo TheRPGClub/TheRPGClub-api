@@ -39,7 +39,10 @@ console_command = '/rails/bin/rails console'
 
   [[http_service.checks]]
     interval = '10s'
-    timeout = '2s'
+    # 5s, up from 2s: /up needs a free Puma thread, so under a burst of slow
+    # requests a merely-busy machine missed the 2s deadline and the proxy
+    # pulled our only machine out of routing (2026-07-22 23:24 UTC outage).
+    timeout = '5s'
     grace_period = '5s'
     method = 'GET'
     path = '/up'

@@ -37,6 +37,15 @@ Rails.application.configure do
   # Prevent health checks from clogging up the logs.
   config.silence_healthcheck_path = "/up"
 
+  # Kill any request after 30s wall time so a stalled Neon can't pin all Puma
+  # threads and wedge the machine (2026-07-22 outages). Backstop to the
+  # per-query statement_timeout in database.yml: that one frees a thread stuck
+  # in a single slow query; this one catches a request accumulating the limit
+  # across many queries (or stuck outside the DB entirely). Inserted here, not
+  # by the gem's railtie, so development/test stay unaffected (Gemfile requires
+  # rack-timeout/base).
+  config.middleware.unshift Rack::Timeout, service_timeout: 30
+
   # Don't log any deprecations.
   config.active_support.report_deprecations = false
 

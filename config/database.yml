@@ -34,6 +34,16 @@ default: &default
   keepalives_interval: 5
   keepalives_count: 3
   tcp_user_timeout: 15000
+  # Server-side cap on any single query. The keepalives above only catch a
+  # *dead* peer -- the 2026-07-22 23:24 UTC wedge happened with them live
+  # because Neon was slow-but-alive (single queries taking 9s+), so every Puma
+  # thread sat in a legitimate wait until /up missed the Fly health check and
+  # the proxy pulled the machine. With this, Postgres cancels the query
+  # instead (ActiveRecord::StatementInvalid) and the thread frees up. Applies
+  # to migrations too: a long DDL statement (e.g. an index build on a big
+  # table) must opt out per-migration with `execute "SET statement_timeout = 0"`.
+  variables:
+    statement_timeout: 30s
 
 
 development:
