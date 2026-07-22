@@ -61,6 +61,9 @@ group :development, :test do
   # RSpec test framework
   gem "rspec-rails", "~> 8.0"
 
+  # Test data factories for the behavior request specs
+  gem "factory_bot_rails"
+
   gem "dotenv-rails", "~> 3.2"
 end
 
