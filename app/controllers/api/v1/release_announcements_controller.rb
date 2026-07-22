@@ -120,7 +120,7 @@ module Api
         render json: { data: ReleaseAnnouncementResource.new(record).serializable_hash }
       end
 
-      # PATCH/PUT /api/v1/games/:id/release_announcements/sync
+      # PATCH/PUT /api/v1/games/:id/release_announcements
       #
       # Admin/service-only. Rebuilds the game's announcement schedule from its
       # releases and applies canonicality (the bot's `syncReleaseAnnouncements` +

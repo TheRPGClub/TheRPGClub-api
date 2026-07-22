@@ -38,8 +38,12 @@ Rails.application.routes.draw do
           get "reviews", to: "reviews#game_index"
           get "journal", to: "journal#game_index"
           get "release_announcements", to: "release_announcements#game_index"
-          patch "release_announcements/sync", to: "release_announcements#sync"
-          put "release_announcements/sync", to: "release_announcements#sync"
+          # The bulk-sync lives on the bare path: swagger, the rswag spec, and
+          # the bot's GameReleaseAnnouncement.syncReleaseAnnouncements all PATCH
+          # /games/:id/release_announcements — the original "/sync" spelling
+          # (#109) existed only here in routes.rb and 404ed every bot sweep.
+          patch "release_announcements", to: "release_announcements#sync"
+          put "release_announcements", to: "release_announcements#sync"
           get "threads", to: "threads#game_index"
         end
       end
