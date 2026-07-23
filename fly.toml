@@ -59,7 +59,20 @@ console_command = '/rails/bin/rails console'
     [http_service.checks.headers]
       X-Forwarded-Proto = 'https'
 
+# Swap as a relief valve, not a working set: the 2026-07-23 09:24 UTC outage
+# was memory thrash, not OOM -- available memory sat at 6-8MB for 20+ minutes
+# while the kernel thrashed in page reclaim (load 6-7 on 1 vCPU), wedging
+# every Puma thread without ever tripping the OOM killer, so the machine
+# never self-healed. With swap, cold pages spill instead of the kernel
+# stalling the world in reclaim.
+swap_size_mb = 512
+
 [[vm]]
-  memory = '512mb'
+  # 1GB, up from 512MB: fresh boot leaves only ~155MB available (Puma plus the
+  # Solid Queue supervisor's forked worker/dispatcher/scheduler are ~355MB),
+  # eroding to ~17MB after a day of uptime -- measured right before the
+  # 2026-07-23 thrash outage. Concurrent avatar-blob requests then finished
+  # off the page cache. 512MB has no headroom for this process tree.
+  memory = '1gb'
   cpus = 1
-  memory_mb = 512
+  memory_mb = 1024
