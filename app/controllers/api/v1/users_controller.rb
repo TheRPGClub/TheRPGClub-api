@@ -196,8 +196,21 @@ module Api
       end
 
       def send_user_image(column)
-        data = RpgClubUser.select(column).find(params[:user_id]).public_send(column)
+        user = RpgClubUser.select(column, :updated_at).find(params[:user_id])
+        data = user.public_send(column)
         return render(json: { error: "image_not_found" }, status: :not_found) if data.blank?
+
+        # Cache aggressively: without these headers every route change on the
+        # website re-fetched every rendered avatar (Rails defaults to
+        # max-age=0), and a burst of multi-second blob streams occupied all
+        # Puma threads until /up missed the Fly health check and the proxy
+        # pulled the only machine (2026-07-23 09:24 UTC outage). The ETag is
+        # content-based (not just updated_at, which churns on every
+        # last-seen sync) so revalidations after expiry 304 instead of
+        # re-streaming an unchanged blob. Endpoint is unauthenticated, so
+        # `public` is safe for shared caches.
+        expires_in 1.day, public: true
+        return unless stale?(etag: data, last_modified: user.updated_at)
 
         send_data data, type: "image/png", disposition: "inline"
       end

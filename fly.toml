@@ -18,6 +18,13 @@ console_command = '/rails/bin/rails console'
 
 [env]
   PORT = '8080'
+  # 5 threads, up from Puma's default 3: avatar/profile-image blob streams are
+  # IO-bound and held threads for seconds each, so a navigation burst occupied
+  # every thread and /up missed the 5s health-check deadline -- the proxy then
+  # pulled our only machine (2026-07-23 09:24 UTC outage, same shape as
+  # 2026-07-22). database.yml's max_connections follows this var, so the Neon
+  # pool grows in step.
+  RAILS_MAX_THREADS = '5'
   # Run the Solid Queue supervisor inside Puma (config/puma.rb) instead of a
   # dedicated worker machine. Its around-the-clock polling stays off Neon
   # because the queue database is machine-local SQLite (config/database.yml).
