@@ -392,6 +392,40 @@ RSpec.describe "api/v1/users behavior", type: :request do
       expect(response.body).to eq("fake-avatar-bytes")
     end
 
+    it "sets public cache headers and 304s on a matching ETag" do
+      user = create(:user)
+      user.update_column(:avatar_blob, "fake-avatar-bytes")
+
+      get "/api/v1/users/#{user.user_id}/avatar"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.headers["Cache-Control"]).to include("public")
+      expect(response.headers["Cache-Control"]).to include("max-age=86400")
+      expect(response.headers["Last-Modified"]).to be_present
+      etag = response.headers["ETag"]
+      expect(etag).to be_present
+
+      get "/api/v1/users/#{user.user_id}/avatar", headers: { "If-None-Match" => etag }
+
+      expect(response).to have_http_status(:not_modified)
+      expect(response.body).to be_empty
+    end
+
+    it "re-streams when the blob changed under the client's ETag" do
+      user = create(:user)
+      user.update_column(:avatar_blob, "fake-avatar-bytes")
+
+      get "/api/v1/users/#{user.user_id}/avatar"
+      stale_etag = response.headers["ETag"]
+
+      user.update_column(:avatar_blob, "new-avatar-bytes")
+
+      get "/api/v1/users/#{user.user_id}/avatar", headers: { "If-None-Match" => stale_etag }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq("new-avatar-bytes")
+    end
+
     it "404s when no avatar is stored" do
       user = create(:user)
 
