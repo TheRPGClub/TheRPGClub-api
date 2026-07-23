@@ -6,6 +6,15 @@
 app = 'therpgclub-api'
 primary_region = 'iad'
 console_command = '/rails/bin/rails console'
+# Swap as a relief valve, not a working set: the 2026-07-23 09:24 UTC outage
+# was memory thrash, not OOM -- available memory sat at 6-8MB for 20+ minutes
+# while the kernel thrashed in page reclaim (load 6-7 on 1 vCPU), wedging
+# every Puma thread without ever tripping the OOM killer, so the machine
+# never self-healed. With swap, cold pages spill instead of the kernel
+# stalling the world in reclaim. Top-level key: it must sit above the first
+# [table] header or TOML scopes it into that table (a misplacement that
+# failed deploy validation once already).
+swap_size_mb = 512
 
 [build]
 
@@ -58,14 +67,6 @@ console_command = '/rails/bin/rails console'
 
     [http_service.checks.headers]
       X-Forwarded-Proto = 'https'
-
-# Swap as a relief valve, not a working set: the 2026-07-23 09:24 UTC outage
-# was memory thrash, not OOM -- available memory sat at 6-8MB for 20+ minutes
-# while the kernel thrashed in page reclaim (load 6-7 on 1 vCPU), wedging
-# every Puma thread without ever tripping the OOM killer, so the machine
-# never self-healed. With swap, cold pages spill instead of the kernel
-# stalling the world in reclaim.
-swap_size_mb = 512
 
 [[vm]]
   # 1GB, up from 512MB: fresh boot leaves only ~155MB available (Puma plus the
