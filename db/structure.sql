@@ -860,12 +860,12 @@ CREATE TABLE public.rpg_club_admin_wizard_sessions (
     owner_user_id character varying(64) NOT NULL,
     channel_id character varying(64) NOT NULL,
     guild_id character varying(64),
-    status character varying(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
     state_json text NOT NULL,
     last_updated_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     created_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp(6) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT ck_rpg_club_admin_wiz_sess_status CHECK (((status)::text = ANY (ARRAY[('ACTIVE'::character varying)::text, ('COMPLETED'::character varying)::text, ('CANCELLED'::character varying)::text])))
+    CONSTRAINT ck_rpg_club_admin_wiz_sess_status CHECK (((status)::text = ANY (ARRAY[('active'::character varying)::text, ('completed'::character varying)::text, ('cancelled'::character varying)::text])))
 );
 
 
@@ -3778,7 +3778,7 @@ CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_active ON public.rpg_club_admin_wizard
 -- Name: ux_rpg_club_admin_wiz_one_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_one_active ON public.rpg_club_admin_wizard_sessions USING btree (command_key, owner_user_id, channel_id) WHERE ((status)::text = 'ACTIVE'::text);
+CREATE UNIQUE INDEX ux_rpg_club_admin_wiz_one_active ON public.rpg_club_admin_wizard_sessions USING btree (command_key, owner_user_id, channel_id) WHERE ((status)::text = 'active'::text);
 
 
 --
@@ -4170,6 +4170,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260804000100'),
 ('20260717170000'),
 ('20260717160000'),
 ('20260717150000'),
