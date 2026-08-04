@@ -4170,6 +4170,7 @@ ALTER TABLE ONLY public.rpg_club_xbox_collection_import_items
 SET search_path TO public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260804000100'),
 ('20260717170000'),
 ('20260717160000'),
 ('20260717150000'),
