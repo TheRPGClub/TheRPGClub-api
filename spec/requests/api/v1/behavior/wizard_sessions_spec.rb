@@ -5,23 +5,12 @@ require "rails_helper"
 # Behavior specs for the admin-wizard session endpoints (#162). Every route is
 # owner-only (the service token counts as the owner).
 #
-# NOTE: the DB check constraint (ck_rpg_club_admin_wiz_sess_status) only
-# accepts the uppercase ACTIVE/COMPLETED/CANCELLED statuses the Discord bot
-# writes, while the Rails model validates — and the controller queries/writes —
-# the lowercase active/completed/cancelled. Every write of a status therefore
-# violates the constraint (500), and every status query misses the bot's
-# uppercase rows. The affected examples are marked pending and assert the
-# documented contract; seeded rows use the uppercase statuses production
-# actually contains (see the :wizard_session factory).
 RSpec.describe "api/v1/wizard_sessions behavior", type: :request do
   let(:owner) { create(:user) }
   let(:other_user) { create(:user) }
 
   describe "GET /api/v1/users/:user_id/wizard_sessions" do
     it "returns the active session for the (command_key, owner, channel)" do
-      pending "possible bug: the controller queries status: 'active' but the DB check constraint " \
-              "only allows the bot's uppercase 'ACTIVE', so the active session is never found (404)"
-
       session = create(:wizard_session, owner_user_id: owner.user_id)
 
       get "/api/v1/users/#{owner.user_id}/wizard_sessions",
@@ -75,9 +64,6 @@ RSpec.describe "api/v1/wizard_sessions behavior", type: :request do
     end
 
     it "creates the active session for the owner" do
-      pending "possible bug: the model writes status 'active' but the DB check constraint only " \
-              "allows uppercase 'ACTIVE', so every upsert fails the constraint and renders 500"
-
       expect {
         post "/api/v1/users/#{owner.user_id}/wizard_sessions",
           params: payload, headers: auth_headers_for(owner), as: :json
@@ -93,9 +79,6 @@ RSpec.describe "api/v1/wizard_sessions behavior", type: :request do
     end
 
     it "reuses the existing active session's session_id" do
-      pending "possible bug: the upsert looks up status: 'active' (missing the stored uppercase " \
-              "'ACTIVE' row) and then fails the status check constraint on insert (500)"
-
       session = create(:wizard_session, owner_user_id: owner.user_id,
         command_key: "nextround-setup", channel_id: "999888")
 
@@ -136,9 +119,6 @@ RSpec.describe "api/v1/wizard_sessions behavior", type: :request do
 
   describe "PATCH /api/v1/wizard_sessions/:id" do
     it "promotes the session to completed for the owner" do
-      pending "possible bug: the model writes status 'completed' but the DB check constraint only " \
-              "allows uppercase 'COMPLETED', so the transition fails the constraint and renders 500"
-
       session = create(:wizard_session, owner_user_id: owner.user_id)
 
       patch "/api/v1/wizard_sessions/#{session.session_id}",
@@ -175,7 +155,7 @@ RSpec.describe "api/v1/wizard_sessions behavior", type: :request do
         params: { data: { status: "cancelled" } }, headers: auth_headers_for(other_user), as: :json
 
       expect(response).to have_http_status(:forbidden)
-      expect(session.reload.status).to eq("ACTIVE")
+      expect(session.reload.status).to eq("active")
     end
 
     it "404s for an unknown id" do
@@ -246,9 +226,6 @@ RSpec.describe "api/v1/wizard_sessions behavior", type: :request do
     end
 
     it "keeps the active session" do
-      pending "possible bug: where.not(status: 'active') does not exclude the stored uppercase " \
-              "'ACTIVE' rows, so the active session is deleted along with the historical ones"
-
       active = create(:wizard_session, owner_user_id: owner.user_id,
         command_key: "nextround-setup", channel_id: "555")
       create(:wizard_session, :completed, owner_user_id: owner.user_id,

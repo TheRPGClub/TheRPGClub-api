@@ -36,30 +36,26 @@ FactoryBot.define do
     total_count { 3 }
   end
 
-  # Wizard sessions are seeded the way production rows actually exist: the DB
-  # check constraint (ck_rpg_club_admin_wiz_sess_status) only accepts the
-  # uppercase ACTIVE/COMPLETED/CANCELLED the Discord bot writes, while the
-  # Rails model validates the lowercase active/completed/cancelled — so the
-  # factory bypasses model validations to insert bot-shaped rows. (The model's
-  # session_id before_validation hook is skipped too, hence the explicit id.)
+  # The explicit session_id keeps this factory independent of the model's
+  # before_validation hook.
   factory :wizard_session, class: "RpgClubAdminWizardSession" do
     session_id { SecureRandom.hex(16) }
     command_key { "nextround-setup" }
     owner_user_id { SecureRandom.random_number(10**18).to_s }
     channel_id { SecureRandom.random_number(10**18).to_s }
     guild_id { SecureRandom.random_number(10**18).to_s }
-    status { "ACTIVE" }
+    status { "active" }
     state_json { '{"step":1}' }
     last_updated_at { Time.current }
 
     to_create { |instance| instance.save!(validate: false) }
 
     trait :completed do
-      status { "COMPLETED" }
+      status { "completed" }
     end
 
     trait :cancelled do
-      status { "CANCELLED" }
+      status { "cancelled" }
     end
   end
 
