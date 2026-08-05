@@ -42,8 +42,8 @@ RSpec.describe 'api/v1/voting_info', type: :request do
 
     post 'Create voting info' do
       tags 'Voting Info'
-      description 'Open to any authenticated caller. `round_number` (the PK) and `next_vote_at` are ' \
-                  'required; the reminder flags default to false.'
+      description 'Admin- or service-only (`BotVotingInfo` is bot-managed scheduling data). ' \
+                  '`round_number` (the PK) and `next_vote_at` are required; the reminder flags default to false.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -55,6 +55,10 @@ RSpec.describe 'api/v1/voting_info', type: :request do
 
       response '201', 'voting info created' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/VotingInfo' } }
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '422', 'validation failed' do
@@ -111,7 +115,7 @@ RSpec.describe 'api/v1/voting_info', type: :request do
 
     patch 'Update voting info' do
       tags 'Voting Info'
-      description 'Partial update: send any subset of the writable columns.'
+      description 'Admin- or service-only. Partial update: send any subset of the writable columns.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -123,6 +127,10 @@ RSpec.describe 'api/v1/voting_info', type: :request do
 
       response '200', 'updated' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/VotingInfo' } }
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do
@@ -140,7 +148,7 @@ RSpec.describe 'api/v1/voting_info', type: :request do
 
     put 'Replace voting info (alias)' do
       tags 'Voting Info'
-      description 'Alias for PATCH (applied as a partial assign).'
+      description 'Admin- or service-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -160,10 +168,15 @@ RSpec.describe 'api/v1/voting_info', type: :request do
 
     delete 'Delete voting info' do
       tags 'Voting Info'
+      description 'Admin- or service-only.'
       produces 'application/json'
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do

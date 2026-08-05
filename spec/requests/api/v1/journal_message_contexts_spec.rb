@@ -41,9 +41,9 @@ RSpec.describe 'api/v1/journal_message_contexts', type: :request do
 
     post 'Upsert a journal message context' do
       tags 'Journal Message Contexts'
-      description 'Inserts or updates a journal message context keyed on (channel_id, message_id) ' \
-                  '(sent by the bot service principal). All five fields are required. ' \
-                  'Returns 201 on insert, 200 on update.'
+      description 'Admin- or service-only. Inserts or updates a journal message context keyed on ' \
+                  '(channel_id, message_id) (sent by the bot service principal). All five fields are ' \
+                  'required. Returns 201 on insert, 200 on update.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -61,6 +61,10 @@ RSpec.describe 'api/v1/journal_message_contexts', type: :request do
 
       response '200', 'context updated' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/JournalMessageContext' } }
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '422', 'validation failed' do
@@ -106,10 +110,15 @@ RSpec.describe 'api/v1/journal_message_contexts', type: :request do
 
     delete 'Delete a journal message context' do
       tags 'Journal Message Contexts'
+      description 'Admin- or service-only.'
       produces 'application/json'
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do
