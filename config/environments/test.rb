@@ -41,6 +41,11 @@ Rails.application.configure do
   config.action_controller.raise_on_missing_callback_actions = true
 
   config.after_initialize do
+    database_name = ActiveRecord::Base.connection_db_config.database.to_s
+    unless database_name.end_with?("_test")
+      raise "Refusing to run tests against non-test database #{database_name.inspect}"
+    end
+
     Bullet.enable                      = true
     Bullet.bullet_logger               = true
     Bullet.raise                       = true

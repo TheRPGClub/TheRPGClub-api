@@ -8,11 +8,8 @@ echo "docker-entrypoint args: $*"
 # Recreate the Solid Queue SQLite schema before any command except the
 # release command's own db:prepare run (the release machine has no use for
 # a throwaway queue file). The file lives on the machine's ephemeral rootfs,
-# and db:prepare can't be trusted with it: this app dumps :sql schemas
-# (config/application.rb), so prepare hunts for db/queue_structure.sql and
-# silently skips the load when it's missing -- db/queue_schema.rb is what
-# Solid Queue actually ships. See lib/tasks/queue_database.rake and the
-# #204/#205 postmortems.
+# The app machine still needs db/queue_schema.rb loaded locally because the
+# release machine's db:prepare writes to a different ephemeral filesystem.
 if [[ "$*" != *"db:prepare"* ]]; then
   ./bin/rails db:queue:bootstrap
 fi

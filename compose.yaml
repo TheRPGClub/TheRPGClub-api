@@ -1,0 +1,24 @@
+name: rpgclub-api
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${RPGCLUB_DATABASE_NAME:-rpgclub_api_development}
+      POSTGRES_USER: ${RPGCLUB_DATABASE_USERNAME:-rpgclub}
+      POSTGRES_PASSWORD: ${RPGCLUB_DATABASE_PASSWORD:-rpgclub}
+    ports:
+      - "${RPGCLUB_DOCKER_DATABASE_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
