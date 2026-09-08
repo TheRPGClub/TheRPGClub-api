@@ -11,13 +11,25 @@
 
 ## Local development
 
-Copy `.env.example` to `.env`, then start PostgreSQL and prepare the app:
+Copy `.env.example` to `.env`, then prepare the app once:
 
 ```sh
 docker compose up -d db
 ruby bin/setup --skip-server
-ruby bin/dev
+docker compose stop db
 ```
+
+After that, `script/dev` is the only command needed to work on the app. It
+starts the PostgreSQL container, waits for it to report healthy, runs the Rails
+server, and stops the container again when you quit:
+
+```sh
+script/dev          # extra arguments are forwarded to `bin/rails server`
+```
+
+The Compose service deliberately has no restart policy, so the container never
+comes back by itself when Docker starts at boot. `ruby bin/dev` still boots the
+server alone, for when the database is already running.
 
 PostgreSQL is published on host port `5433` by default to avoid colliding with
 a native PostgreSQL installation. Both port settings in `.env.example` must
@@ -31,7 +43,8 @@ The Compose service creates two databases in its persistent volume:
   ignores `DATABASE_URL` and refuses to boot unless its database ends in
   `_test`.
 
-Run the suite with:
+Run the suite with the database up (`script/dev` in another terminal, or
+`docker compose up -d db`):
 
 ```sh
 ruby bin/rails db:test:prepare

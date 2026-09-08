@@ -18,7 +18,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
-    restart: unless-stopped
+    # No restart policy on purpose: the container must not come back when the
+    # Docker daemon starts at boot. script/dev starts it and stops it again.
 
 volumes:
   postgres_data:

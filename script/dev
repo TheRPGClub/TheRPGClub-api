@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Starts the Compose database, waits for it to accept connections, then runs the
+# Rails server in the foreground. The database is stopped again on exit, so
+# nothing is left running once you are done for the day.
+#
+# Any arguments are forwarded to `bin/rails server` (e.g. `script/dev -p 4000`).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+DB_SERVICE=db
+DB_BOOT_TIMEOUT=60
+cleaned_up=false
+
+cleanup() {
+  if [ "$cleaned_up" = true ]; then
+    return
+  fi
+  cleaned_up=true
+
+  printf '\n== Stopping %s ==\n' "$DB_SERVICE"
+  docker compose stop "$DB_SERVICE"
+}
+trap cleanup EXIT INT TERM
+
+# Health of the Compose database container, or empty when it isn't running yet.
+# compose.yaml owns the healthcheck itself (pg_isready); this only reads it.
+db_health() {
+  local id
+  id=$(docker compose ps --quiet "$DB_SERVICE")
+  if [ -z "$id" ]; then
+    return 0
+  fi
+
+  docker inspect --format '{{.State.Health.Status}}' "$id"
+}
+
+echo "== Starting $DB_SERVICE =="
+docker compose up --detach "$DB_SERVICE"
+
+# Postgres refuses connections until initdb finishes, which on a fresh volume
+# includes docker/postgres/init-test-db.sql. Without this wait a cold start
+# races the server and Rails dies on "connection refused".
+printf '\n== Waiting for %s ==' "$DB_SERVICE"
+deadline=$((SECONDS + DB_BOOT_TIMEOUT))
+while true; do
+  health=$(db_health)
+  if [ "$health" = healthy ]; then
+    break
+  fi
+
+  if [ "$SECONDS" -gt "$deadline" ]; then
+    printf '\n%s was %s after %ss. Check `docker compose logs %s`.\n' \
+      "$DB_SERVICE" "${health:-not running}" "$DB_BOOT_TIMEOUT" "$DB_SERVICE" >&2
+    exit 1
+  fi
+
+  printf .
+  sleep 1
+done
+echo " healthy"
+
+echo
+echo "== Starting development server =="
+ruby bin/rails server "$@"
