@@ -25,5 +25,4 @@ namespace :db do
       bootstrap_solid_schema(config_name: "queue", sentinel_table: "solid_queue_jobs", schema_file: "db/queue_schema.rb")
     end
   end
-
 end
