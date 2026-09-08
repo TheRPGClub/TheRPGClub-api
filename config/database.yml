@@ -28,7 +28,21 @@ default: &default
   # block (Linux-only, ignored elsewhere, milliseconds). Lives in the shared
   # block because DATABASE_URL merges onto every environment's primary, so
   # local development against Neon is covered too.
-  connect_timeout: 5
+  # 15s, up from 5s: Neon's scale-to-zero suspends the compute after 5 min
+  # idle, and the wake happens *during* connection establishment (the Neon
+  # proxy holds the socket open while the compute starts). A 5s budget turned
+  # the first request after any quiet period into a connection error instead
+  # of a slow success -- the Discord bot's first command failed until a retry
+  # a few seconds later (2026-09-09). Autosuspend stays on deliberately:
+  # disabling it on Launch bills the minimum compute size around the clock
+  # (~182 CU-hours/month against the ~47 we actually use), so we absorb the
+  # wake instead of paying to avoid it. This does not weaken the guards
+  # below, which bound *established* connections: Rack::Timeout (30s,
+  # config/environments/production.rb) still caps the whole request, and /up
+  # is Rails' stock health check that never touches Postgres, so threads
+  # blocked in connect cannot fail the Fly check and pull the machine out of
+  # routing. Also covers Neon's compute restarts for maintenance/migrations.
+  connect_timeout: 15
   keepalives: 1
   keepalives_idle: 10
   keepalives_interval: 5
