@@ -48,7 +48,7 @@ RSpec.configure do |config|
           }
         },
         # Reusable resource/response component schemas, cross-checked against the
-        # models, db/structure.sql and the Alba serializers (#78). Defined in
+        # models, db/schema.rb and the Alba serializers (#78). Defined in
         # spec/support/openapi_schemas.rb and referenced from the request specs
         # via `$ref` so a resource's response shape is documented exactly once.
         schemas: OpenapiSchemas.definitions

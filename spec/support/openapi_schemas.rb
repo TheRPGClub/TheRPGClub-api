@@ -9,7 +9,7 @@
 # name verbatim, causing a production 500. Each schema here is cross-checked
 # against three sources of truth and referenced from the specs via `$ref`:
 #
-#   1. DB columns       — db/structure.sql (column presence + null-ness)
+#   1. DB columns       — db/schema.rb (column presence + null-ness)
 #   2. Model            — app/models/** (validations, FK aliases, associations)
 #   3. Serializer       — app/serializers/** (the actual response shape)
 #

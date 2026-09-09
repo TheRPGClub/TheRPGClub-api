@@ -1,12 +1,8 @@
 # frozen_string_literal: true
 
-# db:prepare cannot load the Solid Cache / Solid Queue schemas for us: the app
-# runs schema_format = :sql (config/application.rb), so prepare looks for
-# db/<name>_structure.sql, and when a schema file is missing it *silently*
-# skips the load — which is how the Neon cache/queue databases sat empty until
-# 2026-07-22 and how the SQLite queue kept crash-looping the in-puma Solid
-# Queue supervisor (#205, #206). The solid gems ship their schemas as Ruby
-# (db/cache_schema.rb, db/queue_schema.rb), so load them explicitly instead.
+# The production queue database is a machine-local SQLite file. The Fly release
+# machine prepares a different ephemeral filesystem, so each app machine must
+# load db/queue_schema.rb for itself when it starts.
 def bootstrap_solid_schema(config_name:, sentinel_table:, schema_file:)
   config = ActiveRecord::Base.configurations.configs_for(env_name: Rails.env, name: config_name)
   abort "No #{config_name} database configured for #{Rails.env}" unless config
@@ -27,17 +23,6 @@ namespace :db do
     # database lives on the ephemeral rootfs and must be recreated each time.
     task bootstrap: :environment do
       bootstrap_solid_schema(config_name: "queue", sentinel_table: "solid_queue_jobs", schema_file: "db/queue_schema.rb")
-    end
-  end
-
-  namespace :cache do
-    desc "Create the Solid Cache schema in the cache database if it is missing"
-    # Run by the fly.toml release_command after db:prepare: a freshly
-    # provisioned cache database would otherwise come up empty (the silent
-    # skip above) and 500 every cached endpoint, as production did on
-    # 2026-07-22 until the schema was hand-loaded.
-    task bootstrap: :environment do
-      bootstrap_solid_schema(config_name: "cache", sentinel_table: "solid_cache_entries", schema_file: "db/cache_schema.rb")
     end
   end
 end

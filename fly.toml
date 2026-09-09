@@ -19,11 +19,9 @@ swap_size_mb = 512
 [build]
 
 [deploy]
-  # db:cache:bootstrap covers what db:prepare silently skips: with
-  # schema_format = :sql it looks for db/cache_structure.sql, which doesn't
-  # exist (Solid Cache ships db/cache_schema.rb), so a fresh cache database
-  # would come up empty. No-op when the schema is already there.
-  release_command = './bin/rails db:prepare db:cache:bootstrap'
+  # Ruby schema mode lets db:prepare load db/schema.rb and the separate
+  # db/cache_schema.rb supplied for Solid Cache.
+  release_command = './bin/rails db:prepare'
 
 [env]
   PORT = '8080'
