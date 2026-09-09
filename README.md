@@ -67,3 +67,10 @@ SEED_VOTING_PHASE=nominating ruby bin/rails db:seed # round 4 nominations are op
 ```
 
 Switching phases and re-seeding removes the rows the other phase left behind.
+
+Winners come out of a seeded RNG rather than the nomination lists, so the seeds
+filter instead of curate: a game that won a round is dropped from the fields of
+every later round, and a re-seed rebuilds the seeded accounts' ballots from
+scratch so the tally does not drift. The run asserts both, plus that GOTM rounds
+2 and 3 keep enough nominations for the larger vote cap, and fails loudly if an
+edit to the lists breaks either.
