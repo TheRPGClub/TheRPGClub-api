@@ -10,8 +10,10 @@
 # identity (`nomination_id`, `round_number`, `user_id`, `gamedb_game_id`), the
 # `reason` free-text, and the `nominated_at` timestamp. The nominator is
 # embedded via UserSummaryResource (the shared, consumer-audited user shape)
-# and the game via GameSummaryResource; either may be `null` since the
-# columns are bot-sourced and unenforced by a FK.
+# and the game via GameWithPlatformsResource — the nomination board renders a
+# platform pill per game, so this is one of the two shapes that carries them.
+# Either embed may be `null` since the columns are bot-sourced and unenforced
+# by a FK.
 class NominationResource
   include BaseResource
 
@@ -19,5 +21,5 @@ class NominationResource
              :reason, :nominated_at
 
   one :user, resource: UserSummaryResource
-  one :game, resource: GameSummaryResource
+  one :game, resource: GameWithPlatformsResource
 end

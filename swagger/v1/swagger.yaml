@@ -320,6 +320,15 @@ components:
         required:
         - gotm_won
         - nr_gotm_won
+    GameWithPlatforms:
+      allOf:
+      - "$ref": "#/components/schemas/GameSummary"
+      - type: object
+        properties:
+          platforms:
+            type: array
+            items:
+              "$ref": "#/components/schemas/Platform"
     GameImage:
       type: object
       properties:
@@ -2183,7 +2192,7 @@ components:
           nullable: true
         game:
           allOf:
-          - "$ref": "#/components/schemas/GameSummary"
+          - "$ref": "#/components/schemas/GameWithPlatforms"
           nullable: true
       required:
       - gotm_id
@@ -2212,7 +2221,7 @@ components:
           nullable: true
         game:
           allOf:
-          - "$ref": "#/components/schemas/GameSummary"
+          - "$ref": "#/components/schemas/GameWithPlatforms"
           nullable: true
       required:
       - nr_gotm_id
@@ -2243,7 +2252,7 @@ components:
           nullable: true
         game:
           allOf:
-          - "$ref": "#/components/schemas/GameSummary"
+          - "$ref": "#/components/schemas/GameWithPlatforms"
           nullable: true
       required:
       - nomination_id

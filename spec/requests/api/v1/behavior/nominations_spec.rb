@@ -42,6 +42,57 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
       expect(json.fetch("meta")).to include("count" => 2)
     end
 
+    # The board renders a pill per platform, so the embedded game carries them
+    # (GameWithPlatformsResource) rather than the platform-free GameSummary.
+    it "embeds each game's platforms, ordered by name" do
+      round = SecureRandom.random_number(1_000_000_000)
+      game = create(:game)
+      zulu = create(:platform, platform_name: "Zulu Station")
+      alpha = create(:platform, platform_name: "Alpha Deck")
+      create(:game_platform, game: game, platform: zulu)
+      create(:game_platform, game: game, platform: alpha)
+      create(:gotm_nomination, round_number: round, game: game)
+
+      get "/api/v1/gotm_entries/#{round}/nominations", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:ok)
+      platforms = json.dig("data", 0, "game", "platforms")
+      expect(platforms.map { |p| p.fetch("platform_name") }).to eq([ "Alpha Deck", "Zulu Station" ])
+      expect(platforms.first).to include(
+        "platform_id" => alpha.platform_id,
+        "platform_code" => alpha.platform_code,
+        "platform_abbreviation" => alpha.platform_abbreviation
+      )
+    end
+
+    # The point of the embed: a board of 10-20 nominations must not turn into
+    # one platforms query per row. Bullet (raise: true in test) already fails
+    # the request on an N+1; this pins the count so a later refactor that drops
+    # the preload fails here with the reason spelled out.
+    it "loads platforms for the whole board in one query" do
+      round = SecureRandom.random_number(1_000_000_000)
+      3.times do
+        game = create(:game)
+        create(:game_platform, game: game, platform: create(:platform))
+        create(:gotm_nomination, round_number: round, game: game)
+      end
+
+      queries = []
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        queries << payload[:sql]
+      end
+      begin
+        get "/api/v1/gotm_entries/#{round}/nominations", headers: auth_headers_for(member)
+      ensure
+        ActiveSupport::Notifications.unsubscribe(subscriber)
+      end
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").size).to eq(3)
+      expect(json.fetch("data").map { |n| n.dig("game", "platforms").size }).to all(eq(1))
+      expect(queries.count { |sql| sql.include?("gamedb_platforms") }).to eq(1)
+    end
+
     it "requires authentication" do
       get "/api/v1/gotm_entries/1/nominations"
 
