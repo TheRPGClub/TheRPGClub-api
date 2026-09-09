@@ -132,6 +132,12 @@ module OpenapiSchemas
       # games#index / #show / create-from-IGDB (GameResource): GameSummary plus
       # the GOTM/NR-GOTM winner flags selected by the `without_images` scope.
       Game: extends("GameSummary", gotm_won: bool, nr_gotm_won: bool, required: %w[gotm_won nr_gotm_won]),
+      # GameWithPlatformsResource: GameSummary plus the game's platforms, for
+      # the two consumers that render platform pills — the nomination board and
+      # the dashboard's GOTM / NR-GOTM cards. Ordered by `platform_name`; empty
+      # when the game has no platform rows. Every other embedded game keeps the
+      # platform-free GameSummary.
+      GameWithPlatforms: extends("GameSummary", platforms: array_of("Platform")),
       # GamedbGameImage (all columns) plus the derived public `url`.
       GameImage: obj(
         image_id: int, game_id: int, kind: str, object_key: str,
@@ -588,19 +594,19 @@ module OpenapiSchemas
       GotmEntry: obj(
         gotm_id: int, round_number: int, month_year: str, game_index: int,
         reddit_url: str(nullable: true), voting_results_message_id: str(nullable: true),
-        gamedb_game_id: int(nullable: true), game: ref("GameSummary", nullable: true)
+        gamedb_game_id: int(nullable: true), game: ref("GameWithPlatforms", nullable: true)
       ),
       NrGotmEntry: obj(
         nr_gotm_id: int, round_number: int, month_year: str, game_index: int,
         reddit_url: str(nullable: true), voting_results_message_id: str(nullable: true),
-        gamedb_game_id: int(nullable: true), game: ref("GameSummary", nullable: true)
+        gamedb_game_id: int(nullable: true), game: ref("GameWithPlatforms", nullable: true)
       ),
       # NominationResource (gotm + nr-gotm share it). `user`/`game` are
       # bot-sourced and FK-unenforced, so either may be null.
       Nomination: obj(
         nomination_id: int, round_number: int, user_id: str, gamedb_game_id: int(nullable: true),
         reason: str(nullable: true), nominated_at: ts,
-        user: ref("UserSummary", nullable: true), game: ref("GameSummary", nullable: true)
+        user: ref("UserSummary", nullable: true), game: ref("GameWithPlatforms", nullable: true)
       ),
       # VoteResource (gotm + nr-gotm share it): the IDENTIFIED vote shape —
       # only served to admin/service, the voter themselves, or anyone once the

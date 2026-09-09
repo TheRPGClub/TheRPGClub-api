@@ -25,7 +25,13 @@ class GamedbGame < ApplicationRecord
     foreign_key: :game_id,
     dependent: nil,
     inverse_of: :game
+  # Ordered by name so the set is stable between renders. Unlike the sibling
+  # taxonomy associations below — which GamesController#relations_data orders at
+  # the call site — this one is preloaded, for the game shape embedded in the
+  # nomination board and the dashboard cards (GameWithPlatformsResource), and a
+  # preload takes no call-site order.
   has_many :platforms,
+    -> { order(:platform_name) },
     through: :game_platforms,
     source: :platform
 

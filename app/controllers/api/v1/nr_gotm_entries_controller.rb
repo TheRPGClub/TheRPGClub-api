@@ -22,7 +22,7 @@ module Api
       def index
         scope = NrGotmEntry.all
         scope = scope.where(round_number: params[:round_number]) if params[:round_number].present?
-        scope = scope.preload(game: :images) if include_game?
+        scope = scope.preload(game: [ :images, :platforms ]) if include_game?
         render_collection(
           scope,
           resource: NrGotmEntryResource,
@@ -32,7 +32,7 @@ module Api
       end
 
       def show
-        scope = include_game? ? NrGotmEntry.preload(game: :images) : NrGotmEntry
+        scope = include_game? ? NrGotmEntry.preload(game: [ :images, :platforms ]) : NrGotmEntry
         entry = scope.find(params[:id])
         render json: { data: NrGotmEntryResource.new(entry, params: { include_game: include_game? }).serializable_hash }
       end

@@ -39,6 +39,23 @@ RSpec.describe "api/v1/gotm_entries behavior", type: :request do
       )
     end
 
+    it "embeds the game's platforms with include=game, on both index and show" do
+      entry = create(:gotm_entry)
+      zulu = create(:platform, platform_name: "Zulu Station")
+      alpha = create(:platform, platform_name: "Alpha Deck")
+      create(:game_platform, game: entry.game, platform: zulu)
+      create(:game_platform, game: entry.game, platform: alpha)
+
+      get "/api/v1/gotm_entries", params: { round_number: entry.round_number, include: "game" },
+        headers: service_headers
+      expect(json.dig("data", 0, "game", "platforms").map { |p| p.fetch("platform_name") })
+        .to eq([ "Alpha Deck", "Zulu Station" ])
+
+      get "/api/v1/gotm_entries/#{entry.gotm_id}", params: { include: "game" }, headers: service_headers
+      expect(json.dig("data", "game", "platforms").map { |p| p.fetch("platform_id") })
+        .to eq([ alpha.platform_id, zulu.platform_id ])
+    end
+
     it "filters by round_number and orders the round's slots by game_index" do
       round = SecureRandom.random_number(1_000_000_000)
       second = create(:gotm_entry, round_number: round, game_index: 1)

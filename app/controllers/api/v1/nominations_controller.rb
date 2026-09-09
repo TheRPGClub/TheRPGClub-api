@@ -96,10 +96,12 @@ module Api
       private
 
       # Nominations for the round in the path, oldest first, each carrying its
-      # embedded nominator and game (with images, so the game summary's cover /
-      # art / logo URLs resolve without an N+1).
+      # embedded nominator and game. Images and platforms are preloaded so the
+      # game summary's cover / art / logo URLs and the board's platform pills
+      # resolve in one query each rather than one per nomination.
       def render_nominations(model)
-        scope = model.where(round_number: params[:round]).preload(:user, game: :images)
+        scope = model.where(round_number: params[:round])
+          .preload(:user, game: [ :images, :platforms ])
 
         render_collection(scope, resource: NominationResource,
           default_order: { nominated_at: :asc, nomination_id: :asc })
@@ -107,7 +109,9 @@ module Api
 
       # A single user's nomination for the round, or 404 if they have none.
       def render_nomination(model)
-        record = round_scope(model).preload(:user, game: :images).find_by!(user_id: params[:user_id])
+        record = round_scope(model)
+          .preload(:user, game: [ :images, :platforms ])
+          .find_by!(user_id: params[:user_id])
         render json: { data: NominationResource.new(record).serializable_hash }
       end
 

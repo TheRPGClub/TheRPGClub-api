@@ -38,6 +38,23 @@ RSpec.describe "api/v1/nr_gotm_entries behavior", type: :request do
       expect(json.dig("data", 0, "game")).to include("game_id" => first.gamedb_game_id, "title" => first.game.title)
     end
 
+    it "embeds the game's platforms with include=game, on both index and show" do
+      entry = create(:nr_gotm_entry)
+      zulu = create(:platform, platform_name: "Zulu Station")
+      alpha = create(:platform, platform_name: "Alpha Deck")
+      create(:game_platform, game: entry.game, platform: zulu)
+      create(:game_platform, game: entry.game, platform: alpha)
+
+      get "/api/v1/nr_gotm_entries", params: { round_number: entry.round_number, include: "game" },
+        headers: service_headers
+      expect(json.dig("data", 0, "game", "platforms").map { |p| p.fetch("platform_name") })
+        .to eq([ "Alpha Deck", "Zulu Station" ])
+
+      get "/api/v1/nr_gotm_entries/#{entry.nr_gotm_id}", params: { include: "game" }, headers: service_headers
+      expect(json.dig("data", "game", "platforms").map { |p| p.fetch("platform_id") })
+        .to eq([ alpha.platform_id, zulu.platform_id ])
+    end
+
     it "requires authentication" do
       get "/api/v1/nr_gotm_entries"
 

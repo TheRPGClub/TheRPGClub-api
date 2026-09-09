@@ -81,6 +81,15 @@ end
 # per user, and the per-user vote cap keys off the size of the field: rounds 2
 # and 3 clear Voting::CastVote::LARGE_FIELD_THRESHOLD (9) for a cap of 3, while
 # rounds 1 and 4 stay under it for a cap of 2.
+#
+# These are written one row per member up to the worst case, not to the size
+# the round ends up with: seed_nominations drops rows for games that won an
+# earlier round, so a field has to survive losing every prior winner it lists
+# and still clear the threshold. GOTM round 2 can lose round 1's single winner
+# (10 rows -> 9) and round 3 can lose all three from rounds 1 and 2 (12 -> 9).
+# Every game inside a round is listed at most once, which is what caps the
+# damage at one row per prior winner. The assertions at the bottom hold the
+# arithmetic to it.
 gotm_nominations = {
   1 => [
     [ "dev_admin",      "emberlight-chronicles", "Second act is worth arguing about." ],
@@ -98,7 +107,8 @@ gotm_nominations = {
     [ "crit_fisher",    "clockwork-kingdom",  "On sale everywhere right now." ],
     [ "save_scummer",   "iron-covenant",      "Losing my whole roster built character." ],
     [ "lore_reader",    "emberlight-chronicles", "Re-nominating until it wins." ],
-    [ "speedrunner",    "nine-lives-of-rhea", "Any% is under two hours." ]
+    [ "speedrunner",    "nine-lives-of-rhea", "Any% is under two hours." ],
+    [ "backlog_slayer", "hollow-vanguard",    "It is going to keep showing up until you play it." ]
   ],
   3 => [
     [ "dev_admin",      "saltmarsh-requiem",     "Best reviewed RPG of the year." ],
@@ -111,6 +121,7 @@ gotm_nominations = {
     [ "lore_reader",    "emberlight-chronicles", "I will not be stopped." ],
     [ "speedrunner",    "nine-lives-of-rhea",    "Replayable without being a slog." ],
     [ "backlog_slayer", "clockwork-kingdom",     "It has been in my backlog for two years." ],
+    [ "night_owl",      "iron-covenant",         "Losing the roster is the point." ],
     # gotm_nominations.gamedb_game_id is nullable (unlike the NR-GOTM table), so
     # a game-less row is legal here — this is what makes CastVote raise
     # NominationMissingGameError and return 422 nomination_missing_game.
@@ -120,7 +131,9 @@ gotm_nominations = {
     [ "dev_admin",     "iron-covenant",      "Fresh field, same taste." ],
     [ "party_member",  "ashes-of-asteria",   "Replay value for a second run." ],
     [ "tavern_keeper", "saltmarsh-requiem",  "Did not win last round, deserves another shot." ],
-    [ "dice_goblin",   "the-sunken-archive", "Everyone said they wanted it eventually." ]
+    [ "dice_goblin",   "the-sunken-archive", "Everyone said they wanted it eventually." ],
+    [ "loot_hoarder",  "verdant-hollow",     "Still the best thing none of us has finished." ],
+    [ "crit_fisher",   "moonlit-tactics",    "Something short, for once." ]
   ]
 }
 
@@ -147,8 +160,10 @@ nr_gotm_nominations = {
     [ "crit_fisher",   "static-bloom",       "The runs get good after hour three." ]
   ],
   4 => [
-    [ "dev_admin",    "harbourline",  "Ports. Again." ],
-    [ "party_member", "static-bloom", "Giving it one more chance." ]
+    [ "dev_admin",     "harbourline",      "Ports. Again." ],
+    [ "party_member",  "static-bloom",     "Giving it one more chance." ],
+    [ "tavern_keeper", "neon-drift-rally", "Twenty minutes a night still holds." ],
+    [ "dice_goblin",   "deep-signal",      "Headphones on, lights off, second attempt." ]
   ]
 }
 
@@ -158,15 +173,33 @@ unless phase == "nominating"
   nr_gotm_nominations.delete(4)
 end
 
-seed_nominations = lambda do |model, round_number, rows, opens|
+member_ids = members.values.map(&:user_id)
+
+seed_nominations = lambda do |model, vote_model, round_number, rows, opens, won_game_ids|
+  # A game that has already won a round is out of the running for the rounds
+  # after it, so drop those rows rather than editing the lists above: winners
+  # fall out of the seeded RNG in seed_votes, so hand-curating a field to dodge
+  # one only moves the problem to whoever wins in its place.
+  eligible = rows.reject { |(_username, slug, _reason)| slug && won_game_ids.include?(catalog.fetch(slug).game_id) }
+  kept_ids = eligible.map { |(username, _slug, _reason)| members.fetch(username).user_id }
+
+  # find_or_initialize_by only ever creates, so leaving a member out of the
+  # round does not remove the row a previous run wrote for them — a field
+  # seeded before this filter existed would keep its repeat winner. Delete what
+  # the round no longer lists, ballots included: the tables carry no foreign
+  # key, so an orphaned vote would go on counting in the round's tally.
+  stale = model.where(round_number: round_number, user_id: member_ids - kept_ids)
+  vote_model.where(round_number: round_number, nomination_id: stale.select(:nomination_id)).delete_all
+  stale.delete_all
+
   # Nominations are collected before the round's vote opens; for a round whose
   # window is still ahead they were collected before now.
   closes_at = [ opens, Time.current ].min
-  rows.each_with_index.map do |(username, slug, reason), index|
+  eligible.each_with_index.map do |(username, slug, reason), index|
     record = model.find_or_initialize_by(round_number: round_number, user_id: members.fetch(username).user_id)
     record.gamedb_game_id = slug && catalog.fetch(slug).game_id
     record.reason = reason
-    record.nominated_at = closes_at - (rows.size - index).days
+    record.nominated_at = closes_at - (eligible.size - index).days
     record.save!
     record
   end
@@ -178,6 +211,14 @@ seed_votes = lambda do |vote_model, nomination_model, round_number, nominations,
   cap = Voting::CastVote.cap_for(nomination_model, round_number)
   votable = nominations.select { |nomination| nomination.gamedb_game_id.present? }
   rng = Random.new((round_number * 100) + vote_model.table_name.length)
+
+  # Clear the seeded accounts' ballots for the round before recasting them. The
+  # draw below depends on the size and order of the field, so a re-seed after
+  # any change to it lands on different games and would otherwise pile new
+  # votes on top of the old ones — enough, as it turns out, to hand the round
+  # to a game that did not win on a clean database. Real Discord accounts are
+  # left alone, as everywhere else in this file.
+  vote_model.where(round_number: round_number, user_id: member_ids).delete_all
 
   voters.each_with_index.sum do |voter, index|
     votable.sample(1 + rng.rand(cap), random: rng).each_with_index do |nomination, offset|
@@ -201,7 +242,7 @@ seed_entries = lambda do |entry_model, vote_model, round_number, nominations, op
     .select { |nomination| nomination.gamedb_game_id.present? }
     .sort_by { |nomination| [ -counts.fetch(nomination.nomination_id, 0), nomination.nomination_id ] }
 
-  ranked.first(slots).each_with_index do |nomination, index|
+  ranked.first(slots).each_with_index.map do |nomination, index|
     entry = entry_model.find_or_initialize_by(round_number: round_number, game_index: index + 1)
     entry.update!(
       gamedb_game_id: nomination.gamedb_game_id,
@@ -209,39 +250,92 @@ seed_entries = lambda do |entry_model, vote_model, round_number, nominations, op
       reddit_url: "https://old.reddit.com/r/therpgclub/comments/seed#{round_number}#{index + 1}",
       voting_results_message_id: format("15%016d", (round_number * 10) + index + 1)
     )
+    entry.gamedb_game_id
   end
 end
 
 voters = members.values
 
-gotm_nominations.each do |round_number, rows|
-  window = rounds[round_number]
-  # Round 4 (nominating phase) has no scheduled vote yet — nominations only.
-  next seed_nominations.call(GotmNomination, round_number, rows, Time.current) if window.nil?
+# Ascending order is what makes the "no repeat winners" filter work at all:
+# round N's winners are recorded before round N + 1's field is written, so the
+# set below is always complete for the round being seeded.
+seed_category = lambda do |nomination_model, vote_model, entry_model, fields, slots_for|
+  won_game_ids = Set.new
 
-  nominations = seed_nominations.call(GotmNomination, round_number, rows, window.fetch(:opens))
-  next unless window.fetch(:finished) || phase == "voting"
+  fields.sort.each do |round_number, rows|
+    window = rounds[round_number]
+    # The trailing round (nominating phase) has no scheduled vote yet —
+    # nominations only, and no winner to record.
+    if window.nil?
+      seed_nominations.call(nomination_model, vote_model, round_number, rows, Time.current, won_game_ids)
+      next
+    end
 
-  # The current round leaves the last two members without a ballot, so a dev
-  # logging in as one of them still has the full cap to spend.
-  round_voters = window.fetch(:finished) ? voters : voters.first(voters.size - 2)
-  seed_votes.call(GotmVote, GotmNomination, round_number, nominations, round_voters, window.fetch(:opens))
+    nominations = seed_nominations.call(
+      nomination_model, vote_model, round_number, rows, window.fetch(:opens), won_game_ids
+    )
+    next unless window.fetch(:finished) || phase == "voting"
 
-  # Round 2 records two winners; the club ran a tie that month.
-  seed_entries.call(GotmEntry, GotmVote, round_number, nominations, window.fetch(:opens), round_number == 2 ? 2 : 1) if window.fetch(:finished)
+    # The current round leaves the last two members without a ballot, so a dev
+    # logging in as one of them still has the full cap to spend.
+    round_voters = window.fetch(:finished) ? voters : voters.first(voters.size - 2)
+    seed_votes.call(vote_model, nomination_model, round_number, nominations, round_voters, window.fetch(:opens))
+    next unless window.fetch(:finished)
+
+    won_game_ids.merge(
+      seed_entries.call(
+        entry_model, vote_model, round_number, nominations, window.fetch(:opens), slots_for.call(round_number)
+      )
+    )
+  end
 end
 
-nr_gotm_nominations.each do |round_number, rows|
-  window = rounds[round_number]
-  next seed_nominations.call(NrGotmNomination, round_number, rows, Time.current) if window.nil?
+# Round 2 records two GOTM winners; the club ran a tie that month.
+seed_category.call(GotmNomination, GotmVote, GotmEntry, gotm_nominations, ->(round) { round == 2 ? 2 : 1 })
+seed_category.call(NrGotmNomination, NrGotmVote, NrGotmEntry, nr_gotm_nominations, ->(_round) { 1 })
 
-  nominations = seed_nominations.call(NrGotmNomination, round_number, rows, window.fetch(:opens))
-  next unless window.fetch(:finished) || phase == "voting"
+# The lists above are inputs, not outputs: which game wins a round falls out of
+# the seeded RNG in seed_votes, and each winner prunes the rounds after it. So
+# check the properties the fixtures exist to provide, rather than trusting that
+# the last edit to a reason string did not move a winner and shrink a field.
+titles = catalog.values.index_by(&:game_id)
 
-  round_voters = window.fetch(:finished) ? voters : voters.first(voters.size - 2)
-  seed_votes.call(NrGotmVote, NrGotmNomination, round_number, nominations, round_voters, window.fetch(:opens))
+categories = [
+  [ "GOTM", GotmNomination, GotmEntry, gotm_nominations ],
+  [ "NR-GOTM", NrGotmNomination, NrGotmEntry, nr_gotm_nominations ]
+]
 
-  seed_entries.call(NrGotmEntry, NrGotmVote, round_number, nominations, window.fetch(:opens), 1) if window.fetch(:finished)
+categories.each do |label, nomination_model, entry_model, fields|
+  won_in = entry_model.pluck(:gamedb_game_id, :round_number)
+  # Scoped to the seeded accounts like everything else here: a local database
+  # holding real bot-synced nominations must not fail db:seed over rows this
+  # file neither wrote nor controls.
+  seeded = nomination_model.where(user_id: member_ids)
+
+  seeded.where.not(gamedb_game_id: nil).order(:round_number).pluck(:round_number, :gamedb_game_id)
+    .each do |round_number, game_id|
+      _game, won_round = won_in.find { |won_game, won| won_game == game_id && won < round_number }
+      next if won_round.nil?
+      raise "#{label} round #{round_number} nominates #{titles.fetch(game_id).title}, which won round " \
+            "#{won_round} — seed_nominations should have dropped it."
+    end
+
+  fields.each_key do |round_number|
+    votable = seeded.where(round_number: round_number).where.not(gamedb_game_id: nil).count
+    next if votable >= 2
+    raise "#{label} round #{round_number} kept only #{votable} nomination(s) with a game after dropping " \
+          "earlier winners — there is nothing to vote on. Add nominators to that round's list."
+  end
+end
+
+# Field-size budget: dropping prior winners is the one thing that can push a
+# round back under LARGE_FIELD_THRESHOLD and silently halve its vote cap.
+[ 2, 3 ].each do |round_number|
+  cap = Voting::CastVote.cap_for(GotmNomination, round_number)
+  next if cap == Voting::CastVote::LARGE_FIELD_CAP
+  raise "GOTM round #{round_number} kept #{GotmNomination.where(round_number: round_number).count} nominations, " \
+        "under Voting::CastVote::LARGE_FIELD_THRESHOLD (#{Voting::CastVote::LARGE_FIELD_THRESHOLD}) — its vote " \
+        "cap is #{cap}, not #{Voting::CastVote::LARGE_FIELD_CAP}. Add a nominator to that round's list."
 end
 
 current = BotVotingInfo.find_by(round_number: current_round)
