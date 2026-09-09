@@ -18,6 +18,8 @@ class ApplicationController < ActionController::API
   rescue_from ActiveRecord::ValueTooLong, with: :render_unprocessable_entity
   rescue_from ActiveModel::UnknownAttributeError, with: :render_unprocessable_entity
   rescue_from ActionController::ParameterMissing, with: :render_bad_request
+  rescue_from ActiveRecord::ConnectionNotEstablished, with: :render_service_unavailable
+  rescue_from ActiveRecord::ConnectionFailed, with: :render_service_unavailable
 
   private
 
@@ -51,6 +53,24 @@ class ApplicationController < ActionController::API
   def render_internal_server_error(error)
     Rails.logger.error("#{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}")
     render json: { error: "internal_server_error" }, status: :internal_server_error
+  end
+
+  # Database *reachability* failures are transient, not bugs, so they get 503
+  # (try again shortly) rather than 500 (we are broken). Neon's scale-to-zero
+  # suspends the compute after 5 min idle and the wake happens during
+  # connection establishment; Neon also recycles computes for maintenance and
+  # migrations. Both surface here: ConnectionNotEstablished when we cannot
+  # connect at all, ConnectionFailed when the connection drops mid-query.
+  # The status matters to callers -- the Discord bot retries only no-response
+  # and 502/503/504, so as a 500 a cold start was a hard failure on the first
+  # command after any quiet period instead of a retried, invisible one
+  # (2026-09-09). Deliberately does NOT cover ActiveRecord::QueryCanceled from
+  # the 30s statement_timeout: a slow-but-alive database is precisely when
+  # retries pile on load, and that stays a non-retryable 500.
+  def render_service_unavailable(error)
+    Rails.logger.error("#{error.class}: #{error.message}")
+    response.set_header("Retry-After", "1")
+    render json: { error: "service_unavailable" }, status: :service_unavailable
   end
 
   # RecordNotUnique's message embeds the raw DB error (constraint name, and
