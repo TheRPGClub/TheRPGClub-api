@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_04_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -898,6 +898,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_000100) do
   create_table "user_game_reviews", primary_key: "review_id", force: :cascade do |t|
     t.jsonb "body"
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.jsonb "facets"
     t.bigint "gamedb_game_id", null: false
     t.boolean "is_shared", default: true, null: false
     t.integer "rating", null: false
