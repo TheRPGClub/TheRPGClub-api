@@ -8,6 +8,9 @@ RSpec.describe 'api/v1/reviews', type: :request do
     gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create. Unique per (user, game).' },
     rating: { type: :integer, description: 'Numeric rating. Required on create.' },
     body: { type: :object, nullable: true, description: 'Optional structured review body (free-form JSON).' },
+    facets: { allOf: [ { '$ref' => '#/components/schemas/ReviewFacets' } ], nullable: true,
+              description: 'Optional per-category scorecard. Omit or send null for a quick take; ' \
+                           '`{"order": []}` is stored as null.' },
     is_shared: { type: :boolean, description: 'Whether the review is shared. Optional. Write-only — not returned by the curated game-scoped list.' }
   }
 

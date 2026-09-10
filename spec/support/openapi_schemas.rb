@@ -24,6 +24,11 @@
 # be conditional or null). That keeps the documented "always present" set
 # tracking the column null-ness without hand-maintaining a parallel list.
 module OpenapiSchemas
+  # The model's custom-facet-key regexp as an anchored ECMA pattern, which is
+  # what JSON Schema's `pattern` speaks (`\A`/`\z` are Ruby-only, and an
+  # unanchored pattern would match `custom:1` inside any longer string).
+  CUSTOM_FACET_PATTERN = UserGameReview::CUSTOM_FACET_KEY.source.sub('\A', "^").sub('\z', "$")
+
   module_function
 
   def str(nullable: false, **opts) = { type: :string }.merge(nullable ? { nullable: true } : {}).merge(opts)
@@ -328,21 +333,75 @@ module OpenapiSchemas
         game: ref("NowPlayingGame", nullable: true), platform: ref("Platform", nullable: true),
         user: ref("UserSummary")
       ),
+      # The per-category review scorecard (UserGameReview::FACET_KEYS, mirrored by
+      # `www/lib/reviews/facets.ts`). Null on a "quick take" — a review with no
+      # scorecard, which is what every review written before it existed is.
+      # `order` carries the display order, which jsonb objects do not preserve,
+      # and may hold a facet that has no score yet ("on the card, not yet scored").
+      # `obj` derives `required` from non-null scalars only, so arrays and the
+      # scores object need the explicit list.
+      ReviewFacets: obj(
+        template: {
+          type: :string, enum: UserGameReview::FACET_TEMPLATES,
+          description: "Which preset the card was last built from. Provenance, not a constraint — " \
+                       "every preset is editable, so `order` is not checked against it."
+        },
+        order: {
+          type: :array,
+          items: {
+            type: :string,
+            anyOf: [
+              { type: :string, enum: UserGameReview::FACET_KEYS },
+              { type: :string, pattern: CUSTOM_FACET_PATTERN }
+            ],
+            description: "Either a catalogue key or a `custom:N` key the reviewer invented on this card."
+          },
+          maxItems: UserGameReview::MAX_FACETS,
+          description: "The scorecard's facets in display order. Unique. A `custom:N` entry must have " \
+                       "a non-empty `labels` entry — an unnamed custom row has nothing to render — " \
+                       "which OpenAPI cannot express; the API enforces it with a 422."
+        },
+        labels: {
+          type: :object,
+          additionalProperties: { type: :string, maxLength: UserGameReview::MAX_LABEL_LENGTH },
+          description: "Optional display names, keyed by facet. Keys must appear in `order` and values " \
+                       "must be non-empty. On a catalogue facet this is a display override only — the " \
+                       "key stays canonical, so a row renamed \"Job System\" still counts as `combat`. " \
+                       "On a `custom:N` facet it is required."
+        },
+        scores: {
+          type: :object, additionalProperties: { type: :integer, minimum: 0, maximum: 100 },
+          description: "Facet key to score, on the same 0..100 scale as `rating`. Keys must appear in `order`."
+        },
+        weights: {
+          type: :object,
+          additionalProperties: { type: :integer, minimum: 0, maximum: UserGameReview::WEIGHT_TOTAL },
+          description: "Optional per-facet share of the #{UserGameReview::WEIGHT_TOTAL}-point budget, " \
+                       "used to weight `facet_average`. Absent means unweighted (every scored facet " \
+                       "counts once). When present the keys are exactly those in `order` and the values " \
+                       "sum to exactly #{UserGameReview::WEIGHT_TOTAL} — an invariant OpenAPI cannot " \
+                       "express, enforced by the API with a 422."
+        },
+        _required: %w[template order]
+      ),
       # reviews#index / show / create / update render `as_json` — all columns,
       # including the write-only `is_shared` and `updated_at` the curated shape trims.
       Review: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
-        body: json, is_shared: bool, created_at: ts, updated_at: ts
+        body: json, facets: ref("ReviewFacets", nullable: true), is_shared: bool,
+        created_at: ts, updated_at: ts
       ),
       # ReviewUserEntryResource (ReviewFields + user), for the game-scoped reviews list.
       ReviewUserEntry: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
-        body: json, created_at: ts, user: ref("UserSummary")
+        body: json, facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        user: ref("UserSummary")
       ),
       # ReviewEntryResource (ReviewFields + game), embedded in the user profile preview.
       ReviewEntry: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
-        body: json, created_at: ts, game: ref("GameSummary")
+        body: json, facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        game: ref("GameSummary")
       ),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
       JournalEntryGame: obj(

@@ -1058,6 +1058,80 @@ components:
       - added_at
       - has_journal_entry
       - journal_count
+    ReviewFacets:
+      type: object
+      properties:
+        template:
+          type: string
+          enum:
+          - rpg
+          - general
+          - custom
+          description: Which preset the card was last built from. Provenance, not
+            a constraint — every preset is editable, so `order` is not checked against
+            it.
+        order:
+          type: array
+          items:
+            type: string
+            anyOf:
+            - type: string
+              enum:
+              - story
+              - characters
+              - combat
+              - world
+              - music
+              - visuals
+              - pacing
+              - gameplay
+              - replayability
+              - difficulty
+              - writing
+              - performance
+              - value
+              - art_direction
+              - voice_acting
+            - type: string
+              pattern: "^custom:[1-9][0-9]{0,3}$"
+            description: Either a catalogue key or a `custom:N` key the reviewer invented
+              on this card.
+          maxItems: 12
+          description: The scorecard's facets in display order. Unique. A `custom:N`
+            entry must have a non-empty `labels` entry — an unnamed custom row has
+            nothing to render — which OpenAPI cannot express; the API enforces it
+            with a 422.
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 40
+          description: Optional display names, keyed by facet. Keys must appear in
+            `order` and values must be non-empty. On a catalogue facet this is a display
+            override only — the key stays canonical, so a row renamed "Job System"
+            still counts as `combat`. On a `custom:N` facet it is required.
+        scores:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+            maximum: 100
+          description: Facet key to score, on the same 0..100 scale as `rating`. Keys
+            must appear in `order`.
+        weights:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+            maximum: 100
+          description: Optional per-facet share of the 100-point budget, used to weight
+            `facet_average`. Absent means unweighted (every scored facet counts once).
+            When present the keys are exactly those in `order` and the values sum
+            to exactly 100 — an invariant OpenAPI cannot express, enforced by the
+            API with a 422.
+      required:
+      - template
+      - order
     Review:
       type: object
       properties:
@@ -1072,6 +1146,10 @@ components:
         body:
           type: object
           description: Free-form JSON.
+          nullable: true
+        facets:
+          allOf:
+          - "$ref": "#/components/schemas/ReviewFacets"
           nullable: true
         is_shared:
           type: boolean
@@ -1104,6 +1182,10 @@ components:
           type: object
           description: Free-form JSON.
           nullable: true
+        facets:
+          allOf:
+          - "$ref": "#/components/schemas/ReviewFacets"
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -1129,6 +1211,10 @@ components:
         body:
           type: object
           description: Free-form JSON.
+          nullable: true
+        facets:
+          allOf:
+          - "$ref": "#/components/schemas/ReviewFacets"
           nullable: true
         created_at:
           type: string
@@ -11943,6 +12029,12 @@ paths:
                       type: object
                       nullable: true
                       description: Optional structured review body (free-form JSON).
+                    facets:
+                      allOf:
+                      - "$ref": "#/components/schemas/ReviewFacets"
+                      nullable: true
+                      description: 'Optional per-category scorecard. Omit or send
+                        null for a quick take; `{"order": []}` is stored as null.'
                     is_shared:
                       type: boolean
                       description: Whether the review is shared. Optional. Write-only
@@ -12047,6 +12139,12 @@ paths:
                       type: object
                       nullable: true
                       description: Optional structured review body (free-form JSON).
+                    facets:
+                      allOf:
+                      - "$ref": "#/components/schemas/ReviewFacets"
+                      nullable: true
+                      description: 'Optional per-category scorecard. Omit or send
+                        null for a quick take; `{"order": []}` is stored as null.'
                     is_shared:
                       type: boolean
                       description: Whether the review is shared. Optional. Write-only
@@ -12096,6 +12194,12 @@ paths:
                       type: object
                       nullable: true
                       description: Optional structured review body (free-form JSON).
+                    facets:
+                      allOf:
+                      - "$ref": "#/components/schemas/ReviewFacets"
+                      nullable: true
+                      description: 'Optional per-category scorecard. Omit or send
+                        null for a quick take; `{"order": []}` is stored as null.'
                     is_shared:
                       type: boolean
                       description: Whether the review is shared. Optional. Write-only
