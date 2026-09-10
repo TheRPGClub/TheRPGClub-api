@@ -3,6 +3,8 @@
 module Api
   module V1
     class StarboardController < ApplicationController
+      before_action :require_admin_or_service!, only: %i[create update destroy]
+
       def index
         render_collection(RpgClubStarboardEntry.all, resource: StarboardEntryResource, default_order: { created_at: :desc })
       end

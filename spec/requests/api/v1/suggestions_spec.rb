@@ -85,10 +85,16 @@ RSpec.describe 'api/v1/suggestions', type: :request do
 
     delete 'Delete a suggestion' do
       tags 'Suggestions'
+      description 'Admin- or service-only (any authenticated caller may create a suggestion, but ' \
+                  'deleting one is restricted so a member cannot remove another member\'s suggestion).'
       produces 'application/json'
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do

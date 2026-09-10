@@ -40,7 +40,7 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
     post 'Create a starboard entry' do
       tags 'Starboard'
-      description 'Records a starred Discord message (typically sent by the bot service principal). ' \
+      description 'Admin- or service-only (`rpg_club_starboard` is bot/Discord-maintained). ' \
                   '`message_id`, `channel_id`, `starboard_message_id` and `author_id` are required; ' \
                   '`star_count` is optional (defaults to 0).'
       consumes 'application/json'
@@ -56,6 +56,10 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
       response '201', 'entry created' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/StarboardEntry' } }
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '422', 'validation failed' do
@@ -91,7 +95,8 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
     patch 'Update a starboard entry' do
       tags 'Starboard'
-      description 'Partial update (any subset of the writable columns) — typically bumps `star_count`.'
+      description 'Admin- or service-only. Partial update (any subset of the writable columns) — ' \
+                  'typically bumps `star_count`.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -103,6 +108,10 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
       response '200', 'updated' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/StarboardEntry' } }
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do
@@ -120,7 +129,7 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
     put 'Replace a starboard entry (alias)' do
       tags 'Starboard'
-      description 'Alias for PATCH (applied as a partial assign).'
+      description 'Admin- or service-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -140,10 +149,15 @@ RSpec.describe 'api/v1/starboard', type: :request do
 
     delete 'Delete a starboard entry' do
       tags 'Starboard'
+      description 'Admin- or service-only.'
       produces 'application/json'
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
+      end
+
+      response '403', 'forbidden — admin or service principal required' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do

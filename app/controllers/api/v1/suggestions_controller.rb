@@ -3,6 +3,8 @@
 module Api
   module V1
     class SuggestionsController < ApplicationController
+      before_action :require_admin_or_service!, only: %i[destroy]
+
       def index
         render_collection(RpgClubSuggestion.all, resource: SuggestionResource, default_order: { created_at: :desc })
       end
