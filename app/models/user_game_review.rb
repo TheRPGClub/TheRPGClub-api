@@ -65,7 +65,7 @@ class UserGameReview < ApplicationRecord
   #
   # Only ever a derived reading: the overall `rating` stays authored, and the
   # gap between the two is usually the interesting part of a review. This is
-  # the natural hook for the per-game facet aggregates (#8).
+  # the natural hook for the per-game facet aggregates, if the club adds them.
   def facet_average
     data = facets.is_a?(Hash) ? facets.stringify_keys : {}
     order = data["order"]
