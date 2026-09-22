@@ -388,19 +388,22 @@ module OpenapiSchemas
       # including the write-only `is_shared` and `updated_at` the curated shape trims.
       Review: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
-        body: json, facets: ref("ReviewFacets", nullable: true), is_shared: bool,
+        title: str(nullable: true, maxLength: 120), body: json,
+        facets: ref("ReviewFacets", nullable: true), is_shared: bool,
         created_at: ts, updated_at: ts
       ),
       # ReviewUserEntryResource (ReviewFields + user), for the game-scoped reviews list.
       ReviewUserEntry: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
-        body: json, facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        title: str(nullable: true, maxLength: 120), body: json,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts,
         user: ref("UserSummary")
       ),
       # ReviewEntryResource (ReviewFields + game), embedded in the user profile preview.
       ReviewEntry: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
-        body: json, facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        title: str(nullable: true, maxLength: 120), body: json,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts,
         game: ref("GameSummary")
       ),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
