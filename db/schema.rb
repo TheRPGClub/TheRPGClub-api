@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_22_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -372,7 +372,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "rpg_club_collection_csv_imports", primary_key: "import_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "current_index", default: 0, null: false
     t.string "source_file_name", limit: 255
     t.bigint "source_file_size"
@@ -380,7 +380,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
     t.string "template_version", limit: 20
     t.boolean "test_mode", default: false, null: false
     t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "status"], name: "ix_coll_csv_imports_user"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'paused'::character varying::text, 'completed'::character varying::text, 'canceled'::character varying::text])", name: "ck_coll_csv_imports_status"
@@ -405,28 +405,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "rpg_club_completionator_imports", primary_key: "import_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "current_index", default: 0, null: false
     t.string "source_filename", limit: 255
     t.string "status", limit: 20, null: false
     t.boolean "test_mode", default: false, null: false
     t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "status"], name: "ix_completionator_imports_user"
   end
 
   create_table "rpg_club_game_keys", primary_key: "key_id", force: :cascade do |t|
-    t.timestamptz "claimed_at", precision: 6
+    t.timestamptz "claimed_at"
     t.string "claimed_by_user_id", limit: 30
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.boolean "donor_notify_on_claim", default: false, null: false, comment: "1 when the donor requests a notification on claim."
     t.string "donor_user_id", limit: 30, null: false
     t.string "game_title", limit: 200, null: false
     t.bigint "gamedb_game_id"
     t.string "key_value", limit: 200, null: false
     t.string "platform", limit: 50, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["claimed_by_user_id", "game_title"], name: "ix_game_keys_available"
     t.index ["game_title"], name: "ix_game_keys_title"
     t.index ["gamedb_game_id"], name: "ix_game_keys_game"
@@ -447,35 +447,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "rpg_club_gamedb_import_title_map", primary_key: "map_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
     t.bigint "gamedb_game_id"
     t.string "status", limit: 20, null: false
     t.string "title_norm", limit: 500, null: false
     t.string "title_raw", limit: 500, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["status"], name: "ix_gamedb_import_title_status"
     t.index ["title_norm"], name: "ux_gamedb_import_title_norm", unique: true
   end
 
   create_table "rpg_club_gamedb_imports", primary_key: "import_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "current_index", default: 0, null: false
     t.string "source_filename", limit: 255
     t.string "status", limit: 20, null: false
     t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "status"], name: "ix_gamedb_imports_user"
   end
 
   create_table "rpg_club_gotm_audit_imports", primary_key: "import_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "current_index", default: 0, null: false
     t.string "source_filename", limit: 255
     t.string "status", limit: 20, null: false
     t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "status"], name: "ix_gotm_audit_imports_user"
   end
@@ -515,17 +515,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "rpg_club_presence_prompt_history", primary_key: "prompt_id", id: { type: :string, limit: 64 }, force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "game_title", limit: 300, null: false
     t.string "game_title_norm", limit: 300, null: false
-    t.timestamptz "resolved_at", precision: 6
+    t.timestamptz "resolved_at"
     t.string "status", limit: 20, default: "PENDING", null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "game_title_norm", "status"], name: "idx_rpg_club_presence_prompt_hist_user"
   end
 
   create_table "rpg_club_presence_prompt_opts", primary_key: ["user_id", "scope", "game_title_norm"], force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "game_title", limit: 300
     t.string "game_title_norm", limit: 300, null: false
     t.string "scope", limit: 10, null: false
@@ -535,67 +535,67 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
 
   create_table "rpg_club_public_reminders", primary_key: "reminder_id", force: :cascade do |t|
     t.string "channel_id", limit: 30, null: false
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
-    t.timestamptz "due_at", precision: 6, null: false
+    t.timestamptz "due_at", null: false
     t.boolean "enabled", default: true, null: false
     t.string "message", limit: 2000, null: false
     t.bigint "recur_every"
     t.string "recur_unit", limit: 10
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["due_at", "enabled"], name: "ix_rpg_club_public_reminders_due"
   end
 
   create_table "rpg_club_raw_modal_sessions", primary_key: "session_id", id: { type: :string, limit: 120 }, force: :cascade do |t|
     t.string "channel_id", limit: 30
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
-    t.timestamptz "expires_at", precision: 6, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "expires_at", null: false
     t.string "feature_id", limit: 60, null: false
     t.string "flow_id", limit: 60, null: false
     t.string "guild_id", limit: 30
     t.string "owner_user_id", limit: 30, null: false
     t.text "state_json", null: false
     t.string "status", limit: 20, default: "OPEN", null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["expires_at"], name: "ix_raw_modal_sess_expires"
     t.index ["owner_user_id", "status"], name: "ix_raw_modal_sess_owner_status"
     t.check_constraint "status::text = ANY (ARRAY['OPEN'::character varying::text, 'SUBMITTED'::character varying::text, 'EXPIRED'::character varying::text])", name: "ck_raw_modal_session_status"
   end
 
   create_table "rpg_club_rss_feed_items", primary_key: ["feed_id", "item_id_hash"], force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "feed_id", null: false
     t.string "item_id_hash", limit: 128, null: false
-    t.timestamptz "published_at", precision: 6
+    t.timestamptz "published_at"
     t.string "title"
     t.string "url", limit: 2048
   end
 
   create_table "rpg_club_rss_feeds", primary_key: "feed_id", force: :cascade do |t|
     t.string "channel_id", limit: 30, null: false
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "exclude_keywords", limit: 4000
     t.string "feed_name", limit: 200
     t.string "feed_url", limit: 512, null: false
     t.string "include_keywords", limit: 4000
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
   end
 
   create_table "rpg_club_starboard", primary_key: "message_id", id: { type: :string, limit: 30 }, force: :cascade do |t|
     t.string "author_id", limit: 30, null: false
     t.string "channel_id", limit: 30, null: false
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.integer "star_count", default: 0, null: false
     t.string "starboard_message_id", limit: 30, null: false
   end
 
   create_table "rpg_club_steam_app_gamedb_map", primary_key: "map_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
     t.bigint "gamedb_game_id"
     t.string "status", limit: 20, null: false
     t.bigint "steam_app_id", null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["created_by", "status"], name: "ix_steam_app_gamedb_map_creator"
     t.index ["status"], name: "ix_steam_app_gamedb_map_status"
     t.check_constraint "status::text = ANY (ARRAY['mapped'::character varying::text, 'skipped'::character varying::text])", name: "ck_steam_app_gamedb_map_status"
@@ -629,7 +629,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "rpg_club_steam_collection_imports", primary_key: "import_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "current_index", default: 0, null: false
     t.string "source_profile_name", limit: 255
     t.string "status", limit: 20, null: false
@@ -637,31 +637,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
     t.string "steam_profile_ref", limit: 255
     t.boolean "test_mode", default: false, null: false
     t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "status"], name: "ix_steam_coll_imports_user"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'paused'::character varying::text, 'completed'::character varying::text, 'canceled'::character varying::text])", name: "ck_steam_coll_imports_status"
   end
 
   create_table "rpg_club_suggestion_review_sessions", primary_key: "session_id", id: { type: :string, limit: 120 }, force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "current_index", default: 0, null: false
     t.string "reviewer_id", limit: 30, null: false
     t.string "suggestion_ids", limit: 4000, null: false
     t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["created_at"], name: "ix_rpg_club_sug_rev_sess_created"
     t.index ["reviewer_id"], name: "ix_rpg_club_sug_rev_sess_reviewer"
   end
 
   create_table "rpg_club_suggestions", primary_key: "suggestion_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
     t.string "created_by_name", limit: 100
     t.string "details", limit: 2000
     t.string "labels", limit: 200
     t.string "title", limit: 200, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["created_at"], name: "ix_rpg_club_suggestions_created"
   end
 
@@ -669,13 +669,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
     t.binary "avatar_blob"
     t.string "avatar_hash", limit: 128
     t.string "avatar_url", limit: 512
-    t.timestamptz "changed_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "changed_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "changed_at"], name: "ix_rpg_club_user_avatar_history_user"
   end
 
   create_table "rpg_club_user_nick_history", primary_key: "event_id", force: :cascade do |t|
-    t.timestamptz "changed_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "changed_at", default: -> { "statement_timestamp()" }, null: false
     t.string "new_nick", limit: 100
     t.string "old_nick", limit: 100
     t.string "user_id", limit: 30, null: false
@@ -684,53 +684,53 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
 
   create_table "rpg_club_users", primary_key: "user_id", id: { type: :string, limit: 30 }, force: :cascade do |t|
     t.binary "avatar_blob"
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "discord_avatar", limit: 128
     t.boolean "donor_notify_on_claim", default: false, null: false, comment: "1 when the user wants to be notified when a donated key is claimed."
     t.string "emoji_name", limit: 32
     t.string "global_name", limit: 100
     t.boolean "is_bot", default: false, null: false
-    t.timestamptz "last_fetched_at", precision: 6
-    t.timestamptz "last_seen_at", precision: 6
+    t.timestamptz "last_fetched_at"
+    t.timestamptz "last_seen_at"
     t.bigint "message_count", default: 0
     t.binary "profile_image"
-    t.timestamptz "profile_image_at", precision: 6
+    t.timestamptz "profile_image_at"
     t.boolean "role_admin", default: false, null: false
     t.boolean "role_member", default: false, null: false
     t.boolean "role_moderator", default: false, null: false
     t.boolean "role_newcomer", default: false, null: false
     t.boolean "role_regular", default: false, null: false
-    t.timestamptz "server_joined_at", precision: 6
-    t.timestamptz "server_left_at", precision: 6
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "server_joined_at"
+    t.timestamptz "server_left_at"
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "username", limit: 100
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
     t.string "action_type", limit: 1, null: false
-    t.timestamptz "actioned_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "actioned_at", default: -> { "statement_timestamp()" }, null: false
     t.binary "avatar_blob"
     t.string "completionator_url", limit: 512
-    t.timestamptz "created_at", precision: 6
+    t.timestamptz "created_at"
     t.boolean "donor_notify_on_claim", comment: "Audit snapshot of donor notification preference."
     t.string "global_name", limit: 100
     t.boolean "is_bot"
-    t.timestamptz "last_fetched_at", precision: 6
-    t.timestamptz "last_seen_at", precision: 6
+    t.timestamptz "last_fetched_at"
+    t.timestamptz "last_seen_at"
     t.bigint "message_count"
     t.string "nsw_friend_code", limit: 50
     t.binary "profile_image"
-    t.timestamptz "profile_image_at", precision: 6
+    t.timestamptz "profile_image_at"
     t.string "psn_username", limit: 100
     t.boolean "role_admin"
     t.boolean "role_member"
     t.boolean "role_moderator"
     t.boolean "role_newcomer"
     t.boolean "role_regular"
-    t.timestamptz "server_joined_at", precision: 6
-    t.timestamptz "server_left_at", precision: 6
+    t.timestamptz "server_joined_at"
+    t.timestamptz "server_left_at"
     t.string "steam_url", limit: 512
-    t.timestamptz "updated_at", precision: 6
+    t.timestamptz "updated_at"
     t.string "user_id", limit: 30, null: false
     t.string "username", limit: 100
     t.string "xbl_username", limit: 100
@@ -765,7 +765,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "rpg_club_xbox_collection_imports", primary_key: "import_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "current_index", default: 0, null: false
     t.string "gamertag", limit: 100
     t.string "source_file_name", limit: 255
@@ -774,7 +774,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
     t.string "status", limit: 20, null: false
     t.string "template_version", limit: 20
     t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.string "xuid", limit: 30
     t.index ["user_id", "status"], name: "ix_xbox_coll_imports_user"
@@ -783,11 +783,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "rpg_club_xbox_title_gamedb_map", primary_key: "map_id", force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
     t.bigint "gamedb_game_id"
     t.string "status", limit: 20, null: false
-    t.timestamptz "updated_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "xbox_title_id", limit: 40, null: false
     t.index ["status"], name: "ix_xbox_title_gamedb_map_status"
     t.index ["xbox_title_id"], name: "ux_xbox_title_gamedb_map_title", unique: true
@@ -806,17 +806,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
 
   create_table "thread_game_links", primary_key: ["thread_id", "gamedb_game_id"], force: :cascade do |t|
     t.bigint "gamedb_game_id", null: false
-    t.timestamptz "linked_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "linked_at", default: -> { "statement_timestamp()" }, null: false
     t.string "thread_id", limit: 50, null: false
     t.index ["gamedb_game_id"], name: "ix_thread_game_links_game"
   end
 
   create_table "threads", primary_key: "thread_id", id: { type: :string, limit: 30 }, force: :cascade do |t|
-    t.timestamptz "created_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "forum_channel_id", limit: 30, null: false
     t.bigint "gamedb_game_id"
     t.string "is_archived", limit: 1, default: "N", null: false
-    t.timestamptz "last_seen_at", precision: 6
+    t.timestamptz "last_seen_at"
     t.string "skip_linking", limit: 1, default: "N", null: false
     t.string "thread_name", limit: 200, null: false
     t.index ["forum_channel_id"], name: "ix_threads_forum"
@@ -902,6 +902,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
     t.bigint "gamedb_game_id", null: false
     t.boolean "is_shared", default: true, null: false
     t.integer "rating", null: false
+    t.string "title", limit: 120
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.string "user_id", limit: 50, null: false
     t.index ["gamedb_game_id"], name: "ix_user_game_reviews_game"
@@ -911,10 +912,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_000100) do
   end
 
   create_table "user_now_playing", primary_key: "entry_id", force: :cascade do |t|
-    t.timestamptz "added_at", precision: 6, default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "added_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "gamedb_game_id"
     t.string "note", limit: 500
-    t.timestamptz "note_updated_at", precision: 6
+    t.timestamptz "note_updated_at"
     t.bigint "platform_id"
     t.bigint "sort_order"
     t.string "user_id", limit: 30, null: false

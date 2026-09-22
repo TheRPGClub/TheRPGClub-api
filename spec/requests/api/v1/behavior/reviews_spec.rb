@@ -145,6 +145,32 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
     end
 
+    it "creates a review with a title" do
+      post "/api/v1/users/#{owner.user_id}/reviews",
+        params: { data: { gamedb_game_id: game.game_id, rating: 85, title: "A masterpiece" } },
+        headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "title")).to eq("A masterpiece")
+      expect(UserGameReview.find(json.dig("data", "review_id")).title).to eq("A masterpiece")
+    end
+
+    it "422s when the title exceeds 120 characters" do
+      post "/api/v1/users/#{owner.user_id}/reviews",
+        params: { data: { gamedb_game_id: game.game_id, rating: 85, title: "x" * 121 } },
+        headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "accepts a title of exactly 120 characters" do
+      post "/api/v1/users/#{owner.user_id}/reviews",
+        params: { data: { gamedb_game_id: game.game_id, rating: 85, title: "x" * 120 } },
+        headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:created)
+    end
+
     it "400s when the data envelope is missing" do
       post "/api/v1/users/#{owner.user_id}/reviews",
         params: { gamedb_game_id: game.game_id, rating: 50 }, headers: auth_headers_for(owner), as: :json
@@ -494,6 +520,48 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.dig("data", "rating")).to eq(95)
       expect(review.reload.rating).to eq(95)
+    end
+
+    it "sets a title on an existing review" do
+      review = create(:review, user: owner, rating: 40, title: nil)
+
+      patch "/api/v1/reviews/#{review.review_id}",
+        params: { data: { title: "Solid entry" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "title")).to eq("Solid entry")
+      expect(review.reload.title).to eq("Solid entry")
+    end
+
+    it "leaves the title unchanged when omitted" do
+      review = create(:review, user: owner, rating: 40, title: "Original title")
+
+      patch "/api/v1/reviews/#{review.review_id}",
+        params: { data: { rating: 55 } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(review.reload.title).to eq("Original title")
+    end
+
+    it "clears a title back to null" do
+      review = create(:review, user: owner, rating: 40, title: "Original title")
+
+      patch "/api/v1/reviews/#{review.review_id}",
+        params: { data: { title: nil } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "title")).to be_nil
+      expect(review.reload.title).to be_nil
+    end
+
+    it "422s on a title over 120 characters rather than storing it" do
+      review = create(:review, user: owner, rating: 40, title: "Original title")
+
+      patch "/api/v1/reviews/#{review.review_id}",
+        params: { data: { title: "x" * 121 } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(review.reload.title).to eq("Original title")
     end
 
     it "adds a scorecard to an existing review" do

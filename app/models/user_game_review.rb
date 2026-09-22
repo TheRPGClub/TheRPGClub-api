@@ -50,6 +50,7 @@ class UserGameReview < ApplicationRecord
   validates :rating,
             presence: true,
             numericality: { only_integer: true, in: 0..100 }
+  validates :title, length: { maximum: 120 }, allow_nil: true
   validates :user_id, uniqueness: { scope: :gamedb_game_id }
   # The reviews controller writes `params.require(:data).permit!`, so this is
   # the only thing between a client and arbitrary jsonb the web app renders.

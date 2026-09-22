@@ -7,6 +7,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
   writable = {
     gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create. Unique per (user, game).' },
     rating: { type: :integer, description: 'Numeric rating. Required on create.' },
+    title: { type: :string, nullable: true, maxLength: 120, description: 'Optional short title. Omit to leave unchanged; send null to clear.' },
     body: { type: :object, nullable: true, description: 'Optional structured review body (free-form JSON).' },
     facets: { allOf: [ { '$ref' => '#/components/schemas/ReviewFacets' } ], nullable: true,
               description: 'Optional per-category scorecard. Omit or send null for a quick take; ' \

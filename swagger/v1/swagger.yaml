@@ -1143,6 +1143,10 @@ components:
           type: integer
         rating:
           type: integer
+        title:
+          type: string
+          nullable: true
+          maxLength: 120
         body:
           type: object
           description: Free-form JSON.
@@ -1178,6 +1182,10 @@ components:
           type: integer
         rating:
           type: integer
+        title:
+          type: string
+          nullable: true
+          maxLength: 120
         body:
           type: object
           description: Free-form JSON.
@@ -1208,6 +1216,10 @@ components:
           type: integer
         rating:
           type: integer
+        title:
+          type: string
+          nullable: true
+          maxLength: 120
         body:
           type: object
           description: Free-form JSON.
@@ -12025,6 +12037,12 @@ paths:
                     rating:
                       type: integer
                       description: Numeric rating. Required on create.
+                    title:
+                      type: string
+                      nullable: true
+                      maxLength: 120
+                      description: Optional short title. Omit to leave unchanged;
+                        send null to clear.
                     body:
                       type: object
                       nullable: true
@@ -12135,6 +12153,12 @@ paths:
                     rating:
                       type: integer
                       description: Numeric rating. Required on create.
+                    title:
+                      type: string
+                      nullable: true
+                      maxLength: 120
+                      description: Optional short title. Omit to leave unchanged;
+                        send null to clear.
                     body:
                       type: object
                       nullable: true
@@ -12190,6 +12214,12 @@ paths:
                     rating:
                       type: integer
                       description: Numeric rating. Required on create.
+                    title:
+                      type: string
+                      nullable: true
+                      maxLength: 120
+                      description: Optional short title. Omit to leave unchanged;
+                        send null to clear.
                     body:
                       type: object
                       nullable: true
