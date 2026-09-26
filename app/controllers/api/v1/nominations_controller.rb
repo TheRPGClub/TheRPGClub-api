@@ -12,11 +12,10 @@ module Api
     # Writes are owner-gated so members can nominate from the web: the service
     # token (the bot's `/nominate`) may upsert/delete for any user at any
     # time; a logged-in member only for themselves, and only while the round's
-    # nomination window is open (see BotVotingInfo.nominations_open_for? —
-    # nominations collect for the round after the current one and close when
-    # the current round's vote opens). Admins share the service exemption for
-    # fixups. The round-scoped destroy_all stays admin/service-only (the
-    # `/admin delete-*-noms` reset).
+    # nomination window is open (see VotingRound.nominations_open_for? —
+    # only the current round collects, until its vote opens). Admins share the
+    # service exemption for fixups. The round-scoped destroy_all stays
+    # admin/service-only (the `/admin delete-*-noms` reset).
     #
     # The two backing tables share an identical shape, so each public action is
     # a thin GOTM/NR-GOTM pair that delegates to a model-agnostic private
@@ -181,7 +180,7 @@ module Api
       # need out-of-band fixups (mirrors the votes reset precedent).
       def require_nomination_window!
         return true if admin_or_service?
-        return true if BotVotingInfo.nominations_open_for?(params[:round])
+        return true if VotingRound.nominations_open_for?(params[:round])
 
         render json: {
           error: "nominations_closed",

@@ -4,7 +4,7 @@ require "rails_helper"
 
 # Behavior specs for the GOTM / NR-GOTM vote endpoints (#173). Casting is
 # owner-gated (service may act for anyone; admins get no exemption) and only
-# allowed inside the round's voting window (next_vote_at until the deadline,
+# allowed inside the round's voting window (voting_opens_at until the close,
 # defaulting to the end of the following Sunday, US Eastern). Identified vote
 # rows stay admin/service-only until voting has ended; the anonymous tally is
 # always open. Toggle / cap-eviction rules live in Voting::CastVote.
@@ -18,7 +18,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
   let(:round) { SecureRandom.random_number(1_000_000_000) }
 
   def schedule_voting!(round_number)
-    create(:voting_info, round_number: round_number, next_vote_at: opens_at)
+    create(:voting_round, round_number: round_number, voting_opens_at: opens_at)
   end
 
   def before_voting(&) = travel_to(Time.utc(2026, 6, 4, 12), &)

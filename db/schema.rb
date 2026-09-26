@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_22_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_26_000200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -947,6 +947,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_22_000100) do
     t.index "user_id, platform_id, lower((url)::text)", name: "index_user_socials_on_user_platform_url", unique: true, where: "(url IS NOT NULL)"
     t.index ["platform_id"], name: "index_user_socials_on_platform_id"
     t.index ["user_id"], name: "index_user_socials_on_user_id"
+  end
+
+  create_table "voting_events", force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.datetime "available_at", null: false
+    t.datetime "claimed_until"
+    t.datetime "created_at", null: false
+    t.datetime "delivered_at"
+    t.datetime "expires_at"
+    t.string "kind", limit: 64, null: false
+    t.jsonb "payload", default: {}, null: false
+    t.bigint "round_number", null: false
+    t.datetime "updated_at", null: false
+    t.index ["available_at"], name: "ix_voting_events_pending", where: "(delivered_at IS NULL)"
+    t.index ["round_number", "kind"], name: "ux_voting_events_round_kind", unique: true
+  end
+
+  create_table "voting_rounds", primary_key: "round_number", id: :bigint, default: nil, force: :cascade do |t|
+    t.datetime "closed_at"
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.string "month_year", limit: 200, null: false
+    t.jsonb "pending_ties", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.datetime "voting_closes_at", null: false
+    t.datetime "voting_opens_at", null: false
+    t.index ["round_number"], name: "ix_voting_rounds_undecided", where: "(decided_at IS NULL)"
   end
 
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"

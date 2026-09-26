@@ -1884,6 +1884,102 @@ components:
       - one_day_reminder_sent
       - voting_open
       - voting_ended
+    VotingRound:
+      type: object
+      properties:
+        round_number:
+          type: integer
+        month_year:
+          type: string
+        voting_opens_at:
+          type: string
+          format: date-time
+        voting_closes_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        phase:
+          type: string
+          enum:
+          - nominating
+          - voting
+          - closed
+          - tie
+          - decided
+        nominations_open:
+          type: boolean
+        voting_open:
+          type: boolean
+        voting_ended:
+          type: boolean
+        pending_ties:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              "$ref": "#/components/schemas/GameSummary"
+          description: Tied games per category (`gotm`, `nr_gotm`) awaiting an admin
+            pick; empty when none.
+      required:
+      - round_number
+      - month_year
+      - voting_opens_at
+      - voting_closes_at
+      - phase
+      - nominations_open
+      - voting_open
+      - voting_ended
+      - pending_ties
+    VotingEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        round_number:
+          type: integer
+        kind:
+          type: string
+          enum:
+          - nomination_reminder_5d
+          - nomination_reminder_1d
+          - voting_opened
+          - voting_closed
+          - tie_pending
+          - round_decided
+        payload:
+          type: object
+          description: Free-form JSON.
+        available_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        claimed_until:
+          type: string
+          format: date-time
+          nullable: true
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        attempts:
+          type: integer
+      required:
+      - id
+      - round_number
+      - kind
+      - payload
+      - available_at
+      - attempts
     PublicReminder:
       type: object
       properties:
@@ -17385,6 +17481,70 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_events/claim":
+    post:
+      summary: Claim due voting events
+      tags:
+      - Voting Events
+      description: 'Service only. Leases up to `limit` due, unexpired, undelivered
+        events (oldest first) for five minutes: post each to Discord, then ack it.
+        An unacked event is handed out again once its lease runs out, so delivery
+        is at-least-once.'
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50
+        required: false
+      responses:
+        '200':
+          description: claimed events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/VotingEvent"
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_events/{id}/ack":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Acknowledge a delivered voting event
+      tags:
+      - Voting Events
+      description: Service only. Marks the event delivered; idempotent.
+      responses:
+        '200':
+          description: event acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VotingEvent"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/voting_info":
     get:
       summary: List voting info rounds
@@ -17733,6 +17893,227 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_rounds":
+    get:
+      summary: List voting rounds
+      tags:
+      - Voting Rounds
+      description: The GOTM / NR-GOTM round lifecycle, newest round first. `round_number`
+        is the round being nominated for, voted on and won. Open to any authenticated
+        caller.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: voting rounds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/VotingRound"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_rounds/current":
+    get:
+      summary: Show the current voting round
+      tags:
+      - Voting Rounds
+      description: 'The one round the club is on: the lowest round not yet decided,
+        whether it is collecting nominations, voting, or awaiting a tie-break. 404
+        when none is scheduled. Clients read the round number and `phase` from here
+        instead of deriving them.'
+      responses:
+        '200':
+          description: current voting round
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VotingRound"
+        '404':
+          description: no round scheduled
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_rounds/{id}":
+    parameters:
+    - name: id
+      in: path
+      description: Round number
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Show a voting round
+      tags:
+      - Voting Rounds
+      responses:
+        '200':
+          description: voting round
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VotingRound"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Reschedule a voting round
+      tags:
+      - Voting Rounds
+      description: Admin or service. Moving `voting_opens_at` without a `voting_closes_at`
+        keeps the default window (through the end of that weekend's Sunday, US Eastern).
+        Setting `voting_closes_at` to now closes voting early. 422 `round_decided`
+        once the round is decided.
+      parameters: []
+      responses:
+        '200':
+          description: voting round rescheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VotingRound"
+        '422':
+          description: round decided or invalid window
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an admin or the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    voting_opens_at:
+                      type: string
+                      format: date-time
+                      description: When nominations close and voting opens.
+                    voting_closes_at:
+                      type: string
+                      format: date-time
+                      description: When voting closes.
+                    month_year:
+                      type: string
+                      description: The month the winners are played, e.g. "November
+                        2026".
+              required:
+              - data
+        required: true
+  "/api/v1/voting_rounds/{id}/resolve_tie":
+    parameters:
+    - name: id
+      in: path
+      description: Round number
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Break a tie
+      tags:
+      - Voting Rounds
+      description: Admin or service. Records one or more of a category's tied games
+        as its winners; once no category is tied the round is decided and the next
+        one scheduled. 422 `no_tie` when the category is not tied, `invalid_pick`
+        for a game outside the tie.
+      parameters: []
+      responses:
+        '200':
+          description: tie resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/VotingRound"
+        '422':
+          description: no tie or invalid pick
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an admin or the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    category:
+                      type: string
+                      enum:
+                      - gotm
+                      - nr_gotm
+                    gamedb_game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      minItems: 1
+                  required:
+                  - category
+                  - gamedb_game_ids
+              required:
+              - data
+        required: true
   "/api/v1/users/{user_id}/wizard_sessions":
     parameters:
     - name: user_id

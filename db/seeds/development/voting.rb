@@ -3,24 +3,25 @@
 # GOTM / Non-RPG GOTM voting data for local development (#40, #97, #172, #173).
 #
 # The endpoints under gotm_entries/:round and nr_gotm_entries/:round are all
-# gated on round state — Voting::CastVote needs an open window, VotesController
-# hides voter identities until BotVotingInfo#voting_ended?, and
+# gated on round state (VotingRound) — Voting::CastVote needs an open window,
+# VotesController hides voter identities until the round has ended, and
 # NominationsController lets a member write only while
-# BotVotingInfo.nominations_open_for? — so seeding a single winner row leaves
+# VotingRound.nominations_open_for? — so seeding a single winner row leaves
 # every one of those paths unreachable. This builds three rounds instead: two
-# finished ones (nominations + ballots + winners) and a current one.
+# decided ones (nominations + ballots + winners) and the current one.
 #
-# Nominations and voting are mutually exclusive by design — nominations collect
-# for the round after the current one and close the moment the current round's
-# vote opens — so the current round can only sit in one of them:
+# A round's nominations close the moment its vote opens, so the current round
+# can only sit in one phase:
 #
 #   SEED_VOTING_PHASE=voting      (default) round 3's window is open now: cast
 #                                 votes, read the anonymous tally, watch the
-#                                 cap evict your oldest vote. Round 4
-#                                 nominations are closed.
-#   SEED_VOTING_PHASE=nominating  round 3's vote opens in five days, so round 4
-#                                 nominations are open to members and round 3
-#                                 has no ballots yet.
+#                                 cap evict your oldest vote.
+#   SEED_VOTING_PHASE=nominating  round 3's vote opens in five days, so its
+#                                 nominations are open to members and it has
+#                                 no ballots yet.
+#
+# The bot's legacy bot_voting_info rows are written too, one per round, for a
+# local bot still reading them.
 phase = ENV.fetch("SEED_VOTING_PHASE", "voting")
 unless %w[voting nominating].include?(phase)
   raise ArgumentError, %(SEED_VOTING_PHASE must be "voting" or "nominating", got #{phase.inspect})
@@ -39,7 +40,7 @@ catalog = GamedbGame.where("igdb_id < 0").index_by(&:slug)
 # Fridays keeps BotVotingInfo#vote_deadline's default Friday -> Sunday rule
 # meaningful for round 1, which deliberately leaves vote_ends_at NULL.
 friday_before = lambda do |time|
-  local = time.in_time_zone(BotVotingInfo::VOTING_TIME_ZONE)
+  local = time.in_time_zone(Voting::Schedule::TIME_ZONE)
   (local.beginning_of_day - ((local.wday - 5) % 7).days) + 18.hours
 end
 
@@ -56,15 +57,16 @@ rounds = {
 }
 current_round = 3
 
-# Re-seeding into the other phase: drop the rows the incoming phase says should
-# not exist yet, so flipping SEED_VOTING_PHASE never leaves ballots on a round
-# whose window has not opened (or nominations for a round that is not
-# collecting).
+# Re-seeding into the nominating phase: drop the ballots, so flipping
+# SEED_VOTING_PHASE never leaves votes on a round whose window has not opened.
+# Nothing lives past the current round: earlier versions of this file collected
+# round 4 nominations, and deciding a round (Voting::LegacySync, or the
+# automation) schedules the next one, so clear both.
 if phase == "nominating"
   [ GotmVote, NrGotmVote ].each { |model| model.where(round_number: current_round).delete_all }
-else
-  [ GotmNomination, NrGotmNomination ].each { |model| model.where(round_number: current_round + 1).delete_all }
 end
+[ GotmNomination, NrGotmNomination ].each { |model| model.where(round_number: current_round + 1).delete_all }
+VotingRound.where(round_number: (current_round + 1)..).delete_all
 
 rounds.each do |round_number, window|
   info = BotVotingInfo.find_or_initialize_by(round_number: round_number)
@@ -75,12 +77,25 @@ rounds.each do |round_number, window|
     five_day_reminder_sent: window.fetch(:finished) || phase == "voting",
     one_day_reminder_sent: window.fetch(:finished) || phase == "voting"
   )
+
+  # Attributes set directly rather than through VotingRound#decide!, which
+  # would schedule a round 4.
+  closes = window.fetch(:ends) || Voting::Schedule.default_closes_at(window.fetch(:opens))
+  round = VotingRound.find_or_initialize_by(round_number: round_number)
+  round.update!(
+    voting_opens_at: window.fetch(:opens),
+    voting_closes_at: closes,
+    closed_at: window.fetch(:finished) ? closes : nil,
+    decided_at: window.fetch(:finished) ? closes : nil,
+    month_year: Voting::Schedule.month_label(window.fetch(:opens)),
+    pending_ties: {}
+  )
 end
 
 # [nominator username, game slug, reason]. A round holds at most one nomination
 # per user, and the per-user vote cap keys off the size of the field: rounds 2
 # and 3 clear Voting::CastVote::LARGE_FIELD_THRESHOLD (9) for a cap of 3, while
-# rounds 1 and 4 stay under it for a cap of 2.
+# round 1 stays under it for a cap of 2.
 #
 # These are written one row per member up to the worst case, not to the size
 # the round ends up with: seed_nominations drops rows for games that won an
@@ -126,14 +141,6 @@ gotm_nominations = {
     # a game-less row is legal here — this is what makes CastVote raise
     # NominationMissingGameError and return 422 nomination_missing_game.
     [ "couch_coop",     nil,                     "Placeholder, still deciding." ]
-  ],
-  4 => [
-    [ "dev_admin",     "iron-covenant",      "Fresh field, same taste." ],
-    [ "party_member",  "ashes-of-asteria",   "Replay value for a second run." ],
-    [ "tavern_keeper", "saltmarsh-requiem",  "Did not win last round, deserves another shot." ],
-    [ "dice_goblin",   "the-sunken-archive", "Everyone said they wanted it eventually." ],
-    [ "loot_hoarder",  "verdant-hollow",     "Still the best thing none of us has finished." ],
-    [ "crit_fisher",   "moonlit-tactics",    "Something short, for once." ]
   ]
 }
 
@@ -158,20 +165,8 @@ nr_gotm_nominations = {
     [ "dice_goblin",   "deep-signal",        "Play it with headphones off the lights." ],
     [ "loot_hoarder",  "tessera",            "Third time nominating, no regrets." ],
     [ "crit_fisher",   "static-bloom",       "The runs get good after hour three." ]
-  ],
-  4 => [
-    [ "dev_admin",     "harbourline",      "Ports. Again." ],
-    [ "party_member",  "static-bloom",     "Giving it one more chance." ],
-    [ "tavern_keeper", "neon-drift-rally", "Twenty minutes a night still holds." ],
-    [ "dice_goblin",   "deep-signal",      "Headphones on, lights off, second attempt." ]
   ]
 }
-
-# Round 4 only exists while nominations are collecting for it.
-unless phase == "nominating"
-  gotm_nominations.delete(4)
-  nr_gotm_nominations.delete(4)
-end
 
 member_ids = members.values.map(&:user_id)
 
@@ -263,14 +258,7 @@ seed_category = lambda do |nomination_model, vote_model, entry_model, fields, sl
   won_game_ids = Set.new
 
   fields.sort.each do |round_number, rows|
-    window = rounds[round_number]
-    # The trailing round (nominating phase) has no scheduled vote yet —
-    # nominations only, and no winner to record.
-    if window.nil?
-      seed_nominations.call(nomination_model, vote_model, round_number, rows, Time.current, won_game_ids)
-      next
-    end
-
+    window = rounds.fetch(round_number)
     nominations = seed_nominations.call(
       nomination_model, vote_model, round_number, rows, window.fetch(:opens), won_game_ids
     )
@@ -338,13 +326,15 @@ end
         "cap is #{cap}, not #{Voting::CastVote::LARGE_FIELD_CAP}. Add a nominator to that round's list."
 end
 
-current = BotVotingInfo.find_by(round_number: current_round)
+current = VotingRound.current
+raise "the current voting round is #{current&.round_number.inspect}, not #{current_round}" unless current&.round_number == current_round
+
 puts <<~SUMMARY
   Seeded voting: #{GotmNomination.count} GOTM / #{NrGotmNomination.count} NR-GOTM nominations, \
   #{GotmVote.count} GOTM / #{NrGotmVote.count} NR-GOTM votes, \
   #{GotmEntry.count} GOTM / #{NrGotmEntry.count} NR-GOTM winners.
-    round #{current_round} voting open:   #{current.voting_open?} (#{current.next_vote_at.iso8601} -> #{current.vote_deadline.iso8601})
-    round #{current_round + 1} nominations open: #{BotVotingInfo.nominations_open_for?(current_round + 1)}
+    round #{current_round} phase: #{current.phase} (vote #{current.voting_opens_at.iso8601} -> #{current.voting_closes_at.iso8601})
+    round #{current_round} nominations open: #{VotingRound.nominations_open_for?(current_round)}
     GOTM vote cap for round #{current_round}: #{Voting::CastVote.cap_for(GotmNomination, current_round)} \
   (NR-GOTM: #{Voting::CastVote.cap_for(NrGotmNomination, current_round)})
 SUMMARY

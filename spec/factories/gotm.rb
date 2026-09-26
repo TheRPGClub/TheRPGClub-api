@@ -52,6 +52,13 @@ FactoryBot.define do
     gamedb_game_id { nomination.gamedb_game_id }
   end
 
+  # Defaults to a round still collecting nominations; pass voting_opens_at /
+  # voting_closes_at to place it in another phase.
+  factory :voting_round do
+    round_number { SecureRandom.random_number(1_000_000_000) }
+    voting_opens_at { 2.days.from_now }
+  end
+
   factory :voting_info, class: "BotVotingInfo" do
     round_number { SecureRandom.random_number(1_000_000_000) }
     next_vote_at { 2.days.from_now }
