@@ -262,6 +262,14 @@ Rails.application.routes.draw do
       resources :voting_info, only: %i[index show create update destroy] do
         collection { get "current" }
       end
+      # The backend-owned round lifecycle and the bot's outbox of posts it
+      # calls for (see VotingRound, VotingEvent).
+      resources :voting_rounds, only: %i[index show update] do
+        collection { get "current" }
+        member { post "resolve_tie" }
+      end
+      post "voting_events/claim",   to: "voting_events#claim"
+      post "voting_events/:id/ack", to: "voting_events#ack"
       # Bot presence history (service-only, #94). The Discord bot records each
       # `/setpresence` change and reads back the latest/recent activity as it
       # migrates `BotPresenceHistory` off direct SQL (RPGClub_GameDB#795). Plain

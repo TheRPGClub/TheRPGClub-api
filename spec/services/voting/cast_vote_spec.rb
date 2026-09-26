@@ -14,8 +14,8 @@ RSpec.describe Voting::CastVote do
 
   let(:round) { 999_001 }
 
-  def create_round!(next_vote_at: 1.hour.ago, vote_ends_at: 1.day.from_now)
-    BotVotingInfo.create!(round_number: round, next_vote_at: next_vote_at, vote_ends_at: vote_ends_at)
+  def create_round!(opens_at: 1.hour.ago, closes_at: 1.day.from_now, **attrs)
+    VotingRound.create!(round_number: round, voting_opens_at: opens_at, voting_closes_at: closes_at, **attrs)
   end
 
   # Nominations are unique per (round, user), so each gets its own nominator.
@@ -35,52 +35,30 @@ RSpec.describe Voting::CastVote do
   describe "the voting window" do
     let(:nomination) { create_nomination!(101) }
 
-    it "rejects a cast when the round has no voting info" do
+    it "rejects a cast when the round is not scheduled" do
       expect { cast!("voter", nomination) }
         .to raise_error(described_class::VotingClosedError, /not scheduled/)
     end
 
     it "rejects a cast before voting opens" do
-      create_round!(next_vote_at: 1.hour.from_now, vote_ends_at: 3.days.from_now)
+      create_round!(opens_at: 1.hour.from_now, closes_at: 3.days.from_now)
 
       expect { cast!("voter", nomination) }
         .to raise_error(described_class::VotingClosedError, /not opened yet/)
     end
 
-    it "rejects a cast after the explicit vote_ends_at" do
-      create_round!(next_vote_at: 3.days.ago, vote_ends_at: 1.minute.ago)
+    it "rejects a cast after the close" do
+      create_round!(opens_at: 3.days.ago, closes_at: 1.minute.ago)
 
       expect { cast!("voter", nomination) }
         .to raise_error(described_class::VotingClosedError, /closed at/)
     end
-  end
 
-  describe "the default Friday-to-Sunday window (BotVotingInfo#vote_deadline)" do
-    # 2026-07-10 16:00 UTC is Friday noon US Eastern (EDT, UTC-4).
-    let(:friday_noon_et) { Time.utc(2026, 7, 10, 16, 0, 0) }
+    it "rejects a cast once the round is decided, even inside the window" do
+      create_round!(decided_at: 1.minute.ago)
 
-    it "defaults the deadline to the end of the following Sunday, US Eastern" do
-      info = BotVotingInfo.create!(round_number: round, next_vote_at: friday_noon_et)
-
-      # Sunday 2026-07-12 23:59:59 ET == Monday 2026-07-13 03:59:59 UTC.
-      expect(info.vote_deadline).to be_within(1.second).of(Time.utc(2026, 7, 13, 3, 59, 59))
-      expect(info.voting_open?(Time.utc(2026, 7, 11, 12, 0))).to be(true)   # Saturday
-      expect(info.voting_open?(Time.utc(2026, 7, 13, 5, 0))).to be(false)   # Monday morning ET
-      expect(info.voting_ended?(Time.utc(2026, 7, 13, 5, 0))).to be(true)
-    end
-
-    it "ends the same day when voting opens on a Sunday" do
-      sunday_noon_et = Time.utc(2026, 7, 12, 16, 0, 0)
-      info = BotVotingInfo.create!(round_number: round, next_vote_at: sunday_noon_et)
-
-      expect(info.vote_deadline).to be_within(1.second).of(Time.utc(2026, 7, 13, 3, 59, 59))
-    end
-
-    it "prefers an explicit vote_ends_at over the default" do
-      override = Time.utc(2026, 7, 20, 12, 0, 0)
-      info = BotVotingInfo.create!(round_number: round, next_vote_at: friday_noon_et, vote_ends_at: override)
-
-      expect(info.vote_deadline).to eq(override)
+      expect { cast!("voter", nomination) }
+        .to raise_error(described_class::VotingClosedError, /closed at/)
     end
   end
 

@@ -40,6 +40,8 @@ module Api
       def create
         entry = NrGotmEntry.create!(request_data.slice(*CREATE_ATTRS))
         entry.reload
+        # The bot's round-setup wizard recording winners decides the round.
+        Voting::LegacySync.winner_recorded(entry.round_number)
         # GameResource's nr_gotm_won is a live EXISTS(nr_gotm_entries) subquery,
         # but GamesController#relations_data caches it on an alternate game's
         # behalf without touching that game -- bump the shared version so

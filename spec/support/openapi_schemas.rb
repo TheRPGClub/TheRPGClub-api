@@ -562,6 +562,27 @@ module OpenapiSchemas
         vote_ends_at: ts(nullable: true),
         vote_deadline: ts(nullable: true), voting_open: bool, voting_ended: bool
       ),
+      # VotingRoundResource: a round keyed by the round being nominated for,
+      # voted on and won, with the server's derived lifecycle state. Nominations
+      # close and voting opens at `voting_opens_at`; `phase` is nominating ->
+      # voting -> closed (or tie, awaiting an admin pick) -> decided.
+      VotingRound: obj(
+        round_number: int, month_year: str,
+        voting_opens_at: ts, voting_closes_at: ts, closed_at: ts(nullable: true), decided_at: ts(nullable: true),
+        phase: str(enum: VotingRound::PHASES),
+        nominations_open: bool, voting_open: bool, voting_ended: bool,
+        pending_ties: {
+          type: :object, additionalProperties: array_of("GameSummary"),
+          description: "Tied games per category (`gotm`, `nr_gotm`) awaiting an admin pick; empty when none."
+        }
+      ),
+      # VotingEventResource: a queued Discord post for the bot. `payload` holds
+      # the ids the post needs (e.g. `winners` / `ties` per category).
+      VotingEvent: obj(
+        id: int, round_number: int, kind: str(enum: VotingEvent::KINDS), payload: json(nullable: false),
+        available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
+        delivered_at: ts(nullable: true), attempts: int
+      ),
       PublicReminder: obj(
         reminder_id: int, channel_id: str, message: str, due_at: ts,
         recur_every: int(nullable: true), recur_unit: str(nullable: true), enabled: bool,

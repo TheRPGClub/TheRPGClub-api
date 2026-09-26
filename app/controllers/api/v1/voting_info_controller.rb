@@ -25,12 +25,14 @@ module Api
 
       def create
         record = BotVotingInfo.create!(request_data)
+        Voting::LegacySync.voting_info_written(record)
         render json: { data: VotingInfoResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = BotVotingInfo.find(params[:id])
         record.update!(request_data)
+        Voting::LegacySync.voting_info_written(record)
         render json: { data: VotingInfoResource.new(record).serializable_hash }
       end
 

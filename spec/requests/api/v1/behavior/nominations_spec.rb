@@ -4,18 +4,17 @@ require "rails_helper"
 
 # Behavior specs for the GOTM / NR-GOTM nomination endpoints (#97): open reads,
 # owner-gated writes behind the nomination window (service/admin bypass), and
-# the admin round resets. The window rule (BotVotingInfo.nominations_open_for?)
-# opens nominations for the round AFTER the current (highest) one and closes
-# them when the current round's vote opens.
+# the admin round resets. The window rule (VotingRound.nominations_open_for?)
+# opens nominations for the current round only, until its vote opens.
 RSpec.describe "api/v1/nominations behavior", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
   let(:member) { create(:user) }
 
-  # Creates the current voting-info round and returns the round number member
-  # nominations are open for (current + 1, until vote_opens_at).
+  # Creates the current voting round and returns its number: member
+  # nominations are open for it until vote_opens_at.
   def open_nomination_round!(vote_opens_at = 2.days.from_now)
-    create(:voting_info, next_vote_at: vote_opens_at).round_number + 1
+    create(:voting_round, voting_opens_at: vote_opens_at).round_number
   end
 
   describe "GET /api/v1/gotm_entries/:round/nominations" do
@@ -162,8 +161,7 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
     end
 
     it "rejects a member nomination once the current round's vote has opened" do
-      info = create(:voting_info, next_vote_at: 1.hour.from_now)
-      round = info.round_number + 1
+      round = open_nomination_round!(1.hour.from_now)
 
       travel_to(2.hours.from_now) do
         post "/api/v1/gotm_entries/#{round}/nominations",
@@ -175,8 +173,8 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
       expect(GotmNomination.where(round_number: round)).to be_empty
     end
 
-    it "rejects a member nomination for the current (frozen) round" do
-      round = open_nomination_round! - 1 # the current round itself
+    it "rejects a member nomination for any round but the current one" do
+      round = open_nomination_round! + 1
 
       post "/api/v1/gotm_entries/#{round}/nominations",
         params: payload, headers: auth_headers_for(member), as: :json

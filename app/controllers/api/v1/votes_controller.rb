@@ -10,7 +10,7 @@ module Api
     # read the per-nomination tally (counts only), a voter may read their own
     # votes, and only admin/service may read identified vote rows (the bot
     # needs them to tally and announce results). Once voting has ended
-    # (BotVotingInfo#voting_ended?), identified rows open up to any
+    # (VotingRound.ended?), identified rows open up to any
     # authenticated caller.
     #
     # Casting is owner-gated: the service token may cast on behalf of any
@@ -169,7 +169,7 @@ module Api
       end
 
       def voting_ended?
-        BotVotingInfo.find_by(round_number: params[:round])&.voting_ended? || false
+        VotingRound.ended?(params[:round])
       end
 
       def forbidden!

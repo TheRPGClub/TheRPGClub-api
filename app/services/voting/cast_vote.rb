@@ -6,8 +6,9 @@ module Voting
   # class serves both categories — the controller passes the twin model pair.
   #
   # Rules:
-  # - Voting is open from the round's next_vote_at until its vote_deadline
-  #   (see BotVotingInfo); a cast outside the window raises VotingClosedError.
+  # - Voting is open while the round's VotingRound is in its voting phase
+  #   (voting_opens_at until voting_closes_at, never once decided); a cast
+  #   outside it raises VotingClosedError.
   # - A user holds at most `cap` votes per round per category: 3 when the
   #   round has >= 9 nominations, else 2 — evaluated at cast time.
   # - Votes are per game (vote rows denormalize the nomination's game):
@@ -73,19 +74,18 @@ module Voting
     private
 
     def ensure_voting_open!(round_number)
-      info = BotVotingInfo.find_by(round_number: round_number)
-      if info.nil? || info.next_vote_at.blank?
-        raise VotingClosedError, "voting is not scheduled for round #{round_number}"
-      end
+      round = VotingRound.find_by(round_number: round_number)
+      raise VotingClosedError, "voting is not scheduled for round #{round_number}" if round.nil?
 
       now = Time.current
-      if now < info.next_vote_at
+      case round.phase(now)
+      when "voting" then nil
+      when "nominating"
         raise VotingClosedError,
-          "voting for round #{round_number} has not opened yet (opens at #{info.next_vote_at.iso8601})"
+          "voting for round #{round_number} has not opened yet (opens at #{round.voting_opens_at.iso8601})"
+      else
+        raise VotingClosedError, "voting for round #{round_number} closed at #{round.voting_closes_at.iso8601}"
       end
-      return if now < info.vote_deadline
-
-      raise VotingClosedError, "voting for round #{round_number} closed at #{info.vote_deadline.iso8601}"
     end
 
     # pg_advisory_xact_lock holds until commit/rollback and only ever blocks
