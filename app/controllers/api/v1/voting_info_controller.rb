@@ -3,6 +3,8 @@
 module Api
   module V1
     class VotingInfoController < ApplicationController
+      before_action :require_admin_or_service!, only: %i[create update destroy]
+
       def index
         render_collection(BotVotingInfo.all, resource: VotingInfoResource, default_order: { round_number: :desc })
       end
