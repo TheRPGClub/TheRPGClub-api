@@ -48,16 +48,34 @@ RSpec.describe Voting::DecideRound do
     expect(result.winners.fetch("gotm")).to eq([ game.game_id ])
   end
 
-  it "leaves a shared lead pending and the round undecided" do
+  it "puts a shared lead to a runoff and leaves the round undecided" do
     tied = [ nominate(:gotm_nomination), nominate(:gotm_nomination) ]
     tied.each { |nomination| vote_for(:gotm_vote, nomination, 2) }
+    nr_winner = nominate(:nr_gotm_nomination)
+    vote_for(:nr_gotm_vote, nr_winner, 1)
 
     result = described_class.new(round, now: after_close).call
 
-    expect(result.ties).to eq("gotm" => tied.map(&:gamedb_game_id).sort)
+    tied_ids = tied.map(&:gamedb_game_id).sort
+    expect(result.ties).to eq("gotm" => tied_ids)
+    expect(result.winners).to eq("nr_gotm" => [ nr_winner.gamedb_game_id ])
     expect(GotmEntry.where(round_number: round.round_number)).to be_empty
-    expect(round.reload.phase(after_close)).to eq("tie")
+    expect(round.reload).to have_attributes(
+      closed_at: after_close, pending_ties: { "gotm" => tied_ids }, runoff_ties: { "gotm" => tied_ids },
+      runoff_opens_at: after_close, runoff_closes_at: after_close + 24.hours, decided_at: nil
+    )
+    expect(round.phase(after_close)).to eq("runoff")
     expect(VotingRound.exists?(round.round_number + 1)).to be(false)
+  end
+
+  it "runs the runoff for VOTING_RUNOFF_HOURS" do
+    tied = [ nominate(:gotm_nomination), nominate(:gotm_nomination) ]
+    tied.each { |nomination| vote_for(:gotm_vote, nomination, 1) }
+    stub_const("ENV", ENV.to_h.merge("VOTING_RUNOFF_HOURS" => "48"))
+
+    described_class.new(round, now: after_close).call
+
+    expect(round.reload.runoff_closes_at).to eq(after_close + 48.hours)
   end
 
   it "records no winner for a category nobody voted in" do

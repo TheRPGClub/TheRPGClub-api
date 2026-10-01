@@ -34,7 +34,9 @@ class GotmVote < ApplicationRecord
   # NOT NULL columns; presence-validated so a malformed write returns 422
   # rather than a raw NotNullViolation 500.
   validates :round_number, :user_id, :nomination_id, :gamedb_game_id, presence: true
-  # Mirrors the ux_gotm_votes_round_user_game unique index — one vote per game
-  # per user per round (the backstop behind the cast service's toggle logic).
-  validates :gamedb_game_id, uniqueness: { scope: %i[round_number user_id] }
+  # Mirrors the ux_gotm_votes_round_runoff_user_game unique index — one vote
+  # per game per user per round and ballot (the backstop behind the cast
+  # service's toggle logic). `runoff` marks a tie-breaker runoff vote, kept
+  # apart from the main vote's rows.
+  validates :gamedb_game_id, uniqueness: { scope: %i[round_number runoff user_id] }
 end

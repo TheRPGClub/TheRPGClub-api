@@ -8,7 +8,9 @@
 class VotingEvent < ApplicationRecord
   KINDS = %w[
     nomination_reminder_5d nomination_reminder_1d
-    voting_opened voting_closed tie_pending round_decided
+    voting_opened voting_closed
+    runoff_opened runoff_closed
+    tie_pending round_decided
   ].freeze
   LEASE = 5.minutes
 

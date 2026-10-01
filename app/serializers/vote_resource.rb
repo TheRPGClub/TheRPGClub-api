@@ -9,6 +9,7 @@
 # only renders it to admin/service while a round's voting window is open, to
 # the voter for their own votes, and to everyone once voting has ended (votes
 # are anonymous until then; anonymous counts are served by VoteTallyResource).
+# `runoff` marks a vote on the round's tie-breaker runoff.
 # The voter is embedded via UserSummaryResource and the game via
 # GameSummaryResource; either may be `null` since the columns are unenforced
 # by a FK, like the nomination tables.
@@ -16,7 +17,7 @@ class VoteResource
   include BaseResource
 
   attributes :vote_id, :round_number, :user_id, :nomination_id,
-             :gamedb_game_id, :voted_at
+             :gamedb_game_id, :voted_at, :runoff
 
   one :user, resource: UserSummaryResource
   one :game, resource: GameSummaryResource

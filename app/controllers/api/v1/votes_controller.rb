@@ -17,6 +17,11 @@ module Api
     # user, a logged-in user only for themselves. The round-scoped DELETE is
     # the admin reset, mirroring the nominations one.
     #
+    # A round with a tie-breaker runoff has a second ballot. Casts go to
+    # whichever ballot is open; the reads and the reset take `runoff=true` to
+    # address the runoff instead of the main vote, and runoff votes stay
+    # anonymous while the runoff is open, like the main vote.
+    #
     # The two backing tables share an identical shape, so each public action
     # is a thin GOTM/NR-GOTM pair delegating to a model-agnostic private
     # helper, like NominationsController.
@@ -60,12 +65,12 @@ module Api
 
       # POST /api/v1/gotm_entries/:round/votes
       def create_gotm
-        cast_vote(GotmVote, GotmNomination)
+        cast_vote("gotm")
       end
 
       # POST /api/v1/nr_gotm_entries/:round/votes
       def create_nr_gotm
-        cast_vote(NrGotmVote, NrGotmNomination)
+        cast_vote("nr_gotm")
       end
 
       # DELETE /api/v1/gotm_entries/:round/votes
@@ -83,10 +88,11 @@ module Api
       # Cast or toggle a vote. 201 when a vote was placed, 200 when the cast
       # toggled an existing vote off. The response always carries the action,
       # any removed/evicted votes and a human-readable warning so the caller
-      # can tell the voter what was replaced or taken back.
-      def cast_vote(vote_model, nomination_model)
+      # can tell the voter what was replaced or taken back, and `runoff` says
+      # which ballot the cast went to.
+      def cast_vote(category)
         data = request_data.slice(*WRITABLE_ATTRS)
-        result = Voting::CastVote.new(vote_model: vote_model, nomination_model: nomination_model).cast!(
+        result = Voting::CastVote.new(category: category).cast!(
           round_number: params[:round],
           user_id: data["user_id"],
           nomination_id: data["nomination_id"]
@@ -97,6 +103,7 @@ module Api
           vote: result.vote && VoteResource.new(result.vote).serializable_hash,
           removed_votes: result.removed_votes.map { |vote| VoteResource.new(vote).serializable_hash },
           cap: result.cap,
+          runoff: result.runoff,
           warning: result.warning
         } }, status: result.action == "voted" ? :created : :ok
       rescue Voting::CastVote::VotingClosedError => error
@@ -105,6 +112,8 @@ module Api
         render json: { error: "nomination_not_found", message: error.message }, status: :not_found
       rescue Voting::CastVote::NominationMissingGameError => error
         render json: { error: "nomination_missing_game", message: error.message }, status: :unprocessable_entity
+      rescue Voting::CastVote::GameNotInRunoffError => error
+        render json: { error: "not_in_runoff", message: error.message }, status: :unprocessable_entity
       end
 
       # The identified round list — voter ids attached. Anonymous while the
@@ -112,7 +121,7 @@ module Api
       def render_votes(vote_model)
         return forbidden! unless admin_or_service? || voting_ended?
 
-        scope = vote_model.where(round_number: params[:round]).preload(:user, game: :images)
+        scope = ballot(vote_model).preload(:user, game: :images)
 
         render_collection(scope, resource: VoteResource,
           default_order: { voted_at: :asc, vote_id: :asc })
@@ -121,18 +130,17 @@ module Api
       # The anonymous tally: votes per nomination, no voter identities — safe
       # for any authenticated caller at any time. Unpaginated: bounded by the
       # round's nominations. Nominations with zero votes have no row. `meta`
-      # carries the round's per-user vote cap so clients can render "vote for
+      # carries the ballot's per-user vote cap so clients can render "vote for
       # up to N" before the user has cast anything.
       def render_tally(vote_model, nomination_model)
-        rows = vote_model
-          .where(round_number: params[:round])
+        rows = ballot(vote_model)
           .group(:nomination_id, :gamedb_game_id)
           .select(:nomination_id, :gamedb_game_id, "COUNT(*) AS vote_count")
           .order(Arel.sql("COUNT(*) DESC"), :nomination_id)
 
         render json: {
           data: VoteTallyResource.new(rows).serializable_hash,
-          meta: { cap: Voting::CastVote.cap_for(nomination_model, params[:round]) }
+          meta: { cap: tally_cap(nomination_model), runoff: runoff? }
         }
       end
 
@@ -143,19 +151,19 @@ module Api
       def render_user_votes(vote_model)
         return forbidden! unless admin_or_service? || own_votes? || voting_ended?
 
-        votes = vote_model
-          .where(round_number: params[:round], user_id: params[:user_id])
+        votes = ballot(vote_model)
+          .where(user_id: params[:user_id])
           .preload(:user, game: :images)
           .order(voted_at: :asc, vote_id: :asc)
 
         render json: { data: VoteResource.new(votes).serializable_hash }
       end
 
-      # DELETE /.../votes — clears every vote for the round (the admin reset,
-      # mirroring the nominations one). Always round-scoped, so the whole
-      # table can never be wiped.
+      # DELETE /.../votes — clears every vote on the round's ballot (the admin
+      # reset, mirroring the nominations one). Always round-scoped, so the
+      # whole table can never be wiped.
       def destroy_all_votes(vote_model)
-        count = vote_model.where(round_number: params[:round]).delete_all
+        count = ballot(vote_model).delete_all
         render json: { deleted: true, count: count }
       end
 
@@ -169,7 +177,22 @@ module Api
       end
 
       def voting_ended?
-        VotingRound.ended?(params[:round])
+        VotingRound.ended?(params[:round], runoff: runoff?)
+      end
+
+      # The round's votes on the ballot the request addresses.
+      def ballot(vote_model)
+        vote_model.where(round_number: params[:round], runoff: runoff?)
+      end
+
+      def runoff?
+        ActiveModel::Type::Boolean.new.cast(params[:runoff]) || false
+      end
+
+      def tally_cap(nomination_model)
+        return Voting::CastVote::RUNOFF_CAP if runoff?
+
+        Voting::CastVote.cap_for(nomination_model, params[:round])
       end
 
       def forbidden!

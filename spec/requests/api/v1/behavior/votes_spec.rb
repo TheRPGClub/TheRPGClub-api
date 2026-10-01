@@ -52,6 +52,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
       )
       expect(json.dig("data", "removed_votes")).to eq([])
       expect(json.dig("data", "cap")).to eq(1)
+      expect(json.dig("data", "runoff")).to be(false)
       expect(json.dig("data", "warning")).to be_nil
     end
 
@@ -261,7 +262,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
         { "nomination_id" => niche.nomination_id, "gamedb_game_id" => niche.gamedb_game_id,
           "vote_count" => 1 }
       ])
-      expect(json.fetch("meta")).to eq("cap" => 1)
+      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => false)
     end
 
     it "reports half the round's distinct games as the cap" do
@@ -269,7 +270,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
 
       get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
 
-      expect(json.fetch("meta")).to eq("cap" => 5)
+      expect(json.fetch("meta")).to eq("cap" => 5, "runoff" => false)
     end
 
     it "requires authentication" do
@@ -367,6 +368,119 @@ RSpec.describe "api/v1/votes behavior", type: :request do
     end
   end
 
+  # A tied category's runoff: the main vote closed and the round opened a
+  # second ballot limited to the tied games (Voting::DecideRound).
+  describe "runoff ballot" do
+    let(:runoff_closes_at) { Time.utc(2026, 6, 9, 4) }
+    let(:tied) { create_list(:gotm_nomination, 2, round_number: round) }
+    let(:untied) { create(:gotm_nomination, round_number: round) }
+
+    def during_runoff(&) = travel_to(Time.utc(2026, 6, 8, 12), &)
+    def after_runoff(&) = travel_to(Time.utc(2026, 6, 9, 12), &)
+
+    before do
+      ties = { "gotm" => tied.map(&:gamedb_game_id).sort }
+      schedule_voting!(round).update!(closed_at: Time.utc(2026, 6, 8, 4), pending_ties: ties, runoff_ties: ties,
+        runoff_opens_at: Time.utc(2026, 6, 8, 4), runoff_closes_at: runoff_closes_at)
+      create(:gotm_vote, nomination: tied[0], user: member)
+    end
+
+    it "casts a runoff vote for a tied game, apart from the member's main votes" do
+      during_runoff { cast_gotm(round, member, tied[0], auth_headers_for(member)) }
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data")).to include("action" => "voted", "runoff" => true, "cap" => 1)
+      expect(json.dig("data", "vote", "runoff")).to be(true)
+      expect(GotmVote.where(round_number: round, user_id: member.user_id).pluck(:runoff))
+        .to contain_exactly(false, true)
+    end
+
+    it "moves the member's one runoff vote to the other tied game" do
+      during_runoff do
+        cast_gotm(round, member, tied[0], auth_headers_for(member))
+        cast_gotm(round, member, tied[1], auth_headers_for(member))
+      end
+
+      expect(json.dig("data", "removed_votes", 0, "gamedb_game_id")).to eq(tied[0].gamedb_game_id)
+      expect(json.dig("data", "warning")).to include("runoff takes one vote")
+      expect(GotmVote.where(round_number: round, runoff: true).pluck(:gamedb_game_id))
+        .to eq([ tied[1].gamedb_game_id ])
+    end
+
+    it "refuses a game that is not in the runoff" do
+      during_runoff { cast_gotm(round, member, untied, auth_headers_for(member)) }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "not_in_runoff")
+    end
+
+    it "refuses a category without a runoff" do
+      nomination = create(:nr_gotm_nomination, round_number: round)
+
+      during_runoff do
+        post "/api/v1/nr_gotm_entries/#{round}/votes",
+          params: { data: { user_id: member.user_id, nomination_id: nomination.nomination_id } },
+          headers: auth_headers_for(member), as: :json
+      end
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "voting_closed")
+    end
+
+    it "refuses a cast once the runoff window has closed" do
+      after_runoff { cast_gotm(round, member, tied[0], auth_headers_for(member)) }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("message")).to include("runoff")
+    end
+
+    it "tallies the runoff separately, with the runoff cap" do
+      create(:gotm_vote, nomination: tied[1], runoff: true)
+
+      get "/api/v1/gotm_entries/#{round}/votes/tally", params: { runoff: true }, headers: auth_headers_for(member)
+
+      expect(json.fetch("data")).to eq([
+        { "nomination_id" => tied[1].nomination_id, "gamedb_game_id" => tied[1].gamedb_game_id, "vote_count" => 1 }
+      ])
+      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => true)
+
+      get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
+
+      expect(json.fetch("data").map { |row| row.fetch("nomination_id") }).to eq([ tied[0].nomination_id ])
+    end
+
+    it "keeps runoff votes anonymous until the runoff closes, while main votes are already open" do
+      runoff_vote = create(:gotm_vote, nomination: tied[1], runoff: true)
+
+      during_runoff do
+        get "/api/v1/gotm_entries/#{round}/votes", headers: auth_headers_for(member)
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data").map { |vote| vote.fetch("runoff") }).to eq([ false ])
+
+        get "/api/v1/gotm_entries/#{round}/votes", params: { runoff: true }, headers: auth_headers_for(member)
+        expect(response).to have_http_status(:forbidden)
+
+        get "/api/v1/gotm_entries/#{round}/votes/#{member.user_id}", params: { runoff: true },
+          headers: auth_headers_for(member)
+        expect(json.fetch("data")).to eq([])
+      end
+
+      after_runoff do
+        get "/api/v1/gotm_entries/#{round}/votes", params: { runoff: true }, headers: auth_headers_for(member)
+      end
+      expect(json.fetch("data").map { |vote| vote.fetch("vote_id") }).to eq([ runoff_vote.vote_id ])
+    end
+
+    it "resets only the addressed ballot" do
+      create(:gotm_vote, nomination: tied[1], runoff: true)
+
+      delete "/api/v1/gotm_entries/#{round}/votes", params: { runoff: true }, headers: service_headers
+
+      expect(json).to eq("deleted" => true, "count" => 1)
+      expect(GotmVote.where(round_number: round).pluck(:runoff)).to eq([ false ])
+    end
+  end
+
   # The NR-GOTM endpoints share the controller/service internals; cover the
   # twin paths and their window gate.
   describe "NR-GOTM twin endpoints" do
@@ -414,7 +528,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
         { "nomination_id" => nomination.nomination_id,
           "gamedb_game_id" => nomination.gamedb_game_id, "vote_count" => 1 }
       ])
-      expect(json.fetch("meta")).to eq("cap" => 1)
+      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => false)
     end
 
     it "gates the identified NR list and the reset like the GOTM ones" do

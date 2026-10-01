@@ -18,6 +18,12 @@ module Voting
     ENV["VOTING_AUTOMATION_ENABLED"] == "true"
   end
 
+  # How long a tie-breaker runoff runs. It opens as soon as the main vote's
+  # tally ties.
+  def self.runoff_duration
+    Integer(ENV.fetch("VOTING_RUNOFF_HOURS", "24")).hours
+  end
+
   def self.models_for(category)
     CATEGORIES.fetch(category.to_s).transform_values(&:constantize)
   end

@@ -1901,6 +1901,18 @@ components:
           type: string
           format: date-time
           nullable: true
+        runoff_opens_at:
+          type: string
+          format: date-time
+          nullable: true
+        runoff_closes_at:
+          type: string
+          format: date-time
+          nullable: true
+        runoff_closed_at:
+          type: string
+          format: date-time
+          nullable: true
         decided_at:
           type: string
           format: date-time
@@ -1911,6 +1923,7 @@ components:
           - nominating
           - voting
           - closed
+          - runoff
           - tie
           - decided
         nominations_open:
@@ -1919,14 +1932,27 @@ components:
           type: boolean
         voting_ended:
           type: boolean
+        runoff_open:
+          type: boolean
+        runoff_ended:
+          type: boolean
         pending_ties:
           type: object
           additionalProperties:
             type: array
             items:
               "$ref": "#/components/schemas/GameSummary"
-          description: Tied games per category (`gotm`, `nr_gotm`) awaiting an admin
-            pick; empty when none.
+          description: 'Tied games per category (`gotm`, `nr_gotm`) still awaiting
+            a decision: the runoff''s ballot while it is open, then any category the
+            runoff left tied for an admin pick. Empty when none.'
+        runoff_ties:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              "$ref": "#/components/schemas/GameSummary"
+          description: 'The runoff''s ballot as it opened: the games each category
+            tied on in the main vote. Empty when the round had no runoff.'
       required:
       - round_number
       - month_year
@@ -1936,7 +1962,10 @@ components:
       - nominations_open
       - voting_open
       - voting_ended
+      - runoff_open
+      - runoff_ended
       - pending_ties
+      - runoff_ties
     VotingEvent:
       type: object
       properties:
@@ -1951,6 +1980,8 @@ components:
           - nomination_reminder_1d
           - voting_opened
           - voting_closed
+          - runoff_opened
+          - runoff_closed
           - tie_pending
           - round_decided
         payload:
@@ -2469,6 +2500,8 @@ components:
         voted_at:
           type: string
           format: date-time
+        runoff:
+          type: boolean
         user:
           allOf:
           - "$ref": "#/components/schemas/UserSummary"
@@ -2484,6 +2517,7 @@ components:
       - nomination_id
       - gamedb_game_id
       - voted_at
+      - runoff
     VoteTally:
       type: object
       properties:
@@ -2515,6 +2549,8 @@ components:
             "$ref": "#/components/schemas/Vote"
         cap:
           type: integer
+        runoff:
+          type: boolean
         warning:
           type: string
           nullable: true
@@ -2522,6 +2558,7 @@ components:
       - action
       - removed_votes
       - cap
+      - runoff
     GotmWin:
       type: object
       properties:
@@ -16974,8 +17011,9 @@ paths:
       tags:
       - GOTM
       description: 'The round''s votes with voter identities, oldest first. Votes
-        are anonymous while the voting window is open: until voting has ended this
-        list is admin/service-only (403 otherwise). Use the tally for anonymous counts.'
+        are anonymous while the voting window is open: until voting has ended (for
+        `runoff=true`, until the runoff has closed) this list is admin/service-only
+        (403 otherwise). Use the tally for anonymous counts.'
       parameters:
       - name: page
         in: query
@@ -16991,6 +17029,14 @@ paths:
           default: 50
           maximum: 500
         required: false
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: GOTM votes
@@ -17024,13 +17070,15 @@ paths:
       description: 'Casts the user''s vote on a nomination, or takes it back. Owner-gated:
         the service token may cast on behalf of any user, a user session only for
         themselves. Only allowed while the round''s voting window is open (from `next_vote_at`
-        until `vote_ends_at`, defaulting to the end of the following Sunday, US Eastern).
-        Votes are per game: voting a game the user already voted takes that vote back
-        (`action: unvoted`, 200) — even via a different nomination of the same game.
-        Users hold at most `cap` votes per round (half the distinct nominated games,
-        rounded down, min 1); casting a new game at the cap evicts their oldest vote(s),
-        reported in `removed_votes` with a `warning` to surface to the voter. 201
-        when a vote was placed.'
+        until `vote_ends_at`, defaulting to the end of the following Sunday, US Eastern),
+        or while the round''s tie-breaker runoff is open: then the cast goes to the
+        runoff ballot (`runoff: true`), only for one of the category''s tied games,
+        with a cap of 1. Votes are per game: voting a game the user already voted
+        takes that vote back (`action: unvoted`, 200) — even via a different nomination
+        of the same game. Users hold at most `cap` votes per round (half the distinct
+        nominated games, rounded down, min 1); casting a new game at the cap evicts
+        their oldest vote(s), reported in `removed_votes` with a `warning` to surface
+        to the voter. 201 when a vote was placed.'
       parameters: []
       responses:
         '201':
@@ -17066,7 +17114,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`voting_closed` (outside the voting window) or `nomination_missing_game`"
+          description: "`voting_closed` (outside the voting and runoff windows, or
+            no runoff in this category), `nomination_missing_game`, or `not_in_runoff`
+            (a game that did not tie)"
           content:
             application/json:
               schema:
@@ -17110,8 +17160,17 @@ paths:
       summary: Delete all GOTM votes for a round
       tags:
       - GOTM
-      description: Admin/service-only. Clears every vote for the round (the reset
-        alongside the nominations one).
+      description: 'Admin/service-only. Clears every vote on the round''s ballot (the
+        reset alongside the nominations one): the main vote, or the runoff with `runoff=true`.'
+      parameters:
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: deleted
@@ -17147,7 +17206,16 @@ paths:
         any authenticated caller at any time — no voter identities. Nominations with
         zero votes have no row; merge against the round's nominations list. `meta.cap`
         is the per-user vote cap for the round (half the distinct nominated games,
-        rounded down, min 1), for rendering "vote for up to N".
+        rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".
+      parameters:
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: vote counts per nomination
@@ -17165,9 +17233,13 @@ paths:
                     properties:
                       cap:
                         type: integer
-                        description: Per-user vote cap for this round.
+                        description: Per-user vote cap for this round's ballot.
+                      runoff:
+                        type: boolean
+                        description: Whether this is the runoff ballot's tally.
                     required:
                     - cap
+                    - runoff
         '401':
           description: unauthenticated
           content:
@@ -17194,8 +17266,17 @@ paths:
       - GOTM
       description: One voter's votes for the round, oldest first (an empty array when
         they have none — never 404). While the voting window is open this is limited
-        to the voter themselves and admin/service; once voting has ended it opens
-        to any authenticated caller.
+        to the voter themselves and admin/service; once voting (or, for `runoff=true`,
+        the runoff) has ended it opens to any authenticated caller.
+      parameters:
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: the user's votes
@@ -17234,8 +17315,9 @@ paths:
       tags:
       - GOTM
       description: 'The round''s votes with voter identities, oldest first. Votes
-        are anonymous while the voting window is open: until voting has ended this
-        list is admin/service-only (403 otherwise). Use the tally for anonymous counts.'
+        are anonymous while the voting window is open: until voting has ended (for
+        `runoff=true`, until the runoff has closed) this list is admin/service-only
+        (403 otherwise). Use the tally for anonymous counts.'
       parameters:
       - name: page
         in: query
@@ -17251,6 +17333,14 @@ paths:
           default: 50
           maximum: 500
         required: false
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: Non-RPG GOTM votes
@@ -17284,13 +17374,15 @@ paths:
       description: 'Casts the user''s vote on a nomination, or takes it back. Owner-gated:
         the service token may cast on behalf of any user, a user session only for
         themselves. Only allowed while the round''s voting window is open (from `next_vote_at`
-        until `vote_ends_at`, defaulting to the end of the following Sunday, US Eastern).
-        Votes are per game: voting a game the user already voted takes that vote back
-        (`action: unvoted`, 200) — even via a different nomination of the same game.
-        Users hold at most `cap` votes per round (half the distinct nominated games,
-        rounded down, min 1); casting a new game at the cap evicts their oldest vote(s),
-        reported in `removed_votes` with a `warning` to surface to the voter. 201
-        when a vote was placed.'
+        until `vote_ends_at`, defaulting to the end of the following Sunday, US Eastern),
+        or while the round''s tie-breaker runoff is open: then the cast goes to the
+        runoff ballot (`runoff: true`), only for one of the category''s tied games,
+        with a cap of 1. Votes are per game: voting a game the user already voted
+        takes that vote back (`action: unvoted`, 200) — even via a different nomination
+        of the same game. Users hold at most `cap` votes per round (half the distinct
+        nominated games, rounded down, min 1); casting a new game at the cap evicts
+        their oldest vote(s), reported in `removed_votes` with a `warning` to surface
+        to the voter. 201 when a vote was placed.'
       parameters: []
       responses:
         '201':
@@ -17326,7 +17418,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`voting_closed` (outside the voting window) or `nomination_missing_game`"
+          description: "`voting_closed` (outside the voting and runoff windows, or
+            no runoff in this category), `nomination_missing_game`, or `not_in_runoff`
+            (a game that did not tie)"
           content:
             application/json:
               schema:
@@ -17370,8 +17464,17 @@ paths:
       summary: Delete all Non-RPG GOTM votes for a round
       tags:
       - GOTM
-      description: Admin/service-only. Clears every vote for the round (the reset
-        alongside the nominations one).
+      description: 'Admin/service-only. Clears every vote on the round''s ballot (the
+        reset alongside the nominations one): the main vote, or the runoff with `runoff=true`.'
+      parameters:
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: deleted
@@ -17407,7 +17510,16 @@ paths:
         any authenticated caller at any time — no voter identities. Nominations with
         zero votes have no row; merge against the round's nominations list. `meta.cap`
         is the per-user vote cap for the round (half the distinct nominated games,
-        rounded down, min 1), for rendering "vote for up to N".
+        rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".
+      parameters:
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: vote counts per nomination
@@ -17425,9 +17537,13 @@ paths:
                     properties:
                       cap:
                         type: integer
-                        description: Per-user vote cap for this round.
+                        description: Per-user vote cap for this round's ballot.
+                      runoff:
+                        type: boolean
+                        description: Whether this is the runoff ballot's tally.
                     required:
                     - cap
+                    - runoff
         '401':
           description: unauthenticated
           content:
@@ -17454,8 +17570,17 @@ paths:
       - GOTM
       description: One voter's votes for the round, oldest first (an empty array when
         they have none — never 404). While the voting window is open this is limited
-        to the voter themselves and admin/service; once voting has ended it opens
-        to any authenticated caller.
+        to the voter themselves and admin/service; once voting (or, for `runoff=true`,
+        the runoff) has ended it opens to any authenticated caller.
+      parameters:
+      - name: runoff
+        in: query
+        schema:
+          type: boolean
+          default: false
+        required: false
+        description: Address the round's tie-breaker runoff ballot instead of the
+          main vote.
       responses:
         '200':
           description: the user's votes
@@ -17942,9 +18067,9 @@ paths:
       tags:
       - Voting Rounds
       description: 'The one round the club is on: the lowest round not yet decided,
-        whether it is collecting nominations, voting, or awaiting a tie-break. 404
-        when none is scheduled. Clients read the round number and `phase` from here
-        instead of deriving them.'
+        whether it is collecting nominations, voting, in a tie-breaker runoff, or
+        awaiting an admin tie-break. 404 when none is scheduled. Clients read the
+        round number and `phase` from here instead of deriving them.'
       responses:
         '200':
           description: current voting round
@@ -18064,7 +18189,9 @@ paths:
       - Voting Rounds
       description: Admin or service. Records one or more of a category's tied games
         as its winners; once no category is tied the round is decided and the next
-        one scheduled. 422 `no_tie` when the category is not tied, `invalid_pick`
+        one scheduled. A tied category normally goes to a member runoff first; this
+        is the fallback when the runoff ties again, and also settles a category early
+        while its runoff is open. 422 `no_tie` when the category is not tied, `invalid_pick`
         for a game outside the tie.
       parameters: []
       responses:

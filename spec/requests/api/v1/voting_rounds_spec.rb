@@ -31,8 +31,8 @@ RSpec.describe 'api/v1/voting_rounds', type: :request do
     get 'Show the current voting round' do
       tags 'Voting Rounds'
       description 'The one round the club is on: the lowest round not yet decided, whether it is collecting ' \
-                  'nominations, voting, or awaiting a tie-break. 404 when none is scheduled. Clients read the ' \
-                  'round number and `phase` from here instead of deriving them.'
+                  'nominations, voting, in a tie-breaker runoff, or awaiting an admin tie-break. 404 when none is ' \
+                  'scheduled. Clients read the round number and `phase` from here instead of deriving them.'
       produces 'application/json'
 
       response '200', 'current voting round' do
@@ -107,8 +107,10 @@ RSpec.describe 'api/v1/voting_rounds', type: :request do
     post 'Break a tie' do
       tags 'Voting Rounds'
       description 'Admin or service. Records one or more of a category\'s tied games as its winners; once no ' \
-                  'category is tied the round is decided and the next one scheduled. 422 `no_tie` when the ' \
-                  'category is not tied, `invalid_pick` for a game outside the tie.'
+                  'category is tied the round is decided and the next one scheduled. A tied category normally goes ' \
+                  'to a member runoff first; this is the fallback when the runoff ties again, and also settles a ' \
+                  'category early while its runoff is open. 422 `no_tie` when the category is not tied, ' \
+                  '`invalid_pick` for a game outside the tie.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {

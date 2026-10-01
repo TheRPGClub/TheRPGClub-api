@@ -42,6 +42,20 @@ RSpec.describe Voting::ResolveTie do
     expect(event.payload).to eq("winners" => { "gotm" => [ tied_ids.first ], "nr_gotm" => [ tied_ids.first ] })
   end
 
+  it "settles a category while its runoff is still open" do
+    closes = Time.utc(2026, 11, 3, 5)
+    round.update!(runoff_ties: round.pending_ties, runoff_opens_at: round.closed_at, runoff_closes_at: closes)
+
+    resolve("gotm", [ tied_ids.first ])
+
+    expect(round.reload.pending_ties).to eq("nr_gotm" => tied_ids.first(2))
+    expect(round.phase(closes - 1.hour)).to eq("runoff")
+
+    resolve("nr_gotm", [ tied_ids.first ])
+
+    expect(round.reload.phase(closes - 1.hour)).to eq("decided")
+  end
+
   it "rejects a game that is not part of the tie" do
     expect { resolve("gotm", [ create(:game).game_id ]) }.to raise_error(described_class::InvalidPickError)
   end

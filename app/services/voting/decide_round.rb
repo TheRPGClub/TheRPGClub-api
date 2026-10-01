@@ -2,10 +2,10 @@
 
 module Voting
   # Finalizes a round once its voting window has closed: per category, a sole
-  # leader in the tally is recorded as the winner, a shared lead becomes a
-  # pending tie for an admin to break (Voting::ResolveTie), and a category
-  # nobody voted in records nothing. With no ties the round is decided and the
-  # next one scheduled, all in one transaction.
+  # leader in the tally is recorded as the winner, a shared lead goes to a
+  # runoff limited to the tied games (Voting::DecideRunoff settles it), and a
+  # category nobody voted in records nothing. With no ties the round is
+  # decided and the next one scheduled, all in one transaction.
   class DecideRound
     class VotingNotClosedError < StandardError; end
 
@@ -34,8 +34,11 @@ module Voting
           end
         end
 
-        @round.update!(closed_at: @now, pending_ties: ties)
-        @round.decide!(@now) if ties.empty?
+        if ties.empty?
+          @round.decide!(@now)
+        else
+          @round.open_runoff!(ties, @now)
+        end
         result
       end
     end

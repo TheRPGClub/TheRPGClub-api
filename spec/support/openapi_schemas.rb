@@ -565,15 +565,26 @@ module OpenapiSchemas
       # VotingRoundResource: a round keyed by the round being nominated for,
       # voted on and won, with the server's derived lifecycle state. Nominations
       # close and voting opens at `voting_opens_at`; `phase` is nominating ->
-      # voting -> closed (or tie, awaiting an admin pick) -> decided.
+      # voting -> closed -> decided, with a runoff (a member vote on the tied
+      # games) after the close when a category tied, and tie (awaiting an
+      # admin pick) when the runoff tied again.
       VotingRound: obj(
         round_number: int, month_year: str,
-        voting_opens_at: ts, voting_closes_at: ts, closed_at: ts(nullable: true), decided_at: ts(nullable: true),
+        voting_opens_at: ts, voting_closes_at: ts, closed_at: ts(nullable: true),
+        runoff_opens_at: ts(nullable: true), runoff_closes_at: ts(nullable: true),
+        runoff_closed_at: ts(nullable: true), decided_at: ts(nullable: true),
         phase: str(enum: VotingRound::PHASES),
-        nominations_open: bool, voting_open: bool, voting_ended: bool,
+        nominations_open: bool, voting_open: bool, voting_ended: bool, runoff_open: bool, runoff_ended: bool,
         pending_ties: {
           type: :object, additionalProperties: array_of("GameSummary"),
-          description: "Tied games per category (`gotm`, `nr_gotm`) awaiting an admin pick; empty when none."
+          description: "Tied games per category (`gotm`, `nr_gotm`) still awaiting a decision: the runoff's " \
+                       "ballot while it is open, then any category the runoff left tied for an admin pick. " \
+                       "Empty when none."
+        },
+        runoff_ties: {
+          type: :object, additionalProperties: array_of("GameSummary"),
+          description: "The runoff's ballot as it opened: the games each category tied on in the main vote. " \
+                       "Empty when the round had no runoff."
         }
       ),
       # VotingEventResource: a queued Discord post for the bot. `payload` holds
@@ -697,7 +708,7 @@ module OpenapiSchemas
       # either may be null.
       Vote: obj(
         vote_id: int, round_number: int, user_id: str, nomination_id: int,
-        gamedb_game_id: int, voted_at: ts,
+        gamedb_game_id: int, voted_at: ts, runoff: bool,
         user: ref("UserSummary", nullable: true), game: ref("GameSummary", nullable: true)
       ),
       # VoteTallyResource: one nomination's anonymous vote count. Nominations
@@ -706,15 +717,17 @@ module OpenapiSchemas
       # The cast response (VotesController#create_*): what the cast did, the
       # vote it placed (null when it toggled one off), any votes removed to
       # make room (evicted oldest-first) or taken back by the toggle, the
-      # user's current cap for the round, and a human-readable warning to
-      # surface to the voter whenever votes were removed.
+      # user's current cap for the ballot, whether the cast went to the
+      # round's runoff, and a human-readable warning to surface to the voter
+      # whenever votes were removed.
       VoteCastResult: obj(
         action: str(enum: %w[voted unvoted]),
         vote: ref("Vote", nullable: true),
         removed_votes: array_of("Vote"),
         cap: int,
+        runoff: bool,
         warning: str(nullable: true),
-        _required: %w[action removed_votes cap]
+        _required: %w[action removed_votes cap runoff]
       ),
 
       # ---- aggregate game-profile sub-shapes (#115) ------------------------
