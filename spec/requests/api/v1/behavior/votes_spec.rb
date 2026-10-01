@@ -51,7 +51,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
         "gamedb_game_id" => nomination.gamedb_game_id
       )
       expect(json.dig("data", "removed_votes")).to eq([])
-      expect(json.dig("data", "cap")).to eq(2)
+      expect(json.dig("data", "cap")).to eq(1)
       expect(json.dig("data", "warning")).to be_nil
     end
 
@@ -90,7 +90,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
 
     it "evicts the oldest vote when casting a new game at the cap" do
       schedule_voting!(round)
-      nominations = create_list(:gotm_nomination, 3, round_number: round) # < 9 noms => cap 2
+      nominations = create_list(:gotm_nomination, 4, round_number: round) # 4 games => cap 2
 
       during_voting do
         cast_gotm(round, member, nominations[0], auth_headers_for(member))
@@ -261,15 +261,15 @@ RSpec.describe "api/v1/votes behavior", type: :request do
         { "nomination_id" => niche.nomination_id, "gamedb_game_id" => niche.gamedb_game_id,
           "vote_count" => 1 }
       ])
-      expect(json.fetch("meta")).to eq("cap" => 2)
+      expect(json.fetch("meta")).to eq("cap" => 1)
     end
 
-    it "reports the larger cap for rounds with nine or more nominations" do
-      create_list(:gotm_nomination, 9, round_number: round)
+    it "reports half the round's distinct games as the cap" do
+      create_list(:gotm_nomination, 10, round_number: round)
 
       get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
 
-      expect(json.fetch("meta")).to eq("cap" => 3)
+      expect(json.fetch("meta")).to eq("cap" => 5)
     end
 
     it "requires authentication" do
@@ -414,7 +414,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
         { "nomination_id" => nomination.nomination_id,
           "gamedb_game_id" => nomination.gamedb_game_id, "vote_count" => 1 }
       ])
-      expect(json.fetch("meta")).to eq("cap" => 2)
+      expect(json.fetch("meta")).to eq("cap" => 1)
     end
 
     it "gates the identified NR list and the reset like the GOTM ones" do
