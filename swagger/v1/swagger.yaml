@@ -2087,6 +2087,17 @@ components:
           type: string
         platform:
           type: string
+        region:
+          type: string
+          enum:
+          - Global
+          - NA
+          - EU
+          - UK
+          - RU/CIS
+          - Asia
+          - Unknown
+          description: Where the key redeems. Defaults to Global.
         gamedb_game_id:
           type: integer
           nullable: true
@@ -2120,6 +2131,7 @@ components:
       - key_id
       - game_title
       - platform
+      - region
       - donor_user_id
       - donor_notify_on_claim
       - created_at
@@ -5993,8 +6005,9 @@ paths:
                   description: 'Key attributes. Required: `platform`, `key_value`,
                     `donor_user_id`, plus `game_title` OR `gamedb_game_id` (when only
                     `gamedb_game_id` is given the title is backfilled from that game).
-                    Optional: `donor_notify_on_claim`. The PK/claim/timestamp columns
-                    are server-managed and ignored if sent.'
+                    Optional: `donor_notify_on_claim`, `region` (defaults to `Global`).
+                    The PK/claim/timestamp columns are server-managed and ignored
+                    if sent.'
                   properties:
                     game_title:
                       type: string
@@ -6007,6 +6020,18 @@ paths:
                         game card.
                     platform:
                       type: string
+                    region:
+                      type: string
+                      enum:
+                      - Global
+                      - NA
+                      - EU
+                      - UK
+                      - RU/CIS
+                      - Asia
+                      - Unknown
+                      default: Global
+                      description: Where the key redeems. Omitted or null stores `Global`.
                     key_value:
                       type: string
                       description: The key secret.

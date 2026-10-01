@@ -48,12 +48,15 @@ RSpec.describe 'api/v1/game_keys', type: :request do
             type: :object,
             description: 'Key attributes. Required: `platform`, `key_value`, `donor_user_id`, plus ' \
                          '`game_title` OR `gamedb_game_id` (when only `gamedb_game_id` is given the ' \
-                         'title is backfilled from that game). Optional: `donor_notify_on_claim`. ' \
+                         'title is backfilled from that game). Optional: `donor_notify_on_claim`, ' \
+                         '`region` (defaults to `Global`). ' \
                          'The PK/claim/timestamp columns are server-managed and ignored if sent.',
             properties: {
               game_title: { type: :string, description: 'Display label; backfilled from the linked game when omitted.' },
               gamedb_game_id: { type: :integer, nullable: true, description: 'Links the key to a GamedbGame for the embedded game card.' },
               platform: { type: :string },
+              region: { type: :string, enum: RpgClubGameKey::REGIONS, default: RpgClubGameKey::DEFAULT_REGION,
+                        description: 'Where the key redeems. Omitted or null stores `Global`.' },
               key_value: { type: :string, description: 'The key secret.' },
               donor_user_id: { type: :string },
               donor_notify_on_claim: { type: :boolean }

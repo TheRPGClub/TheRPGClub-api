@@ -16,7 +16,7 @@
 class GameKeyResource
   include BaseResource
 
-  attributes :key_id, :game_title, :platform, :gamedb_game_id, :donor_user_id,
+  attributes :key_id, :game_title, :platform, :region, :gamedb_game_id, :donor_user_id,
              :claimed_by_user_id, :claimed_at, :donor_notify_on_claim,
              :created_at, :updated_at
 

@@ -151,6 +151,55 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       expect(json.dig("data", "game")).to include("game_id" => game.game_id)
     end
 
+    it "stores the given region and returns it from every game key endpoint" do
+      payload[:data][:region] = "EU"
+
+      post "/api/v1/game_keys", params: payload, headers: auth_headers_for(donor), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "region")).to eq("EU")
+      key_id = json.dig("data", "key_id")
+
+      get "/api/v1/game_keys", headers: service_headers
+      expect(json.fetch("data").find { |k| k["key_id"] == key_id }).to include("region" => "EU")
+
+      get "/api/v1/users/#{donor.user_id}/game_keys", headers: service_headers
+      expect(json.fetch("data").find { |k| k["key_id"] == key_id }).to include("region" => "EU")
+
+      get "/api/v1/game_keys/#{key_id}", headers: service_headers
+      expect(json.dig("data", "region")).to eq("EU")
+
+      post "/api/v1/game_keys/#{key_id}/claim", headers: auth_headers_for(claimant), as: :json
+      expect(json.dig("data", "region")).to eq("EU")
+    end
+
+    it "defaults the region to Global when omitted" do
+      post "/api/v1/game_keys", params: payload, headers: auth_headers_for(donor), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "region")).to eq("Global")
+      expect(RpgClubGameKey.find(json.dig("data", "key_id")).region).to eq("Global")
+    end
+
+    it "defaults the region to Global when sent as null" do
+      payload[:data][:region] = nil
+
+      post "/api/v1/game_keys", params: payload, headers: auth_headers_for(donor), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "region")).to eq("Global")
+    end
+
+    it "422s on a region outside the fixed list" do
+      payload[:data][:region] = "Mars"
+
+      expect {
+        post "/api/v1/game_keys", params: payload, headers: service_headers, as: :json
+      }.not_to change(RpgClubGameKey, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
     it "422s when platform is missing" do
       payload[:data].delete(:platform)
 

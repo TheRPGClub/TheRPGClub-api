@@ -608,7 +608,9 @@ module OpenapiSchemas
       # it is rendered only in the response to a successful claim and to the
       # restricted single-key GET.
       GameKey: obj(
-        key_id: int, game_title: str, platform: str, gamedb_game_id: int(nullable: true),
+        key_id: int, game_title: str, platform: str,
+        region: str(enum: RpgClubGameKey::REGIONS, description: "Where the key redeems. Defaults to Global."),
+        gamedb_game_id: int(nullable: true),
         donor_user_id: str, claimed_by_user_id: str(nullable: true), claimed_at: ts(nullable: true),
         donor_notify_on_claim: bool, created_at: ts, updated_at: ts,
         key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim and to GET /api/v1/game_keys/{id}."),
