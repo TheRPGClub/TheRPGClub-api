@@ -2,10 +2,15 @@
 
 module Voting
   # The recurring sweep behind the round lifecycle (Voting::AdvanceRoundsJob):
-  # queues the bot's posts as their moment arrives and decides the current
-  # round once its voting window has closed. Idempotent — each event is queued
-  # once per round and a round is decided once — so running it late or twice
-  # is harmless. A no-op while Voting.automation_enabled? is off.
+  # queues the bot's posts as their moment arrives, decides the current round
+  # once its voting window has closed, and settles its runoff once that
+  # closes. Idempotent — each event is queued once per round and a round (and
+  # its runoff) is decided once — so running it late or twice is harmless. A
+  # no-op while Voting.automation_enabled? is off.
+  #
+  # Event sequence: voting_closed, then round_decided, or runoff_opened when a
+  # category tied. The runoff's close queues runoff_closed, then round_decided,
+  # or tie_pending when the runoff tied again and waits on an admin.
   module AdvanceRounds
     REMINDERS = { "nomination_reminder_5d" => 5, "nomination_reminder_1d" => 1 }.freeze
 
@@ -19,7 +24,11 @@ module Voting
 
       queue_nomination_reminders(round, now)
       queue_voting_opened(round, now)
-      decide(round, now) if round.voting_ended?(now) && round.closed_at.nil?
+      if round.closed_at.nil?
+        decide(round, now) if round.voting_ended?(now)
+      elsif round.runoff_ended?(now) && round.runoff_closed_at.nil?
+        decide_runoff(round, now)
+      end
     end
 
     def queue_nomination_reminders(round, now)
@@ -48,9 +57,25 @@ module Voting
 
       VotingEvent.emit!(round_number: round.round_number, kind: "voting_closed", available_at: now, payload: payload)
       if result.ties.present?
-        VotingEvent.emit!(round_number: round.round_number, kind: "tie_pending", available_at: now, payload: payload)
+        VotingEvent.emit!(round_number: round.round_number, kind: "runoff_opened", available_at: now,
+          expires_at: round.runoff_closes_at,
+          payload: { ties: round.runoff_ties, runoff_closes_at: round.runoff_closes_at })
       else
         VotingEvent.emit!(round_number: round.round_number, kind: "round_decided", available_at: now, payload: payload)
+      end
+    end
+
+    def decide_runoff(round, now)
+      result = DecideRunoff.new(round, now: now).call
+
+      VotingEvent.emit!(round_number: round.round_number, kind: "runoff_closed", available_at: now,
+        payload: { winners: result.winners, ties: result.ties })
+      if result.ties.present?
+        VotingEvent.emit!(round_number: round.round_number, kind: "tie_pending", available_at: now,
+          payload: { winners: Winners.for_round(round.round_number), ties: result.ties })
+      else
+        VotingEvent.emit!(round_number: round.round_number, kind: "round_decided", available_at: now,
+          payload: { winners: Winners.for_round(round.round_number), ties: {} })
       end
     end
   end

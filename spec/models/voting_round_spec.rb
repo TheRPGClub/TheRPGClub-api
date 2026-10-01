@@ -55,6 +55,45 @@ RSpec.describe VotingRound do
       expect(round.voting_ended?(default_close + 1.hour)).to be(true)
     end
 
+    context "with a runoff" do
+      let(:runoff_closes) { default_close + 1.day }
+
+      before do
+        round.update!(closed_at: default_close, pending_ties: { "gotm" => [ 1, 2 ] },
+          runoff_ties: { "gotm" => [ 1, 2 ] }, runoff_opens_at: default_close, runoff_closes_at: runoff_closes)
+      end
+
+      it "is in its runoff until the runoff closes, then closed until it is tallied" do
+        expect(round.phase(runoff_closes - 1.second)).to eq("runoff")
+        expect(round.runoff_open?(runoff_closes - 1.second)).to be(true)
+        expect(round.voting_ended?(runoff_closes - 1.second)).to be(true)
+        expect(round.runoff_ended?(runoff_closes - 1.second)).to be(false)
+
+        expect(round.phase(runoff_closes)).to eq("closed")
+        expect(round.runoff_ended?(runoff_closes)).to be(true)
+      end
+
+      it "is tied when the tallied runoff left a tie, and closed when it did not" do
+        round.update!(runoff_closed_at: runoff_closes)
+        expect(round.phase(runoff_closes + 1.hour)).to eq("tie")
+
+        round.update!(pending_ties: {})
+        expect(round.phase(runoff_closes + 1.hour)).to eq("closed")
+      end
+
+      it "keeps runoff votes hidden only while the runoff is open" do
+        expect(described_class.ended?(round.round_number, runoff_closes - 1.second)).to be(true)
+        expect(described_class.ended?(round.round_number, runoff_closes - 1.second, runoff: true)).to be(false)
+        expect(described_class.ended?(round.round_number, runoff_closes, runoff: true)).to be(true)
+      end
+
+      it "rejects a runoff that closes before it opens" do
+        round.runoff_closes_at = default_close - 1.minute
+
+        expect(round).not_to be_valid
+      end
+    end
+
     it "is decided once decided_at is set, whatever the clock says" do
       round.update!(decided_at: opens_at - 1.day)
 

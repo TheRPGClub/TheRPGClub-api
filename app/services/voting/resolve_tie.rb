@@ -2,8 +2,10 @@
 
 module Voting
   # An admin breaks a category's tie by picking one or more of the tied games
-  # (a round may legitimately have two winners). Once no category is left
-  # tied, the round is decided and the next one scheduled.
+  # (a round may legitimately have two winners): the last resort once a
+  # runoff has tied again, or a shortcut that settles a category while its
+  # runoff is still open. Once no category is left tied, the round is decided
+  # and the next one scheduled.
   class ResolveTie
     class NoTieError < StandardError; end
     class InvalidPickError < StandardError; end

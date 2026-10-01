@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_26_000200) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_01_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -280,10 +280,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_000200) do
     t.bigint "gamedb_game_id", null: false
     t.bigint "nomination_id", null: false
     t.bigint "round_number", null: false
+    t.boolean "runoff", default: false, null: false
     t.string "user_id", limit: 64, null: false
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_gotm_votes_round_nomination"
-    t.index ["round_number", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_user_game", unique: true
+    t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_runoff_user_game", unique: true
   end
 
   create_table "help", primary_key: ["topic", "seq"], force: :cascade do |t|
@@ -325,10 +326,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_000200) do
     t.bigint "gamedb_game_id", null: false
     t.bigint "nomination_id", null: false
     t.bigint "round_number", null: false
+    t.boolean "runoff", default: false, null: false
     t.string "user_id", limit: 64, null: false
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_nr_gotm_votes_round_nomination"
-    t.index ["round_number", "user_id", "gamedb_game_id"], name: "ux_nr_gotm_votes_round_user_game", unique: true
+    t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_nr_gotm_votes_round_runoff_user_game", unique: true
   end
 
   create_table "rpg_club_admin_wizard_sessions", primary_key: "session_id", id: { type: :string, limit: 200 }, force: :cascade do |t|
@@ -970,6 +972,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_26_000200) do
     t.datetime "decided_at"
     t.string "month_year", limit: 200, null: false
     t.jsonb "pending_ties", default: {}, null: false
+    t.datetime "runoff_closed_at"
+    t.datetime "runoff_closes_at"
+    t.datetime "runoff_opens_at"
+    t.jsonb "runoff_ties", default: {}, null: false
     t.datetime "updated_at", null: false
     t.datetime "voting_closes_at", null: false
     t.datetime "voting_opens_at", null: false

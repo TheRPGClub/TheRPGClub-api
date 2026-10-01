@@ -23,7 +23,9 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include(
         "round_number" => base + 1, "month_year" => "November 2026", "phase" => "voting",
-        "nominations_open" => false, "voting_open" => true, "voting_ended" => false, "pending_ties" => {}
+        "nominations_open" => false, "voting_open" => true, "voting_ended" => false,
+        "runoff_open" => false, "runoff_ended" => false, "runoff_opens_at" => nil, "runoff_closes_at" => nil,
+        "pending_ties" => {}, "runoff_ties" => {}
       )
       expect(Time.zone.parse(json.dig("data", "voting_opens_at"))).to eq(opens_at)
     end
@@ -37,6 +39,24 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
 
       expect(json.dig("data", "phase")).to eq("tie")
       expect(json.dig("data", "pending_ties", "gotm").sole).to include("game_id" => game.game_id, "title" => game.title)
+    end
+
+    it "exposes an open runoff with its window and ballot" do
+      games = create_list(:game, 2)
+      ties = { "gotm" => games.map(&:game_id).sort }
+      closed_at = opens_at + 3.days
+      create(:voting_round, round_number: base, voting_opens_at: opens_at, closed_at: closed_at,
+        pending_ties: ties, runoff_ties: ties, runoff_opens_at: closed_at, runoff_closes_at: closed_at + 1.day)
+
+      travel_to(closed_at + 1.hour) { get "/api/v1/voting_rounds/current", headers: auth_headers_for(member) }
+
+      expect(json.fetch("data")).to include(
+        "phase" => "runoff", "voting_open" => false, "voting_ended" => true,
+        "runoff_open" => true, "runoff_ended" => false
+      )
+      expect(Time.zone.parse(json.dig("data", "runoff_closes_at"))).to eq(closed_at + 1.day)
+      expect(json.dig("data", "runoff_ties", "gotm").map { |game| game.fetch("game_id") }).to eq(ties["gotm"])
+      expect(json.dig("data", "pending_ties", "gotm").length).to eq(2)
     end
 
     it "404s when no round is scheduled" do

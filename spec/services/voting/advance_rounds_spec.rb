@@ -61,14 +61,50 @@ RSpec.describe Voting::AdvanceRounds do
       expect(VotingRound.current.round_number).to eq(round.round_number + 1)
     end
 
-    it "queues a tie prompt instead of a decision when the lead is shared" do
-      2.times { create(:gotm_vote, nomination: create(:gotm_nomination, round_number: round.round_number)) }
+    context "when the lead is shared" do
+      let(:closed_at) { Time.utc(2026, 11, 3) }
+      let(:tied) { create_list(:gotm_nomination, 2, round_number: round.round_number) }
+      let(:tied_ids) { tied.map(&:gamedb_game_id).sort }
 
-      described_class.call(now: Time.utc(2026, 11, 3))
-      described_class.call(now: Time.utc(2026, 11, 3, 1))
+      before do
+        tied.each { |nomination| create(:gotm_vote, nomination: nomination) }
+        described_class.call(now: closed_at)
+        described_class.call(now: closed_at + 1.hour)
+      end
 
-      expect(kinds).to eq(%w[voting_closed tie_pending])
-      expect(VotingRound.current).to eq(round)
+      it "opens a runoff on the tied games instead of deciding" do
+        expect(kinds).to eq(%w[voting_closed runoff_opened])
+        event = VotingEvent.find_by(round_number: round.round_number, kind: "runoff_opened")
+        expect(event.expires_at).to eq(closed_at + 24.hours)
+        expect(event.payload).to eq(
+          "ties" => { "gotm" => tied_ids }, "runoff_closes_at" => (closed_at + 24.hours).as_json
+        )
+        expect(VotingRound.current).to eq(round)
+      end
+
+      it "settles the runoff once it closes and queues its results and the decision" do
+        create(:gotm_vote, nomination: tied[1], runoff: true)
+
+        described_class.call(now: closed_at + 24.hours)
+        described_class.call(now: closed_at + 25.hours)
+
+        expect(kinds).to eq(%w[voting_closed runoff_opened runoff_closed round_decided])
+        winners = { "gotm" => [ tied[1].gamedb_game_id ] }
+        expect(VotingEvent.find_by(kind: "runoff_closed").payload).to eq("winners" => winners, "ties" => {})
+        expect(VotingEvent.find_by(kind: "round_decided").payload).to eq("winners" => winners, "ties" => {})
+        expect(VotingRound.current.round_number).to eq(round.round_number + 1)
+      end
+
+      it "queues a tie prompt when the runoff ties again" do
+        tied.each { |nomination| create(:gotm_vote, nomination: nomination, runoff: true) }
+
+        described_class.call(now: closed_at + 24.hours)
+
+        expect(kinds).to eq(%w[voting_closed runoff_opened runoff_closed tie_pending])
+        expect(VotingEvent.find_by(kind: "tie_pending").payload)
+          .to eq("winners" => {}, "ties" => { "gotm" => tied_ids })
+        expect(VotingRound.current).to eq(round)
+      end
     end
   end
 end

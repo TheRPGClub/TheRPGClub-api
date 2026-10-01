@@ -14,7 +14,9 @@ RSpec.describe 'api/v1/votes', type: :request do
     'Casts the user\'s vote on a nomination, or takes it back. Owner-gated: the service token may ' \
     'cast on behalf of any user, a user session only for themselves. Only allowed while the round\'s ' \
     'voting window is open (from `next_vote_at` until `vote_ends_at`, defaulting to the end of the ' \
-    'following Sunday, US Eastern). Votes are per game: voting a game the user already voted takes ' \
+    'following Sunday, US Eastern), or while the round\'s tie-breaker runoff is open: then the cast goes ' \
+    'to the runoff ballot (`runoff: true`), only for one of the category\'s tied games, with a cap of 1. ' \
+    'Votes are per game: voting a game the user already voted takes ' \
     'that vote back (`action: unvoted`, 200) — even via a different nomination of the same game. ' \
     'Users hold at most `cap` votes per round (half the distinct nominated games, rounded down, min 1); casting ' \
     'a new game at the cap evicts their oldest vote(s), reported in `removed_votes` with a `warning` ' \
@@ -22,22 +24,29 @@ RSpec.describe 'api/v1/votes', type: :request do
 
   list_description =
     'The round\'s votes with voter identities, oldest first. Votes are anonymous while the voting ' \
-    'window is open: until voting has ended this list is admin/service-only (403 otherwise). Use ' \
-    'the tally for anonymous counts.'
+    'window is open: until voting has ended (for `runoff=true`, until the runoff has closed) this list ' \
+    'is admin/service-only (403 otherwise). Use the tally for anonymous counts.'
 
   tally_description =
     'Anonymous vote counts per nomination, most-voted first. Open to any authenticated caller at ' \
     'any time — no voter identities. Nominations with zero votes have no row; merge against the ' \
     'round\'s nominations list. `meta.cap` is the per-user vote cap for the round (half the distinct ' \
-    'nominated games, rounded down, min 1), for rendering "vote for up to N".'
+    'nominated games, rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".'
 
   user_votes_description =
     'One voter\'s votes for the round, oldest first (an empty array when they have none — never ' \
     '404). While the voting window is open this is limited to the voter themselves and ' \
-    'admin/service; once voting has ended it opens to any authenticated caller.'
+    'admin/service; once voting (or, for `runoff=true`, the runoff) has ended it opens to any ' \
+    'authenticated caller.'
 
   destroy_description =
-    'Admin/service-only. Clears every vote for the round (the reset alongside the nominations one).'
+    'Admin/service-only. Clears every vote on the round\'s ballot (the reset alongside the nominations ' \
+    'one): the main vote, or the runoff with `runoff=true`.'
+
+  runoff_param = {
+    name: :runoff, in: :query, schema: { type: :boolean, default: false }, required: false,
+    description: 'Address the round\'s tie-breaker runoff ballot instead of the main vote.'
+  }
 
   identified_list_schema = {
     type: :object,
@@ -61,6 +70,7 @@ RSpec.describe 'api/v1/votes', type: :request do
         produces 'application/json'
         parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
         parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+        parameter runoff_param
 
         response '200', "#{label} votes" do
           schema identified_list_schema
@@ -103,7 +113,8 @@ RSpec.describe 'api/v1/votes', type: :request do
           schema '$ref' => '#/components/schemas/Error'
         end
 
-        response '422', '`voting_closed` (outside the voting window) or `nomination_missing_game`' do
+        response '422', '`voting_closed` (outside the voting and runoff windows, or no runoff in this ' \
+                        'category), `nomination_missing_game`, or `not_in_runoff` (a game that did not tie)' do
           schema '$ref' => '#/components/schemas/Error'
         end
 
@@ -120,6 +131,7 @@ RSpec.describe 'api/v1/votes', type: :request do
         tags 'GOTM'
         description destroy_description
         produces 'application/json'
+        parameter runoff_param
 
         response '200', 'deleted' do
           schema '$ref' => '#/components/schemas/DeletedCountResponse'
@@ -143,14 +155,18 @@ RSpec.describe 'api/v1/votes', type: :request do
         tags 'GOTM'
         description tally_description
         produces 'application/json'
+        parameter runoff_param
 
         response '200', 'vote counts per nomination' do
           schema type: :object, properties: {
             data: { type: :array, items: { '$ref' => '#/components/schemas/VoteTally' } },
             meta: {
               type: :object,
-              properties: { cap: { type: :integer, description: 'Per-user vote cap for this round.' } },
-              required: %w[cap]
+              properties: {
+                cap: { type: :integer, description: 'Per-user vote cap for this round\'s ballot.' },
+                runoff: { type: :boolean, description: 'Whether this is the runoff ballot\'s tally.' }
+              },
+              required: %w[cap runoff]
             }
           }
         end
@@ -171,6 +187,7 @@ RSpec.describe 'api/v1/votes', type: :request do
         tags 'GOTM'
         description user_votes_description
         produces 'application/json'
+        parameter runoff_param
 
         response '200', 'the user\'s votes' do
           schema type: :object, properties: {

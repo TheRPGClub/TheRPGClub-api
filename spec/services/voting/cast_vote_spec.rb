@@ -10,7 +10,7 @@ require 'rails_helper'
 # identical shape and code path (the service is handed the model pair), so a
 # single smoke test covers the twin.
 RSpec.describe Voting::CastVote do
-  subject(:service) { described_class.new(vote_model: GotmVote, nomination_model: GotmNomination) }
+  subject(:service) { described_class.new(category: "gotm") }
 
   let(:round) { 999_001 }
 
@@ -202,11 +202,58 @@ RSpec.describe Voting::CastVote do
     end
   end
 
+  describe "the runoff" do
+    let(:tied) { [ create_nomination!(101), create_nomination!(102) ] }
+    let(:untied) { create_nomination!(103) }
+
+    def open_runoff!(closes_at: 1.hour.from_now)
+      ties = { "gotm" => [ 101, 102 ] }
+      create_round!(opens_at: 3.days.ago, closes_at: 2.hours.ago, closed_at: 2.hours.ago,
+        pending_ties: ties, runoff_ties: ties, runoff_opens_at: 2.hours.ago, runoff_closes_at: closes_at)
+    end
+
+    it "casts a separate runoff vote with a cap of 1, leaving the main votes alone" do
+      open_runoff!
+      GotmVote.create!(round_number: round, user_id: "voter", nomination_id: tied[0].nomination_id,
+        gamedb_game_id: 101)
+
+      first = cast!("voter", tied[0])
+      second = cast!("voter", tied[1])
+
+      expect(first).to have_attributes(action: "voted", runoff: true, cap: 1)
+      expect(second.removed_votes.map(&:gamedb_game_id)).to eq([ 101 ])
+      expect(GotmVote.where(round_number: round, user_id: "voter").pluck(:runoff, :gamedb_game_id))
+        .to contain_exactly([ false, 101 ], [ true, 102 ])
+    end
+
+    it "refuses a game that did not tie" do
+      open_runoff!
+
+      expect { cast!("voter", untied) }.to raise_error(described_class::GameNotInRunoffError)
+    end
+
+    it "refuses a category with no runoff" do
+      open_runoff!
+      nomination = NrGotmNomination.create!(round_number: round, user_id: "nominator", gamedb_game_id: 101)
+
+      expect {
+        described_class.new(category: "nr_gotm")
+          .cast!(round_number: round, user_id: "voter", nomination_id: nomination.nomination_id)
+      }.to raise_error(described_class::VotingClosedError, /no nr_gotm runoff/)
+    end
+
+    it "refuses a cast once the runoff has closed" do
+      open_runoff!(closes_at: 1.minute.ago)
+
+      expect { cast!("voter", tied[0]) }.to raise_error(described_class::VotingClosedError, /runoff .* closed at/)
+    end
+  end
+
   describe "the Non-RPG twin" do
     it "casts through the NR models unchanged" do
       create_round!
       nomination = NrGotmNomination.create!(round_number: round, user_id: "nominator", gamedb_game_id: 101)
-      nr_service = described_class.new(vote_model: NrGotmVote, nomination_model: NrGotmNomination)
+      nr_service = described_class.new(category: "nr_gotm")
 
       result = nr_service.cast!(round_number: round, user_id: "voter", nomination_id: nomination.nomination_id)
 
