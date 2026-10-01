@@ -16,7 +16,7 @@ RSpec.describe 'api/v1/votes', type: :request do
     'voting window is open (from `next_vote_at` until `vote_ends_at`, defaulting to the end of the ' \
     'following Sunday, US Eastern). Votes are per game: voting a game the user already voted takes ' \
     'that vote back (`action: unvoted`, 200) — even via a different nomination of the same game. ' \
-    'Users hold at most `cap` votes per round (3 when the round has 9+ nominations, else 2); casting ' \
+    'Users hold at most `cap` votes per round (half the distinct nominated games, rounded down, min 1); casting ' \
     'a new game at the cap evicts their oldest vote(s), reported in `removed_votes` with a `warning` ' \
     'to surface to the voter. 201 when a vote was placed.'
 
@@ -28,8 +28,8 @@ RSpec.describe 'api/v1/votes', type: :request do
   tally_description =
     'Anonymous vote counts per nomination, most-voted first. Open to any authenticated caller at ' \
     'any time — no voter identities. Nominations with zero votes have no row; merge against the ' \
-    'round\'s nominations list. `meta.cap` is the per-user vote cap for the round (3 when the ' \
-    'round has 9+ nominations, else 2), for rendering "vote for up to N".'
+    'round\'s nominations list. `meta.cap` is the per-user vote cap for the round (half the distinct ' \
+    'nominated games, rounded down, min 1), for rendering "vote for up to N".'
 
   user_votes_description =
     'One voter\'s votes for the round, oldest first (an empty array when they have none — never ' \

@@ -65,7 +65,7 @@ RSpec.describe Voting::CastVote do
   describe "casting" do
     before { create_round! }
 
-    it "places a vote and reports the small-field cap" do
+    it "places a vote and reports the cap" do
       nomination = create_nomination!(101)
 
       result = cast!("voter", nomination)
@@ -75,7 +75,7 @@ RSpec.describe Voting::CastVote do
       expect(result.vote.gamedb_game_id).to eq(101)
       expect(result.vote.voted_at).to be_present
       expect(result.removed_votes).to be_empty
-      expect(result.cap).to eq(2)
+      expect(result.cap).to eq(1)
       expect(result.warning).to be_nil
     end
 
@@ -130,30 +130,49 @@ RSpec.describe Voting::CastVote do
   describe "the cap" do
     before { create_round! }
 
+    def nominate_games!(count)
+      (1..count).map { |i| create_nomination!(100 + i) }
+    end
+
+    it "is half the distinct games, rounded down, with a minimum of 1" do
+      { 0 => 1, 1 => 1, 4 => 2, 7 => 3, 10 => 5, 15 => 7 }.each do |games, cap|
+        GotmNomination.where(round_number: round).delete_all
+        nominate_games!(games)
+
+        expect(described_class.cap_for(GotmNomination, round)).to eq(cap), "#{games} games"
+      end
+    end
+
+    it "counts a game nominated twice once" do
+      nominate_games!(3)
+      create_nomination!(101, nominator: "second-nominator")
+
+      expect(described_class.cap_for(GotmNomination, round)).to eq(1)
+    end
+
+    it "does not count a nomination without a game" do
+      nominate_games!(3)
+      GotmNomination.create!(round_number: round, user_id: "nominator-bare")
+
+      expect(described_class.cap_for(GotmNomination, round)).to eq(1)
+    end
+
     it "evicts the oldest vote when a new game is cast at the cap" do
-      nominations = [ 101, 102, 103 ].map { |game_id| create_nomination!(game_id) }
+      nominations = nominate_games!(4)
       cast!("voter", nominations[0])
       cast!("voter", nominations[1])
 
       result = cast!("voter", nominations[2])
 
       expect(result.action).to eq("voted")
+      expect(result.cap).to eq(2)
       expect(result.removed_votes.map(&:gamedb_game_id)).to eq([ 101 ])
       expect(result.warning).to include("vote cap (2)")
       expect(held_game_ids("voter")).to eq([ 102, 103 ])
     end
 
-    it "keeps the small cap at 8 nominations" do
-      nominations = (1..8).map { |i| create_nomination!(100 + i) }
-
-      result = cast!("voter", nominations[0])
-
-      expect(result.cap).to eq(2)
-      expect(described_class.cap_for(GotmNomination, round)).to eq(2)
-    end
-
-    it "grants the large cap at 9 nominations" do
-      nominations = (1..9).map { |i| create_nomination!(100 + i) }
+    it "lets a larger field hold more votes" do
+      nominations = nominate_games!(7)
       cast!("voter", nominations[0])
       cast!("voter", nominations[1])
 
@@ -165,13 +184,14 @@ RSpec.describe Voting::CastVote do
     end
 
     it "evicts enough votes to recover when the cap shrank mid-round" do
-      nominations = (1..9).map { |i| create_nomination!(100 + i) }
+      nominations = nominate_games!(6)
       cast!("voter", nominations[0])
       cast!("voter", nominations[1])
       cast!("voter", nominations[2])
-      # An admin deleting a nomination drops the round to 8 and the cap to 2,
-      # leaving the voter one over. The next cast must evict two to fit.
-      nominations[8].destroy!
+      # An admin deleting two nominations drops the round to 4 games and the
+      # cap to 2, leaving the voter one over. The next cast must evict two.
+      nominations[4].destroy!
+      nominations[5].destroy!
 
       result = cast!("voter", nominations[3])
 

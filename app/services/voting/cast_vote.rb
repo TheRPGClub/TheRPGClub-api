@@ -9,8 +9,9 @@ module Voting
   # - Voting is open while the round's VotingRound is in its voting phase
   #   (voting_opens_at until voting_closes_at, never once decided); a cast
   #   outside it raises VotingClosedError.
-  # - A user holds at most `cap` votes per round per category: 3 when the
-  #   round has >= 9 nominations, else 2 — evaluated at cast time.
+  # - A user holds at most `cap` votes per round per category: half the
+  #   category's distinct nominated games, rounded down, and at least 1 —
+  #   evaluated at cast time.
   # - Votes are per game (vote rows denormalize the nomination's game):
   #   casting for a game the user already voted toggles that vote OFF, even
   #   when the earlier vote sits on a different nomination of the same game.
@@ -26,22 +27,17 @@ module Voting
     class NominationNotFoundError < StandardError; end
     class NominationMissingGameError < StandardError; end
 
-    SMALL_FIELD_CAP = 2
-    LARGE_FIELD_CAP = 3
-    # Rounds with at least this many nominations grant the larger cap.
-    LARGE_FIELD_THRESHOLD = 9
-
     Result = Struct.new(:action, :vote, :removed_votes, :cap, :warning, keyword_init: true)
 
     # The per-user vote cap for a round, from the size of its nomination
-    # field. Class-level so VotesController can surface the cap alongside the
-    # tally without casting.
+    # field. Votes are per game, so a game nominated twice counts once and a
+    # nomination without a game (nothing to vote on) not at all. Class-level
+    # so VotesController can surface the cap alongside the tally without
+    # casting.
     def self.cap_for(nomination_model, round_number)
-      if nomination_model.where(round_number: round_number).count >= LARGE_FIELD_THRESHOLD
-        LARGE_FIELD_CAP
-      else
-        SMALL_FIELD_CAP
-      end
+      games = nomination_model.where(round_number: round_number).where.not(gamedb_game_id: nil)
+        .distinct.count(:gamedb_game_id)
+      [ games / 2, 1 ].max
     end
 
     def initialize(vote_model:, nomination_model:)
@@ -150,8 +146,7 @@ module Voting
 
     # Destroys the user's oldest votes until the new one fits under the cap.
     # Normally evicts at most one, but recovers a user left over the cap when
-    # an admin deleted nominations mid-window and shrank the round to the
-    # smaller cap.
+    # an admin deleted nominations mid-window and shrank the cap.
     def evict_until_room!(votes, cap)
       evicted = []
       while votes.size + 1 > cap
