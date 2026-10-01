@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_01_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_02_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -428,10 +428,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_01_000100) do
     t.bigint "gamedb_game_id"
     t.string "key_value", limit: 200, null: false
     t.string "platform", limit: 50, null: false
+    t.string "region", limit: 20, default: "Global", null: false
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["claimed_by_user_id", "game_title"], name: "ix_game_keys_available"
     t.index ["game_title"], name: "ix_game_keys_title"
     t.index ["gamedb_game_id"], name: "ix_game_keys_game"
+    t.check_constraint "region::text = ANY (ARRAY['Global'::character varying, 'NA'::character varying, 'EU'::character varying, 'UK'::character varying, 'RU/CIS'::character varying, 'Asia'::character varying, 'Unknown'::character varying]::text[])", name: "ck_rpg_club_game_keys_region"
   end
 
   create_table "rpg_club_gamedb_import_items", primary_key: "item_id", force: :cascade do |t|

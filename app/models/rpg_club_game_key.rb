@@ -13,9 +13,16 @@
 # only the free-text `game_title` and never sets the id, and not every donated
 # game exists in `gamedb_games` — so `game_title` is kept as the always-present
 # label/fallback and `game` resolves to nil when the key is unlinked.
+#
+# `region` (#262) is where the key redeems. It is never null: a key donated
+# without one is `Global` (the column default), and legacy rows were backfilled
+# to it. The values are pinned by `ck_rpg_club_game_keys_region`.
 class RpgClubGameKey < ApplicationRecord
   self.table_name = "rpg_club_game_keys"
   self.primary_key = "key_id"
+
+  REGIONS = %w[Global NA EU UK RU/CIS Asia Unknown].freeze
+  DEFAULT_REGION = "Global"
 
   belongs_to :donor,
     class_name: "RpgClubUser",
@@ -39,4 +46,5 @@ class RpgClubGameKey < ApplicationRecord
   scope :available, -> { where(claimed_by_user_id: nil) }
 
   validates :game_title, :platform, :key_value, :donor_user_id, presence: true
+  validates :region, inclusion: { in: REGIONS }
 end

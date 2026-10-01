@@ -38,7 +38,7 @@ module Api
       # (`donor_user_id` must be their own id); the bot's service token may
       # donate on anyone's behalf. Pass `gamedb_game_id` to link the key to a
       # game (so the API can embed its cover/art); `game_title` is backfilled
-      # from that game when omitted.
+      # from that game when omitted. `region` defaults to Global.
       def create
         record = RpgClubGameKey.create!(donate_data)
         record.reload
@@ -144,8 +144,11 @@ module Api
       # pre-claimed or with a spoofed id/timestamp). When the donor links a game
       # but omits the title, fall back to the game's title so `game_title`
       # (the listing's sort key and the unlinked-display label) is always set.
+      # A blank `region` (omitted or null) falls back to the default rather than
+      # being stored as null — every key has a region.
       def donate_data
         attrs = request_data.except("key_id", "claimed_by_user_id", "claimed_at", "created_at", "updated_at")
+        attrs = attrs.merge("region" => RpgClubGameKey::DEFAULT_REGION) if attrs["region"].blank?
 
         if attrs["game_title"].blank? && attrs["gamedb_game_id"].present?
           title = GamedbGame.where(game_id: attrs["gamedb_game_id"]).pick(:title)
