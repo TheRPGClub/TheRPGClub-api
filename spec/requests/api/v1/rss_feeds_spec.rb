@@ -40,7 +40,8 @@ RSpec.describe 'api/v1/rss_feeds', type: :request do
     post 'Create an RSS feed' do
       tags 'RSS Feeds'
       description 'Open to any authenticated caller. `feed_url` and `channel_id` are required; ' \
-                  '`feed_name` and the keyword filters are optional.'
+                  '`feed_name` and the keyword filters are optional. `feed_url` is stripped of surrounding ' \
+                  'whitespace, and a `feed_url` already registered in the same `channel_id` is rejected with 422.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -86,7 +87,8 @@ RSpec.describe 'api/v1/rss_feeds', type: :request do
 
     patch 'Update an RSS feed' do
       tags 'RSS Feeds'
-      description 'Partial update: send any subset of the writable columns.'
+      description 'Partial update: send any subset of the writable columns. Moving a feed onto a ' \
+                  '`feed_url` + `channel_id` another feed already has is rejected with 422.'
       consumes 'application/json'
       produces 'application/json'
 

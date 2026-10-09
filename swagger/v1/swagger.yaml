@@ -12598,7 +12598,9 @@ paths:
       tags:
       - RSS Feeds
       description: Open to any authenticated caller. `feed_url` and `channel_id` are
-        required; `feed_name` and the keyword filters are optional.
+        required; `feed_name` and the keyword filters are optional. `feed_url` is
+        stripped of surrounding whitespace, and a `feed_url` already registered in
+        the same `channel_id` is rejected with 422.
       parameters: []
       responses:
         '201':
@@ -12693,7 +12695,9 @@ paths:
       summary: Update an RSS feed
       tags:
       - RSS Feeds
-      description: 'Partial update: send any subset of the writable columns.'
+      description: 'Partial update: send any subset of the writable columns. Moving
+        a feed onto a `feed_url` + `channel_id` another feed already has is rejected
+        with 422.'
       parameters: []
       responses:
         '200':
