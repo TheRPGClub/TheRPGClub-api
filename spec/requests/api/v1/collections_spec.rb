@@ -52,12 +52,10 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     post 'Create a collection entry' do
       tags 'Collections'
-      description 'Adds a game to the user\'s collection. `gamedb_game_id` and `ownership_type` ' \
-                  'are required. NOTE: unlike the other user-game lists (backlog/favorites/…), ' \
-                  'collection writes are currently NOT owner-restricted — any authenticated caller ' \
-                  'may write to any `user_id` (tracked by the controller-hardening companion issue). ' \
-                  'The created entry is always scoped to the path `user_id`. Returns the full record ' \
-                  '(all columns, including `is_shared` and timestamps) plus the joined platform name/abbreviation.'
+      description 'Owner-only (a Discord caller may only write their own collection; the bot service ' \
+                  'token may write any). `gamedb_game_id` and `ownership_type` are required. The created ' \
+                  'entry is always scoped to the path `user_id`. Returns the full record (all columns, ' \
+                  'including `is_shared` and timestamps) plus the joined platform name/abbreviation.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -69,6 +67,10 @@ RSpec.describe 'api/v1/collections', type: :request do
 
       response '201', 'collection entry created' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionEntryDetail' } }
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '422', 'validation failed' do
@@ -128,8 +130,7 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     patch 'Update a collection entry' do
       tags 'Collections'
-      description 'Partial update (any subset of the writable columns). Not owner-restricted — see ' \
-                  'the create note.'
+      description 'Owner-only. Partial update (any subset of the writable columns).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -141,6 +142,10 @@ RSpec.describe 'api/v1/collections', type: :request do
 
       response '200', 'updated' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionEntryDetail' } }
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do
@@ -158,7 +163,7 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     put 'Replace a collection entry (alias)' do
       tags 'Collections'
-      description 'Alias for PATCH (applied as a partial assign).'
+      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -178,11 +183,15 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     delete 'Delete a collection entry' do
       tags 'Collections'
-      description 'Not owner-restricted — see the create note.'
+      description 'Owner-only.'
       produces 'application/json'
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do
