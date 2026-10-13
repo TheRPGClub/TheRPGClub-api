@@ -68,4 +68,34 @@ RSpec.describe VotingEvent do
       expect(described_class.claim!(limit: 10, now: now + 1.day)).to be_empty
     end
   end
+
+  describe ".next_poll_at" do
+    it "is nil when nothing is pending or scheduled" do
+      event(delivered_at: now - 1.minute)
+      event(kind: "nomination_reminder_5d", expires_at: now - 1.second)
+
+      expect(described_class.next_poll_at(now)).to be_nil
+    end
+
+    it "is now while an event is claimable" do
+      event
+
+      expect(described_class.next_poll_at(now)).to eq(now)
+    end
+
+    it "is when the earliest pending event falls due or its lease runs out" do
+      event(available_at: now + 2.hours)
+      event(kind: "voting_closed", claimed_until: now + 3.minutes)
+
+      expect(described_class.next_poll_at(now)).to eq(now + 3.minutes)
+    end
+
+    it "allows the sweep time to queue the round's next event" do
+      allow(Voting).to receive(:automation_enabled?).and_return(true)
+      round = create(:voting_round, voting_opens_at: now + 10.days)
+
+      expect(described_class.next_poll_at(now))
+        .to eq(Voting::Schedule.reminder_at(round.voting_opens_at, 5) + VotingEvent::SWEEP_LAG)
+    end
+  end
 end

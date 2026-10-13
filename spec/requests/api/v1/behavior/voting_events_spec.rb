@@ -4,6 +4,8 @@ require "rails_helper"
 
 # Behavior specs for the bot's outbox: service-only claim (a lease) and ack.
 RSpec.describe "api/v1/voting_events behavior", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:round_number) { SecureRandom.random_number(1_000_000_000) }
 
   def event(**attrs)
@@ -24,6 +26,18 @@ RSpec.describe "api/v1/voting_events behavior", type: :request do
 
       post "/api/v1/voting_events/claim", headers: service_headers
       expect(json.fetch("data")).to be_empty
+    end
+
+    it "says when to claim again" do
+      post "/api/v1/voting_events/claim", headers: service_headers
+      expect(json.dig("meta", "next_poll_at")).to be_nil
+
+      event
+      freeze_time do
+        post "/api/v1/voting_events/claim", headers: service_headers
+
+        expect(Time.zone.parse(json.dig("meta", "next_poll_at"))).to eq(Time.current + VotingEvent::LEASE)
+      end
     end
 
     it "honors ?limit" do

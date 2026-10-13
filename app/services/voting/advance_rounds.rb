@@ -31,6 +31,39 @@ module Voting
       end
     end
 
+    # When the sweep will next queue an event for the current round, so the
+    # bot can sleep until then instead of polling (and waking Neon) on a
+    # timer. Mirrors the windows #call queues in: an event already queued, or
+    # whose window has passed, is skipped, and one due but not yet queued
+    # (the sweep runs every minute) reports `now`. nil while automation is off
+    # or the round has nothing left on its schedule (a tie waiting on an
+    # admin, say).
+    def next_event_at(now: Time.current)
+      return unless Voting.automation_enabled?
+
+      round = VotingRound.current
+      return if round.nil?
+
+      queued = VotingEvent.where(round_number: round.round_number).pluck(:kind)
+      upcoming = scheduled_events(round).filter_map do |kind, at, closes_at|
+        at unless at.nil? || queued.include?(kind) || (closes_at && now >= closes_at)
+      end
+      [ upcoming.min, now ].max if upcoming.any?
+    end
+
+    # [kind, due at, window closes at] for each event #call queues on the
+    # clock, as far as the round's state still allows it. voting_closed and
+    # runoff_closed hang on the tally not being in yet, as in #call.
+    def scheduled_events(round)
+      events = REMINDERS.map do |kind, days_before|
+        [ kind, Schedule.reminder_at(round.voting_opens_at, days_before), round.voting_opens_at ]
+      end
+      events << [ "voting_opened", round.voting_opens_at, round.voting_closes_at ]
+      events << [ "voting_closed", round.voting_closes_at, nil ] if round.closed_at.nil?
+      events << [ "runoff_closed", round.runoff_closes_at, nil ] if round.runoff_closed_at.nil?
+      events
+    end
+
     def queue_nomination_reminders(round, now)
       return unless round.nominations_open?(now)
 
