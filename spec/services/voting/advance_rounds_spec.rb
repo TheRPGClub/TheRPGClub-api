@@ -107,4 +107,64 @@ RSpec.describe Voting::AdvanceRounds do
       end
     end
   end
+
+  describe ".next_event_at" do
+    it "is nil with automation off" do
+      expect(described_class.next_event_at(now: Time.utc(2026, 10, 20))).to be_nil
+    end
+
+    context "with automation on" do
+      before { allow(Voting).to receive(:automation_enabled?).and_return(true) }
+
+      it "points at the first reminder before anything is due" do
+        expect(described_class.next_event_at(now: Time.utc(2026, 10, 20))).to eq(Time.utc(2026, 10, 25, 21))
+      end
+
+      it "skips events already queued" do
+        described_class.call(now: Time.utc(2026, 10, 25, 21))
+
+        expect(described_class.next_event_at(now: Time.utc(2026, 10, 25, 22))).to eq(Time.utc(2026, 10, 29, 21))
+      end
+
+      it "reports now for an event due but not queued yet, skipping windows that have passed" do
+        now = opens_at + 30.seconds
+
+        expect(described_class.next_event_at(now: now)).to eq(now)
+      end
+
+      it "points at the close once the vote panels are queued" do
+        described_class.call(now: opens_at + 1.minute)
+
+        expect(described_class.next_event_at(now: opens_at + 2.minutes)).to eq(round.voting_closes_at)
+      end
+
+      it "is nil without a current round" do
+        round.update!(decided_at: opens_at)
+
+        expect(described_class.next_event_at(now: Time.utc(2026, 10, 20))).to be_nil
+      end
+
+      context "when the lead is shared" do
+        let(:closed_at) { Time.utc(2026, 11, 3) }
+        let(:tied) { create_list(:gotm_nomination, 2, round_number: round.round_number) }
+
+        before do
+          described_class.call(now: opens_at + 1.minute)
+          tied.each { |nomination| create(:gotm_vote, nomination: nomination) }
+          described_class.call(now: closed_at)
+        end
+
+        it "points at the runoff's close" do
+          expect(described_class.next_event_at(now: closed_at + 1.hour)).to eq(closed_at + 24.hours)
+        end
+
+        it "is nil while a second tie waits on an admin" do
+          tied.each { |nomination| create(:gotm_vote, nomination: nomination, runoff: true) }
+          described_class.call(now: closed_at + 24.hours)
+
+          expect(described_class.next_event_at(now: closed_at + 25.hours)).to be_nil
+        end
+      end
+    end
+  end
 end

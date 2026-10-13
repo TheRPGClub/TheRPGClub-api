@@ -17643,7 +17643,9 @@ paths:
       description: 'Service only. Leases up to `limit` due, unexpired, undelivered
         events (oldest first) for five minutes: post each to Discord, then ack it.
         An unacked event is handed out again once its lease runs out, so delivery
-        is at-least-once.'
+        is at-least-once. `meta.next_poll_at` is when to claim again: now while events
+        are claimable, else when the next pending event falls due, a lease runs out,
+        or the round lifecycle queues its next event; null when nothing is scheduled.'
       parameters:
       - name: limit
         in: query
@@ -17665,6 +17667,15 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/VotingEvent"
+                  meta:
+                    type: object
+                    properties:
+                      next_poll_at:
+                        type: string
+                        format: date-time
+                        nullable: true
+                    required:
+                    - next_poll_at
         '403':
           description: not the service
           content:

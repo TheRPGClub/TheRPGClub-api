@@ -25,6 +25,8 @@ class VotingRound < ApplicationRecord
   validate :runoff_closes_after_opens
 
   before_validation :apply_schedule_defaults
+  # A moved deadline or a decided round changes when the sweep next has work.
+  after_commit { Voting::SweepSchedule.clear }
 
   scope :undecided, -> { where(decided_at: nil) }
 

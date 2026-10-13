@@ -11,9 +11,15 @@ module Api
       MAX_CLAIM = 50
 
       # POST /api/v1/voting_events/claim?limit=N — leases up to N due events.
+      # meta.next_poll_at tells the bot when to claim again (null: nothing
+      # scheduled), so it does not wake Neon on a fixed timer.
       def claim
         limit = params[:limit].present? ? params[:limit].to_i.clamp(1, MAX_CLAIM) : DEFAULT_CLAIM
-        render json: { data: VotingEventResource.new(VotingEvent.claim!(limit: limit)).serializable_hash }
+        events = VotingEvent.claim!(limit: limit)
+        render json: {
+          data: VotingEventResource.new(events).serializable_hash,
+          meta: { next_poll_at: VotingEvent.next_poll_at }
+        }
       end
 
       # POST /api/v1/voting_events/:id/ack — idempotent.

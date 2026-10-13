@@ -13,8 +13,16 @@ class VotingEvent < ApplicationRecord
     tie_pending round_decided
   ].freeze
   LEASE = 5.minutes
+  # How long after an event falls due the every-minute sweep
+  # (Voting::AdvanceRoundsJob) has queued it: a minute, plus Solid Queue's
+  # dispatch and pickup polling (config/queue.yml).
+  SWEEP_LAG = 90.seconds
 
   validates :round_number, :kind, :available_at, presence: true
+
+  # The sweep skips kinds already queued, so a queued or removed event changes
+  # when it next has work. Not on update: claims and acks do not.
+  after_commit(on: %i[create destroy]) { Voting::SweepSchedule.clear }
   validates :kind, inclusion: { in: KINDS }
 
   scope :claimable, lambda { |now|
@@ -45,6 +53,21 @@ class VotingEvent < ApplicationRecord
       where(id: ids).update_all([ "claimed_until = ?, attempts = attempts + 1, updated_at = ?", now + LEASE, now ])
       where(id: ids).order(:available_at, :id).to_a
     end
+  end
+
+  # When the bot should claim next: now while an event is claimable,
+  # otherwise when the earliest pending one falls due or its lease runs out,
+  # or once the sweep has queued the round's next event. nil when nothing is
+  # pending or scheduled. The bot sleeps until then, so a quiet outbox lets
+  # Neon's compute suspend instead of a fixed poll keeping it awake.
+  def self.next_poll_at(now = Time.current)
+    pending = where(delivered_at: nil)
+      .where("expires_at IS NULL OR expires_at > ?", now)
+      .pluck(:available_at, :claimed_until)
+      .map { |available_at, claimed_until| [ available_at, claimed_until ].compact.max }
+    swept = Voting::AdvanceRounds.next_event_at(now: now)&.+(SWEEP_LAG)
+    soonest = [ *pending, swept ].compact.min
+    [ soonest, now ].max if soonest
   end
 
   def acknowledge!(now = Time.current)
