@@ -11,7 +11,8 @@
 
 production:
   # The GOTM / NR-GOTM round lifecycle (Voting::AdvanceRounds). A no-op until
-  # VOTING_AUTOMATION_ENABLED=true.
+  # VOTING_AUTOMATION_ENABLED=true, and then only queries Neon when
+  # Voting::SweepSchedule says the round has something due.
   advance_voting_rounds:
     class: Voting::AdvanceRoundsJob
     queue: default

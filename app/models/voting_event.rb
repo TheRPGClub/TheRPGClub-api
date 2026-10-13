@@ -19,6 +19,10 @@ class VotingEvent < ApplicationRecord
   SWEEP_LAG = 90.seconds
 
   validates :round_number, :kind, :available_at, presence: true
+
+  # The sweep skips kinds already queued, so a queued or removed event changes
+  # when it next has work. Not on update: claims and acks do not.
+  after_commit(on: %i[create destroy]) { Voting::SweepSchedule.clear }
   validates :kind, inclusion: { in: KINDS }
 
   scope :claimable, lambda { |now|
