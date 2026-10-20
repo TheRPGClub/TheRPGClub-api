@@ -74,7 +74,7 @@ end
 
 gem "warden", "~> 1.2"
 gem "rack-cors", "~> 3.0"
-gem "faraday", "~> 2.14"
+gem "faraday", "~> 2.15"
 
 gem "dockerfile-rails", ">= 1.7", group: :development
 
