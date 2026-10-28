@@ -8,7 +8,11 @@ module Api
     class SteamCollectionImportItemsController < ApplicationController
       include TestModeRollback
 
-      before_action :require_owner!, only: %i[create next_pending counts show update]
+      before_action :require_owner!, only: %i[create next_pending counts show]
+      # Item results are written by the bot (service) only.
+      before_action :require_service!, only: %i[update]
+
+      UPDATE_ATTRS = %w[status match_confidence match_candidate_json gamedb_game_id collection_entry_id result_reason error_text].freeze
 
       # POST /api/v1/steam_collection_imports/:id/items
       # Body: { "data": { items: [...] } }
@@ -66,7 +70,7 @@ module Api
       #                    gamedb_game_id, collection_entry_id, result_reason, error_text } }
       def update
         record = RpgClubSteamCollectionImportItem.find(params[:id])
-        with_test_mode_rollback(record.import.test_mode) { record.update!(request_data) }
+        with_test_mode_rollback(record.import.test_mode) { record.update!(request_data.slice(*UPDATE_ATTRS)) }
         render json: { data: SteamCollectionImportItemResource.new(record).serializable_hash }
       end
 

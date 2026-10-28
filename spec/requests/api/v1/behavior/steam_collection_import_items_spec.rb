@@ -247,7 +247,7 @@ RSpec.describe "api/v1/steam_collection_import_items behavior", type: :request d
   end
 
   describe "PATCH /api/v1/steam_collection_import_items/:id" do
-    it "records the app outcome for the owner" do
+    it "records the app outcome as the service (the bot drives item writes)" do
       game = create(:game)
       item = create(:steam_collection_import_item, import: import)
 
@@ -255,7 +255,7 @@ RSpec.describe "api/v1/steam_collection_import_items behavior", type: :request d
         params: { data: { status: "added", match_confidence: "fuzzy", gamedb_game_id: game.game_id,
                           collection_entry_id: 88, result_reason: "auto_match",
                           match_candidate_json: '{"title":"match"}' } },
-        headers: auth_headers_for(owner), as: :json
+        headers: service_headers, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include(
@@ -287,7 +287,7 @@ RSpec.describe "api/v1/steam_collection_import_items behavior", type: :request d
       item = create(:steam_collection_import_item, import: test_import)
 
       patch "/api/v1/steam_collection_import_items/#{item.item_id}",
-        params: { data: { status: "added", gamedb_game_id: 777 } }, headers: auth_headers_for(owner), as: :json
+        params: { data: { status: "added", gamedb_game_id: 777 } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("status" => "added", "gamedb_game_id" => 777)
@@ -298,7 +298,7 @@ RSpec.describe "api/v1/steam_collection_import_items behavior", type: :request d
       item = create(:steam_collection_import_item, import: import)
 
       patch "/api/v1/steam_collection_import_items/#{item.item_id}",
-        params: { data: { status: "bogus" } }, headers: auth_headers_for(owner), as: :json
+        params: { data: { status: "bogus" } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(item.reload.status).to eq("pending")
@@ -308,7 +308,7 @@ RSpec.describe "api/v1/steam_collection_import_items behavior", type: :request d
       item = create(:steam_collection_import_item, import: import)
 
       patch "/api/v1/steam_collection_import_items/#{item.item_id}",
-        params: { data: { match_confidence: "psychic" } }, headers: auth_headers_for(owner), as: :json
+        params: { data: { match_confidence: "psychic" } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(item.reload.match_confidence).to be_nil

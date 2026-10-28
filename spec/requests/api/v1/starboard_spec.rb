@@ -62,6 +62,10 @@ RSpec.describe 'api/v1/starboard', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -113,6 +117,10 @@ RSpec.describe 'api/v1/starboard', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -133,6 +141,10 @@ RSpec.describe 'api/v1/starboard', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/StarboardEntry' } }
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -147,6 +159,10 @@ RSpec.describe 'api/v1/starboard', type: :request do
       end
 
       response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

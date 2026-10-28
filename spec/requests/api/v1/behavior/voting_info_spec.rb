@@ -3,8 +3,7 @@
 require "rails_helper"
 
 # Behavior specs for the voting_info endpoints: bot-managed voting round
-# metadata, open to any authenticated caller (reads AND writes — the
-# documented contract has no admin gate), plus the derived voting-window
+# metadata, readable by any authenticated caller and writable by the bot or an admin, plus the derived voting-window
 # fields (vote_deadline / voting_open / voting_ended) computed off
 # next_vote_at and the optional vote_ends_at override.
 RSpec.describe "api/v1/voting_info behavior", type: :request do
@@ -124,10 +123,10 @@ RSpec.describe "api/v1/voting_info behavior", type: :request do
       expect(BotVotingInfo.find(round).next_vote_at.to_i).to eq(opens_at.to_i)
     end
 
-    it "is open to a regular authenticated user (documented: no admin gate)" do
+    it "forbids a regular authenticated user" do
       post "/api/v1/voting_info", params: payload, headers: auth_headers_for(member), as: :json
 
-      expect(response).to have_http_status(:created)
+      expect(response).to have_http_status(:forbidden)
     end
 
     it "422s for a duplicate round_number" do
@@ -173,7 +172,7 @@ RSpec.describe "api/v1/voting_info behavior", type: :request do
 
       patch "/api/v1/voting_info/#{info.round_number}",
         params: { data: { five_day_reminder_sent: true, vote_ends_at: ends_at.iso8601 } },
-        headers: auth_headers_for(member), as: :json
+        headers: service_headers, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("five_day_reminder_sent" => true)
@@ -209,7 +208,7 @@ RSpec.describe "api/v1/voting_info behavior", type: :request do
     it "deletes the round" do
       info = create(:voting_info)
 
-      delete "/api/v1/voting_info/#{info.round_number}", headers: auth_headers_for(member)
+      delete "/api/v1/voting_info/#{info.round_number}", headers: service_headers
 
       expect(response).to have_http_status(:ok)
       expect(json).to eq("deleted" => true)

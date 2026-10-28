@@ -5,6 +5,10 @@ module Api
     class CompletionsController < ApplicationController
       before_action :require_owner!, only: %i[create update destroy]
 
+      # Caller-settable columns. `user_id` comes from the path (or the existing
+      # record) and the key is generated, so neither is accepted in the body.
+      WRITABLE_ATTRS = %w[gamedb_game_id platform_id completion_type completed_at final_playtime_hrs note].freeze
+
       def index
         scope = filtered_completions(UserGameCompletion.where(user_id: params[:user_id]))
         render_collection(scope.preload(:game, :platform), resource: CompletionEntryResource, default_order: { completed_at: :desc, created_at: :desc })
@@ -52,14 +56,14 @@ module Api
       end
 
       def create
-        record = UserGameCompletion.create!(request_data.merge("user_id" => params[:user_id]))
+        record = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = UserGameCompletion.find(params[:id])
-        record.update!(request_data)
+        record.update!(writable_data)
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash }
       end
@@ -70,6 +74,10 @@ module Api
       end
 
       private
+
+      def writable_data
+        request_data.slice(*WRITABLE_ATTRS)
+      end
 
       # Optional filters on a user's completions list, mirroring the bot's
       # `getCompletions` / `countCompletions` / `getCompletionsForGame` /

@@ -61,9 +61,9 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       { data: { title: "Add dark mode", details: "Please", created_by: "77", created_by_name: "tester" } }
     end
 
-    it "creates a suggestion for a regular user" do
+    it "creates a suggestion for the bot" do
       expect {
-        post "/api/v1/suggestions", params: payload, headers: auth_headers_for(create(:user)), as: :json
+        post "/api/v1/suggestions", params: payload, headers: service_headers, as: :json
       }.to change(RpgClubSuggestion, :count).by(1)
 
       expect(response).to have_http_status(:created)
@@ -110,10 +110,10 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
   end
 
   describe "DELETE /api/v1/suggestions/:id" do
-    it "deletes a suggestion for any authenticated user" do
+    it "deletes a suggestion for an admin" do
       suggestion = create(:suggestion)
 
-      delete "/api/v1/suggestions/#{suggestion.suggestion_id}", headers: auth_headers_for(create(:user))
+      delete "/api/v1/suggestions/#{suggestion.suggestion_id}", headers: auth_headers_for(create(:user, role_admin: true))
 
       expect(response).to have_http_status(:ok)
       expect(json).to eq("deleted" => true)

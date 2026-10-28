@@ -98,12 +98,13 @@ RSpec.describe "api/v1/user_socials behavior", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
     end
 
-    it "422s for an unknown attribute name in data" do
+    it "ignores attribute names outside the writable columns" do
       post "/api/v1/users/#{owner.user_id}/socials",
-        params: { data: { platform_id: platform.id, handle: "not-a-column" } },
+        params: { data: { platform_id: platform.id, url: "https://example.test/me", handle: "not-a-column" } },
         headers: auth_headers_for(owner), as: :json
 
-      expect(response).to have_http_status(:unprocessable_content)
+      expect(response).to have_http_status(:created)
+      expect(json.fetch("data")).not_to have_key("handle")
     end
 
     it "400s when the data envelope is missing" do

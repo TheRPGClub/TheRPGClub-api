@@ -7,6 +7,10 @@ module Api
     class JournalController < ApplicationController
       before_action :require_owner!, only: %i[create update destroy]
 
+      # Caller-settable columns. `user_id` comes from the path (or the existing
+      # record) and the key is generated, so neither is accepted in the body.
+      WRITABLE_ATTRS = %w[gamedb_game_id entry_title entry_body].freeze
+
       # GET /api/v1/users/:user_id/journal
       #
       # The games a user has journaled, with per-game entry counts and the
@@ -140,7 +144,7 @@ module Api
 
       # POST /api/v1/users/:user_id/journal
       def create
-        record = UserGameJournalEntry.create!(request_data.merge("user_id" => params[:user_id]))
+        record = UserGameJournalEntry.create!(writable_data.merge("user_id" => params[:user_id]))
         record.reload
         render json: { data: JournalEntryGameResource.new(record).serializable_hash }, status: :created
       end
@@ -148,7 +152,7 @@ module Api
       # PATCH/PUT /api/v1/journal_entries/:id
       def update
         record = UserGameJournalEntry.find(params[:id])
-        record.update!(request_data)
+        record.update!(writable_data)
         record.reload
         render json: { data: JournalEntryGameResource.new(record).serializable_hash }
       end
@@ -160,6 +164,10 @@ module Api
       end
 
       private
+
+      def writable_data
+        request_data.slice(*WRITABLE_ATTRS)
+      end
 
       # The user's journal entries, narrowed by the optional `game_id`/`q`
       # grid filters (#103). Used both as the `game_id IN (…)` subquery that

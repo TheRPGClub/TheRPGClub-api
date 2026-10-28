@@ -43,7 +43,7 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
 
     post 'Create a public reminder' do
       tags 'Public Reminders'
-      description 'Open to any authenticated caller. `channel_id`, `message` and `due_at` are required; ' \
+      description 'Admin or service only. `channel_id`, `message` and `due_at` are required; ' \
                   '`recur_every`/`recur_unit` (recurrence), `enabled` (defaults true) and `created_by` ' \
                   'are optional.'
       consumes 'application/json'
@@ -60,6 +60,10 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
       end
 
       response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -137,6 +141,10 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -157,6 +165,10 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/PublicReminder' } }
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -171,6 +183,10 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
       end
 
       response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

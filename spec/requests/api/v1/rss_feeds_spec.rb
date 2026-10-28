@@ -39,7 +39,7 @@ RSpec.describe 'api/v1/rss_feeds', type: :request do
 
     post 'Create an RSS feed' do
       tags 'RSS Feeds'
-      description 'Open to any authenticated caller. `feed_url` and `channel_id` are required; ' \
+      description 'Admin or service only. `feed_url` and `channel_id` are required; ' \
                   '`feed_name` and the keyword filters are optional. `feed_url` is stripped of surrounding ' \
                   'whitespace, and a `feed_url` already registered in the same `channel_id` is rejected with 422.'
       consumes 'application/json'
@@ -56,6 +56,10 @@ RSpec.describe 'api/v1/rss_feeds', type: :request do
       end
 
       response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -110,6 +114,10 @@ RSpec.describe 'api/v1/rss_feeds', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -130,6 +138,10 @@ RSpec.describe 'api/v1/rss_feeds', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/RssFeed' } }
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -144,6 +156,10 @@ RSpec.describe 'api/v1/rss_feeds', type: :request do
       end
 
       response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

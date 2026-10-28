@@ -8,7 +8,11 @@ module Api
     class CollectionCsvImportItemsController < ApplicationController
       include TestModeRollback
 
-      before_action :require_owner!, only: %i[next_pending show update]
+      before_action :require_owner!, only: %i[next_pending show]
+      # Item results are written by the bot (service) only.
+      before_action :require_service!, only: %i[update]
+
+      UPDATE_ATTRS = %w[status match_confidence match_candidate_json gamedb_game_id collection_entry_id result_reason error_text].freeze
 
       # GET /api/v1/collection_csv_imports/:id/items/next_pending
       #
@@ -32,7 +36,7 @@ module Api
       #                    gamedb_game_id, collection_entry_id, result_reason, error_text } }
       def update
         record = RpgClubCollectionCsvImportItem.find(params[:id])
-        with_test_mode_rollback(record.import.test_mode) { record.update!(request_data) }
+        with_test_mode_rollback(record.import.test_mode) { record.update!(request_data.slice(*UPDATE_ATTRS)) }
         render json: { data: CollectionCsvImportItemResource.new(record).serializable_hash }
       end
 

@@ -76,10 +76,10 @@ RSpec.describe "api/v1/starboard behavior", type: :request do
       )
     end
 
-    it "allows any authenticated caller and defaults star_count to 0" do
+    it "allows an admin and defaults star_count to 0" do
       post "/api/v1/starboard",
         params: { data: payload[:data].except(:star_count) },
-        headers: auth_headers_for(create(:user)), as: :json
+        headers: auth_headers_for(create(:user, role_admin: true)), as: :json
 
       expect(response).to have_http_status(:created)
       expect(json.dig("data", "star_count")).to eq(0)

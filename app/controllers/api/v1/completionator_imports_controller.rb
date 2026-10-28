@@ -67,9 +67,11 @@ module Api
 
       # PATCH /api/v1/completionator_imports/:id
       # Body: { "data": { status, current_index } }
+      UPDATE_ATTRS = %w[status current_index].freeze
+
       def update
         record = RpgClubCompletionatorImport.find(params[:id])
-        with_test_mode_rollback(record.test_mode) { record.update!(request_data) }
+        with_test_mode_rollback(record.test_mode) { record.update!(request_data.slice(*UPDATE_ATTRS)) }
         render json: { data: CompletionatorImportResource.new(record).serializable_hash }
       end
 

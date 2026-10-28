@@ -6,6 +6,9 @@ module Api
     # (#93). Replaces the bot's direct-SQL `getSeenItemHashes` / `markItemsSeen`
     # against `rpg_club_rss_feed_items`.
     class RssFeedItemsController < ApplicationController
+      # Seen-item hashes suppress relays, so only the bot records them.
+      before_action :require_service!, only: %i[create]
+
       # GET /api/v1/rss_feeds/:rss_feed_id/items
       #
       # Given a candidate list of item hashes, returns just the ones already

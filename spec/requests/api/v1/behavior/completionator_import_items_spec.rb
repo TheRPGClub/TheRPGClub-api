@@ -113,13 +113,13 @@ RSpec.describe "api/v1/completionator_import_items behavior", type: :request do
   end
 
   describe "PATCH /api/v1/completionator_import_items/:id" do
-    it "records the row outcome for the owner" do
+    it "records the row outcome as the service (the bot drives item writes)" do
       game = create(:game)
       item = create(:completionator_import_item, import: import)
 
       patch "/api/v1/completionator_import_items/#{item.item_id}",
         params: { data: { status: "added", gamedb_game_id: game.game_id, completion_id: 512 } },
-        headers: auth_headers_for(owner), as: :json
+        headers: service_headers, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include(
@@ -147,7 +147,7 @@ RSpec.describe "api/v1/completionator_import_items behavior", type: :request do
       item = create(:completionator_import_item, import: test_import)
 
       patch "/api/v1/completionator_import_items/#{item.item_id}",
-        params: { data: { status: "added", completion_id: 99 } }, headers: auth_headers_for(owner), as: :json
+        params: { data: { status: "added", completion_id: 99 } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("status" => "added", "completion_id" => 99)
@@ -158,7 +158,7 @@ RSpec.describe "api/v1/completionator_import_items behavior", type: :request do
       item = create(:completionator_import_item, import: import)
 
       patch "/api/v1/completionator_import_items/#{item.item_id}",
-        params: { data: { status: "bogus" } }, headers: auth_headers_for(owner), as: :json
+        params: { data: { status: "bogus" } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(item.reload.status).to eq("pending")

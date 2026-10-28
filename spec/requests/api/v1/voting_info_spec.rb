@@ -42,7 +42,7 @@ RSpec.describe 'api/v1/voting_info', type: :request do
 
     post 'Create voting info' do
       tags 'Voting Info'
-      description 'Open to any authenticated caller. `round_number` (the PK) and `next_vote_at` are ' \
+      description 'Admin or service only. `round_number` (the PK) and `next_vote_at` are ' \
                   'required; the reminder flags default to false.'
       consumes 'application/json'
       produces 'application/json'
@@ -58,6 +58,10 @@ RSpec.describe 'api/v1/voting_info', type: :request do
       end
 
       response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -133,6 +137,10 @@ RSpec.describe 'api/v1/voting_info', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -153,6 +161,10 @@ RSpec.describe 'api/v1/voting_info', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/VotingInfo' } }
       end
 
+      response '403', 'forbidden — caller is not an admin or the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -167,6 +179,10 @@ RSpec.describe 'api/v1/voting_info', type: :request do
       end
 
       response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

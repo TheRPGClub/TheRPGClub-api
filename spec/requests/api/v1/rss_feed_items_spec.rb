@@ -76,6 +76,10 @@ RSpec.describe 'api/v1/rss_feeds/{rss_feed_id}/items', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
+      response '403', 'forbidden — caller is not the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end

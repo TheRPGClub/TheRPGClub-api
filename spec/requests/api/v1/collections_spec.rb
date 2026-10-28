@@ -53,9 +53,8 @@ RSpec.describe 'api/v1/collections', type: :request do
     post 'Create a collection entry' do
       tags 'Collections'
       description 'Adds a game to the user\'s collection. `gamedb_game_id` and `ownership_type` ' \
-                  'are required. NOTE: unlike the other user-game lists (backlog/favorites/…), ' \
-                  'collection writes are currently NOT owner-restricted — any authenticated caller ' \
-                  'may write to any `user_id` (tracked by the controller-hardening companion issue). ' \
+                  'are required. Owner (or service) only, like the other user-game lists. Only ' \
+                  '`gamedb_game_id`, `platform_id`, `ownership_type`, `note` and `is_shared` are accepted. ' \
                   'The created entry is always scoped to the path `user_id`. Returns the full record ' \
                   '(all columns, including `is_shared` and timestamps) plus the joined platform name/abbreviation.'
       consumes 'application/json'
@@ -76,6 +75,10 @@ RSpec.describe 'api/v1/collections', type: :request do
       end
 
       response '400', 'missing `data` parameter' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -128,7 +131,7 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     patch 'Update a collection entry' do
       tags 'Collections'
-      description 'Partial update (any subset of the writable columns). Not owner-restricted — see ' \
+      description 'Partial update (any subset of the writable columns). Owner (or service) only — see ' \
                   'the create note.'
       consumes 'application/json'
       produces 'application/json'
@@ -148,6 +151,10 @@ RSpec.describe 'api/v1/collections', type: :request do
       end
 
       response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -171,6 +178,10 @@ RSpec.describe 'api/v1/collections', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionEntryDetail' } }
       end
 
+      response '403', 'forbidden — caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -178,7 +189,7 @@ RSpec.describe 'api/v1/collections', type: :request do
 
     delete 'Delete a collection entry' do
       tags 'Collections'
-      description 'Not owner-restricted — see the create note.'
+      description 'Owner (or service) only.'
       produces 'application/json'
 
       response '200', 'deleted' do
@@ -186,6 +197,10 @@ RSpec.describe 'api/v1/collections', type: :request do
       end
 
       response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
