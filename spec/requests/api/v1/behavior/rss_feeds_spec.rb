@@ -56,9 +56,9 @@ RSpec.describe "api/v1/rss_feeds behavior", type: :request do
         include_keywords: "rpg,jrpg" } }
     end
 
-    it "creates a feed for any authenticated caller" do
+    it "creates a feed for the bot" do
       expect {
-        post "/api/v1/rss_feeds", params: payload, headers: auth_headers_for(create(:user)), as: :json
+        post "/api/v1/rss_feeds", params: payload, headers: service_headers, as: :json
       }.to change(RpgClubRssFeed, :count).by(1)
 
       expect(response).to have_http_status(:created)

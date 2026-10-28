@@ -4,6 +4,7 @@ module Api
   module V1
     class PublicRemindersController < ApplicationController
       before_action :require_service!, only: %i[due]
+      before_action :require_admin_or_service!, only: %i[create update destroy]
 
       def index
         scope = RpgClubPublicReminder.all

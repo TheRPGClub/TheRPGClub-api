@@ -153,7 +153,7 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
 
     patch 'Update a Steam collection import item' do
       tags 'Steam Collection Imports'
-      description 'Owner-only. Records the match/outcome after the bot processes this app. Rolled ' \
+      description 'Service (bot) only. Records the match/outcome after the bot processes this app. Rolled ' \
                   "back instead of persisted if the item's import is in test_mode."
       consumes 'application/json'
       produces 'application/json'
@@ -168,7 +168,7 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SteamCollectionImportItem' } }
       end
 
-      response '403', 'forbidden — caller is not the owner or service' do
+      response '403', 'forbidden — caller is not the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -3,6 +3,8 @@
 module Api
   module V1
     class RssFeedsController < ApplicationController
+      before_action :require_admin_or_service!, only: %i[create update destroy]
+
       def index
         render_collection(RpgClubRssFeed.all, resource: RssFeedResource, default_order: { feed_name: :asc })
       end

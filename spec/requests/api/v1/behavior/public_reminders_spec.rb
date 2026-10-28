@@ -105,9 +105,9 @@ RSpec.describe "api/v1/public_reminders behavior", type: :request do
         recur_every: 7, recur_unit: "days", created_by: "42" } }
     end
 
-    it "creates a reminder for any authenticated caller" do
+    it "creates a reminder for the bot" do
       expect {
-        post "/api/v1/public_reminders", params: payload, headers: auth_headers_for(create(:user)), as: :json
+        post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
       }.to change(RpgClubPublicReminder, :count).by(1)
 
       expect(response).to have_http_status(:created)

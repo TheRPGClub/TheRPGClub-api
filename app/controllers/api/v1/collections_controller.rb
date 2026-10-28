@@ -3,6 +3,12 @@
 module Api
   module V1
     class CollectionsController < ApplicationController
+      before_action :require_owner!, only: %i[create update destroy]
+
+      # Caller-settable columns. `user_id` comes from the path (or the existing
+      # record) and the key is generated, so neither is accepted in the body.
+      WRITABLE_ATTRS = %w[gamedb_game_id platform_id ownership_type note is_shared].freeze
+
       def index
         scope = filtered_collections(UserGameCollection.where(user_id: params[:user_id]))
         render_collection(scope.preload(:platform), resource: CollectionEntryResource, default_order: { created_at: :desc })
@@ -49,13 +55,13 @@ module Api
       end
 
       def create
-        record = UserGameCollection.create!(request_data.merge("user_id" => params[:user_id]))
+        record = UserGameCollection.create!(writable_data.merge("user_id" => params[:user_id]))
         render json: { data: CollectionEntryDetailResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = UserGameCollection.find(params[:id])
-        record.update!(request_data)
+        record.update!(writable_data)
         render json: { data: CollectionEntryDetailResource.new(record).serializable_hash }
       end
 
@@ -65,6 +71,17 @@ module Api
       end
 
       private
+
+      def writable_data
+        request_data.slice(*WRITABLE_ATTRS)
+      end
+
+      def resolve_owner_id
+        return params[:user_id] if params[:user_id].present?
+        return nil unless params[:id].present?
+
+        UserGameCollection.find_by(entry_id: params[:id])&.user_id
+      end
 
       # Optional filters mirroring the bot's collection `searchEntries`
       # (RPGClub_GameDB#839): `q` partial-matches the game title, `platform`

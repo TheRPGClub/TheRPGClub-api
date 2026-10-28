@@ -39,7 +39,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
 
     post 'Create a suggestion' do
       tags 'Suggestions'
-      description 'Open to any authenticated caller. `title` is required; everything else is optional.'
+      description 'Admin or service only. `title` is required; everything else is optional.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -54,6 +54,10 @@ RSpec.describe 'api/v1/suggestions', type: :request do
       end
 
       response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -92,6 +96,10 @@ RSpec.describe 'api/v1/suggestions', type: :request do
       end
 
       response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

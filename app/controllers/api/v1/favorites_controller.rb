@@ -5,6 +5,10 @@ module Api
     class FavoritesController < ApplicationController
       before_action :require_owner!, only: %i[create update destroy]
 
+      # Caller-settable columns. `user_id` comes from the path (or the existing
+      # record) and the key is generated, so neither is accepted in the body.
+      WRITABLE_ATTRS = %w[gamedb_game_id note sort_order].freeze
+
       def index
         scope = UserGameFavorite.where(user_id: params[:user_id]).preload(:game)
         render_collection(scope, resource: FavoriteEntryResource, default_order: { sort_order: :asc, created_at: :desc })
@@ -16,7 +20,7 @@ module Api
       end
 
       def create
-        record = UserGameFavorite.create!(request_data.merge("user_id" => params[:user_id]))
+        record = UserGameFavorite.create!(writable_data.merge("user_id" => params[:user_id]))
         # The newly-created record needs a reload so the `:game` association
         # is materialized for the serializer (otherwise it would re-query
         # lazily during JSON encoding, which is fine but masks load failures).
@@ -26,7 +30,7 @@ module Api
 
       def update
         record = UserGameFavorite.find(params[:id])
-        record.update!(request_data)
+        record.update!(writable_data)
         record.reload
         render json: { data: FavoriteEntryResource.new(record).serializable_hash }
       end
@@ -37,6 +41,10 @@ module Api
       end
 
       private
+
+      def writable_data
+        request_data.slice(*WRITABLE_ATTRS)
+      end
 
       def resolve_owner_id
         return params[:user_id] if params[:user_id].present?

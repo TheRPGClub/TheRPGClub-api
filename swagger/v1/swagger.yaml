@@ -3164,8 +3164,8 @@ paths:
       summary: Update a collection CSV import item
       tags:
       - Collection CSV Imports
-      description: Owner-only. Records the match/outcome after the bot processes this
-        row. Rolled back instead of persisted if the item's import is in test_mode.
+      description: Service (bot) only. Records the match/outcome after the bot processes
+        this row. Rolled back instead of persisted if the item's import is in test_mode.
       parameters: []
       responses:
         '200':
@@ -3178,7 +3178,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/CollectionCsvImportItem"
         '403':
-          description: forbidden — caller is not the owner or service
+          description: forbidden — caller is not the service principal
           content:
             application/json:
               schema:
@@ -3691,13 +3691,12 @@ paths:
       summary: Create a collection entry
       tags:
       - Collections
-      description: 'Adds a game to the user''s collection. `gamedb_game_id` and `ownership_type`
-        are required. NOTE: unlike the other user-game lists (backlog/favorites/…),
-        collection writes are currently NOT owner-restricted — any authenticated caller
-        may write to any `user_id` (tracked by the controller-hardening companion
-        issue). The created entry is always scoped to the path `user_id`. Returns
+      description: Adds a game to the user's collection. `gamedb_game_id` and `ownership_type`
+        are required. Owner (or service) only, like the other user-game lists. Only
+        `gamedb_game_id`, `platform_id`, `ownership_type`, `note` and `is_shared`
+        are accepted. The created entry is always scoped to the path `user_id`. Returns
         the full record (all columns, including `is_shared` and timestamps) plus the
-        joined platform name/abbreviation.'
+        joined platform name/abbreviation.
       parameters: []
       responses:
         '201':
@@ -3717,6 +3716,12 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '400':
           description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner
           content:
             application/json:
               schema:
@@ -3832,8 +3837,8 @@ paths:
       summary: Update a collection entry
       tags:
       - Collections
-      description: Partial update (any subset of the writable columns). Not owner-restricted
-        — see the create note.
+      description: Partial update (any subset of the writable columns). Owner (or
+        service) only — see the create note.
       parameters: []
       responses:
         '200':
@@ -3853,6 +3858,12 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner
           content:
             application/json:
               schema:
@@ -3910,6 +3921,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/CollectionEntryDetail"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -3949,7 +3966,7 @@ paths:
       summary: Delete a collection entry
       tags:
       - Collections
-      description: Not owner-restricted — see the create note.
+      description: Owner (or service) only.
       responses:
         '200':
           description: deleted
@@ -3959,6 +3976,12 @@ paths:
                 "$ref": "#/components/schemas/DeletedResponse"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner
           content:
             application/json:
               schema:
@@ -4112,8 +4135,8 @@ paths:
       summary: Update a Completionator import item
       tags:
       - Completionator Imports
-      description: Owner-only. Records the match/outcome after the bot processes this
-        row. Rolled back instead of persisted if the item's import is in test_mode.
+      description: Service (bot) only. Records the match/outcome after the bot processes
+        this row. Rolled back instead of persisted if the item's import is in test_mode.
       parameters: []
       responses:
         '200':
@@ -4126,7 +4149,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/CompletionatorImportItem"
         '403':
-          description: forbidden — caller is not the owner or service
+          description: forbidden — caller is not the service principal
           content:
             application/json:
               schema:
@@ -11124,9 +11147,9 @@ paths:
       summary: Create a public reminder
       tags:
       - Public Reminders
-      description: Open to any authenticated caller. `channel_id`, `message` and `due_at`
-        are required; `recur_every`/`recur_unit` (recurrence), `enabled` (defaults
-        true) and `created_by` are optional.
+      description: Admin or service only. `channel_id`, `message` and `due_at` are
+        required; `recur_every`/`recur_unit` (recurrence), `enabled` (defaults true)
+        and `created_by` are optional.
       parameters: []
       responses:
         '201':
@@ -11140,6 +11163,12 @@ paths:
                     "$ref": "#/components/schemas/PublicReminder"
         '422':
           description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -11286,6 +11315,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -11346,6 +11381,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/PublicReminder"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -11401,6 +11442,12 @@ paths:
                 "$ref": "#/components/schemas/DeletedResponse"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -12501,6 +12548,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -12597,10 +12650,10 @@ paths:
       summary: Create an RSS feed
       tags:
       - RSS Feeds
-      description: Open to any authenticated caller. `feed_url` and `channel_id` are
-        required; `feed_name` and the keyword filters are optional. `feed_url` is
-        stripped of surrounding whitespace, and a `feed_url` already registered in
-        the same `channel_id` is rejected with 422.
+      description: Admin or service only. `feed_url` and `channel_id` are required;
+        `feed_name` and the keyword filters are optional. `feed_url` is stripped of
+        surrounding whitespace, and a `feed_url` already registered in the same `channel_id`
+        is rejected with 422.
       parameters: []
       responses:
         '201':
@@ -12614,6 +12667,12 @@ paths:
                     "$ref": "#/components/schemas/RssFeed"
         '422':
           description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -12721,6 +12780,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -12773,6 +12838,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/RssFeed"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -12820,6 +12891,12 @@ paths:
                 "$ref": "#/components/schemas/DeletedResponse"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -14051,6 +14128,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -14154,6 +14237,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -14205,6 +14294,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/StarboardEntry"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -14251,6 +14346,12 @@ paths:
                 "$ref": "#/components/schemas/DeletedResponse"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -14640,8 +14741,8 @@ paths:
       summary: Update a Steam collection import item
       tags:
       - Steam Collection Imports
-      description: Owner-only. Records the match/outcome after the bot processes this
-        app. Rolled back instead of persisted if the item's import is in test_mode.
+      description: Service (bot) only. Records the match/outcome after the bot processes
+        this app. Rolled back instead of persisted if the item's import is in test_mode.
       parameters: []
       responses:
         '200':
@@ -14654,7 +14755,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/SteamCollectionImportItem"
         '403':
-          description: forbidden — caller is not the owner or service
+          description: forbidden — caller is not the service principal
           content:
             application/json:
               schema:
@@ -15414,8 +15515,8 @@ paths:
       summary: Create a suggestion
       tags:
       - Suggestions
-      description: Open to any authenticated caller. `title` is required; everything
-        else is optional.
+      description: Admin or service only. `title` is required; everything else is
+        optional.
       parameters: []
       responses:
         '201':
@@ -15429,6 +15530,12 @@ paths:
                     "$ref": "#/components/schemas/Suggestion"
         '422':
           description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -15519,6 +15626,12 @@ paths:
                 "$ref": "#/components/schemas/DeletedResponse"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -17772,7 +17885,7 @@ paths:
       summary: Create voting info
       tags:
       - Voting Info
-      description: Open to any authenticated caller. `round_number` (the PK) and `next_vote_at`
+      description: Admin or service only. `round_number` (the PK) and `next_vote_at`
         are required; the reminder flags default to false.
       parameters: []
       responses:
@@ -17787,6 +17900,12 @@ paths:
                     "$ref": "#/components/schemas/VotingInfo"
         '422':
           description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:
@@ -17931,6 +18050,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -17992,6 +18117,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/VotingInfo"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -18048,6 +18179,12 @@ paths:
                 "$ref": "#/components/schemas/DeletedResponse"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or the service principal
           content:
             application/json:
               schema:

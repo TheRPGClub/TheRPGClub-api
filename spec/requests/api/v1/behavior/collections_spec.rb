@@ -4,9 +4,8 @@ require "rails_helper"
 
 # Behavior specs for the user game-collection endpoints: the user-scoped list
 # with the bot's search filters, the per-platform summary, the game-scoped
-# community-ownership list, and the detail CRUD. Reads and writes are open to
-# any authenticated principal — collection writes are documented as NOT
-# owner-restricted (tracked by the controller-hardening companion issue).
+# community-ownership list, and the detail CRUD. Reads are open to any
+# authenticated principal; writes are owner-restricted like the other lists.
 RSpec.describe "api/v1/collections behavior", type: :request do
   let(:owner) { create(:user) }
   let(:other_user) { create(:user) }
@@ -107,12 +106,11 @@ RSpec.describe "api/v1/collections behavior", type: :request do
       expect(json.dig("data", "user_id")).to eq(owner.user_id)
     end
 
-    it "is documented as not owner-restricted: another user may write, scoped to the path user" do
+    it "forbids another user" do
       post "/api/v1/users/#{owner.user_id}/collections",
         params: payload, headers: auth_headers_for(other_user), as: :json
 
-      expect(response).to have_http_status(:created)
-      expect(json.dig("data", "user_id")).to eq(owner.user_id)
+      expect(response).to have_http_status(:forbidden)
     end
 
     it "422s for an unknown game id" do
@@ -254,14 +252,14 @@ RSpec.describe "api/v1/collections behavior", type: :request do
       expect(entry.reload.ownership_type).to eq("Physical")
     end
 
-    it "is documented as not owner-restricted: another user may update" do
-      entry = create(:collection_entry, user: owner)
+    it "forbids another user" do
+      entry = create(:collection_entry, user: owner, note: "mine")
 
       patch "/api/v1/collections/#{entry.entry_id}",
         params: { data: { note: "edited by someone else" } }, headers: auth_headers_for(other_user), as: :json
 
-      expect(response).to have_http_status(:ok)
-      expect(entry.reload.note).to eq("edited by someone else")
+      expect(response).to have_http_status(:forbidden)
+      expect(entry.reload.note).to eq("mine")
     end
 
     it "supports PUT as an alias for the partial update" do
