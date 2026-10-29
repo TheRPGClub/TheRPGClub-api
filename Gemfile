@@ -25,6 +25,9 @@ gem "oj"
 # Pagination [https://github.com/ddnexus/pagy]
 gem "pagy"
 
+# CSV generation/parsing (a bundled gem since Ruby 3.4, so it must be declared)
+gem "csv"
+
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
 
