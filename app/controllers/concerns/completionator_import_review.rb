@@ -13,7 +13,7 @@
 # reflects the writes it rolls back.
 module CompletionatorImportReview
   extend ActiveSupport::Concern
-  include CollectionCsvImportReview
+  include ImportCandidatesJson
 
   private
 
