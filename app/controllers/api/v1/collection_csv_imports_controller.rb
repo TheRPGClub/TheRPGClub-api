@@ -11,40 +11,43 @@ module Api
     # the owner, per `require_owner!`) — this is private per-user working data.
     class CollectionCsvImportsController < ApplicationController
       include TestModeRollback
+      include CollectionImportReview
+      include ImportCsvUpload
 
-      before_action :require_owner!, only: %i[create active show update summary]
+      import_review_resources import: CollectionCsvImportResource, item: CollectionCsvImportItemResource
+
+      before_action :require_owner!, only: %i[create active show update summary advance]
+
+      TEMPLATE_VERSION = "1.0"
 
       # POST /api/v1/users/:user_id/collection_csv_imports
-      # Body: { "data": { source_file_name, source_file_size, template_version, items: [...], test_mode } }
+      # Body: { "data": { csv_text, source_file_name, test_mode } }   (web, #290)
+      #   or  { "data": { source_file_name, source_file_size, template_version, items: [...], test_mode } }   (bot)
       #
-      # Creates the import job and inserts all row items in one call. Each
-      # entry in `items` becomes a pending RpgClubCollectionCsvImportItem;
-      # `row_index` defaults to the entry's position in the array. `test_mode:
-      # true` marks this a dry-run session — the session row itself is always
-      # persisted, but all subsequent writes scoped to it are rolled back
-      # (see TestModeRollback).
+      # Creates the import job and inserts all row items in one call. With
+      # `csv_text` the file is parsed and validated here
+      # (Imports::CollectionCsvParser); any problem rejects the whole file with
+      # 422 `{error: "invalid_csv", errors: [{row_index, column, message}]}` and
+      # nothing is created. Otherwise each entry in the pre-parsed `items`
+      # becomes a pending item; `row_index` defaults to the entry's position.
+      # `test_mode: true` marks this a dry-run session — the session row
+      # itself is always persisted, but all subsequent writes scoped to it are
+      # rolled back (see TestModeRollback).
       def create
         data = request_data
-        items = Array(data["items"])
-        test_mode = ActiveModel::Type::Boolean.new.cast(data["test_mode"])
+        test_mode = ActiveModel::Type::Boolean.new.cast(data["test_mode"]) || false
 
-        record = RpgClubCollectionCsvImport.create!(
-          user_id: params[:user_id],
-          status: "active",
-          current_index: 0,
-          total_count: items.size,
-          source_file_name: data["source_file_name"],
-          source_file_size: data["source_file_size"],
-          template_version: data["template_version"],
-          test_mode: test_mode
-        )
-
-        with_test_mode_rollback(test_mode) do
-          rows = items.each_with_index.map { |item, index| item_row(record.import_id, item, index) }
-          RpgClubCollectionCsvImportItem.insert_all(rows) if rows.any?
+        if data.key?("csv_text")
+          create_from_csv_text(data, test_mode)
+        else
+          items = Array(data["items"])
+          create_import(
+            { source_file_name: data["source_file_name"], source_file_size: data["source_file_size"],
+              template_version: data["template_version"] },
+            items.each_with_index.map { |item, index| item_row(item, index) },
+            test_mode
+          )
         end
-
-        render json: { data: CollectionCsvImportResource.new(record).serializable_hash }, status: :created
       end
 
       # GET /api/v1/users/:user_id/collection_csv_imports/active
@@ -83,20 +86,78 @@ module Api
       def summary
         record = RpgClubCollectionCsvImport.find(params[:id])
 
-        render json: {
-          data: {
-            import_id: record.import_id,
-            by_status: record.items.group(:status).count,
-            by_result_reason: record.items.group(:result_reason).count
-          }
-        }
+        render json: { data: import_item_counts(record) }
+      end
+
+      # POST /api/v1/collection_csv_imports/:id/advance
+      #
+      # Runs the server-side import loop (Imports::CollectionCsvWorkflow#advance):
+      # resolves gamedb_id / igdb_id rows and single exact title matches on its
+      # own, and returns the first row that needs a human with its candidates.
+      # `item` is null once nothing is pending (the import is then completed),
+      # or when the per-request auto-apply cap was hit (the import stays
+      # active; call again). 409 `import_not_active` unless the import is
+      # active. The import row is locked, so concurrent calls run one at a time.
+      def advance
+        import = RpgClubCollectionCsvImport.find(params[:id])
+        return render json: { error: "import_not_active" }, status: :conflict unless import.status == "active"
+
+        payload = with_test_mode_rollback(import.test_mode) do
+          import.lock!
+          collection_import_review_payload(import, Imports::CollectionCsvWorkflow.new(import).advance)
+        end
+
+        render json: { data: payload }
       end
 
       private
 
-      def item_row(import_id, item, index)
+      def create_from_csv_text(data, test_mode)
+        csv_text = checked_csv_text(data["csv_text"]) or return
+
+        parsed = Imports::CollectionCsvParser.new(platform_resolver: Imports::PlatformResolver.new).parse(csv_text)
+        return render_invalid_csv(parsed.errors) unless parsed.ok?
+
+        create_import(
+          { source_file_name: data["source_file_name"], source_file_size: csv_text.bytesize,
+            template_version: TEMPLATE_VERSION },
+          parsed.rows.map { |row| parsed_row(row) },
+          test_mode
+        )
+      end
+
+      def create_import(attributes, rows, test_mode)
+        record = RpgClubCollectionCsvImport.create!(
+          user_id: params[:user_id], status: "active", current_index: 0, total_count: rows.size,
+          test_mode: test_mode, **attributes
+        )
+
+        with_test_mode_rollback(test_mode) do
+          rows = rows.map { |row| row.merge(import_id: record.import_id, status: "pending") }
+          RpgClubCollectionCsvImportItem.insert_all(rows) if rows.any?
+        end
+
+        render json: { data: CollectionCsvImportResource.new(record).serializable_hash }, status: :created
+      end
+
+      def parsed_row(row)
         {
-          import_id: import_id,
+          row_index: row.row_index,
+          raw_title: row.title,
+          raw_platform: row.raw_platform,
+          raw_ownership_type: row.raw_ownership_type,
+          raw_note: row.raw_note,
+          raw_gamedb_id: row.gamedb_id,
+          raw_igdb_id: row.igdb_id,
+          platform_id: row.platform_id,
+          ownership_type: row.ownership_type,
+          note: row.raw_note
+        }
+      end
+
+      # insert_all needs every row to carry the same keys.
+      def item_row(item, index)
+        {
           row_index: item["row_index"] || index,
           raw_title: item["raw_title"],
           raw_platform: item["raw_platform"],
@@ -104,7 +165,9 @@ module Api
           raw_note: item["raw_note"],
           raw_gamedb_id: item["raw_gamedb_id"],
           raw_igdb_id: item["raw_igdb_id"],
-          status: "pending"
+          platform_id: nil,
+          ownership_type: nil,
+          note: nil
         }
       end
 

@@ -48,7 +48,11 @@ RSpec.describe 'api/v1/now_playing', type: :request do
       tags 'Now Playing'
       description 'Owner-only. Adds a game to the user\'s now-playing list. `gamedb_game_id` is ' \
                   'required; `platform_id` and `note` are optional. `sort_order` is assigned ' \
-                  'server-side (appended last) and the per-user maximum of 10 entries is enforced.'
+                  'server-side (appended last) and the per-user maximum of 10 entries is enforced. ' \
+                  'In the same transaction, every backlog row the user has for the game is removed, ' \
+                  'and when `note` is absent or blank the backlog note carries over. If the entry ' \
+                  'can\'t be created, the backlog is left unchanged. A game already on the list is 409 ' \
+                  '`already_playing` and the backlog is left unchanged.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -66,7 +70,11 @@ RSpec.describe 'api/v1/now_playing', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed (duplicate game, max entries reached, or note too long)' do
+      response '409', '`already_playing`: the game is already on the list (the backlog is left unchanged)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed (max entries reached, or note too long)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

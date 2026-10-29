@@ -79,12 +79,17 @@ Rails.application.routes.draw do
           get "collections/platform_summary", to: "collections#platform_summary"
           get "collections", to: "collections#index"
           post "collections", to: "collections#create"
+          # Declared before `completions` so the path reads clearly; `common`
+          # is a fixed segment, never a completion id.
+          get "completions/common", to: "completions#common"
+          get "completions/export", to: "completions#export"
           get "completions", to: "completions#index"
           post "completions", to: "completions#create"
           get "favorites", to: "favorites#index"
           post "favorites", to: "favorites#create"
           get "reviews", to: "reviews#index"
           post "reviews", to: "reviews#create"
+          get "backlog/pick", to: "backlog#pick"
           get "backlog", to: "backlog#index"
           post "backlog", to: "backlog#create"
           get "now_playing", to: "now_playing#user_index"
@@ -108,6 +113,7 @@ Rails.application.routes.draw do
           get "collection_csv_imports/active", to: "collection_csv_imports#active"
           post "completionator_imports", to: "completionator_imports#create"
           get "completionator_imports/active", to: "completionator_imports#active"
+          post "steam_collection_imports", to: "steam_collection_imports#create"
           get "steam_collection_imports/active", to: "steam_collection_imports#active"
           get "steam_app_gamedb_maps/historical", to: "steam_app_gamedb_maps#historical"
         end
@@ -122,20 +128,40 @@ Rails.application.routes.draw do
         member do
           get "summary"
           get "items/next_pending", to: "collection_csv_import_items#next_pending"
+          # Server-side import workflow (#290).
+          post "advance"
         end
       end
-      resources :collection_csv_import_items, only: %i[show update]
+      resources :collection_csv_import_items, only: %i[show update] do
+        member do
+          post "apply", action: :apply_selection
+          post "skip"
+          post "remap"
+          get "igdb_candidates"
+        end
+      end
       # Completionator import jobs (#164), same shape as collection_csv_imports
       # above. The user-scoped create/active reads live under `users`;
       # `summary` and the nested `items/next_pending` poll are member routes
       # so they aren't captured by the `:id` show route.
+      # `advance` and the item workflow routes (#291) drive the server-side
+      # review loop for the web.
       resources :completionator_imports, only: %i[show update] do
         member do
           get "summary"
+          post "advance"
           get "items/next_pending", to: "completionator_import_items#next_pending"
         end
       end
-      resources :completionator_import_items, only: %i[show update]
+      resources :completionator_import_items, only: %i[show update] do
+        member do
+          post "match"
+          post "add_completion"
+          post "update_completion"
+          post "skip"
+          get "igdb_candidates"
+        end
+      end
       # Steam collection import jobs (#166), same shape as
       # collection_csv_imports above, except `create` is not user-nested (the
       # owner user_id is given in the body) and items are bulk-inserted via a
@@ -147,9 +173,19 @@ Rails.application.routes.draw do
           post "items", to: "steam_collection_import_items#create"
           get "items/next_pending", to: "steam_collection_import_items#next_pending"
           get "items/counts", to: "steam_collection_import_items#counts"
+          post "advance"
         end
       end
-      resources :steam_collection_import_items, only: %i[show update]
+      # Server-side workflow actions on one item (#289): apply a GameDB or
+      # IGDB game, skip, re-search under another title, IGDB suggestions.
+      resources :steam_collection_import_items, only: %i[show update] do
+        member do
+          post "apply", action: :apply_selection
+          post "skip"
+          post "remap"
+          get "igdb_candidates"
+        end
+      end
       # Steam app -> GameDB game mapping cache (#166), shared across every
       # user's import. `create` upserts keyed on steam_app_id; `show` is
       # keyed on steam_app_id too (not the internal map_id), so it's declared
@@ -198,6 +234,10 @@ Rails.application.routes.draw do
           delete "links", to: "thread_game_links#destroy_all"
           delete "links/:game_id", to: "thread_game_links#destroy"
         end
+      end
+      # GOTM / NR-GOTM history grouped and paged by round (read-only).
+      resources :gotm_rounds, only: %i[index] do
+        collection { get "current" }
       end
       resources :gotm_entries, only: %i[index show create update destroy]
       resources :nr_gotm_entries, only: %i[index show create update destroy]

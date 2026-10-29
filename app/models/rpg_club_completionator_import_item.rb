@@ -9,6 +9,12 @@ class RpgClubCompletionatorImportItem < ApplicationRecord
   self.primary_key = "item_id"
 
   STATUSES = %w[pending added updated skipped failed].freeze
+  # The bot writes `imported`/`error` (and upper-cases statuses), which the
+  # API never accepted, so those writes used to 422. They are normalised to
+  # the canonical values instead, so the bot keeps working unchanged.
+  LEGACY_STATUSES = { "imported" => "added", "error" => "failed" }.freeze
+
+  before_validation :normalize_status
 
   belongs_to :import,
     class_name: "RpgClubCompletionatorImport",
@@ -19,4 +25,14 @@ class RpgClubCompletionatorImportItem < ApplicationRecord
   validates :import_id, :row_index, :status, presence: true
   validates :status, inclusion: { in: STATUSES }
   validates :row_index, uniqueness: { scope: :import_id }
+
+  private
+
+  def normalize_status
+    return if status.nil?
+
+    value = status.to_s.strip.downcase
+    value = LEGACY_STATUSES.fetch(value, value)
+    self.status = value if STATUSES.include?(value)
+  end
 end

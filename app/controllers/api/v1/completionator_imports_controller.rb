@@ -12,22 +12,29 @@ module Api
     # working data.
     class CompletionatorImportsController < ApplicationController
       include TestModeRollback
+      include CompletionatorImportReview
+      include ImportCsvUpload
 
-      before_action :require_owner!, only: %i[create active show update summary]
+      before_action :require_owner!, only: %i[create active show update summary advance]
 
       # POST /api/v1/users/:user_id/completionator_imports
-      # Body: { "data": { source_filename, items: [...], test_mode } }
+      # Body: { "data": { source_filename, csv_text | items: [...], test_mode } }
       #
-      # Creates the import job and inserts all row items in one call. Each
-      # entry in `items` becomes a pending RpgClubCompletionatorImportItem;
+      # Creates the import job and inserts all row items in one call. With
+      # `csv_text` (the web, #291) the raw Completionator export is parsed
+      # server-side (Imports::CompletionatorCsvParser); a malformed or empty
+      # export is a 422 `invalid_csv` and creates nothing. Otherwise (the bot)
+      # each entry in `items` becomes a pending RpgClubCompletionatorImportItem;
       # `row_index` defaults to the entry's position in the array. `test_mode:
       # true` marks this a dry-run session — the session row itself is always
       # persisted, but all subsequent writes scoped to it are rolled back
       # (see TestModeRollback).
       def create
         data = request_data
-        items = Array(data["items"])
-        test_mode = ActiveModel::Type::Boolean.new.cast(data["test_mode"])
+        items = data["csv_text"].nil? ? Array(data["items"]) : parse_csv(data["csv_text"])
+        return if performed?
+
+        test_mode = ActiveModel::Type::Boolean.new.cast(data["test_mode"]) || false
 
         record = RpgClubCompletionatorImport.create!(
           user_id: params[:user_id],
@@ -90,7 +97,40 @@ module Api
         }
       end
 
+      # POST /api/v1/completionator_imports/:id/advance
+      #
+      # The server-side review loop (#291, see Imports::CompletionatorWorkflow):
+      # applies automatic rows (auto-add, auto-skip) and returns the review of
+      # the first row that needs the member (see CompletionatorImportReview).
+      # `item` is null when nothing is left (the import is now completed) or
+      # when the per-call automatic cap was hit (the import is still active:
+      # call again). 409 `import_not_active` unless the import is active.
+      # Rolled back if the import is in test_mode.
+      def advance
+        record = RpgClubCompletionatorImport.find(params[:id])
+        return render json: { error: "import_not_active" }, status: :conflict unless record.status == "active"
+
+        payload = with_test_mode_rollback(record.test_mode) do
+          record.lock!
+          result = Imports::CompletionatorWorkflow.new(record).advance
+          completionator_review_payload(record, result.review, auto_processed: result.auto_processed)
+        end
+
+        render json: { data: payload }
+      end
+
       private
+
+      # The parsed rows, or nil after rendering 422 invalid_csv
+      # (ImportCsvUpload). Every Completionator CSV error is about the whole
+      # file, so it is reported as row 1, column "file".
+      def parse_csv(raw)
+        text = checked_csv_text(raw) or return
+
+        Imports::CompletionatorCsvParser.new.parse(text).map(&:stringify_keys)
+      rescue Imports::CompletionatorCsvParser::InvalidCsv => error
+        render_invalid_csv([ csv_file_error(error.message) ])
+      end
 
       def item_row(import_id, item, index)
         {

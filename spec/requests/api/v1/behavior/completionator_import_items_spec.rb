@@ -154,6 +154,23 @@ RSpec.describe "api/v1/completionator_import_items behavior", type: :request do
       expect(item.reload).to have_attributes(status: "pending", completion_id: nil)
     end
 
+    it "normalises the bot's legacy imported/error statuses to added/failed" do
+      added = create(:completionator_import_item, import: import)
+      failed = create(:completionator_import_item, import: import)
+
+      patch "/api/v1/completionator_import_items/#{added.item_id}",
+        params: { data: { status: "imported", completion_id: 7 } }, headers: service_headers, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "status")).to eq("added")
+
+      patch "/api/v1/completionator_import_items/#{failed.item_id}",
+        params: { data: { status: "ERROR", error_text: "boom" } }, headers: service_headers, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "status")).to eq("failed")
+
+      expect([ added.reload.status, failed.reload.status ]).to eq(%w[added failed])
+    end
+
     it "422s on an invalid status" do
       item = create(:completionator_import_item, import: import)
 

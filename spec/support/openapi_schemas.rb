@@ -243,6 +243,26 @@ module OpenapiSchemas
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
+      # backlog#pick (BacklogPickResource): the suggested entry, from the backlog
+      # or the collection, with its game, platform and HLTB times. `hours` is the
+      # parsed HLTB time `max_hours` compares (main, single player, main + sides).
+      BacklogPick: obj(
+        kind: str(enum: %w[backlog collection]), entry_id: int, gamedb_game_id: int,
+        platform_id: int(nullable: true), note: str(nullable: true), hours: num(nullable: true),
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true), hltb: ref("Hltb", nullable: true)
+      ),
+      # A platform the backlog#pick filter can choose, with the distinct games on it.
+      BacklogPickPlatform: obj(
+        platform_id: int, platform_name: str(nullable: true), platform_abbreviation: str(nullable: true), count: int
+      ),
+      BacklogPickMeta: obj(
+        seed: { type: :integer, minimum: 0, maximum: 0xffffffff, description: "The shuffle seed; repeat it to reroll." },
+        position: { type: :integer, nullable: true, description: "Where the pick sits in the shuffled order (null with no pick)." },
+        next_position: { type: :integer, nullable: true, description: "Pass as `position` to reroll (null with no pick)." },
+        wrapped: { type: :boolean, description: "The walk passed the end of the list, so picks may repeat." },
+        total: { type: :integer, description: "Candidates after the source and platform filters, before `max_hours`." },
+        platforms: array_of("BacklogPickPlatform")
+      ),
       # collections#index (CollectionEntryResource): trimmed columns + the joined
       # platform name/abbreviation (CollectionFields, #101), no embeds.
       CollectionEntry: obj(
@@ -283,6 +303,19 @@ module OpenapiSchemas
         note: str(nullable: true), completion_type: str, completed_at: ts(nullable: true),
         final_playtime_hrs: num(nullable: true), created_at: ts,
         game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+      ),
+      # CommonCompletionEntryResource (CompletionsController#common): a game both
+      # members completed. `latest_shared_date` is the latest `completed_at`
+      # across both members (null when every entry is undated); each side holds
+      # that member's latest entry for the game and their completion count.
+      CommonCompletionSide: obj(latest: ref("CompletionEntry"), count: int, _required: %w[latest count]),
+      CommonCompletionEntry: obj(
+        gamedb_game_id: int, latest_shared_date: ts(nullable: true), game: ref("GameSummary"),
+        left: ref("CommonCompletionSide"), right: ref("CommonCompletionSide"),
+        _required: %w[gamedb_game_id latest_shared_date game left right]
+      ),
+      CommonCompletionMeta: extends(
+        "PaginationMeta", left_user_id: str, right_user_id: str
       ),
       # CompletionUserEntryResource (CompletionFields + user), for game-scoped lists.
       CompletionUserEntry: obj(
@@ -490,6 +523,41 @@ module OpenapiSchemas
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
         by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
       ),
+      # collection_csv_imports#create with `csv_text` (#290): the whole file is
+      # rejected; `errors` lists every problem (row_index 1 is the header or
+      # the file as a whole).
+      InvalidCsvError: obj(
+        error: str(example: "invalid_csv"),
+        errors: {
+          type: :array,
+          items: obj(row_index: int, column: str(example: "platform"),
+            message: str(example: "Platform not recognized. Use a platform name or id."))
+        },
+        _required: %w[error errors]
+      ),
+      # One GameDB match for an import row (Imports::Candidate), as returned
+      # by the import workflow endpoints (#290).
+      ImportCandidate: obj(game_id: int, title: str, cover_url: str(nullable: true)),
+      # An IGDB search hit for an import row (igdb_candidates, #290): the
+      # Igdb::Client#search candidate plus `already_imported`.
+      ImportIgdbCandidate: obj(
+        igdb_id: int, name: str, slug: str(nullable: true), summary: str(nullable: true),
+        url: str(nullable: true), total_rating: num(nullable: true),
+        first_release_date: str(nullable: true, description: "ISO 8601 timestamp."),
+        cover_url: str(nullable: true), already_imported: bool
+      ),
+      # collection_csv_imports#advance and collection_csv_import_items#remap
+      # (#290): the import, the item that needs a human (null when none is
+      # left or the per-request auto-apply cap was reached; see the import's
+      # status), its stored candidates and confidence, and the item counts.
+      CollectionCsvImportReview: obj(
+        import: ref("CollectionCsvImport"),
+        item: ref("CollectionCsvImportItem", nullable: true),
+        candidates: array_of("ImportCandidate"),
+        match_confidence: str(nullable: true, enum: [ "exact", "fuzzy", "manual", nil ]),
+        counts: ref("CollectionCsvImportSummary"),
+        _required: %w[import item candidates match_confidence counts]
+      ),
       # CompletionatorImportResource: every RpgClubCompletionatorImport column
       # (#164). `current_index`/`total_count` let the bot resume a
       # paused/interrupted import. `test_mode` marks a dry-run session whose
@@ -515,6 +583,46 @@ module OpenapiSchemas
       CompletionatorImportSummary: obj(
         import_id: int,
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } }
+      ),
+      # The Completionator import workflow (#291, Imports::CompletionatorWorkflow
+      # via CompletionatorImportReview). completionator_imports#advance and
+      # completionator_import_items#match return the collection CSV review
+      # shape (#290) plus the Completionator steps: `next_step` tells the
+      # client what to show; `candidates` are only set for choose_game;
+      # `game` and `form` (and, with an existing completion,
+      # `existing_completion` + `diff`) once a game is matched.
+      CompletionatorDiff: obj(
+        fields: { type: :array, items: { type: :string, enum: %w[type date playtime] },
+                  description: "Row values that differ from the existing completion (update_completion options)." },
+        confirm_same: bool.merge(description: "Both dates are set and differ: ask whether this is the same completion " \
+                                              "(yes -> update_completion, no -> add_completion)."),
+        _required: %w[fields confirm_same]
+      ),
+      CompletionatorForm: obj(
+        completion_type: str(enum: [ "Main Story", "Main Story + Side Content", "Completionist" ]),
+        platform_id: int(nullable: true).merge(description: "Default platform; null when it could not be resolved."),
+        creates_release: bool.merge(description: "Adding with this platform_id creates the game's missing WW release."),
+        platforms: array_of("Platform").merge(description: "Platform options: the game's platforms, then the standard platforms."),
+        date_choice: str(enum: %w[csv unknown], description: "`csv` when the row has a date, else `unknown`."),
+        completed_at: ts(nullable: true),
+        final_playtime_hours: num(nullable: true),
+        _required: %w[completion_type platform_id creates_release platforms date_choice completed_at final_playtime_hours]
+      ),
+      CompletionatorImportReview: obj(
+        import: ref("CompletionatorImport"),
+        item: ref("CompletionatorImportItem", nullable: true),
+        candidates: array_of("ImportCandidate"),
+        match_confidence: str(nullable: true, enum: [ "exact", "fuzzy", nil ]),
+        counts: ref("CompletionatorImportSummary"),
+        next_step: str(nullable: true, enum: [ "choose_game", "add_completion", "confirm_same", "update_completion",
+                                               "auto_added", "auto_skipped", nil ],
+                       description: "auto_added / auto_skipped only come from match (advance moves past them)."),
+        game: ref("GameSummary", nullable: true),
+        existing_completion: ref("CompletionEntry", nullable: true),
+        diff: ref("CompletionatorDiff", nullable: true),
+        form: ref("CompletionatorForm", nullable: true),
+        auto_processed: int.merge(description: "Rows auto-added or auto-skipped by this advance call (0 for match)."),
+        _required: %w[import item candidates match_confidence counts next_step game existing_completion diff form auto_processed]
       ),
       # SteamCollectionImportResource: every RpgClubSteamCollectionImport
       # column (#166). `current_index`/`total_count` let the bot resume a
@@ -550,6 +658,19 @@ module OpenapiSchemas
       SteamAppGamedbMap: obj(
         map_id: int, steam_app_id: int, gamedb_game_id: int(nullable: true), status: str,
         created_by: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      # steam_collection_imports#advance and steam_collection_import_items#remap
+      # (#289), the same shape as CollectionCsvImportReview: the import, the
+      # item that needs a human (null once the import is completed, or when
+      # the per-request auto-apply cap was hit while the import is still
+      # active), its GameDB candidates and confidence, and the item counts.
+      SteamCollectionImportReview: obj(
+        import: ref("SteamCollectionImport"),
+        item: ref("SteamCollectionImportItem", nullable: true),
+        candidates: array_of("ImportCandidate"),
+        match_confidence: str(nullable: true, enum: [ "exact", "fuzzy", "manual", nil ]),
+        counts: ref("SteamCollectionImportCounts"),
+        _required: %w[import item candidates match_confidence counts]
       ),
       # Raw bot_voting_info columns plus the derived voting-window state
       # (VotingInfoResource): `vote_deadline` is the effective end of voting —
@@ -696,6 +817,23 @@ module OpenapiSchemas
         nr_gotm_id: int, round_number: int, month_year: str, game_index: int,
         reddit_url: str(nullable: true), voting_results_message_id: str(nullable: true),
         gamedb_game_id: int(nullable: true), game: ref("GameWithPlatforms", nullable: true)
+      ),
+      # Gotm::RoundHistory (GotmRoundsController): one round of GOTM history.
+      # A kind's block is null when that kind has no (matching) entries in the
+      # round; NR-GOTM "N/A" placeholder games are left out of `games`, so an
+      # NR block can be present with an empty `games` list.
+      GotmRoundGame: obj(
+        game_index: int, gamedb_game_id: int(nullable: true), reddit_url: str(nullable: true),
+        thread_id: str(nullable: true, description: "The game's newest linked Discord thread."),
+        game: ref("GameWithPlatforms", nullable: true)
+      ),
+      GotmRoundBlock: obj(
+        month_year: str, voting_results_message_id: str(nullable: true), games: array_of("GotmRoundGame"),
+        _required: %w[month_year games]
+      ),
+      GotmRound: obj(
+        round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
+        _required: %w[round_number gotm nr_gotm]
       ),
       # NominationResource (gotm + nr-gotm share it). `user`/`game` are
       # bot-sourced and FK-unenforced, so either may be null.

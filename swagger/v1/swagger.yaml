@@ -678,6 +678,87 @@ components:
       - entry_id
       - user_id
       - gamedb_game_id
+    BacklogPick:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - backlog
+          - collection
+        entry_id:
+          type: integer
+        gamedb_game_id:
+          type: integer
+        platform_id:
+          type: integer
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        hours:
+          type: number
+          nullable: true
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        platform:
+          allOf:
+          - "$ref": "#/components/schemas/Platform"
+          nullable: true
+        hltb:
+          allOf:
+          - "$ref": "#/components/schemas/Hltb"
+          nullable: true
+      required:
+      - kind
+      - entry_id
+      - gamedb_game_id
+    BacklogPickPlatform:
+      type: object
+      properties:
+        platform_id:
+          type: integer
+        platform_name:
+          type: string
+          nullable: true
+        platform_abbreviation:
+          type: string
+          nullable: true
+        count:
+          type: integer
+      required:
+      - platform_id
+      - count
+    BacklogPickMeta:
+      type: object
+      properties:
+        seed:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+          description: The shuffle seed; repeat it to reroll.
+        position:
+          type: integer
+          nullable: true
+          description: Where the pick sits in the shuffled order (null with no pick).
+        next_position:
+          type: integer
+          nullable: true
+          description: Pass as `position` to reroll (null with no pick).
+        wrapped:
+          type: boolean
+          description: The walk passed the end of the list, so picks may repeat.
+        total:
+          type: integer
+          description: Candidates after the source and platform filters, before `max_hours`.
+        platforms:
+          type: array
+          items:
+            "$ref": "#/components/schemas/BacklogPickPlatform"
+      required:
+      - seed
+      - wrapped
+      - total
     CollectionEntry:
       type: object
       properties:
@@ -841,6 +922,49 @@ components:
       - gamedb_game_id
       - completion_type
       - created_at
+    CommonCompletionSide:
+      type: object
+      properties:
+        latest:
+          "$ref": "#/components/schemas/CompletionEntry"
+        count:
+          type: integer
+      required:
+      - latest
+      - count
+    CommonCompletionEntry:
+      type: object
+      properties:
+        gamedb_game_id:
+          type: integer
+        latest_shared_date:
+          type: string
+          format: date-time
+          nullable: true
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        left:
+          "$ref": "#/components/schemas/CommonCompletionSide"
+        right:
+          "$ref": "#/components/schemas/CommonCompletionSide"
+      required:
+      - gamedb_game_id
+      - latest_shared_date
+      - game
+      - left
+      - right
+    CommonCompletionMeta:
+      allOf:
+      - "$ref": "#/components/schemas/PaginationMeta"
+      - type: object
+        properties:
+          left_user_id:
+            type: string
+          right_user_id:
+            type: string
+        required:
+        - left_user_id
+        - right_user_id
     CompletionUserEntry:
       type: object
       properties:
@@ -1610,6 +1734,106 @@ components:
       - import_id
       - by_status
       - by_result_reason
+    InvalidCsvError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: invalid_csv
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row_index:
+                type: integer
+              column:
+                type: string
+                example: platform
+              message:
+                type: string
+                example: Platform not recognized. Use a platform name or id.
+            required:
+            - row_index
+            - column
+            - message
+      required:
+      - error
+      - errors
+    ImportCandidate:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+      required:
+      - game_id
+      - title
+    ImportIgdbCandidate:
+      type: object
+      properties:
+        igdb_id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        total_rating:
+          type: number
+          nullable: true
+        first_release_date:
+          type: string
+          nullable: true
+          description: ISO 8601 timestamp.
+        cover_url:
+          type: string
+          nullable: true
+        already_imported:
+          type: boolean
+      required:
+      - igdb_id
+      - name
+      - already_imported
+    CollectionCsvImportReview:
+      type: object
+      properties:
+        import:
+          "$ref": "#/components/schemas/CollectionCsvImport"
+        item:
+          allOf:
+          - "$ref": "#/components/schemas/CollectionCsvImportItem"
+          nullable: true
+        candidates:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ImportCandidate"
+        match_confidence:
+          type: string
+          nullable: true
+          enum:
+          - exact
+          - fuzzy
+          - manual
+          -
+        counts:
+          "$ref": "#/components/schemas/CollectionCsvImportSummary"
+      required:
+      - import
+      - item
+      - candidates
+      - match_confidence
+      - counts
     CompletionatorImport:
       type: object
       properties:
@@ -1706,6 +1930,137 @@ components:
       required:
       - import_id
       - by_status
+    CompletionatorDiff:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            type: string
+            enum:
+            - type
+            - date
+            - playtime
+          description: Row values that differ from the existing completion (update_completion
+            options).
+        confirm_same:
+          type: boolean
+          description: 'Both dates are set and differ: ask whether this is the same
+            completion (yes -> update_completion, no -> add_completion).'
+      required:
+      - fields
+      - confirm_same
+    CompletionatorForm:
+      type: object
+      properties:
+        completion_type:
+          type: string
+          enum:
+          - Main Story
+          - Main Story + Side Content
+          - Completionist
+        platform_id:
+          type: integer
+          nullable: true
+          description: Default platform; null when it could not be resolved.
+        creates_release:
+          type: boolean
+          description: Adding with this platform_id creates the game's missing WW
+            release.
+        platforms:
+          type: array
+          items:
+            "$ref": "#/components/schemas/Platform"
+          description: 'Platform options: the game''s platforms, then the standard
+            platforms.'
+        date_choice:
+          type: string
+          enum:
+          - csv
+          - unknown
+          description: "`csv` when the row has a date, else `unknown`."
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        final_playtime_hours:
+          type: number
+          nullable: true
+      required:
+      - completion_type
+      - platform_id
+      - creates_release
+      - platforms
+      - date_choice
+      - completed_at
+      - final_playtime_hours
+    CompletionatorImportReview:
+      type: object
+      properties:
+        import:
+          "$ref": "#/components/schemas/CompletionatorImport"
+        item:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionatorImportItem"
+          nullable: true
+        candidates:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ImportCandidate"
+        match_confidence:
+          type: string
+          nullable: true
+          enum:
+          - exact
+          - fuzzy
+          -
+        counts:
+          "$ref": "#/components/schemas/CompletionatorImportSummary"
+        next_step:
+          type: string
+          nullable: true
+          enum:
+          - choose_game
+          - add_completion
+          - confirm_same
+          - update_completion
+          - auto_added
+          - auto_skipped
+          -
+          description: auto_added / auto_skipped only come from match (advance moves
+            past them).
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameSummary"
+          nullable: true
+        existing_completion:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionEntry"
+          nullable: true
+        diff:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionatorDiff"
+          nullable: true
+        form:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionatorForm"
+          nullable: true
+        auto_processed:
+          type: integer
+          description: Rows auto-added or auto-skipped by this advance call (0 for
+            match).
+      required:
+      - import
+      - item
+      - candidates
+      - match_confidence
+      - counts
+      - next_step
+      - game
+      - existing_completion
+      - diff
+      - form
+      - auto_processed
     SteamCollectionImport:
       type: object
       properties:
@@ -1850,6 +2205,35 @@ components:
       - status
       - created_at
       - updated_at
+    SteamCollectionImportReview:
+      type: object
+      properties:
+        import:
+          "$ref": "#/components/schemas/SteamCollectionImport"
+        item:
+          allOf:
+          - "$ref": "#/components/schemas/SteamCollectionImportItem"
+          nullable: true
+        candidates:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ImportCandidate"
+        match_confidence:
+          type: string
+          nullable: true
+          enum:
+          - exact
+          - fuzzy
+          - manual
+          -
+        counts:
+          "$ref": "#/components/schemas/SteamCollectionImportCounts"
+      required:
+      - import
+      - item
+      - candidates
+      - match_confidence
+      - counts
     VotingInfo:
       type: object
       properties:
@@ -2465,6 +2849,59 @@ components:
       - round_number
       - month_year
       - game_index
+    GotmRoundGame:
+      type: object
+      properties:
+        game_index:
+          type: integer
+        gamedb_game_id:
+          type: integer
+          nullable: true
+        reddit_url:
+          type: string
+          nullable: true
+        thread_id:
+          type: string
+          nullable: true
+          description: The game's newest linked Discord thread.
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameWithPlatforms"
+          nullable: true
+      required:
+      - game_index
+    GotmRoundBlock:
+      type: object
+      properties:
+        month_year:
+          type: string
+        voting_results_message_id:
+          type: string
+          nullable: true
+        games:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GotmRoundGame"
+      required:
+      - month_year
+      - games
+    GotmRound:
+      type: object
+      properties:
+        round_number:
+          type: integer
+        gotm:
+          allOf:
+          - "$ref": "#/components/schemas/GotmRoundBlock"
+          nullable: true
+        nr_gotm:
+          allOf:
+          - "$ref": "#/components/schemas/GotmRoundBlock"
+          nullable: true
+      required:
+      - round_number
+      - gotm
+      - nr_gotm
     Nomination:
       type: object
       properties:
@@ -2784,6 +3221,104 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/backlog/pick":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Pick a game to play next
+      tags:
+      - Backlog
+      description: 'Owner-only (the bot service token may pick for anyone). Ports
+        the bot''s `/backlog pick`: a uniform random suggestion from the user''s backlog
+        and/or collection, excluding games already on Now Playing. A game in both
+        lists counts once, as its backlog entry. Deterministic for a given `seed`
+        and `position`: without a `seed` the server draws one and returns it in `meta.seed`,
+        and the client rerolls by repeating the request with `position=meta.next_position`.
+        With `max_hours`, games without an HLTB time are skipped. `data` is null when
+        nothing qualifies.'
+      parameters:
+      - name: source
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - backlog
+          - collection
+          - both
+          default: backlog
+      - name: platform_id
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+        description: Exact platform match; entries without a platform are excluded.
+      - name: max_hours
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        description: Only games whose HLTB time (main, else single player, else main
+          + sides) is at most this.
+      - name: seed
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+      - name: position
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+        description: Where to start walking the shuffled order; wraps past the end.
+      responses:
+        '200':
+          description: the pick (or null) with reroll and filter metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                    - "$ref": "#/components/schemas/BacklogPick"
+                    nullable: true
+                  meta:
+                    "$ref": "#/components/schemas/BacklogPickMeta"
+                required:
+                - data
+                - meta
+        '422':
+          description: "`invalid_<param>` (`invalid_source`, `invalid_platform_id`,
+            `invalid_max_hours`, `invalid_seed`, `invalid_position`): a query parameter
+            is out of range or not an integer"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/backlog/{id}":
     parameters:
     - name: id
@@ -3252,41 +3787,63 @@ paths:
               required:
               - data
         required: true
-  "/api/v1/users/{user_id}/collection_csv_imports":
+  "/api/v1/collection_csv_import_items/{id}/apply":
     parameters:
-    - name: user_id
+    - name: id
       in: path
       schema:
         type: string
       required: true
-      description: RpgClubCollectionCsvImport owner user_id.
+      description: RpgClubCollectionCsvImportItem item_id.
     post:
-      summary: Start a collection CSV import job
+      summary: Apply a chosen game to a collection CSV import row
       tags:
       - Collection CSV Imports
-      description: 'Owner-only (the bot service token counts as owner). Creates the
-        import job and inserts all row items — given as `items` — in one call. `test_mode:
-        true` marks this a dry-run session — the session row itself is always persisted,
-        but all subsequent writes scoped to it are rolled back.'
+      description: Owner-only (#290). Send exactly one of `game_id` (a GameDB game)
+        or `igdb_id` (imported into GameDB first, owner-safe, and stored as the row's
+        only candidate). Adds the game to the owner's collection with the row's platform,
+        ownership and note, and sets the row to `added`/`manual_remap` (`platform_unresolved`
+        when the platform no longer resolves), or `skipped`/`duplicate` when the entry
+        already exists, or `failed`/`add_failed`. Returns the updated item. Rolled
+        back instead of persisted if the import is in test_mode.
       parameters: []
       responses:
-        '201':
-          description: import job created
+        '200':
+          description: updated item
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    "$ref": "#/components/schemas/CollectionCsvImport"
+                    "$ref": "#/components/schemas/CollectionCsvImportItem"
         '403':
           description: forbidden — caller is not the owner or service
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found, `game_not_found`, or `igdb_game_not_found`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` (the import is not active) or `item_not_pending`
+            (the row was already resolved)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: "`game_id_or_igdb_id_required`, `invalid_igdb_id` or `igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
           content:
             application/json:
               schema:
@@ -3312,6 +3869,287 @@ paths:
                 data:
                   type: object
                   properties:
+                    game_id:
+                      type: integer
+                      description: GameDB game_id to apply.
+                    igdb_id:
+                      type: integer
+                      description: IGDB id to import and apply.
+              required:
+              - data
+        required: true
+  "/api/v1/collection_csv_import_items/{id}/skip":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImportItem item_id.
+    post:
+      summary: Skip a collection CSV import row
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (#290). Sets the row to `skipped`/`manual_skip`. Returns
+        the updated item. Rolled back instead of persisted if the import is in test_mode.
+      responses:
+        '200':
+          description: updated item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` (the import is not active) or `item_not_pending`
+            (the row was already resolved)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/collection_csv_import_items/{id}/remap":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImportItem item_id.
+    post:
+      summary: Search GameDB for a different title for a collection CSV import row
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (#290). Re-searches GameDB with `title` and stores the
+        candidates and confidence on the row (`result_reason` `no_candidate` when
+        there are none; the next `advance` then keeps the empty list rather than searching
+        the raw title again). Returns the same review payload as `advance`. A single
+        candidate that exactly matches the row's original title is auto-applied by
+        the next `advance`. Rolled back instead of persisted if the import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: review payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportReview"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` (the import is not active) or `item_not_pending`
+            (the row was already resolved)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`title_required`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                  required:
+                  - title
+              required:
+              - data
+        required: true
+  "/api/v1/collection_csv_import_items/{id}/igdb_candidates":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImportItem item_id.
+    get:
+      summary: IGDB suggestions for a collection CSV import row
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (#290). Searches IGDB for `q`, or else the row's title,
+        trying progressive title variants until one has hits (at most 10). Each hit
+        carries `already_imported`. Apply one with `apply {igdb_id}`.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Title to search instead of the row's raw_title.
+      responses:
+        '200':
+          description: IGDB candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ImportIgdbCandidate"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/collection_csv_imports":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport owner user_id.
+    post:
+      summary: Start a collection CSV import job
+      tags:
+      - Collection CSV Imports
+      description: 'Owner-only (the bot service token counts as owner). Creates the
+        import job and inserts all row items in one call. Send either the raw file
+        as `csv_text` (parsed and validated server-side; any problem rejects the whole
+        file with 422 `invalid_csv` and a `errors` list of `{row_index, column, message}`,
+        where row_index is the 1-based physical line the record starts on and 1 is
+        the header) or the pre-parsed rows as `items`. `test_mode: true` marks this
+        a dry-run session — the session row itself is always persisted, but all subsequent
+        writes scoped to it are rolled back. A user may have only one active or paused
+        import of this kind: starting another returns 422 `user already has an active
+        or paused import`.'
+      parameters: []
+      responses:
+        '201':
+          description: import job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'validation failed: `invalid_csv` (InvalidCsvError) for a bad
+            `csv_text`, otherwise Error'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - "$ref": "#/components/schemas/InvalidCsvError"
+                - "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    csv_text:
+                      type: string
+                      description: 'The raw collection CSV file (#290, web). When
+                        present it is parsed and validated server-side and `items`,
+                        `source_file_size` and `template_version` are ignored (they
+                        are derived). Columns: title (required), platform, ownership_type
+                        (Digital|Physical|Subscription|Other, default Digital), note
+                        (<= 500 chars), gamedb_id, igdb_id (at most one). Max 2 MB.'
                     source_file_name:
                       type: string
                       nullable: true
@@ -3348,7 +4186,8 @@ paths:
                           raw_igdb_id:
                             type: integer
                             nullable: true
-                      description: The parsed CSV rows to import, in order.
+                      description: The pre-parsed CSV rows to import, in order (bot
+                        path; ignored with `csv_text`).
                     test_mode:
                       type: boolean
                       default: false
@@ -3591,6 +4430,64 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/collection_csv_imports/{id}/advance":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport import_id.
+    post:
+      summary: Advance a collection CSV import to the next row needing review
+      tags:
+      - Collection CSV Imports
+      description: 'Owner-only (#290). Runs the import loop server-side over pending
+        rows in row_index order: a row with `gamedb_id` is applied (`csv_gamedb_id`;
+        `invalid_row` if the game is unknown), a row with `igdb_id` is imported from
+        IGDB and applied (`csv_igdb_id`; `invalid_row` on failure), and a row whose
+        title search yields a single exact candidate is applied (`auto_match`). Applying
+        uses the row''s platform (`platform_unresolved` when it no longer resolves;
+        added without a platform), ownership and note; an entry already in the collection
+        marks the row `skipped`/`duplicate`. Returns the first row that needs a human
+        with its stored candidates. `item` is null when nothing is pending (the import
+        is then `completed`) or when 25 rows were resolved in this call (the import
+        stays `active`: call again). Rolled back instead of persisted if the import
+        is in test_mode.'
+      responses:
+        '200':
+          description: review payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportReview"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` — the import is paused, completed or canceled"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/collections":
     parameters:
     - name: user_id
@@ -3606,7 +4503,8 @@ paths:
       description: 'Open to any authenticated caller. The optional filters mirror
         the bot''s collection search and AND together: `q` (game title, case-insensitive
         substring), `platform` (case-insensitive substring of the platform name/abbreviation/code),
-        `ownership_type` (exact) and `game_id` (`gamedb_game_id`).'
+        `platform_id` (exact; `none` matches entries with no platform), `ownership_type`
+        (exact) and `game_id` (`gamedb_game_id`).'
       parameters:
       - name: q
         in: query
@@ -3620,6 +4518,17 @@ paths:
           type: string
         required: false
         description: Filter by platform name/abbreviation/code (case-insensitive substring).
+      - name: platform_id
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: integer
+          - type: string
+            enum:
+            - none
+        description: Filter by exact gamedb_platforms.platform_id; `none` matches
+          entries with no platform.
       - name: ownership_type
         in: query
         schema:
@@ -4203,6 +5112,359 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/completionator_import_items/{id}/match":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Match a game to a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only (#291); the import must be active and the item pending
+        (else 409). Sets the item's game from `game_id`, or from `igdb_id` (imported
+        into GameDB first if needed; that import is rolled back with the rest in test_mode),
+        and returns the same review payload as advance, applying the automatic step
+        (`next_step` auto_added / auto_skipped). Rolled back if the import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: review of the matched item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportReview"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`game_id_or_igdb_id_required`, `invalid_igdb_id` or `igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found, or `game_not_found` / `igdb_game_not_found`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    game_id:
+                      type: integer
+                    igdb_id:
+                      type: integer
+        required: true
+  "/api/v1/completionator_import_items/{id}/add_completion":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Add a completion from a Completionator import item
+      tags:
+      - Completionator Imports
+      description: 'Owner-only (#291); the import must be active and the item pending
+        (else 409) and matched to a game. Creates the completion; omitted fields take
+        the review form defaults and `platform_id: null` records no platform. When
+        `platform_id` is the item''s mapped platform and the game lacks it, a WW release
+        is created first. Sets the item to `added`. Rolled back if the import is in
+        test_mode.'
+      parameters: []
+      responses:
+        '200':
+          description: the item, now added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`no_game_matched`, `invalid_completion_type`, `invalid_platform`
+            or `invalid_completed_at`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    completion_type:
+                      type: string
+                      enum:
+                      - Main Story
+                      - Main Story + Side Content
+                      - Completionist
+                    platform_id:
+                      type: integer
+                      nullable: true
+                    completed_at:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: null for an unknown date.
+                    final_playtime_hours:
+                      type: number
+                      nullable: true
+  "/api/v1/completionator_import_items/{id}/update_completion":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Update the existing completion from a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only (#291); the import must be active and the item pending
+        (else 409), with an existing completion (from its review). Copies the selected
+        row values onto that completion and sets the item to `updated`; when none
+        of the selected fields differ, the item is skipped instead. Rolled back if
+        the import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: the item, now updated (or skipped)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`invalid_fields` or `no_existing_completion`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    fields:
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                        - type
+                        - date
+                        - playtime
+        required: true
+  "/api/v1/completionator_import_items/{id}/skip":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Skip a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only (#291); the import must be active and the item pending
+        (else 409). Rolled back if the import is in test_mode.
+      responses:
+        '200':
+          description: the item, now skipped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/completionator_import_items/{id}/igdb_candidates":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    get:
+      summary: IGDB suggestions for a Completionator import item
+      tags:
+      - Completionator Imports
+      description: 'Owner-only (#291). Imports::IgdbCandidateSearch: searches IGDB
+        (10 results) for `q`, or the item''s title by progressive title variants.
+        Each result is flagged `already_imported` when GameDB has that igdb_id; pass
+        its igdb_id to match.'
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Search text; defaults to the item title.
+      responses:
+        '200':
+          description: IGDB candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ImportIgdbCandidate"
+        '422':
+          description: "`igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/completionator_imports":
     parameters:
     - name: user_id
@@ -4216,9 +5478,16 @@ paths:
       tags:
       - Completionator Imports
       description: 'Owner-only (the bot service token counts as owner). Creates the
-        import job and inserts all row items — given as `items` — in one call. `test_mode:
-        true` marks this a dry-run session — the session row itself is always persisted,
-        but all subsequent writes scoped to it are rolled back.'
+        import job and inserts all row items in one call. Rows come either from `csv_text`
+        (the raw export, parsed server-side, each item''s `row_index` being the 1-based
+        physical line its record starts on, so the header is 1; a malformed or empty
+        export is 422 `invalid_csv`) or from the pre-parsed `items` (the bot). `invalid_csv`
+        is `{error, errors: [{row_index, column, message}]}`; every Completionator
+        CSV error is about the whole file, so it is `row_index: 1, column: "file"`.
+        `test_mode: true` marks this a dry-run session — the session row itself is
+        always persisted, but all subsequent writes scoped to it are rolled back.
+        A user may have only one active or paused import of this kind: starting another
+        returns 422 `user already has an active or paused import`.'
       parameters: []
       responses:
         '201':
@@ -4237,7 +5506,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `invalid_csv`
           content:
             application/json:
               schema:
@@ -4266,6 +5535,11 @@ paths:
                     source_filename:
                       type: string
                       nullable: true
+                    csv_text:
+                      type: string
+                      description: The raw Completionator export (#291). Parsed server-side
+                        (columns name, platform, region, type, time `Hh:Mm:Ss`, date
+                        `M/D/YYYY`; header row skipped). Takes precedence over `items`.
                     items:
                       type: array
                       items:
@@ -4544,6 +5818,62 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/completionator_imports/{id}/advance":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImport import_id.
+    post:
+      summary: Advance the Completionator review loop
+      tags:
+      - Completionator Imports
+      description: 'Owner-only (#291). Works through the pending items by row_index:
+        each row is matched (its gamedb_game_id, else the fallback title matcher;
+        a single candidate auto-matches). With no existing completion and a resolved
+        platform the completion is auto-added; with an existing completion and nothing
+        to update the row is auto-skipped. It stops at the first row that needs the
+        member and returns its review (`next_step` choose_game, add_completion, confirm_same
+        or update_completion) in the collection CSV review shape. `item` is null after
+        25 automatic rows (the import stays active: call again) or when nothing is
+        left (the import is marked completed). 409 `import_not_active` unless the
+        import is active. Rolled back if the import is in test_mode.'
+      responses:
+        '200':
+          description: review of the next row needing the member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportReview"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: import not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/completions":
     parameters:
     - name: user_id
@@ -4556,10 +5886,10 @@ paths:
       tags:
       - Completions
       description: Ordered by `completed_at` descending, then `created_at` descending.
-        Open to any authenticated caller. The optional `game_id`, `year`, `q`, `completed_after`
-        and `completed_before` params filter the list (each ANDs in). `meta.count`
-        reflects the filtered total, so a count-only caller can request `per=1` and
-        read it without fetching every row.
+        Open to any authenticated caller. The optional `game_id`, `platform_id`, `year`,
+        `q`, `completed_after` and `completed_before` params filter the list (each
+        ANDs in). `meta.count` reflects the filtered total, so a count-only caller
+        can request `per=1` and read it without fetching every row.
       parameters:
       - name: game_id
         in: query
@@ -4567,6 +5897,12 @@ paths:
           type: integer
         required: false
         description: Filter to completions of this game (`gamedb_game_id`).
+      - name: platform_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to completions on this platform (exact `platform_id`).
       - name: year
         in: query
         schema:
@@ -4724,6 +6060,163 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/completions/common":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The left member.
+    get:
+      summary: List games two members have both completed
+      tags:
+      - Completions
+      description: 'Games that both `user_id` (left) and `other_user_id` (right) have
+        completed, one row per game with each member''s latest entry and completion
+        count. Open to any authenticated caller. Filters match a game when any of
+        either member''s entries for it match. `sort` defaults to `date_desc`: date
+        sorts order by `latest_shared_date` (undated games last, ties by title); title
+        sorts are case-insensitive.'
+      parameters:
+      - name: other_user_id
+        in: query
+        schema:
+          type: string
+        required: true
+        description: The right member. Must differ from `user_id`.
+      - name: year
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Keep games with an entry completed in this year (`YYYY`); `unknown`
+          keeps games with an undated entry.
+      - name: platform_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Keep games with an entry on this platform.
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by game title (case-insensitive substring).
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - date_desc
+          - date_asc
+          - title_asc
+          - title_desc
+          default: date_desc
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: common completions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CommonCompletionEntry"
+                  meta:
+                    "$ref": "#/components/schemas/CommonCompletionMeta"
+        '422':
+          description: missing or same-member `other_user_id`, an unknown `sort`,
+            or `invalid_year` / `invalid_platform_id` for a `year` that is not an
+            integer or `unknown`, or a non-integer `platform_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: either member not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/completions/export":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Export a user's completions as CSV
+      tags:
+      - Completions
+      description: 'Owner-only. Every completion the user has, unpaginated and in
+        the list order (`completed_at` descending, then `created_at` descending),
+        as a `text/csv` attachment named `completions.csv`. The columns match the
+        Discord bot''s export: `ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime
+        (Hours),Note,Created At`. `Completed Date` is the UTC date (`YYYY-MM-DD`)
+        and `Created At` is an ISO-8601 UTC timestamp with milliseconds. Empty values
+        are blank. Fields that contain a comma, quote or line break are quoted (RFC
+        4180). A user with no completions gets only the header row.'
+      responses:
+        '200':
+          description: completions CSV
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: '`attachment; filename="completions.csv"`'
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            text/csv:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            text/csv:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/completions/leaderboard":
     get:
       summary: Completion leaderboard
@@ -8097,6 +9590,139 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_rounds":
+    get:
+      summary: List GOTM history by round
+      tags:
+      - GOTM
+      description: 'GOTM and NR-GOTM history grouped by round. Pages are rounds, not
+        entries. Filters apply to each kind''s block within a round: `year` matches
+        the trailing year of `month_year`, and `q` keeps a block (with all its games)
+        when any of its game titles match. NR-GOTM "N/A" placeholder games are omitted.
+        `meta.years` lists every year for the selected kind(s), newest first, regardless
+        of the `year` and `q` filters.'
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - gotm
+          - nr_gotm
+          - both
+          default: both
+      - name: year
+        in: query
+        required: false
+        schema:
+          type: integer
+          example: 2024
+        description: Only rounds whose `month_year` ends in this year.
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Case-insensitive title search over each round block's games.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+          default: desc
+        description: Round number order.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 12
+          maximum: 100
+        required: false
+        description: Rounds per page.
+      responses:
+        '200':
+          description: GOTM rounds
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GotmRound"
+                  meta:
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      required:
+                      - years
+                      properties:
+                        years:
+                          type: array
+                          items:
+                            type: integer
+                          example:
+                          - 2025
+                          - 2024
+        '422':
+          description: invalid `kind`, `sort` or `year`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_rounds/current":
+    get:
+      summary: Show the current GOTM round
+      tags:
+      - GOTM
+      description: The highest GOTM round plus the NR-GOTM games of that same round
+        (null when it has none), in the `gotm_rounds` shape. This is the latest round
+        with winners, not the round being voted on. 404 when there are no GOTM entries.
+      responses:
+        '200':
+          description: current GOTM round
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotmRound"
+        '404':
+          description: no GOTM rounds
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/health":
     get:
       summary: Health check
@@ -9697,6 +11323,10 @@ paths:
       description: Owner-only. Adds a game to the user's now-playing list. `gamedb_game_id`
         is required; `platform_id` and `note` are optional. `sort_order` is assigned
         server-side (appended last) and the per-user maximum of 10 entries is enforced.
+        In the same transaction, every backlog row the user has for the game is removed,
+        and when `note` is absent or blank the backlog note carries over. If the entry
+        can't be created, the backlog is left unchanged. A game already on the list
+        is 409 `already_playing` and the backlog is left unchanged.
       parameters: []
       responses:
         '201':
@@ -9714,9 +11344,15 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`already_playing`: the game is already on the list (the backlog
+            is left unchanged)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed (duplicate game, max entries reached, or
-            note too long)
+          description: validation failed (max entries reached, or note too long)
           content:
             application/json:
               schema:
@@ -14824,14 +16460,309 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/steam_collection_import_items/{id}/apply":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    post:
+      summary: Apply a GameDB or IGDB game to a Steam import item
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Pass `game_id` (a GameDB game) or `igdb_id`
+        (resolved to a GameDB game, imported from IGDB when needed, without the admin-only
+        `POST /games`). Adds the game to the owner''s collection (Digital, Steam platform),
+        maps the Steam app to it, and returns the item: `added`/`manual_remap` (`platform_unresolved`
+        without a Steam platform), `skipped`/`duplicate` when already collected, or
+        `failed`/`add_failed`. Errors: `game_not_found` and `igdb_game_not_found`
+        404; `game_id_or_igdb_id_required`, `invalid_igdb_id` and `igdb_not_configured`
+        422; `igdb_request_failed` 502. Only for a pending item of an active import:
+        otherwise 409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
+      parameters: []
+      responses:
+        '200':
+          description: the updated item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportItem"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item, GameDB game or IGDB game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not exactly one of game_id / igdb_id, invalid igdb_id, or IGDB
+            not configured
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: IGDB request failed (`igdb_request_failed`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    game_id:
+                      type: integer
+                      description: GameDB game_id. Pass exactly one of game_id and
+                        igdb_id.
+                    igdb_id:
+                      type: integer
+                      description: IGDB game id, imported into GameDB if needed.
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_import_items/{id}/skip":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    post:
+      summary: Skip a Steam import item
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Marks the item `skipped`/`manual_skip` and
+        records the Steam app as `skipped` in the shared app map, so later imports
+        flag it `skip_mapped`. Only for a pending item of an active import: otherwise
+        409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
+      responses:
+        '200':
+          description: the updated item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportItem"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_collection_import_items/{id}/remap":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    post:
+      summary: Search GameDB for a Steam import item under another title
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Re-searches GameDB for `title` and persists
+        the candidates on the item (`no_candidate` when nothing matches, and the next
+        advance keeps that empty list rather than searching the app name again; 422
+        `title_required` for a blank title). Nothing is applied; the next advance
+        may auto-apply a single exact match. Returns the same payload as advance.
+        Only for a pending item of an active import: otherwise 409 `import_not_active`
+        / `item_not_pending`. Rolled back in test_mode.'
+      parameters: []
+      responses:
+        '200':
+          description: the item with its new candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportReview"
+                required:
+                - data
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: blank title (`title_required`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                      description: Title to search for.
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_import_items/{id}/igdb_candidates":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    - name: q
+      in: query
+      schema:
+        type: string
+      required: false
+      description: Title to search. Defaults to the item's Steam app name.
+    get:
+      summary: IGDB suggestions for a Steam import item
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289): the member-facing counterpart of the admin-only
+        `GET /igdb/search`. Searches IGDB by progressive title variants (the first
+        variant with hits wins, at most 10) and flags each hit `already_imported`
+        when a GameDB game has that igdb_id. Pick one with `POST .../apply {igdb_id}`.'
+      responses:
+        '200':
+          description: IGDB candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ImportIgdbCandidate"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: IGDB is not configured (`igdb_not_configured`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: IGDB request failed (`igdb_request_failed`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/steam_collection_imports":
     post:
       summary: Start a Steam collection import job
       tags:
       - Steam Collection Imports
-      description: Owner-only (the bot service token counts as owner; owner_id is
+      description: 'Owner-only (the bot service token counts as owner; owner_id is
         taken from `user_id` in the body). Creates the import job; apps are bulk-inserted
-        separately via `POST /steam_collection_imports/{id}/items`.
+        separately via `POST /steam_collection_imports/{id}/items`. A user may have
+        only one active or paused import of this kind: starting another returns 422
+        `user already has an active or paused import`.'
       parameters: []
       responses:
         '201':
@@ -15051,6 +16982,153 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/steam_collection_imports":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Import owner user_id.
+    post:
+      summary: Start a Steam collection import from a Steam profile
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Resolves `steam_profile` (a SteamID64, a steamcommunity.com
+        `profiles/` or `id/` URL, or a vanity name) and fetches the owned library
+        server-side (needs `STEAM_WEB_API_KEY`), then creates the import and one pending
+        item per app (`row_index` 1..n). Drive it with `POST /steam_collection_imports/{id}/advance`.
+        Steam errors: `invalid_identifier` and `private_profile` 422; `api_unavailable`
+        and `api_unauthorized` 502; `api_rate_limited` and `steam_not_configured`
+        503. A member may have only one active or paused import of this kind (422,
+        checked before calling Steam). In `test_mode` the session (with its `total_count`)
+        is persisted but the items are rolled back.'
+      parameters: []
+      responses:
+        '201':
+          description: import created with its items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImport"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid or private Steam profile, or an import is already open
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: Steam API failed (`api_unavailable`, `api_unauthorized`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: Steam is rate limiting (`api_rate_limited`) or not configured
+            (`steam_not_configured`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    steam_profile:
+                      type: string
+                      example: https://steamcommunity.com/id/example
+                      description: SteamID64, profile URL or vanity name. Required.
+                    test_mode:
+                      type: boolean
+                      default: false
+                      description: Dry-run session (see TestModeRollback).
+                  required:
+                  - steam_profile
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_imports/{id}/advance":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImport import_id.
+    post:
+      summary: Advance a Steam import to the next item that needs a human
+      tags:
+      - Steam Collection Imports
+      description: Owner-only (#289). Pops pending items in `row_index` order and
+        computes their GameDB candidates (the Steam app map, then a GameDB title search,
+        then the member's historically mapped games), persisting them on the item.
+        A single candidate whose title exactly matches the Steam name is applied automatically
+        (`auto_match`), up to 25 per request. Returns the first item that needs a
+        human with its candidates; `item` is null when the import is `completed`,
+        or when the cap was hit while the import is still `active` (advance again).
+        409 `import_not_active` unless the import is active. Rolled back in test_mode.
+      responses:
+        '200':
+          description: the next item to review, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportReview"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: import is not active (`import_not_active`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/suggestions/review_sessions":
     get:
       summary: List suggestion review sessions

@@ -87,13 +87,18 @@ RSpec.describe "api/v1/now_playing behavior", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "422s when the game is already on the list (unique per user and game)" do
+    it "409s already_playing when the game is already on the list, leaving the backlog alone" do
       create(:now_playing_entry, user: owner, game: game)
+      backlog_entry = create(:backlog_entry, user: owner, game: game, note: "still queued")
 
-      post "/api/v1/users/#{owner.user_id}/now_playing",
-        params: payload, headers: auth_headers_for(owner), as: :json
+      expect {
+        post "/api/v1/users/#{owner.user_id}/now_playing",
+          params: payload, headers: auth_headers_for(owner), as: :json
+      }.not_to change(UserNowPlaying, :count)
 
-      expect(response).to have_http_status(:unprocessable_content)
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("already_playing")
+      expect(backlog_entry.reload.note).to eq("still queued")
     end
 
     it "422s once the user already has the maximum of 10 entries" do
@@ -130,6 +135,44 @@ RSpec.describe "api/v1/now_playing behavior", type: :request do
         params: { data: { note: "no game" } }, headers: auth_headers_for(owner), as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    context "when the game is on the user's backlog" do
+      let!(:backlog_entry) { create(:backlog_entry, user: owner, game: game, note: "from the backlog") }
+      let!(:second_backlog_entry) { create(:backlog_entry, user: owner, game: game) }
+      let!(:other_backlog_entry) { create(:backlog_entry, user: owner) }
+      let!(:other_users_entry) { create(:backlog_entry, user: other_user, game: game) }
+
+      def start_playing(data)
+        post "/api/v1/users/#{owner.user_id}/now_playing",
+          params: { data: data }, headers: auth_headers_for(owner), as: :json
+      end
+
+      it "removes every backlog row for that game and carries the backlog note over" do
+        start_playing(gamedb_game_id: game.game_id)
+
+        expect(response).to have_http_status(:created)
+        expect(json.dig("data", "note")).to eq("from the backlog")
+        expect(UserGameBacklog.where(entry_id: [ backlog_entry.entry_id, second_backlog_entry.entry_id ])).to be_empty
+        expect(UserGameBacklog.exists?(other_backlog_entry.entry_id)).to be(true)
+        expect(UserGameBacklog.exists?(other_users_entry.entry_id)).to be(true)
+      end
+
+      it "keeps a supplied note over the backlog note" do
+        start_playing(gamedb_game_id: game.game_id, note: "my own note")
+
+        expect(response).to have_http_status(:created)
+        expect(json.dig("data", "note")).to eq("my own note")
+        expect(UserGameBacklog.where(user_id: owner.user_id, gamedb_game_id: game.game_id)).to be_empty
+      end
+
+      it "leaves the backlog untouched when the now-playing entry can't be created" do
+        create_list(:now_playing_entry, 10, user: owner)
+
+        expect { start_playing(gamedb_game_id: game.game_id) }
+          .not_to change(UserGameBacklog.where(user_id: owner.user_id, gamedb_game_id: game.game_id), :count)
+        expect(response).to have_http_status(:unprocessable_content)
+      end
     end
 
     it "requires authentication" do
