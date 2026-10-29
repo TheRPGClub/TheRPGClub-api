@@ -71,9 +71,16 @@ module Api
       # bot's `Member.addNowPlaying` orchestration): in one transaction, every
       # backlog row the user has for the game is removed, and when no `note` is
       # supplied the backlog note carries over. If the entry can't be created the
-      # backlog is left as it was.
+      # backlog is left as it was. A game already on the list is 409
+      # `already_playing` (the backlog is untouched).
       def create
         data = create_data.merge("user_id" => params[:user_id])
+        if data["gamedb_game_id"].present? &&
+           UserNowPlaying.exists?(user_id: params[:user_id], gamedb_game_id: data["gamedb_game_id"])
+          return render json: { error: "already_playing", message: "This game is already on the now-playing list." },
+            status: :conflict
+        end
+
         record = ActiveRecord::Base.transaction do
           backlog = UserGameBacklog.where(user_id: params[:user_id], gamedb_game_id: data["gamedb_game_id"])
             .order(sort_order: :asc, created_at: :desc).to_a
