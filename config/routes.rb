@@ -113,6 +113,7 @@ Rails.application.routes.draw do
           get "collection_csv_imports/active", to: "collection_csv_imports#active"
           post "completionator_imports", to: "completionator_imports#create"
           get "completionator_imports/active", to: "completionator_imports#active"
+          post "steam_collection_imports", to: "steam_collection_imports#create"
           get "steam_collection_imports/active", to: "steam_collection_imports#active"
           get "steam_app_gamedb_maps/historical", to: "steam_app_gamedb_maps#historical"
         end
