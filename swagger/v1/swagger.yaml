@@ -782,11 +782,23 @@ components:
         platform_abbreviation:
           type: string
           nullable: true
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        platform:
+          allOf:
+          - "$ref": "#/components/schemas/Platform"
+          nullable: true
       required:
       - entry_id
       - user_id
       - gamedb_game_id
+      - platform_id
       - ownership_type
+      - note
+      - platform_name
+      - platform_abbreviation
+      - game
+      - platform
     CollectionUserEntry:
       type: object
       properties:
@@ -4533,7 +4545,8 @@ paths:
         the bot''s collection search and AND together: `q` (game title, case-insensitive
         substring), `platform` (case-insensitive substring of the platform name/abbreviation/code),
         `platform_id` (exact; `none` matches entries with no platform), `ownership_type`
-        (exact) and `game_id` (`gamedb_game_id`).'
+        (exact) and `game_id` (`gamedb_game_id`). Each entry embeds its `game` and
+        `platform` (null with no platform) alongside the flat `platform_name` / `platform_abbreviation`.'
       parameters:
       - name: q
         in: query
@@ -13855,8 +13868,10 @@ paths:
       summary: List a user's reviews
       tags:
       - Reviews
-      description: Open to any authenticated caller. Returns the full review records
-        (all columns).
+      description: 'Open to any authenticated caller. Returns the curated review shape
+        with the game embedded, newest first. Unshared reviews (`is_shared: false`)
+        are private: they are listed only for their author, an admin or the service,
+        and are left out (and out of `meta.count`) for anyone else.'
       parameters:
       - name: page
         in: query
@@ -13899,7 +13914,7 @@ paths:
                   data:
                     type: array
                     items:
-                      "$ref": "#/components/schemas/Review"
+                      "$ref": "#/components/schemas/ReviewEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
         '401':

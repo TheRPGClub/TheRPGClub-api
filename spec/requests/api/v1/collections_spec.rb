@@ -22,7 +22,8 @@ RSpec.describe 'api/v1/collections', type: :request do
                   'search and AND together: `q` (game title, case-insensitive substring), `platform` ' \
                   '(case-insensitive substring of the platform name/abbreviation/code), `platform_id` ' \
                   '(exact; `none` matches entries with no platform), `ownership_type` (exact) and `game_id` ' \
-                  '(`gamedb_game_id`).'
+                  '(`gamedb_game_id`). Each entry embeds its `game` and `platform` (null with no platform) ' \
+                  'alongside the flat `platform_name` / `platform_abbreviation`.'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false,
         description: 'Filter by game title (case-insensitive substring).'
