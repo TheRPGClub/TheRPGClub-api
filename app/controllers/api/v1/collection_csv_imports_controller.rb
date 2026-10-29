@@ -11,8 +11,9 @@ module Api
     # the owner, per `require_owner!`) — this is private per-user working data.
     class CollectionCsvImportsController < ApplicationController
       include TestModeRollback
+      include CollectionCsvImportReview
 
-      before_action :require_owner!, only: %i[create active show update summary]
+      before_action :require_owner!, only: %i[create active show update summary advance]
 
       # Upper bound on an uploaded `csv_text`, so one request can't parse an
       # arbitrarily large file.
@@ -92,6 +93,29 @@ module Api
             by_result_reason: record.items.group(:result_reason).count
           }
         }
+      end
+
+      # POST /api/v1/collection_csv_imports/:id/advance
+      #
+      # Runs the server-side import loop (Imports::CollectionCsvWorkflow#advance):
+      # resolves gamedb_id / igdb_id rows and single exact title matches on its
+      # own, and returns the first row that needs a human with its candidates.
+      # `item` is null once nothing is pending (the import is then completed),
+      # or when the per-request auto-apply cap was hit (the import stays
+      # active; call again). 409 `import_not_active` unless the import is
+      # active. The import row is locked, so concurrent calls run one at a time.
+      def advance
+        import = RpgClubCollectionCsvImport.find(params[:id])
+        return render json: { error: "import_not_active" }, status: :conflict unless import.status == "active"
+
+        payload = with_test_mode_rollback(import.test_mode) do
+          import.lock!
+          review = Imports::CollectionCsvWorkflow.new(import).advance
+          collection_csv_review_payload(import, item: review.item, candidates: review.candidates,
+            match_confidence: review.match_confidence)
+        end
+
+        render json: { data: payload }
       end
 
       private
