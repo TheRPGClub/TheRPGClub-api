@@ -136,6 +136,37 @@ RSpec.describe 'api/v1/completions', type: :request do
     end
   end
 
+  path '/api/v1/users/{user_id}/completions/export' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true
+
+    get 'Export a user\'s completions as CSV' do
+      tags 'Completions'
+      description 'Owner-only. Every completion the user has, unpaginated and in the list order ' \
+                  '(`completed_at` descending, then `created_at` descending), as a `text/csv` attachment ' \
+                  'named `completions.csv`. The columns match the Discord bot\'s export: ' \
+                  '`ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime (Hours),Note,Created At`. ' \
+                  '`Completed Date` is the UTC date (`YYYY-MM-DD`) and `Created At` is an ISO-8601 UTC ' \
+                  'timestamp with milliseconds. Empty values are blank. Fields that contain a comma, ' \
+                  'quote or line break are quoted (RFC 4180). A user with no completions gets only the ' \
+                  'header row.'
+      produces 'text/csv', 'application/json'
+
+      response '200', 'completions CSV' do
+        header 'Content-Disposition', schema: { type: :string },
+          description: '`attachment; filename="completions.csv"`'
+        schema type: :string, format: :binary
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/completions/leaderboard' do
     get 'Completion leaderboard' do
       tags 'Completions'

@@ -3,7 +3,7 @@
 module Api
   module V1
     class CompletionsController < ApplicationController
-      before_action :require_owner!, only: %i[create update destroy]
+      before_action :require_owner!, only: %i[export create update destroy]
 
       # Caller-settable columns. `user_id` comes from the path (or the existing
       # record) and the key is generated, so neither is accepted in the body.
@@ -39,6 +39,17 @@ module Api
         }
       rescue Completions::Common::InvalidSort => e
         render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # Every one of the user's completions as a CSV download, in the bot's
+      # export format (see Completions::CsvExport). Owner-only, like the bot's
+      # self-only `/game-completion export`, even though the JSON index is open.
+      # Unpaginated, in the index's order.
+      def export
+        completions = UserGameCompletion.where(user_id: params[:user_id]).includes(:game)
+          .order(completed_at: :desc, created_at: :desc)
+        send_data Completions::CsvExport.new(completions).to_csv,
+          type: "text/csv; charset=utf-8", disposition: "attachment", filename: "completions.csv"
       end
 
       def game_index
