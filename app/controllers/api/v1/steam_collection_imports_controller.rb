@@ -111,7 +111,7 @@ module Api
         data = request_data
         user_id = params[:user_id]
         if RpgClubSteamCollectionImport.open_for_user(user_id).exists?
-          return render json: { error: OneOpenImportPerUser::ERROR_MESSAGE }, status: :unprocessable_entity
+          return render json: { error: OneOpenImportPerUser::ERROR_MESSAGE }, status: :unprocessable_content
         end
 
         client = Steam::Client.new
@@ -139,7 +139,7 @@ module Api
       end
 
       def steam_error_status(code)
-        return :unprocessable_entity if STEAM_CLIENT_ERRORS.include?(code)
+        return :unprocessable_content if STEAM_CLIENT_ERRORS.include?(code)
 
         STEAM_UPSTREAM_STATUS.fetch(code, :bad_gateway)
       end

@@ -210,11 +210,12 @@ RSpec.describe "api/v1/backlog pick behavior", type: :request do
       { source: "wishlist" }, { max_hours: 0 }, { max_hours: "abc" }, { seed: -1 },
       { seed: 0x1_0000_0000 }, { position: -1 }, { platform_id: "x" }
     ].each do |bad|
-      it "400s for #{bad.inspect}" do
+      it "422s invalid_#{bad.keys.first} for #{bad.inspect}, like gotm_rounds" do
         get path, params: bad, headers: auth_headers_for(owner)
 
-        expect(response).to have_http_status(:bad_request)
-        expect(json.fetch("error")).to eq("bad_request")
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to eq("invalid_#{bad.keys.first}")
+        expect(json.fetch("message")).to start_with(bad.keys.first.to_s)
       end
     end
   end

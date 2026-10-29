@@ -19,7 +19,7 @@ module Api
         return invalid_param("kind", Gotm::RoundHistory::KIND_PARAMS) unless Gotm::RoundHistory::KIND_PARAMS.include?(kind)
         return invalid_param("sort", Gotm::RoundHistory::SORTS) unless Gotm::RoundHistory::SORTS.include?(sort)
         if params[:year].present? && year.nil?
-          return render json: { error: "invalid_year", message: "year must be an integer" }, status: :unprocessable_entity
+          return render json: { error: "invalid_year", message: "year must be an integer" }, status: :unprocessable_content
         end
 
         history = Gotm::RoundHistory.new(kind:, year:, query: params[:q])
@@ -46,7 +46,7 @@ module Api
 
       def invalid_param(name, allowed)
         render json: { error: "invalid_#{name}", message: "#{name} must be one of: #{allowed.join(', ')}" },
-          status: :unprocessable_entity
+          status: :unprocessable_content
       end
     end
   end

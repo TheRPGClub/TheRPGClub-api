@@ -163,7 +163,7 @@ RSpec.describe "api/v1/completions common behavior", type: :request do
     it "rejects an unknown sort" do
       get path, params: { other_user_id: right.user_id, sort: "rating" }, headers: auth_headers_for(viewer)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 
@@ -184,14 +184,14 @@ RSpec.describe "api/v1/completions common behavior", type: :request do
   it "returns 422 when other_user_id is missing" do
     get path, headers: auth_headers_for(viewer)
 
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
     expect(json.fetch("error")).to match(/other_user_id/)
   end
 
   it "returns 422 when other_user_id is the same member" do
     get path, params: { other_user_id: left.user_id }, headers: auth_headers_for(viewer)
 
-    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response).to have_http_status(:unprocessable_content)
   end
 
   it "returns 404 when other_user_id is unknown" do

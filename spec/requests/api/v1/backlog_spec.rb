@@ -106,7 +106,8 @@ RSpec.describe 'api/v1/backlog', type: :request do
         }, required: %w[data meta]
       end
 
-      response '400', 'invalid query parameter' do
+      response '422', '`invalid_<param>` (`invalid_source`, `invalid_platform_id`, `invalid_max_hours`, ' \
+                      '`invalid_seed`, `invalid_position`): a query parameter is out of range or not an integer' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

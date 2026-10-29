@@ -20,9 +20,9 @@ module Api
       # `leaderboard`).
       def common
         other_user_id = params[:other_user_id].presence
-        return render(json: { error: "other_user_id is required" }, status: :unprocessable_entity) unless other_user_id
+        return render(json: { error: "other_user_id is required" }, status: :unprocessable_content) unless other_user_id
         if other_user_id.to_s == params[:user_id].to_s
-          return render(json: { error: "other_user_id must be a different member" }, status: :unprocessable_entity)
+          return render(json: { error: "other_user_id must be a different member" }, status: :unprocessable_content)
         end
         return if invalid_common_param?
 
@@ -39,7 +39,7 @@ module Api
           meta: pagy_meta(pagy).merge(left_user_id: left.user_id, right_user_id: right.user_id)
         }
       rescue Completions::Common::InvalidSort => e
-        render json: { error: e.message }, status: :unprocessable_entity
+        render json: { error: e.message }, status: :unprocessable_content
       end
 
       # Every one of the user's completions as a CSV download, in the bot's

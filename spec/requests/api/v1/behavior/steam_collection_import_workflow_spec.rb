@@ -74,7 +74,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
           params: { data: { steam_profile: "example" } }, headers: auth_headers_for(owner), as: :json
       }.not_to change(RpgClubSteamCollectionImport, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json).to include("error" => "private_profile", "message" => "No visible games were returned.")
     end
 
@@ -85,7 +85,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
       post "/api/v1/users/#{owner.user_id}/steam_collection_imports",
         params: { data: { steam_profile: "bad id!" } }, headers: auth_headers_for(owner), as: :json
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to eq("invalid_identifier")
     end
 
@@ -114,7 +114,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
       post "/api/v1/users/#{owner.user_id}/steam_collection_imports",
         params: { data: { steam_profile: "example" } }, headers: auth_headers_for(owner), as: :json
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to include("user already has an active or paused import")
       expect(steam).not_to have_received(:resolve_profile)
     end
@@ -358,11 +358,11 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
 
       it "422s unless exactly one of game_id and igdb_id is given" do
         item_post("apply", { note: "nothing" })
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
 
         item_post("apply", { game_id: 1, igdb_id: 2 })
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
       end
 
@@ -436,7 +436,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
       it "422s for a blank title" do
         item_post("remap", { title: "  " })
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json.fetch("error")).to eq("title_required")
       end
 

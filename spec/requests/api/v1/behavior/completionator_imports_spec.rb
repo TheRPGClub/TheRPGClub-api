@@ -32,7 +32,7 @@ RSpec.describe "api/v1/completionator_imports behavior", type: :request do
           params: payload, headers: auth_headers_for(owner), as: :json
       }.not_to change(RpgClubCompletionatorImport, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to include("user already has an active or paused import")
     end
 

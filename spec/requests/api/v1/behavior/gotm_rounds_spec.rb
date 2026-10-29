@@ -152,7 +152,7 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
 
     it "rejects an unknown kind, sort or a non-integer year" do
       get "/api/v1/gotm_rounds", params: { kind: "rpg" }, headers: headers
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to eq("invalid_kind")
 
       get "/api/v1/gotm_rounds", params: { sort: "up" }, headers: headers
