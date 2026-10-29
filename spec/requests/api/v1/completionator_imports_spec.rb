@@ -42,7 +42,8 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
       tags 'Completionator Imports'
       description 'Owner-only (the bot service token counts as owner). Creates the import job ' \
                   'and inserts all row items in one call. Rows come either from `csv_text` (the raw ' \
-                  'export, parsed server-side; a malformed or empty export is 422 `invalid_csv`) or ' \
+                  'export, parsed server-side, each item\'s `row_index` being the 1-based physical line its ' \
+                  'record starts on, so the header is 1; a malformed or empty export is 422 `invalid_csv`) or ' \
                   'from the pre-parsed `items` (the bot). `invalid_csv` is `{error, errors: [{row_index, column, ' \
                   'message}]}`; every Completionator CSV error is about the whole file, so it is ' \
                   '`row_index: 1, column: "file"`. `test_mode: true` ' \

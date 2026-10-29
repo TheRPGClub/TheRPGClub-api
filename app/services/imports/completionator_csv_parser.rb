@@ -1,22 +1,21 @@
 # frozen_string_literal: true
 
-require "csv"
-
 module Imports
   # Parses a Completionator export into import item attributes, ported from
   # the bot's parseCompletionatorCsv but with a real CSV parser (quoted
   # commas and multiline fields work):
   #
   #   rows = Imports::CompletionatorCsvParser.new.parse(csv_text)
-  #   # => [{ row_index: 1, game_title: "Chrono Trigger", platform_name: "SNES",
+  #   # => [{ row_index: 2, game_title: "Chrono Trigger", platform_name: "SNES",
   #   #       region_name: nil, source_type: "Core Game", time_text: "25h:30m:00s",
   #   #       completed_at: Date(2021-03-07), completion_type: "Main Story",
   #   #       playtime_hrs: 25.5 }, ...]
   #
   # The first record is a header and is skipped. Columns are positional:
   # name, platform, region, type, time, date. Records with fewer than 6
-  # fields or a blank name are dropped; `row_index` is the 1-based position
-  # among the data records (dropped ones included), as in the bot.
+  # fields or a blank name are dropped. `row_index` is the 1-based physical
+  # line the record starts on (Imports::CsvRecords), so the header is 1, as
+  # for the collection CSV.
   #
   # - type: TYPE_MAP (case-insensitive), nil when unknown.
   # - time: "Hh:Mm:Ss" -> hours rounded to 2 decimals (seconds ignored).
@@ -40,12 +39,12 @@ module Imports
     end
 
     def parse(text)
-      records = CSV.parse(text.to_s.delete_prefix("﻿"), skip_blanks: true)
-      rows = records.drop(1).each_with_index.filter_map { |fields, index| build_row(fields, index + 1) }
+      records = CsvRecords.parse(text).drop_while { |record| record.fields.empty? }
+      rows = records.drop(1).filter_map { |record| build_row(record.fields, record.line) }
       raise InvalidCsv, "The CSV has no data rows." if rows.empty?
 
       rows
-    rescue CSV::MalformedCSVError => error
+    rescue CsvRecords::Malformed => error
       raise InvalidCsv, error.message
     end
 

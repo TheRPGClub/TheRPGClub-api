@@ -26,7 +26,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(json.fetch("data")).to include("total_count" => 2, "source_filename" => "export.csv", "status" => "active")
 
       items = RpgClubCompletionatorImport.find(json.dig("data", "import_id")).items.order(:row_index)
-      expect(items.map(&:row_index)).to eq([ 1, 2 ])
+      expect(items.map(&:row_index)).to eq([ 2, 3 ])
       expect(items.first).to have_attributes(
         game_title: "Chrono Trigger", platform_name: "Super Nintendo", region_name: "North America",
         source_type: "Core Game", time_text: "25h:30m:00s", completion_type: "Main Story", status: "pending"

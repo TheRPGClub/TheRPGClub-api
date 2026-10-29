@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "csv"
-
 module Imports
   # Parses and validates a collection CSV import file, ported from the bot's
   # parseCollectionCsvImportText. Template columns: title, platform,
@@ -15,7 +13,8 @@ module Imports
   # Like the bot, any error rejects the whole file (rows is then []). Header
   # names are normalised (lowercase, spaces/dashes to `_`) and mapped through
   # HEADER_ALIASES. Blank rows and rows whose note contains "EXAMPLE ROW" are
-  # skipped. `row_index` is the 1-based CSV record number, so the header is 1.
+  # skipped. `row_index` is the 1-based physical line the record starts on
+  # (Imports::CsvRecords), so the header is 1.
   # Validation per row: title present (<= 500 chars), gamedb_id / igdb_id
   # positive integers and not both, ownership one of
   # CollectionApplier::OWNERSHIP_TYPES (blank = Digital), note <= 500 chars,
@@ -47,19 +46,19 @@ module Imports
     end
 
     def parse(csv_text)
-      records = CSV.parse(csv_text.to_s.delete_prefix("﻿"), liberal_parsing: true)
+      records = CsvRecords.parse(csv_text, liberal_parsing: true)
       return failure(file_error("CSV file is empty.")) if records.empty?
 
       header, *data = records
-      headers = header_map(header)
+      headers = header_map(header.fields)
       missing = REQUIRED_HEADERS.reject { |column| headers.key?(column) }
       return failure(missing.map { |column| error(1, column, %(Missing required column "#{column}".)) }) if missing.any?
 
       rows = []
       errors = []
-      data.each.with_index(2) do |values, row_index|
+      data.each do |record|
         row_errors = []
-        row = parse_row(values, headers, row_index, row_errors)
+        row = parse_row(record.fields, headers, record.line, row_errors)
         next if row.nil?
 
         row_errors.any? ? errors.concat(row_errors) : rows << row
@@ -69,10 +68,9 @@ module Imports
       return failure(file_error("CSV file contains no importable rows.")) if rows.empty?
 
       Result.new(rows: rows, errors: [])
-    rescue CSV::MalformedCSVError => malformed
-      line = malformed.message[/line (\d+)/, 1]&.to_i || 1
+    rescue CsvRecords::Malformed => malformed
       message = malformed.message.match?(/unclosed quoted field/i) ? "Unterminated quoted field." : "Malformed CSV."
-      failure([ error(line, "file", message) ])
+      failure([ error(malformed.line, "file", message) ])
     end
 
     private

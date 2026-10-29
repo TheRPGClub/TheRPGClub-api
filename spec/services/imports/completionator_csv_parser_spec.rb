@@ -19,10 +19,10 @@ RSpec.describe Imports::CompletionatorCsvParser do
         "Hollow Knight,PC,,Completionated,,\n"
     end
 
-    it "maps each data row, numbering rows from 1" do
+    it "maps each data row, numbering rows by physical line (the header is 1)" do
       expect(parse.size).to eq(3)
       expect(parse.first).to eq(
-        row_index: 1, game_title: "Chrono Trigger", platform_name: "Super Nintendo",
+        row_index: 2, game_title: "Chrono Trigger", platform_name: "Super Nintendo",
         region_name: "North America", source_type: "Core Game", time_text: "25h:30m:00s",
         completed_at: Date.new(2021, 3, 7), completion_type: "Main Story", playtime_hrs: 25.5
       )
@@ -30,7 +30,7 @@ RSpec.describe Imports::CompletionatorCsvParser do
 
     it "keeps quoted commas inside a field" do
       expect(parse.second).to include(
-        row_index: 2, game_title: "Final Fantasy VII, Remake", region_name: nil,
+        row_index: 3, game_title: "Final Fantasy VII, Remake", region_name: nil,
         completion_type: "Main Story + Side Content", playtime_hrs: 40.33, completed_at: Date.new(2020, 12, 25)
       )
     end
@@ -57,6 +57,14 @@ RSpec.describe Imports::CompletionatorCsvParser do
     )
 
     expect(rows.map { |row| row[:game_title] }).to eq([ "Multi\nLine" ])
+  end
+
+  it "numbers rows by the physical line they start on, past blank lines and multiline fields" do
+    rows = described_class.new.parse(
+      "#{header}\n\"Multi\nLine\",PC,,Core Game,,\nshort,row\nAfter,PC,,Core Game,,\n"
+    )
+
+    expect(rows.map { |row| [ row[:row_index], row[:game_title] ] }).to eq([ [ 3, "Multi\nLine" ], [ 6, "After" ] ])
   end
 
   it "ignores an unparseable date or time" do
