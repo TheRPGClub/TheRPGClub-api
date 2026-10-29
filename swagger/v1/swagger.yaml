@@ -1734,6 +1734,106 @@ components:
       - import_id
       - by_status
       - by_result_reason
+    InvalidCsvError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: invalid_csv
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row_index:
+                type: integer
+              column:
+                type: string
+                example: platform
+              message:
+                type: string
+                example: Platform not recognized. Use a platform name or id.
+            required:
+            - row_index
+            - column
+            - message
+      required:
+      - error
+      - errors
+    ImportCandidate:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+      required:
+      - game_id
+      - title
+    ImportIgdbCandidate:
+      type: object
+      properties:
+        igdb_id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        total_rating:
+          type: number
+          nullable: true
+        first_release_date:
+          type: string
+          nullable: true
+          description: ISO 8601 timestamp.
+        cover_url:
+          type: string
+          nullable: true
+        already_imported:
+          type: boolean
+      required:
+      - igdb_id
+      - name
+      - already_imported
+    CollectionCsvImportReview:
+      type: object
+      properties:
+        import:
+          "$ref": "#/components/schemas/CollectionCsvImport"
+        item:
+          allOf:
+          - "$ref": "#/components/schemas/CollectionCsvImportItem"
+          nullable: true
+        candidates:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ImportCandidate"
+        match_confidence:
+          type: string
+          nullable: true
+          enum:
+          - exact
+          - fuzzy
+          - manual
+          -
+        counts:
+          "$ref": "#/components/schemas/CollectionCsvImportSummary"
+      required:
+      - import
+      - item
+      - candidates
+      - match_confidence
+      - counts
     CompletionatorImport:
       type: object
       properties:
@@ -3602,43 +3702,63 @@ paths:
               required:
               - data
         required: true
-  "/api/v1/users/{user_id}/collection_csv_imports":
+  "/api/v1/collection_csv_import_items/{id}/apply":
     parameters:
-    - name: user_id
+    - name: id
       in: path
       schema:
         type: string
       required: true
-      description: RpgClubCollectionCsvImport owner user_id.
+      description: RpgClubCollectionCsvImportItem item_id.
     post:
-      summary: Start a collection CSV import job
+      summary: Apply a chosen game to a collection CSV import row
       tags:
       - Collection CSV Imports
-      description: 'Owner-only (the bot service token counts as owner). Creates the
-        import job and inserts all row items — given as `items` — in one call. `test_mode:
-        true` marks this a dry-run session — the session row itself is always persisted,
-        but all subsequent writes scoped to it are rolled back. A user may have only
-        one active or paused import of this kind: starting another returns 422 `user
-        already has an active or paused import`.'
+      description: Owner-only (#290). Send exactly one of `game_id` (a GameDB game)
+        or `igdb_id` (imported into GameDB first, owner-safe, and stored as the row's
+        only candidate). Adds the game to the owner's collection with the row's platform,
+        ownership and note, and sets the row to `added`/`manual_remap` (`platform_unresolved`
+        when the platform no longer resolves), or `skipped`/`duplicate` when the entry
+        already exists, or `failed`/`add_failed`. Returns the updated item. Rolled
+        back instead of persisted if the import is in test_mode.
       parameters: []
       responses:
-        '201':
-          description: import job created
+        '200':
+          description: updated item
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    "$ref": "#/components/schemas/CollectionCsvImport"
+                    "$ref": "#/components/schemas/CollectionCsvImportItem"
         '403':
           description: forbidden — caller is not the owner or service
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found, `game_not_found`, or `igdb_game_not_found`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` (the import is not active) or `item_not_pending`
+            (the row was already resolved)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: "`game_id_or_igdb_id_required`, `invalid_igdb_id` or `igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
           content:
             application/json:
               schema:
@@ -3664,6 +3784,285 @@ paths:
                 data:
                   type: object
                   properties:
+                    game_id:
+                      type: integer
+                      description: GameDB game_id to apply.
+                    igdb_id:
+                      type: integer
+                      description: IGDB id to import and apply.
+              required:
+              - data
+        required: true
+  "/api/v1/collection_csv_import_items/{id}/skip":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImportItem item_id.
+    post:
+      summary: Skip a collection CSV import row
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (#290). Sets the row to `skipped`/`manual_skip`. Returns
+        the updated item. Rolled back instead of persisted if the import is in test_mode.
+      responses:
+        '200':
+          description: updated item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportItem"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` (the import is not active) or `item_not_pending`
+            (the row was already resolved)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/collection_csv_import_items/{id}/remap":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImportItem item_id.
+    post:
+      summary: Search GameDB for a different title for a collection CSV import row
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (#290). Re-searches GameDB with `title` and stores the
+        candidates and confidence on the row (`result_reason` `no_candidate` when
+        there are none). Returns the same review payload as `advance`. A single candidate
+        that exactly matches the row's original title is auto-applied by the next
+        `advance`. Rolled back instead of persisted if the import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: review payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportReview"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` (the import is not active) or `item_not_pending`
+            (the row was already resolved)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`title_required`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                  required:
+                  - title
+              required:
+              - data
+        required: true
+  "/api/v1/collection_csv_import_items/{id}/igdb_candidates":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImportItem item_id.
+    get:
+      summary: IGDB suggestions for a collection CSV import row
+      tags:
+      - Collection CSV Imports
+      description: Owner-only (#290). Searches IGDB for `q`, or else the row's title,
+        trying progressive title variants until one has hits (at most 10). Each hit
+        carries `already_imported`. Apply one with `apply {igdb_id}`.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Title to search instead of the row's raw_title.
+      responses:
+        '200':
+          description: IGDB candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ImportIgdbCandidate"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/collection_csv_imports":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport owner user_id.
+    post:
+      summary: Start a collection CSV import job
+      tags:
+      - Collection CSV Imports
+      description: 'Owner-only (the bot service token counts as owner). Creates the
+        import job and inserts all row items in one call. Send either the raw file
+        as `csv_text` (parsed and validated server-side; any problem rejects the whole
+        file with 422 `invalid_csv` and a `errors` list of `{row_index, column, message}`,
+        where row_index is the 1-based CSV record and 1 is the header) or the pre-parsed
+        rows as `items`. `test_mode: true` marks this a dry-run session — the session
+        row itself is always persisted, but all subsequent writes scoped to it are
+        rolled back. A user may have only one active or paused import of this kind:
+        starting another returns 422 `user already has an active or paused import`.'
+      parameters: []
+      responses:
+        '201':
+          description: import job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImport"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'validation failed: `invalid_csv` (InvalidCsvError) for a bad
+            `csv_text`, otherwise Error'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - "$ref": "#/components/schemas/InvalidCsvError"
+                - "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    csv_text:
+                      type: string
+                      description: 'The raw collection CSV file (#290, web). When
+                        present it is parsed and validated server-side and `items`,
+                        `source_file_size` and `template_version` are ignored (they
+                        are derived). Columns: title (required), platform, ownership_type
+                        (Digital|Physical|Subscription|Other, default Digital), note
+                        (<= 500 chars), gamedb_id, igdb_id (at most one). Max 2 MB.'
                     source_file_name:
                       type: string
                       nullable: true
@@ -3700,7 +4099,8 @@ paths:
                           raw_igdb_id:
                             type: integer
                             nullable: true
-                      description: The parsed CSV rows to import, in order.
+                      description: The pre-parsed CSV rows to import, in order (bot
+                        path; ignored with `csv_text`).
                     test_mode:
                       type: boolean
                       default: false
@@ -3939,6 +4339,64 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/collection_csv_imports/{id}/advance":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCollectionCsvImport import_id.
+    post:
+      summary: Advance a collection CSV import to the next row needing review
+      tags:
+      - Collection CSV Imports
+      description: 'Owner-only (#290). Runs the import loop server-side over pending
+        rows in row_index order: a row with `gamedb_id` is applied (`csv_gamedb_id`;
+        `invalid_row` if the game is unknown), a row with `igdb_id` is imported from
+        IGDB and applied (`csv_igdb_id`; `invalid_row` on failure), and a row whose
+        title search yields a single exact candidate is applied (`auto_match`). Applying
+        uses the row''s platform (`platform_unresolved` when it no longer resolves;
+        added without a platform), ownership and note; an entry already in the collection
+        marks the row `skipped`/`duplicate`. Returns the first row that needs a human
+        with its stored candidates. `item` is null when nothing is pending (the import
+        is then `completed`) or when 25 rows were resolved in this call (the import
+        stays `active`: call again). Rolled back instead of persisted if the import
+        is in test_mode.'
+      responses:
+        '200':
+          description: review payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CollectionCsvImportReview"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active` — the import is paused, completed or canceled"
           content:
             application/json:
               schema:

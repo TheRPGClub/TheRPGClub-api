@@ -128,9 +128,18 @@ Rails.application.routes.draw do
         member do
           get "summary"
           get "items/next_pending", to: "collection_csv_import_items#next_pending"
+          # Server-side import workflow (#290).
+          post "advance"
         end
       end
-      resources :collection_csv_import_items, only: %i[show update]
+      resources :collection_csv_import_items, only: %i[show update] do
+        member do
+          post "apply", action: :apply_selection
+          post "skip"
+          post "remap"
+          get "igdb_candidates"
+        end
+      end
       # Completionator import jobs (#164), same shape as collection_csv_imports
       # above. The user-scoped create/active reads live under `users`;
       # `summary` and the nested `items/next_pending` poll are member routes

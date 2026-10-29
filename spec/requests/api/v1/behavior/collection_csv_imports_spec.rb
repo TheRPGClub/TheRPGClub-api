@@ -135,9 +135,6 @@ RSpec.describe "api/v1/collection_csv_imports behavior", type: :request do
     end
 
     it "defaults test_mode to false when omitted" do
-      pending "possible bug: omitting test_mode inserts NULL (PG::NotNullViolation -> 500) " \
-              "instead of applying the documented false default"
-
       post "/api/v1/users/#{owner.user_id}/collection_csv_imports",
         params: { data: { items: [ { raw_title: "A" } ] } }, headers: auth_headers_for(owner), as: :json
 
@@ -156,6 +153,75 @@ RSpec.describe "api/v1/collection_csv_imports behavior", type: :request do
       post "/api/v1/users/#{owner.user_id}/collection_csv_imports", params: payload, as: :json
 
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    context "with csv_text (server-side parsing, #290)" do
+      let!(:platform) { create(:platform, platform_name: "Csvcreate Box #{SecureRandom.hex(3)}") }
+      let(:csv_text) do
+        "title,platform,ownership_type,note,gamedb_id,igdb_id\n" \
+          "Chrono Trigger,#{platform.platform_name},physical,boxed,,\n" \
+          "Example,,,EXAMPLE ROW - DELETE BEFORE IMPORT,,\n" \
+          "Suikoden II,,,,42,\n"
+      end
+
+      it "parses the file and creates one pending item per importable row" do
+        post "/api/v1/users/#{owner.user_id}/collection_csv_imports",
+          params: { data: { csv_text: csv_text, source_file_name: "mine.csv", test_mode: false } },
+          headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json.fetch("data")).to include(
+          "user_id" => owner.user_id, "status" => "active", "total_count" => 2,
+          "source_file_name" => "mine.csv", "source_file_size" => csv_text.bytesize, "template_version" => "1.0"
+        )
+
+        items = RpgClubCollectionCsvImport.find(json.dig("data", "import_id")).items.order(:row_index)
+        expect(items.map { |item| [ item.row_index, item.raw_title, item.status ] })
+          .to eq([ [ 2, "Chrono Trigger", "pending" ], [ 4, "Suikoden II", "pending" ] ])
+        expect(items.first).to have_attributes(
+          raw_platform: platform.platform_name, platform_id: platform.platform_id,
+          raw_ownership_type: "physical", ownership_type: "Physical", raw_note: "boxed", note: "boxed"
+        )
+        expect(items.second).to have_attributes(raw_gamedb_id: 42, ownership_type: "Digital", platform_id: nil)
+      end
+
+      it "422s with every row error and creates nothing when the file is invalid" do
+        bad = "title,platform,gamedb_id\n,,\nGood,,\n,Nowhere Console 9000,x\n"
+
+        expect {
+          post "/api/v1/users/#{owner.user_id}/collection_csv_imports",
+            params: { data: { csv_text: bad, test_mode: false } }, headers: auth_headers_for(owner), as: :json
+        }.not_to change(RpgClubCollectionCsvImport, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json).to eq(
+          "error" => "invalid_csv",
+          "errors" => [
+            { "row_index" => 4, "column" => "title", "message" => "Title is required." },
+            { "row_index" => 4, "column" => "gamedb_id", "message" => "GameDB id must be a positive number." },
+            { "row_index" => 4, "column" => "platform",
+              "message" => "Platform not recognized. Use a platform name or id." }
+          ]
+        )
+      end
+
+      it "422s on a file over the size cap" do
+        big = "title\n#{"A long title\n" * ((Api::V1::CollectionCsvImportsController::MAX_CSV_BYTES / 13) + 1)}"
+
+        post "/api/v1/users/#{owner.user_id}/collection_csv_imports",
+          params: { data: { csv_text: big, test_mode: false } }, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to eq("invalid_csv")
+        expect(json.fetch("errors").sole).to include("column" => "file")
+      end
+
+      it "forbids another user" do
+        post "/api/v1/users/#{owner.user_id}/collection_csv_imports",
+          params: { data: { csv_text: csv_text, test_mode: false } }, headers: auth_headers_for(other_user), as: :json
+
+        expect(response).to have_http_status(:forbidden)
+      end
     end
   end
 
