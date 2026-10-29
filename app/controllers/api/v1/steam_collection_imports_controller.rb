@@ -118,8 +118,10 @@ module Api
         profile = client.resolve_profile(data["steam_profile"])
         library = client.owned_games(profile[:steam_id64])
 
+        # total_count is set with the session, outside the rollback, as the
+        # collection CSV and Completionator creates do.
         record = RpgClubSteamCollectionImport.create!(
-          user_id: user_id, status: "active", current_index: 0, total_count: 0,
+          user_id: user_id, status: "active", current_index: 0, total_count: library[:games].size,
           steam_id64: library[:steam_id64], steam_profile_ref: profile[:raw_identifier].to_s.strip,
           source_profile_name: library[:profile_name],
           test_mode: ActiveModel::Type::Boolean.new.cast(data["test_mode"]) || false
@@ -127,7 +129,6 @@ module Api
         with_test_mode_rollback(record.test_mode) do
           rows = Imports::SteamWorkflow.item_rows(record.import_id, library[:games])
           RpgClubSteamCollectionImportItem.insert_all(rows) if rows.any?
-          record.update!(total_count: rows.size)
         end
 
         render json: { data: SteamCollectionImportResource.new(record).serializable_hash }, status: :created

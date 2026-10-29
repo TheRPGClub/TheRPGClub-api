@@ -54,14 +54,14 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
         playtime_mac_min: nil, last_played_at: Time.utc(2026, 1, 2, 3, 4, 5))
     end
 
-    it "persists the session but rolls back the items in test_mode" do
+    it "persists the session with its total_count but rolls back the items in test_mode, like the CSV create" do
       post "/api/v1/users/#{owner.user_id}/steam_collection_imports",
         params: { data: { steam_profile: "example", test_mode: true } }, headers: auth_headers_for(owner), as: :json
 
       expect(response).to have_http_status(:created)
       expect(json.fetch("data")).to include("test_mode" => true, "total_count" => 2)
       import = RpgClubSteamCollectionImport.find(json.dig("data", "import_id"))
-      expect(import.total_count).to eq(0)
+      expect(import.total_count).to eq(2)
       expect(import.items).to be_empty
     end
 
