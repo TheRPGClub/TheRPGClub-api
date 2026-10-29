@@ -2902,6 +2902,35 @@ components:
       - round_number
       - gotm
       - nr_gotm
+    PublicWinner:
+      type: object
+      properties:
+        round_number:
+          type: integer
+        month_year:
+          type: string
+          example: March 2024
+        kind:
+          type: string
+          enum:
+          - gotm
+          - nr_gotm
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+        art_url:
+          type: string
+          nullable: true
+      required:
+      - round_number
+      - month_year
+      - kind
+      - game_id
+      - title
     Nomination:
       type: object
       properties:
@@ -13094,6 +13123,47 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/public/winners":
+    get:
+      summary: List recent GOTM winners (public)
+      tags:
+      - Public
+      description: 'The winning games of the latest 24 rounds, for the logged-out
+        landing page. Public — does not require authentication — so it carries club
+        content only: no member data, Reddit URLs or Discord ids. One item per winning
+        game, newest round first, GOTM before NR-GOTM, `game_index` order within a
+        track. NR-GOTM "N/A" placeholders are omitted. `meta.rounds` is the number
+        of rounds covered. Cached for 10 minutes (`Cache-Control: public, max-age=600`);
+        a new round busts the server-side cache.'
+      security: []
+      responses:
+        '200':
+          description: recent winners
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: max-age=600, public
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/PublicWinner"
+                  meta:
+                    type: object
+                    required:
+                    - rounds
+                    properties:
+                      rounds:
+                        type: integer
+                        example: 24
   "/api/v1/regions":
     get:
       summary: List regions

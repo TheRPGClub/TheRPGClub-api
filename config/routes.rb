@@ -16,6 +16,11 @@ Rails.application.routes.draw do
       get "session", to: "sessions#show"
       get "dashboard", to: "dashboards#show"
 
+      # Unauthenticated, read-only club content for www's logged-out landing.
+      namespace :public do
+        get "winners", to: "winners#index"
+      end
+
       # IGDB discovery proxy (#122); declared before `resources :games` for
       # locality with the create-from-IGDB endpoint it feeds.
       get "igdb/search", to: "igdb#search"

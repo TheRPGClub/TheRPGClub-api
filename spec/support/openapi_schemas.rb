@@ -835,6 +835,14 @@ module OpenapiSchemas
         round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
         _required: %w[round_number gotm nr_gotm]
       ),
+      # Public::WinnersController: one winning game of a recent round, for the
+      # unauthenticated www landing. Club content only — no member data,
+      # Reddit URLs or Discord ids.
+      PublicWinner: obj(
+        round_number: int, month_year: str(example: "March 2024"),
+        kind: str(enum: %w[gotm nr_gotm]), game_id: int, title: str,
+        cover_url: str(nullable: true), art_url: str(nullable: true)
+      ),
       # NominationResource (gotm + nr-gotm share it). `user`/`game` are
       # bot-sourced and FK-unenforced, so either may be null.
       Nomination: obj(

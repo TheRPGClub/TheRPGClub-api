@@ -62,6 +62,22 @@ module Gotm
       end
     end
 
+    # The winning entries of `round_numbers`, flattened in round order, GOTM
+    # before NR-GOTM, `game_index` order within a kind, as `[kind, entry]`
+    # pairs. Drops the NR-GOTM "N/A" placeholders and entries without a game.
+    # Only the games' images are preloaded (no platforms or threads).
+    def winners(round_numbers)
+      blocks = @kinds.index_with { |kind| entries_by_round(kind, round_numbers, preload: { game: :images }) }
+
+      round_numbers.flat_map do |number|
+        @kinds.flat_map do |kind|
+          Array(blocks.dig(kind, number))
+            .reject { |entry| entry.game.nil? || (kind == "nr_gotm" && placeholder?(entry)) }
+            .map { |entry| [ kind, entry ] }
+        end
+      end
+    end
+
     private
 
     # `(SELECT round_number ... UNION SELECT round_number ...) gotm_rounds`
@@ -85,10 +101,10 @@ module Gotm
       scope
     end
 
-    def entries_by_round(kind, round_numbers)
+    def entries_by_round(kind, round_numbers, preload: { game: [ :images, :platforms ] })
       filtered_scope(kind)
         .where(round_number: round_numbers)
-        .preload(game: [ :images, :platforms ])
+        .preload(preload)
         .order(:round_number, :game_index)
         .group_by(&:round_number)
     end
