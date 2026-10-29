@@ -89,6 +89,7 @@ Rails.application.routes.draw do
           post "favorites", to: "favorites#create"
           get "reviews", to: "reviews#index"
           post "reviews", to: "reviews#create"
+          get "backlog/pick", to: "backlog#pick"
           get "backlog", to: "backlog#index"
           post "backlog", to: "backlog#create"
           get "now_playing", to: "now_playing#user_index"
