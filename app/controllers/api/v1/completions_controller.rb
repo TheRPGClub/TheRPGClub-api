@@ -87,6 +87,7 @@ module Api
       # `per=1`) in place of `countCompletions`.
       #
       # - `game_id`        exact `gamedb_game_id`
+      # - `platform_id`    exact `platform_id`
       # - `year`           completion year via `EXTRACT(YEAR FROM completed_at)`;
       #                    the literal `unknown` matches rows with no
       #                    `completed_at` (the bot's `year: "unknown"` case)
@@ -94,6 +95,7 @@ module Api
       # - `completed_after` / `completed_before`  inclusive `completed_at` range
       def filtered_completions(scope)
         scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
+        scope = scope.where(platform_id: params[:platform_id]) if params[:platform_id].present?
 
         if params[:year].present?
           scope =

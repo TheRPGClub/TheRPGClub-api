@@ -4556,10 +4556,10 @@ paths:
       tags:
       - Completions
       description: Ordered by `completed_at` descending, then `created_at` descending.
-        Open to any authenticated caller. The optional `game_id`, `year`, `q`, `completed_after`
-        and `completed_before` params filter the list (each ANDs in). `meta.count`
-        reflects the filtered total, so a count-only caller can request `per=1` and
-        read it without fetching every row.
+        Open to any authenticated caller. The optional `game_id`, `platform_id`, `year`,
+        `q`, `completed_after` and `completed_before` params filter the list (each
+        ANDs in). `meta.count` reflects the filtered total, so a count-only caller
+        can request `per=1` and read it without fetching every row.
       parameters:
       - name: game_id
         in: query
@@ -4567,6 +4567,12 @@ paths:
           type: integer
         required: false
         description: Filter to completions of this game (`gamedb_game_id`).
+      - name: platform_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to completions on this platform (exact `platform_id`).
       - name: year
         in: query
         schema:

@@ -19,13 +19,15 @@ RSpec.describe 'api/v1/completions', type: :request do
     get 'List a user\'s completions' do
       tags 'Completions'
       description 'Ordered by `completed_at` descending, then `created_at` descending. Open to any ' \
-                  'authenticated caller. The optional `game_id`, `year`, `q`, `completed_after` and ' \
-                  '`completed_before` params filter the list (each ANDs in). `meta.count` reflects the ' \
+                  'authenticated caller. The optional `game_id`, `platform_id`, `year`, `q`, `completed_after` ' \
+                  'and `completed_before` params filter the list (each ANDs in). `meta.count` reflects the ' \
                   'filtered total, so a count-only caller can request `per=1` and read it without ' \
                   'fetching every row.'
       produces 'application/json'
       parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
         description: 'Filter to completions of this game (`gamedb_game_id`).'
+      parameter name: :platform_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter to completions on this platform (exact `platform_id`).'
       parameter name: :year, in: :query, schema: { type: :string }, required: false,
         description: 'Filter by completion year (`YYYY`); the literal `unknown` matches entries with no `completed_at`.'
       parameter name: :q, in: :query, schema: { type: :string }, required: false,
