@@ -74,3 +74,18 @@ every later round, and a re-seed rebuilds the seeded accounts' ballots from
 scratch so the tally does not drift. The run asserts both, plus that GOTM rounds
 2 and 3 keep enough nominations for the larger vote cap, and fails loudly if an
 edit to the lists breaks either.
+
+## Steam Web API key
+
+Steam library imports call the Steam Web API through `Steam::Client`, which
+reads its key from `STEAM_WEB_API_KEY` (`STEAM_API_KEY` is accepted as a
+fallback, matching the Discord bot). Get a key at
+<https://steamcommunity.com/dev/apikey>, put it in `.env` for local work, and
+set it on Fly as a secret rather than in `fly.toml`:
+
+```sh
+fly secrets set STEAM_WEB_API_KEY=<key>
+```
+
+Specs never call Steam: they stub HTTP through the client's injected Faraday
+connection.
