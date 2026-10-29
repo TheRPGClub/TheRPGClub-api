@@ -3606,7 +3606,8 @@ paths:
       description: 'Open to any authenticated caller. The optional filters mirror
         the bot''s collection search and AND together: `q` (game title, case-insensitive
         substring), `platform` (case-insensitive substring of the platform name/abbreviation/code),
-        `ownership_type` (exact) and `game_id` (`gamedb_game_id`).'
+        `platform_id` (exact; `none` matches entries with no platform), `ownership_type`
+        (exact) and `game_id` (`gamedb_game_id`).'
       parameters:
       - name: q
         in: query
@@ -3620,6 +3621,17 @@ paths:
           type: string
         required: false
         description: Filter by platform name/abbreviation/code (case-insensitive substring).
+      - name: platform_id
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: integer
+          - type: string
+            enum:
+            - none
+        description: Filter by exact gamedb_platforms.platform_id; `none` matches
+          entries with no platform.
       - name: ownership_type
         in: query
         schema:

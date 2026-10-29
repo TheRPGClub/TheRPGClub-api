@@ -56,6 +56,52 @@ RSpec.describe "api/v1/collections behavior", type: :request do
       expect(json.fetch("data").first).to include("entry_id" => match.entry_id)
     end
 
+    it "filters by exact platform_id without bleeding into similarly named platforms" do
+      name = "PlayStation #{SecureRandom.hex(4)}"
+      ps = create(:platform, platform_name: name)
+      ps2 = create(:platform, platform_name: "#{name} 2")
+      match = create(:collection_entry, user: owner, platform: ps)
+      create(:collection_entry, user: owner, platform: ps2)
+      create(:collection_entry, user: owner, platform: nil)
+
+      get "/api/v1/users/#{owner.user_id}/collections", params: { platform_id: ps.platform_id },
+        headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").map { |e| e.fetch("entry_id") }).to eq([ match.entry_id ])
+      expect(json.fetch("meta")).to include("count" => 1)
+    end
+
+    it "filters to entries without a platform via platform_id=none" do
+      no_platform = create(:collection_entry, user: owner, platform: nil)
+      create(:collection_entry, user: owner, platform: create(:platform))
+
+      get "/api/v1/users/#{owner.user_id}/collections", params: { platform_id: "none" },
+        headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |e| e.fetch("entry_id") }).to eq([ no_platform.entry_id ])
+    end
+
+    it "ANDs platform_id with the other filters" do
+      platform = create(:platform)
+      physical = create(:collection_entry, user: owner, platform: platform, ownership_type: "Physical")
+      create(:collection_entry, user: owner, platform: platform, ownership_type: "Digital")
+      create(:collection_entry, user: owner, platform: create(:platform), ownership_type: "Physical")
+      create(:collection_entry, user: owner, platform: nil, ownership_type: "Physical")
+
+      get "/api/v1/users/#{owner.user_id}/collections",
+        params: { platform_id: platform.platform_id, ownership_type: "Physical" },
+        headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |e| e.fetch("entry_id") }).to eq([ physical.entry_id ])
+
+      get "/api/v1/users/#{owner.user_id}/collections",
+        params: { platform_id: "none", ownership_type: "Physical", q: "zz-no-such-title" },
+        headers: auth_headers_for(owner)
+
+      expect(json.fetch("data")).to eq([])
+    end
+
     it "filters by exact ownership_type and by game_id" do
       physical = create(:collection_entry, user: owner, ownership_type: "Physical")
       digital = create(:collection_entry, user: owner, ownership_type: "Digital")
