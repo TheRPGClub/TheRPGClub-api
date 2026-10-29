@@ -18,6 +18,10 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
   }
   create_writable = {
     source_filename: { type: :string, nullable: true },
+    csv_text: { type: :string,
+                description: 'The raw Completionator export (#291). Parsed server-side (columns name, platform, ' \
+                             'region, type, time `Hh:Mm:Ss`, date `M/D/YYYY`; header row skipped). Takes ' \
+                             'precedence over `items`.' },
     items: { type: :array, items: { type: :object, properties: create_item_writable },
              description: 'The parsed Completionator export rows to import, in order.' },
     test_mode: { type: :boolean, default: false,
@@ -37,7 +41,9 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
     post 'Start a Completionator import job' do
       tags 'Completionator Imports'
       description 'Owner-only (the bot service token counts as owner). Creates the import job ' \
-                  'and inserts all row items — given as `items` — in one call. `test_mode: true` ' \
+                  'and inserts all row items in one call. Rows come either from `csv_text` (the raw ' \
+                  'export, parsed server-side; a malformed or empty export is 422 `invalid_csv`) or ' \
+                  'from the pre-parsed `items` (the bot). `test_mode: true` ' \
                   'marks this a dry-run session — the session row itself is always persisted, but ' \
                   'all subsequent writes scoped to it are rolled back.' \
                   ' A user may have only one active or paused import of this kind: starting another ' \
@@ -59,7 +65,7 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed, or `invalid_csv`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -202,6 +208,40 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
 
       response '200', 'next pending item, or null' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorImportItem' } }
+      end
+
+      response '403', 'forbidden — caller is not the owner or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'import not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/completionator_imports/{id}/advance' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true,
+              description: 'RpgClubCompletionatorImport import_id.'
+
+    post 'Advance the Completionator review loop' do
+      tags 'Completionator Imports'
+      description 'Owner-only (#291). Works through the pending items by row_index: each row is matched ' \
+                  '(its gamedb_game_id, else the fallback title matcher; a single candidate auto-matches). ' \
+                  'With no existing completion and a resolved platform the completion is auto-added; with ' \
+                  'an existing completion and nothing to update the row is auto-skipped. It stops at the ' \
+                  'first row that needs the member and returns its review (`next_step` choose_game, ' \
+                  'add_completion, confirm_same or update_completion), after at most 25 automatic rows ' \
+                  '(`item: null, done: false`: call again), or when nothing is left (`item: null, done: ' \
+                  'true`; the import is marked completed). Rolled back if the import is in test_mode.'
+      produces 'application/json'
+
+      response '200', 'review of the next row needing the member' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorAdvance' } }
       end
 
       response '403', 'forbidden — caller is not the owner or service' do
