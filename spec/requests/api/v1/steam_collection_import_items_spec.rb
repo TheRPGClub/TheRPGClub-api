@@ -289,7 +289,8 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
     post 'Search GameDB for a Steam import item under another title' do
       tags 'Steam Collection Imports'
       description 'Owner-only (#289). Re-searches GameDB for `title` and persists the candidates on the ' \
-                  'item (`no_candidate` when nothing matches; 422 `title_required` for a blank title). Nothing ' \
+                  'item (`no_candidate` when nothing matches, and the next advance keeps that empty list ' \
+                  'rather than searching the app name again; 422 `title_required` for a blank title). Nothing ' \
                   'is applied; the next advance may auto-apply a single exact match. Returns the same ' \
                   'payload as advance. Only for a pending item of an active import: otherwise 409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
       consumes 'application/json'

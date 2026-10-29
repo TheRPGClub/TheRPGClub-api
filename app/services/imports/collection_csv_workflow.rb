@@ -18,7 +18,8 @@ module Imports
   # - raw_igdb_id: resolve it with IgdbGameResolver and apply (csv_igdb_id),
   #   or fail invalid_row.
   # - otherwise load the stored candidates, or find and store them
-  #   (CandidateFinder#find on raw_title); a single candidate that
+  #   (CandidateFinder#find on raw_title) unless a remap found none
+  #   (no_candidate: the list stays empty); a single candidate that
   #   TitleNormalizer.exact_match?es raw_title is applied (auto_match).
   # It returns the first item that needs a human. When no pending item is
   # left the import is marked completed and `item` is nil; `item` is also nil
@@ -108,7 +109,7 @@ module Imports
       return apply_igdb_id(item) if item.raw_igdb_id.present?
 
       candidates = CandidateFinder.load(item.match_candidate_json)
-      if candidates.empty?
+      if candidates.empty? && !remapped_without_candidates?(item)
         candidates = @candidate_finder.find(item.raw_title)
         item.update!(
           match_candidate_json: candidates.any? ? CandidateFinder.dump(candidates) : nil,
@@ -123,6 +124,12 @@ module Imports
       end
 
       Review.new(item: item, candidates: candidates, match_confidence: item.match_confidence)
+    end
+
+    # A remap that found nothing leaves result_reason no_candidate; the row
+    # keeps its empty list rather than falling back to the raw title.
+    def remapped_without_candidates?(item)
+      item.result_reason == "no_candidate"
     end
 
     def exact_single_match(item, candidates)

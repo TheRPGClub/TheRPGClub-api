@@ -169,7 +169,8 @@ RSpec.describe 'api/v1/collection_csv_import_items', type: :request do
     post 'Search GameDB for a different title for a collection CSV import row' do
       tags 'Collection CSV Imports'
       description 'Owner-only (#290). Re-searches GameDB with `title` and stores the candidates and confidence ' \
-                  'on the row (`result_reason` `no_candidate` when there are none). Returns the same review ' \
+                  'on the row (`result_reason` `no_candidate` when there are none; the next `advance` then ' \
+                  'keeps the empty list rather than searching the raw title again). Returns the same review ' \
                   'payload as `advance`. A single candidate that exactly matches the row\'s original title is ' \
                   'auto-applied by the next `advance`. Rolled back instead of persisted if the import is in ' \
                   'test_mode.'

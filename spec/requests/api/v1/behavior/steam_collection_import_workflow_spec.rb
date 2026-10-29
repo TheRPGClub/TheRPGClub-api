@@ -433,6 +433,18 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
         expect(item.reload).to have_attributes(result_reason: "no_candidate", match_candidate_json: nil)
       end
 
+      it "keeps the empty candidate list on the next advance instead of searching the app name again" do
+        create(:game, title: "Hadez One")
+        create(:game, title: "Hadez Two")
+
+        item_post("remap", { title: "Nothing Matches This Zzqx" })
+        post "/api/v1/steam_collection_imports/#{import.import_id}/advance", headers: auth_headers_for(owner), as: :json
+
+        expect(json.dig("data", "item", "item_id")).to eq(item.item_id)
+        expect(json.dig("data", "candidates")).to eq([])
+        expect(item.reload).to have_attributes(result_reason: "no_candidate", match_candidate_json: nil)
+      end
+
       it "422s for a blank title" do
         item_post("remap", { title: "  " })
 

@@ -127,10 +127,12 @@ module Imports
 
     # Stored candidates, else: the Steam app map's game, else (unless the map
     # says skipped) a GameDB search; with several, the member's historically
-    # mapped games are merged in. Persisted on the item.
+    # mapped games are merged in. Persisted on the item. A remap that found
+    # nothing (no_candidate) keeps its empty list: the app name is not
+    # searched again.
     def candidates_for(item)
       stored = CandidateFinder.load(item.match_candidate_json)
-      return stored if stored.any?
+      return stored if stored.any? || item.result_reason == "no_candidate"
 
       map = RpgClubSteamAppGamedbMap.find_by(steam_app_id: item.steam_app_id)
       candidates = map&.status == "mapped" ? game_candidates([ map.gamedb_game_id ]) : []
