@@ -81,10 +81,10 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
 
     post 'Match a game to a Completionator import item' do
       tags 'Completionator Imports'
-      description 'Owner-only (#291); the item must be pending (else 422 `item_not_pending`). Sets the item\'s game from ' \
-                  '`game_id`, or from `igdb_id` (imported into GameDB first if needed; that import is kept even in ' \
-                  'test_mode), and returns its review, applying the automatic step like advance (`next_step` ' \
-                  'auto_added / auto_skipped). Rolled back if the import is in test_mode.'
+      description 'Owner-only (#291); the import must be active and the item pending (else 409). Sets the item\'s ' \
+                  'game from `game_id`, or from `igdb_id` (imported into GameDB first if needed; that import is ' \
+                  'kept even in test_mode), and returns the same review payload as advance, applying the ' \
+                  'automatic step (`next_step` auto_added / auto_skipped). Rolled back if the import is in test_mode.'
       produces 'application/json'
       consumes 'application/json'
 
@@ -95,10 +95,14 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
 
 
       response '200', 'review of the matched item' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorReview' } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorImportReview' } }
       end
 
-      response '422', '`game_required`, `item_not_pending`, `invalid_igdb_id` or `igdb_not_configured`' do
+      response '409', '`import_not_active` or `item_not_pending`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`game_id_or_igdb_id_required`, `invalid_igdb_id` or `igdb_not_configured`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -110,7 +114,7 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '404', 'item not found' do
+      response '404', 'item not found, or `game_not_found` / `igdb_game_not_found`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -126,7 +130,7 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
 
     post 'Add a completion from a Completionator import item' do
       tags 'Completionator Imports'
-      description 'Owner-only (#291); the item must be pending and matched to a game. Creates the completion; ' \
+      description 'Owner-only (#291); the import must be active and the item pending (else 409) and matched to a game. Creates the completion; ' \
                   'omitted fields take the review form defaults and `platform_id: null` records no platform. When ' \
                   '`platform_id` is the item\'s mapped platform and the game lacks it, a WW release is created ' \
                   'first. Sets the item to `added`. Rolled back if the import is in test_mode.'
@@ -148,7 +152,11 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorImportItem' } }
       end
 
-      response '422', '`no_game_matched`, `invalid_completion_type`, `invalid_platform`, `invalid_completed_at` or `item_not_pending`' do
+      response '409', '`import_not_active` or `item_not_pending`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`no_game_matched`, `invalid_completion_type`, `invalid_platform` or `invalid_completed_at`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -172,7 +180,8 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
 
     post 'Update the existing completion from a Completionator import item' do
       tags 'Completionator Imports'
-      description 'Owner-only (#291); the item must be pending and have an existing completion (from its review). ' \
+      description 'Owner-only (#291); the import must be active and the item pending (else 409), with an existing ' \
+                  'completion (from its review). ' \
                   'Copies the selected row values onto that completion and sets the item to `updated`; when none ' \
                   'of the selected fields differ, the item is skipped instead. Rolled back if the import is in ' \
                   'test_mode.'
@@ -189,7 +198,11 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorImportItem' } }
       end
 
-      response '422', '`invalid_fields`, `no_existing_completion` or `item_not_pending`' do
+      response '409', '`import_not_active` or `item_not_pending`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`invalid_fields` or `no_existing_completion`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -213,14 +226,15 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
 
     post 'Skip a Completionator import item' do
       tags 'Completionator Imports'
-      description 'Owner-only (#291); the item must be pending. Rolled back if the import is in test_mode.'
+      description 'Owner-only (#291); the import must be active and the item pending (else 409). Rolled back if the ' \
+                  'import is in test_mode.'
       produces 'application/json'
 
       response '200', 'the item, now skipped' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorImportItem' } }
       end
 
-      response '422', '`item_not_pending`' do
+      response '409', '`import_not_active` or `item_not_pending`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -244,15 +258,15 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
 
     get 'IGDB suggestions for a Completionator import item' do
       tags 'Completionator Imports'
-      description 'Owner-only (#291). Searches IGDB (10 results) for `q`, or the item\'s title. Each result is flagged ' \
-                  '`already_imported` when GameDB has that igdb_id; pass its igdb_id to match.'
+      description 'Owner-only (#291). Imports::IgdbCandidateSearch: searches IGDB (10 results) for `q`, or the ' \
+                  'item\'s title by progressive title variants. Each result is flagged `already_imported` when GameDB has that igdb_id; pass its igdb_id to match.'
       produces 'application/json'
 
       parameter name: :q, in: :query, schema: { type: :string }, required: false,
                 description: 'Search text; defaults to the item title.'
 
       response '200', 'IGDB candidates' do
-        schema type: :object, properties: { data: { type: :array, items: { '$ref' => '#/components/schemas/IgdbCandidate' } } }
+        schema type: :object, properties: { data: { type: :array, items: { '$ref' => '#/components/schemas/ImportIgdbCandidate' } } }
       end
 
       response '422', '`igdb_not_configured`' do

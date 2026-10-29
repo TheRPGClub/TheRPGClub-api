@@ -8,22 +8,22 @@ module Api
     # parent import.
     class CompletionatorImportItemsController < ApplicationController
       include TestModeRollback
+      include CompletionatorImportReview
 
       rescue_from Imports::CompletionatorWorkflow::Error do |error|
-        render json: { error: error.code, message: error.message }, status: error.status
+        render json: { error: error.code, message: error.message }, status: :unprocessable_content
       end
 
       WORKFLOW_ACTIONS = %i[match add_completion update_completion skip].freeze
-      IGDB_CANDIDATE_LIMIT = 10
       IGDB_ERROR_STATUS = {
-        "invalid_igdb_id" => :unprocessable_entity,
-        "igdb_not_configured" => :unprocessable_entity,
+        "invalid_igdb_id" => :unprocessable_content,
+        "igdb_not_configured" => :unprocessable_content,
         "igdb_game_not_found" => :not_found,
         "igdb_request_failed" => :bad_gateway
       }.freeze
 
       before_action :require_owner!, only: %i[next_pending show igdb_candidates] + WORKFLOW_ACTIONS
-      before_action :load_pending_item, only: WORKFLOW_ACTIONS
+      before_action :load_actionable_item, only: WORKFLOW_ACTIONS
       # Item results are written by the bot (service) only.
       before_action :require_service!, only: %i[update]
 
@@ -55,24 +55,29 @@ module Api
       end
 
       # ---- workflow (#291, see Imports::CompletionatorWorkflow) -------------
-      # Owner-only; only a pending item can be acted on (422
-      # `item_not_pending`). Writes are rolled back if the import is in
-      # test_mode. Workflow failures render 422 (404 for an unknown game)
-      # as `{ error: <code>, message }`.
+      # Owner-only; only a pending item of an active import can be acted on
+      # (409 `item_not_pending` / `import_not_active`, as for the collection
+      # CSV items). Writes are rolled back if the import is in test_mode.
+      # Workflow failures render 422 `{ error: <code>, message }`.
 
       # POST /api/v1/completionator_import_items/:id/match
       # Body: { "data": { game_id } } or { "data": { igdb_id } }
       #
-      # Sets the item's game and returns its CompletionatorReview, applying
-      # the automatic step (auto-add, auto-skip) like advance does. An
+      # Sets the item's game and returns the same review payload as advance
+      # (CompletionatorImportReview), applying the automatic step (auto-add,
+      # auto-skip; `next_step` auto_added / auto_skipped). An
       # igdb_id not yet in GameDB is imported first (Imports::IgdbGameResolver);
       # that import is a catalog write and is kept even in test_mode.
       def match
         game = matched_game
         return if performed?
 
-        review = workflow_write { |workflow| workflow.match(@item, game) }
-        render json: { data: CompletionatorReviewPayload.new(review).as_json }
+        import = @item.import
+        payload = with_test_mode_rollback(import.test_mode) do
+          @item.lock!
+          completionator_review_payload(import, Imports::CompletionatorWorkflow.new(import).match(@item, game))
+        end
+        render json: { data: payload }
       end
 
       # POST /api/v1/completionator_import_items/:id/add_completion
@@ -105,51 +110,60 @@ module Api
 
       # GET /api/v1/completionator_import_items/:id/igdb_candidates?q=
       #
-      # IGDB suggestions for the row (the bot's single igdbService.searchGames
-      # query, 10 results), searching `q` or the item's title. Each result is
-      # flagged `already_imported` like igdb#search.
+      # IGDB suggestions for the row (Imports::IgdbCandidateSearch, shared
+      # with the collection CSV import), searching `q` or else the item's
+      # title by progressive title variants. Each hit carries
+      # `already_imported`. Pick one with `match {igdb_id}`.
       def igdb_candidates
         item = RpgClubCompletionatorImportItem.find(params[:id])
-        query = params[:q].presence || item.game_title
-        results = Igdb::Client.new.search(query, limit: IGDB_CANDIDATE_LIMIT)
-        imported = GamedbGame.where(igdb_id: results.map { |result| result[:igdb_id] }).pluck(:igdb_id).to_set
+        title = params[:q].presence || item.game_title
 
-        render json: { data: results.map { |result| result.merge(already_imported: imported.include?(result[:igdb_id])) } }
-      rescue Igdb::Client::ConfigurationError => error
-        render json: { error: "igdb_not_configured", message: error.message }, status: :unprocessable_entity
-      rescue Igdb::Client::RequestError => error
-        render json: { error: "igdb_request_failed", message: error.message }, status: :bad_gateway
+        render json: { data: Imports::IgdbCandidateSearch.new.search(title) }
+      rescue Igdb::Client::ConfigurationError
+        render json: { error: "igdb_not_configured" }, status: :unprocessable_content
+      rescue Igdb::Client::RequestError
+        render json: { error: "igdb_request_failed" }, status: :bad_gateway
       end
 
       private
 
-      def load_pending_item
+      def load_actionable_item
         @item = RpgClubCompletionatorImportItem.find(params[:id])
-        return if @item.status == "pending"
-
-        render json: { error: "item_not_pending", message: "This item was already processed (#{@item.status})" },
-          status: :unprocessable_entity
+        error =
+          if @item.import.status != "active" then "import_not_active"
+          elsif @item.status != "pending" then "item_not_pending"
+          end
+        render json: { error: error }, status: :conflict if error
       end
 
+      # The game from `game_id`, or from `igdb_id` via Imports::IgdbGameResolver
+      # (outside the test-mode rollback: a GameDB import is a catalog write,
+      # and its images are uploaded either way). Renders the error otherwise.
       def matched_game
         data = params[:data].present? ? request_data : {}
-        if data["igdb_id"].present?
-          result = Imports::IgdbGameResolver.new.resolve(data["igdb_id"])
+        game_id, igdb_id = data.values_at("game_id", "igdb_id").map(&:presence)
+        if game_id.nil? == igdb_id.nil?
+          return render(json: { error: "game_id_or_igdb_id_required" }, status: :unprocessable_content)
+        end
+
+        if igdb_id
+          result = Imports::IgdbGameResolver.new.resolve(igdb_id)
           return result.game if result.ok?
 
-          return render(json: { error: result.error }, status: IGDB_ERROR_STATUS.fetch(result.error, :unprocessable_entity))
-        end
-        if data["game_id"].blank?
-          return render(json: { error: "game_required", message: "Provide game_id or igdb_id" }, status: :unprocessable_entity)
+          return render(json: { error: result.error }, status: IGDB_ERROR_STATUS.fetch(result.error, :unprocessable_content))
         end
 
-        GamedbGame.find_by(game_id: data["game_id"]) ||
-          render(json: { error: "game_not_found", message: "GameDB game #{data['game_id']} not found" }, status: :not_found)
+        id = Integer(game_id.to_s, 10, exception: false)
+        (id&.positive? && GamedbGame.find_by(game_id: id)) ||
+          render(json: { error: "game_not_found" }, status: :not_found)
       end
 
       def workflow_write
         import = @item.import
-        with_test_mode_rollback(import.test_mode) { yield Imports::CompletionatorWorkflow.new(import) }
+        with_test_mode_rollback(import.test_mode) do
+          @item.lock!
+          yield Imports::CompletionatorWorkflow.new(import)
+        end
       end
 
       def render_item(item)

@@ -1930,6 +1930,137 @@ components:
       required:
       - import_id
       - by_status
+    CompletionatorDiff:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            type: string
+            enum:
+            - type
+            - date
+            - playtime
+          description: Row values that differ from the existing completion (update_completion
+            options).
+        confirm_same:
+          type: boolean
+          description: 'Both dates are set and differ: ask whether this is the same
+            completion (yes -> update_completion, no -> add_completion).'
+      required:
+      - fields
+      - confirm_same
+    CompletionatorForm:
+      type: object
+      properties:
+        completion_type:
+          type: string
+          enum:
+          - Main Story
+          - Main Story + Side Content
+          - Completionist
+        platform_id:
+          type: integer
+          nullable: true
+          description: Default platform; null when it could not be resolved.
+        creates_release:
+          type: boolean
+          description: Adding with this platform_id creates the game's missing WW
+            release.
+        platforms:
+          type: array
+          items:
+            "$ref": "#/components/schemas/Platform"
+          description: 'Platform options: the game''s platforms, then the standard
+            platforms.'
+        date_choice:
+          type: string
+          enum:
+          - csv
+          - unknown
+          description: "`csv` when the row has a date, else `unknown`."
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        final_playtime_hours:
+          type: number
+          nullable: true
+      required:
+      - completion_type
+      - platform_id
+      - creates_release
+      - platforms
+      - date_choice
+      - completed_at
+      - final_playtime_hours
+    CompletionatorImportReview:
+      type: object
+      properties:
+        import:
+          "$ref": "#/components/schemas/CompletionatorImport"
+        item:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionatorImportItem"
+          nullable: true
+        candidates:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ImportCandidate"
+        match_confidence:
+          type: string
+          nullable: true
+          enum:
+          - exact
+          - fuzzy
+          -
+        counts:
+          "$ref": "#/components/schemas/CompletionatorImportSummary"
+        next_step:
+          type: string
+          nullable: true
+          enum:
+          - choose_game
+          - add_completion
+          - confirm_same
+          - update_completion
+          - auto_added
+          - auto_skipped
+          -
+          description: auto_added / auto_skipped only come from match (advance moves
+            past them).
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameSummary"
+          nullable: true
+        existing_completion:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionEntry"
+          nullable: true
+        diff:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionatorDiff"
+          nullable: true
+        form:
+          allOf:
+          - "$ref": "#/components/schemas/CompletionatorForm"
+          nullable: true
+        auto_processed:
+          type: integer
+          description: Rows auto-added or auto-skipped by this advance call (0 for
+            match).
+      required:
+      - import
+      - item
+      - candidates
+      - match_confidence
+      - counts
+      - next_step
+      - game
+      - existing_completion
+      - diff
+      - form
+      - auto_processed
     SteamCollectionImport:
       type: object
       properties:
@@ -4948,6 +5079,359 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/completionator_import_items/{id}/match":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Match a game to a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only (#291); the import must be active and the item pending
+        (else 409). Sets the item's game from `game_id`, or from `igdb_id` (imported
+        into GameDB first if needed; that import is kept even in test_mode), and returns
+        the same review payload as advance, applying the automatic step (`next_step`
+        auto_added / auto_skipped). Rolled back if the import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: review of the matched item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportReview"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`game_id_or_igdb_id_required`, `invalid_igdb_id` or `igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found, or `game_not_found` / `igdb_game_not_found`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    game_id:
+                      type: integer
+                    igdb_id:
+                      type: integer
+        required: true
+  "/api/v1/completionator_import_items/{id}/add_completion":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Add a completion from a Completionator import item
+      tags:
+      - Completionator Imports
+      description: 'Owner-only (#291); the import must be active and the item pending
+        (else 409) and matched to a game. Creates the completion; omitted fields take
+        the review form defaults and `platform_id: null` records no platform. When
+        `platform_id` is the item''s mapped platform and the game lacks it, a WW release
+        is created first. Sets the item to `added`. Rolled back if the import is in
+        test_mode.'
+      parameters: []
+      responses:
+        '200':
+          description: the item, now added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`no_game_matched`, `invalid_completion_type`, `invalid_platform`
+            or `invalid_completed_at`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    completion_type:
+                      type: string
+                      enum:
+                      - Main Story
+                      - Main Story + Side Content
+                      - Completionist
+                    platform_id:
+                      type: integer
+                      nullable: true
+                    completed_at:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: null for an unknown date.
+                    final_playtime_hours:
+                      type: number
+                      nullable: true
+  "/api/v1/completionator_import_items/{id}/update_completion":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Update the existing completion from a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only (#291); the import must be active and the item pending
+        (else 409), with an existing completion (from its review). Copies the selected
+        row values onto that completion and sets the item to `updated`; when none
+        of the selected fields differ, the item is skipped instead. Rolled back if
+        the import is in test_mode.
+      parameters: []
+      responses:
+        '200':
+          description: the item, now updated (or skipped)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`invalid_fields` or `no_existing_completion`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    fields:
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                        - type
+                        - date
+                        - playtime
+        required: true
+  "/api/v1/completionator_import_items/{id}/skip":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    post:
+      summary: Skip a Completionator import item
+      tags:
+      - Completionator Imports
+      description: Owner-only (#291); the import must be active and the item pending
+        (else 409). Rolled back if the import is in test_mode.
+      responses:
+        '200':
+          description: the item, now skipped
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportItem"
+        '409':
+          description: "`import_not_active` or `item_not_pending`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/completionator_import_items/{id}/igdb_candidates":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImportItem item_id.
+    get:
+      summary: IGDB suggestions for a Completionator import item
+      tags:
+      - Completionator Imports
+      description: 'Owner-only (#291). Imports::IgdbCandidateSearch: searches IGDB
+        (10 results) for `q`, or the item''s title by progressive title variants.
+        Each result is flagged `already_imported` when GameDB has that igdb_id; pass
+        its igdb_id to match.'
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Search text; defaults to the item title.
+      responses:
+        '200':
+          description: IGDB candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ImportIgdbCandidate"
+        '422':
+          description: "`igdb_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`igdb_request_failed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/completionator_imports":
     parameters:
     - name: user_id
@@ -4961,11 +5445,14 @@ paths:
       tags:
       - Completionator Imports
       description: 'Owner-only (the bot service token counts as owner). Creates the
-        import job and inserts all row items — given as `items` — in one call. `test_mode:
-        true` marks this a dry-run session — the session row itself is always persisted,
-        but all subsequent writes scoped to it are rolled back. A user may have only
-        one active or paused import of this kind: starting another returns 422 `user
-        already has an active or paused import`.'
+        import job and inserts all row items in one call. Rows come either from `csv_text`
+        (the raw export, parsed server-side; a malformed or empty export is 422 `invalid_csv`)
+        or from the pre-parsed `items` (the bot). `invalid_csv` is `{error, errors:
+        [{row_index, column, message}]}`. `test_mode: true` marks this a dry-run session
+        — the session row itself is always persisted, but all subsequent writes scoped
+        to it are rolled back. A user may have only one active or paused import of
+        this kind: starting another returns 422 `user already has an active or paused
+        import`.'
       parameters: []
       responses:
         '201':
@@ -4984,7 +5471,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `invalid_csv`
           content:
             application/json:
               schema:
@@ -5013,6 +5500,11 @@ paths:
                     source_filename:
                       type: string
                       nullable: true
+                    csv_text:
+                      type: string
+                      description: The raw Completionator export (#291). Parsed server-side
+                        (columns name, platform, region, type, time `Hh:Mm:Ss`, date
+                        `M/D/YYYY`; header row skipped). Takes precedence over `items`.
                     items:
                       type: array
                       items:
@@ -5281,6 +5773,62 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: import not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/completionator_imports/{id}/advance":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubCompletionatorImport import_id.
+    post:
+      summary: Advance the Completionator review loop
+      tags:
+      - Completionator Imports
+      description: 'Owner-only (#291). Works through the pending items by row_index:
+        each row is matched (its gamedb_game_id, else the fallback title matcher;
+        a single candidate auto-matches). With no existing completion and a resolved
+        platform the completion is auto-added; with an existing completion and nothing
+        to update the row is auto-skipped. It stops at the first row that needs the
+        member and returns its review (`next_step` choose_game, add_completion, confirm_same
+        or update_completion) in the collection CSV review shape. `item` is null after
+        25 automatic rows (the import stays active: call again) or when nothing is
+        left (the import is marked completed). 409 `import_not_active` unless the
+        import is active. Rolled back if the import is in test_mode.'
+      responses:
+        '200':
+          description: review of the next row needing the member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CompletionatorImportReview"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: import not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`import_not_active`"
           content:
             application/json:
               schema:

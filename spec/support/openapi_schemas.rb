@@ -585,11 +585,12 @@ module OpenapiSchemas
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } }
       ),
       # The Completionator import workflow (#291, Imports::CompletionatorWorkflow
-      # via CompletionatorReviewPayload). `next_step` tells the client what to
-      # show; `candidates` are only set for choose_game; `game`, `form` (and,
-      # with an existing completion, `existing_completion` + `diff`) once a
-      # game is matched.
-      CompletionatorCandidate: obj(game_id: int, title: str),
+      # via CompletionatorImportReview). completionator_imports#advance and
+      # completionator_import_items#match return the collection CSV review
+      # shape (#290) plus the Completionator steps: `next_step` tells the
+      # client what to show; `candidates` are only set for choose_game;
+      # `game` and `form` (and, with an existing completion,
+      # `existing_completion` + `diff`) once a game is matched.
       CompletionatorDiff: obj(
         fields: { type: :array, items: { type: :string, enum: %w[type date playtime] },
                   description: "Row values that differ from the existing completion (update_completion options)." },
@@ -607,30 +608,21 @@ module OpenapiSchemas
         final_playtime_hours: num(nullable: true),
         _required: %w[completion_type platform_id creates_release platforms date_choice completed_at final_playtime_hours]
       ),
-      CompletionatorReview: obj(
+      CompletionatorImportReview: obj(
+        import: ref("CompletionatorImport"),
         item: ref("CompletionatorImportItem", nullable: true),
+        candidates: array_of("ImportCandidate"),
+        match_confidence: str(nullable: true, enum: [ "exact", "fuzzy", nil ]),
+        counts: ref("CompletionatorImportSummary"),
         next_step: str(nullable: true, enum: [ "choose_game", "add_completion", "confirm_same", "update_completion",
                                                "auto_added", "auto_skipped", nil ],
                        description: "auto_added / auto_skipped only come from match (advance moves past them)."),
         game: ref("GameSummary", nullable: true),
-        candidates: array_of("CompletionatorCandidate"),
         existing_completion: ref("CompletionEntry", nullable: true),
         diff: ref("CompletionatorDiff", nullable: true),
         form: ref("CompletionatorForm", nullable: true),
-        _required: %w[item next_step game candidates existing_completion diff form]
-      ),
-      CompletionatorAdvance: extends(
-        "CompletionatorReview",
-        import: ref("CompletionatorImport"),
-        auto_processed: int.merge(description: "Rows auto-added or auto-skipped by this call."),
-        done: bool.merge(description: "No pending row is left; the import is now completed."),
-        counts: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
-        required: %w[import auto_processed done counts]
-      ),
-      IgdbCandidate: obj(
-        igdb_id: int, name: str, slug: str(nullable: true), summary: str(nullable: true), url: str(nullable: true),
-        total_rating: num(nullable: true), first_release_date: ts(nullable: true), cover_url: str(nullable: true),
-        already_imported: bool
+        auto_processed: int.merge(description: "Rows auto-added or auto-skipped by this advance call (0 for match)."),
+        _required: %w[import item candidates match_confidence counts next_step game existing_completion diff form auto_processed]
       ),
       # SteamCollectionImportResource: every RpgClubSteamCollectionImport
       # column (#166). `current_index`/`total_count` let the bot resume a

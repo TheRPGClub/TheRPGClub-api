@@ -27,7 +27,8 @@ module Imports
   #   "update_completion"  an existing completion with some diff
   #
   # Automatic steps are applied and the loop continues (at most AUTO_LIMIT
-  # per call); it stops at the first item that needs the member. With no
+  # per call, then it returns no item with the import still active: call
+  # again); it stops at the first item that needs the member. With no
   # pending item left, the import is marked completed.
   #
   # Platform defaults (resolveCompletionatorPlatformState): the item's
@@ -51,14 +52,13 @@ module Imports
     RELEASE_REGION_CODE = "WW"
     RELEASE_NOTE = "Auto-added from Completionator import platform mapping."
 
-    # A client-facing failure; `code` is the `error` value of the 422/404.
+    # A client-facing failure; `code` is the `error` value of the 422.
     class Error < StandardError
-      attr_reader :code, :status
+      attr_reader :code
 
-      def initialize(code, message, status: :unprocessable_entity)
+      def initialize(code, message)
         super(message)
         @code = code
-        @status = status
       end
     end
 
@@ -69,7 +69,7 @@ module Imports
 
       def automatic? = %w[auto_added auto_skipped].include?(next_step)
     end
-    AdvanceResult = Data.define(:import, :review, :auto_processed, :done)
+    AdvanceResult = Data.define(:import, :review, :auto_processed)
 
     def initialize(import, platform_resolver: PlatformResolver.new, finder: CandidateFinder.new)
       @import = import
@@ -83,15 +83,15 @@ module Imports
         item = @import.items.where(status: "pending").order(:row_index).first
         unless item
           @import.update!(status: "completed")
-          return AdvanceResult.new(import: @import, review: Review.empty, auto_processed:, done: true)
+          return AdvanceResult.new(import: @import, review: Review.empty, auto_processed:)
         end
         if auto_processed >= self.class::AUTO_LIMIT
-          return AdvanceResult.new(import: @import, review: Review.empty, auto_processed:, done: false)
+          return AdvanceResult.new(import: @import, review: Review.empty, auto_processed:)
         end
 
         @import.update!(current_index: item.row_index)
         result = review(item)
-        return AdvanceResult.new(import: @import, review: result, auto_processed:, done: false) unless result.automatic?
+        return AdvanceResult.new(import: @import, review: result, auto_processed:) unless result.automatic?
 
         auto_processed += 1
       end

@@ -43,15 +43,16 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
           headers: auth_headers_for(owner), as: :json
       }.not_to change(RpgClubCompletionatorImport, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json).to include("error" => "invalid_csv")
-      expect(json.fetch("message")).to be_present
+      expect(json.dig("errors", 0, "message")).to be_present
 
       post "/api/v1/users/#{owner.user_id}/completionator_imports",
         params: { data: { csv_text: "Name,Platform,Region,Type,Time,Date\n" } },
         headers: auth_headers_for(owner), as: :json
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json).to include("error" => "invalid_csv")
+      expect(json.dig("errors", 0, "message")).to match(/no data rows/)
     end
 
     it "forbids another user" do
@@ -100,13 +101,15 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
       expect(response).to have_http_status(:ok)
       data = json.fetch("data")
-      expect(data).to include("auto_processed" => 1, "done" => false, "next_step" => "choose_game",
+      expect(data).to include("auto_processed" => 1, "next_step" => "choose_game", "match_confidence" => "fuzzy",
         "existing_completion" => nil, "diff" => nil, "form" => nil, "game" => nil)
       expect(data.dig("item", "item_id")).to eq(ambiguous.item_id)
       expect(data.dig("import", "current_index")).to eq(2)
       expect(data.fetch("candidates").map { |candidate| candidate["title"] })
         .to contain_exactly("Persona #{tag} Golden", "Persona #{tag} Royal")
-      expect(data.fetch("counts")).to include("added" => 1, "pending" => 1)
+      expect(data.dig("counts", "by_status")).to include("added" => 1, "pending" => 1)
+      expect(data.dig("counts", "import_id")).to eq(import.import_id)
+      expect(data.fetch("candidates").first.keys).to contain_exactly("game_id", "title", "cover_url")
 
       completion = UserGameCompletion.find_by!(user_id: owner.user_id, gamedb_game_id: game.game_id)
       expect(completion).to have_attributes(completion_type: "Main Story", platform_id: ps4.platform_id)
@@ -122,7 +125,8 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
       advance
 
-      expect(json.fetch("data")).to include("done" => true, "item" => nil, "auto_processed" => 1)
+      expect(json.fetch("data")).to include("item" => nil, "auto_processed" => 1)
+      expect(json.dig("data", "import", "status")).to eq("completed")
       completion = UserGameCompletion.find(added.reload.completion_id)
       expect(completion).to have_attributes(completed_at: nil, completion_type: "Completionist",
         platform_id: windows.platform_id)
@@ -148,7 +152,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect { advance }.not_to change(UserGameCompletion, :count)
 
       data = json.fetch("data")
-      expect(data).to include("next_step" => "add_completion", "auto_processed" => 0, "done" => false)
+      expect(data).to include("next_step" => "add_completion", "auto_processed" => 0)
       expect(data.dig("game", "game_id")).to eq(game.game_id)
       expect(data.fetch("form")).to include(
         "completion_type" => "Main Story", "platform_id" => nil, "creates_release" => false,
@@ -168,7 +172,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
       expect { advance }.not_to change(UserGameCompletion, :count)
 
-      expect(json.fetch("data")).to include("done" => true, "auto_processed" => 1)
+      expect(json.fetch("data")).to include("item" => nil, "auto_processed" => 1)
       expect(skipped.reload.status).to eq("skipped")
     end
 
@@ -217,12 +221,12 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
       advance
 
-      expect(json.fetch("data")).to include("done" => true, "item" => nil, "next_step" => nil, "auto_processed" => 0)
+      expect(json.fetch("data")).to include("item" => nil, "next_step" => nil, "auto_processed" => 0)
       expect(json.dig("data", "import", "status")).to eq("completed")
       expect(import.reload.status).to eq("completed")
     end
 
-    it "stops after AUTO_LIMIT automatic rows and reports it is not done" do
+    it "stops after AUTO_LIMIT automatic rows, leaving the import active" do
       stub_const("Imports::CompletionatorWorkflow::AUTO_LIMIT", 1)
       game_on("Gris #{tag}", windows)
       game_on("Abzu #{tag}", windows)
@@ -231,7 +235,8 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
       advance
 
-      expect(json.fetch("data")).to include("auto_processed" => 1, "done" => false, "item" => nil)
+      expect(json.fetch("data")).to include("auto_processed" => 1, "item" => nil)
+      expect(json.dig("data", "import", "status")).to eq("active")
       expect(import.items.where(status: "pending").count).to eq(1)
     end
 
@@ -244,9 +249,18 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
         post "/api/v1/completionator_imports/#{test_import.import_id}/advance", headers: auth_headers_for(owner), as: :json
       }.not_to change(UserGameCompletion, :count)
 
-      expect(json.fetch("data")).to include("auto_processed" => 1, "done" => true)
+      expect(json.fetch("data")).to include("auto_processed" => 1, "item" => nil)
       expect(row.reload.status).to eq("pending")
       expect(test_import.reload.status).to eq("active")
+    end
+
+    it "409s unless the import is active" do
+      import.update!(status: "paused")
+
+      advance
+
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("import_not_active")
     end
 
     it "forbids another user" do
@@ -273,6 +287,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("next_step" => "add_completion")
       expect(json.dig("data", "game", "game_id")).to eq(game.game_id)
+      expect(json.dig("data", "import", "import_id")).to eq(import.import_id)
       expect(row.reload.gamedb_game_id).to eq(game.game_id)
     end
 
@@ -313,7 +328,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(json.fetch("error")).to eq("igdb_game_not_found")
     end
 
-    it "404s for an unknown game and 422s without game_id or igdb_id" do
+    it "404s for an unknown game and 422s without exactly one of game_id or igdb_id" do
       row = item
 
       item_post(row, "match", game_id: 999_999_999)
@@ -321,18 +336,26 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(json.fetch("error")).to eq("game_not_found")
 
       item_post(row, "match", {})
-      expect(response).to have_http_status(:unprocessable_entity)
-      expect(json.fetch("error")).to eq("game_required")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
+
+      item_post(row, "match", game_id: 1, igdb_id: 2)
+      expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
     end
 
-    it "422s for an item that is no longer pending" do
+    it "409s for an item that is no longer pending, or an import that is not active" do
       game = game_on("Done #{tag}", windows)
       row = item(status: "added")
 
       item_post(row, "match", game_id: game.game_id)
-
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:conflict)
       expect(json.fetch("error")).to eq("item_not_pending")
+
+      paused = item
+      import.update!(status: "paused")
+      item_post(paused, "skip")
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("import_not_active")
     end
 
     it "forbids another user" do
@@ -402,7 +425,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       item_post(row, "add_completion", platform_id: 999_999_999)
       expect(json.fetch("error")).to eq("invalid_platform")
       item_post(row, "add_completion", completed_at: "not a date")
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to eq("invalid_completed_at")
       expect(row.reload.status).to eq("pending")
     end
@@ -469,7 +492,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
       bare = item(gamedb_game_id: game.game_id)
       item_post(bare, "update_completion", fields: %w[type])
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to eq("no_existing_completion")
     end
 
@@ -507,9 +530,10 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
     before { allow(Igdb::Client).to receive(:new).and_return(client) }
 
-    it "searches IGDB for the item title and flags games already in GameDB" do
+    it "searches IGDB by the item title's variants and flags games already in GameDB" do
       create(:game, igdb_id: 11)
-      row = item(game_title: "Okami HD")
+      row = item(game_title: "Okami HD (2012)")
+      allow(client).to receive(:search).with("Okami HD (2012)", limit: 10).and_return([])
       allow(client).to receive(:search).with("Okami HD", limit: 10)
         .and_return([ { igdb_id: 11, name: "Okami" }, { igdb_id: 12, name: "Okami HD" } ])
 

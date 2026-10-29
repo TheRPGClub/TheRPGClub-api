@@ -43,7 +43,8 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
       description 'Owner-only (the bot service token counts as owner). Creates the import job ' \
                   'and inserts all row items in one call. Rows come either from `csv_text` (the raw ' \
                   'export, parsed server-side; a malformed or empty export is 422 `invalid_csv`) or ' \
-                  'from the pre-parsed `items` (the bot). `test_mode: true` ' \
+                  'from the pre-parsed `items` (the bot). `invalid_csv` is `{error, errors: [{row_index, column, ' \
+                  'message}]}`. `test_mode: true` ' \
                   'marks this a dry-run session — the session row itself is always persisted, but ' \
                   'all subsequent writes scoped to it are rolled back.' \
                   ' A user may have only one active or paused import of this kind: starting another ' \
@@ -235,13 +236,14 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
                   'With no existing completion and a resolved platform the completion is auto-added; with ' \
                   'an existing completion and nothing to update the row is auto-skipped. It stops at the ' \
                   'first row that needs the member and returns its review (`next_step` choose_game, ' \
-                  'add_completion, confirm_same or update_completion), after at most 25 automatic rows ' \
-                  '(`item: null, done: false`: call again), or when nothing is left (`item: null, done: ' \
-                  'true`; the import is marked completed). Rolled back if the import is in test_mode.'
+                  'add_completion, confirm_same or update_completion) in the collection CSV review shape. ' \
+                  '`item` is null after 25 automatic rows (the import stays active: call again) or when ' \
+                  'nothing is left (the import is marked completed). 409 `import_not_active` unless the ' \
+                  'import is active. Rolled back if the import is in test_mode.'
       produces 'application/json'
 
       response '200', 'review of the next row needing the member' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorAdvance' } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionatorImportReview' } }
       end
 
       response '403', 'forbidden — caller is not the owner or service' do
@@ -249,6 +251,10 @@ RSpec.describe 'api/v1/completionator_imports', type: :request do
       end
 
       response '404', 'import not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', '`import_not_active`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

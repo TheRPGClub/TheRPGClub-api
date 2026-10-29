@@ -12,6 +12,9 @@ module Api
     # working data.
     class CompletionatorImportsController < ApplicationController
       include TestModeRollback
+      include CompletionatorImportReview
+
+      MAX_CSV_BYTES = 2.megabytes
 
       before_action :require_owner!, only: %i[create active show update summary advance]
 
@@ -98,22 +101,20 @@ module Api
       # POST /api/v1/completionator_imports/:id/advance
       #
       # The server-side review loop (#291, see Imports::CompletionatorWorkflow):
-      # applies automatic rows (auto-add, auto-skip) and returns the first row
-      # that needs the member, as a CompletionatorReview plus the import, the
-      # number of rows handled automatically, `done` and the status counts.
-      # `item` is null when nothing is left (`done: true`, the import is now
-      # completed) or when the per-call automatic cap was hit (`done: false`,
-      # call again). Rolled back if the import is in test_mode.
+      # applies automatic rows (auto-add, auto-skip) and returns the review of
+      # the first row that needs the member (see CompletionatorImportReview).
+      # `item` is null when nothing is left (the import is now completed) or
+      # when the per-call automatic cap was hit (the import is still active:
+      # call again). 409 `import_not_active` unless the import is active.
+      # Rolled back if the import is in test_mode.
       def advance
         record = RpgClubCompletionatorImport.find(params[:id])
+        return render json: { error: "import_not_active" }, status: :conflict unless record.status == "active"
+
         payload = with_test_mode_rollback(record.test_mode) do
+          record.lock!
           result = Imports::CompletionatorWorkflow.new(record).advance
-          CompletionatorReviewPayload.new(result.review).as_json.merge(
-            import: CompletionatorImportResource.new(result.import).serializable_hash,
-            auto_processed: result.auto_processed,
-            done: result.done,
-            counts: record.items.group(:status).count
-          )
+          completionator_review_payload(record, result.review, auto_processed: result.auto_processed)
         end
 
         render json: { data: payload }
@@ -121,10 +122,22 @@ module Api
 
       private
 
+      # The parsed rows, or nil after rendering 422 `{error: "invalid_csv",
+      # errors: [{row_index, column, message}]}` (the collection CSV shape).
       def parse_csv(text)
+        text = text.to_s
+        if text.bytesize > MAX_CSV_BYTES
+          return render_invalid_csv("CSV file is larger than #{MAX_CSV_BYTES / 1.megabyte} MB.", column: "file")
+        end
+
         Imports::CompletionatorCsvParser.new.parse(text).map(&:stringify_keys)
       rescue Imports::CompletionatorCsvParser::InvalidCsv => error
-        render json: { error: "invalid_csv", message: error.message }, status: :unprocessable_entity
+        render_invalid_csv(error.message)
+      end
+
+      def render_invalid_csv(message, column: nil)
+        render json: { error: "invalid_csv", errors: [ { row_index: nil, column: column, message: message } ] },
+          status: :unprocessable_content
         nil
       end
 
