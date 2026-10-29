@@ -20,13 +20,17 @@ RSpec.describe 'api/v1/collections', type: :request do
       tags 'Collections'
       description 'Open to any authenticated caller. The optional filters mirror the bot\'s collection ' \
                   'search and AND together: `q` (game title, case-insensitive substring), `platform` ' \
-                  '(case-insensitive substring of the platform name/abbreviation/code), `ownership_type` ' \
-                  '(exact) and `game_id` (`gamedb_game_id`).'
+                  '(case-insensitive substring of the platform name/abbreviation/code), `platform_id` ' \
+                  '(exact; `none` matches entries with no platform), `ownership_type` (exact) and `game_id` ' \
+                  '(`gamedb_game_id`).'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false,
         description: 'Filter by game title (case-insensitive substring).'
       parameter name: :platform, in: :query, schema: { type: :string }, required: false,
         description: 'Filter by platform name/abbreviation/code (case-insensitive substring).'
+      parameter name: :platform_id, in: :query, required: false,
+        schema: { oneOf: [ { type: :integer }, { type: :string, enum: %w[none] } ] },
+        description: 'Filter by exact gamedb_platforms.platform_id; `none` matches entries with no platform.'
       parameter name: :ownership_type, in: :query, schema: { type: :string, enum: %w[Digital Physical Subscription Other] }, required: false,
         description: 'Filter by exact ownership type.'
       parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
