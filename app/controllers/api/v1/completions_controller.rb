@@ -20,10 +20,11 @@ module Api
       # `leaderboard`).
       def common
         other_user_id = params[:other_user_id].presence
-        return render(json: { error: "other_user_id is required" }, status: :unprocessable_entity) unless other_user_id
+        return render(json: { error: "other_user_id is required" }, status: :unprocessable_content) unless other_user_id
         if other_user_id.to_s == params[:user_id].to_s
-          return render(json: { error: "other_user_id must be a different member" }, status: :unprocessable_entity)
+          return render(json: { error: "other_user_id must be a different member" }, status: :unprocessable_content)
         end
+        return if invalid_common_param?
 
         left = RpgClubUser.find(params[:user_id])
         right = RpgClubUser.find(other_user_id)
@@ -38,7 +39,7 @@ module Api
           meta: pagy_meta(pagy).merge(left_user_id: left.user_id, right_user_id: right.user_id)
         }
       rescue Completions::Common::InvalidSort => e
-        render json: { error: e.message }, status: :unprocessable_entity
+        render json: { error: e.message }, status: :unprocessable_content
       end
 
       # Every one of the user's completions as a CSV download, in the bot's
@@ -152,6 +153,19 @@ module Api
         scope = scope.where("completed_at >= ?", params[:completed_after]) if params[:completed_after].present?
         scope = scope.where("completed_at <= ?", params[:completed_before]) if params[:completed_before].present?
         scope
+      end
+
+      # Renders 422 `invalid_year` / `invalid_platform_id` (the gotm_rounds
+      # shape) for a `common` filter that isn't an integer (`year` may also be
+      # `unknown`).
+      def invalid_common_param?
+        year = params[:year].presence
+        if year && !year.to_s.casecmp?("unknown") && Integer(year.to_s, 10, exception: false).nil?
+          render json: { error: "invalid_year", message: "year must be an integer or unknown" }, status: :unprocessable_content
+        elsif params[:platform_id].present? && Integer(params[:platform_id].to_s, 10, exception: false).nil?
+          render json: { error: "invalid_platform_id", message: "platform_id must be an integer" }, status: :unprocessable_content
+        end
+        performed?
       end
 
       def sanitize_like(value)

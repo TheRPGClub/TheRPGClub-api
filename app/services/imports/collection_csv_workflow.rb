@@ -7,7 +7,7 @@ module Imports
   # handling (wrap calls in TestModeRollback).
   #
   #   workflow = Imports::CollectionCsvWorkflow.new(import)
-  #   review = workflow.advance        # => Review(item:, candidates:, match_confidence:)
+  #   review = workflow.advance        # => Imports::Review
   #   workflow.apply(item, game, reason: "manual_remap")
   #   workflow.skip(item)
   #   workflow.remap(item, "New title")  # => [Candidate]
@@ -18,7 +18,8 @@ module Imports
   # - raw_igdb_id: resolve it with IgdbGameResolver and apply (csv_igdb_id),
   #   or fail invalid_row.
   # - otherwise load the stored candidates, or find and store them
-  #   (CandidateFinder#find on raw_title); a single candidate that
+  #   (CandidateFinder#find on raw_title) unless a remap found none
+  #   (no_candidate: the list stays empty); a single candidate that
   #   TitleNormalizer.exact_match?es raw_title is applied (auto_match).
   # It returns the first item that needs a human. When no pending item is
   # left the import is marked completed and `item` is nil; `item` is also nil
@@ -31,8 +32,6 @@ module Imports
   class CollectionCsvWorkflow
     MAX_AUTO_APPLIES = 25
     PLATFORM_WARNING = "Platform not recognized; imported without platform."
-
-    Review = Data.define(:item, :candidates, :match_confidence)
 
     def initialize(import, platform_resolver: PlatformResolver.new, candidate_finder: CandidateFinder.new,
       igdb_resolver: IgdbGameResolver.new)
@@ -47,14 +46,14 @@ module Imports
         item = @import.items.where(status: "pending").order(:row_index).first
         unless item
           @import.update!(status: "completed")
-          return Review.new(item: nil, candidates: [], match_confidence: nil)
+          return Review.none
         end
 
         @import.update!(current_index: item.row_index)
         review = process(item)
         return review if review
       end
-      Review.new(item: nil, candidates: [], match_confidence: nil)
+      Review.none
     end
 
     def apply(item, game, reason:)
@@ -108,7 +107,7 @@ module Imports
       return apply_igdb_id(item) if item.raw_igdb_id.present?
 
       candidates = CandidateFinder.load(item.match_candidate_json)
-      if candidates.empty?
+      if candidates.empty? && !remapped_without_candidates?(item)
         candidates = @candidate_finder.find(item.raw_title)
         item.update!(
           match_candidate_json: candidates.any? ? CandidateFinder.dump(candidates) : nil,
@@ -122,7 +121,13 @@ module Imports
         return
       end
 
-      Review.new(item: item, candidates: candidates, match_confidence: item.match_confidence)
+      Review.for(item, candidates)
+    end
+
+    # A remap that found nothing leaves result_reason no_candidate; the row
+    # keeps its empty list rather than falling back to the raw title.
+    def remapped_without_candidates?(item)
+      item.result_reason == "no_candidate"
     end
 
     def exact_single_match(item, candidates)

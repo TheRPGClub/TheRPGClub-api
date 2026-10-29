@@ -60,10 +60,13 @@ module Api
 
       private
 
-      # Validates the pick query params, rendering a 400 for the first bad one.
+      # Validates the pick query params, rendering 422 `invalid_<param>` (the
+      # gotm_rounds shape) for the first bad one.
       def pick_options
         source = params[:source].presence || "backlog"
-        return pick_param_error("source must be one of #{BacklogPicker::SOURCES.join(', ')}") unless BacklogPicker::SOURCES.include?(source)
+        unless BacklogPicker::SOURCES.include?(source)
+          return pick_param_error(:source, "source must be one of #{BacklogPicker::SOURCES.join(', ')}")
+        end
 
         options = { source: }
         {
@@ -72,7 +75,7 @@ module Api
           next if params[key].blank?
 
           value = Integer(params[key].to_s, 10, exception: false)
-          return pick_param_error("#{key} must be an integer #{max ? "from #{min} to #{max}" : "of at least #{min}"}") if value.nil? || value < min || (max && value > max)
+          return pick_param_error(key, "#{key} must be an integer #{max ? "from #{min} to #{max}" : "of at least #{min}"}") if value.nil? || value < min || (max && value > max)
 
           options[key] = value
         end
@@ -80,8 +83,8 @@ module Api
         options
       end
 
-      def pick_param_error(message)
-        render json: { error: "bad_request", message: }, status: :bad_request
+      def pick_param_error(name, message)
+        render json: { error: "invalid_#{name}", message: }, status: :unprocessable_content
         nil
       end
 

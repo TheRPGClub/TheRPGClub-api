@@ -122,7 +122,8 @@ RSpec.describe 'api/v1/completions', type: :request do
         }
       end
 
-      response '422', 'missing or same-member `other_user_id`, or an unknown `sort`' do
+      response '422', 'missing or same-member `other_user_id`, an unknown `sort`, or `invalid_year` / ' \
+                      '`invalid_platform_id` for a `year` that is not an integer or `unknown`, or a non-integer `platform_id`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

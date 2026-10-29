@@ -160,7 +160,7 @@ RSpec.describe 'api/v1/steam_collection_imports', type: :request do
                   'Steam errors: `invalid_identifier` and `private_profile` 422; `api_unavailable` and ' \
                   '`api_unauthorized` 502; `api_rate_limited` and `steam_not_configured` 503. A member may ' \
                   'have only one active or paused import of this kind (422, checked before calling Steam). ' \
-                  'In `test_mode` the session is persisted but the items are rolled back.'
+                  'In `test_mode` the session (with its `total_count`) is persisted but the items are rolled back.'
       consumes 'application/json'
       produces 'application/json'
 

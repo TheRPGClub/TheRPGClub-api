@@ -13,8 +13,7 @@ module Api
     class CompletionatorImportsController < ApplicationController
       include TestModeRollback
       include CompletionatorImportReview
-
-      MAX_CSV_BYTES = 2.megabytes
+      include ImportCsvUpload
 
       before_action :require_owner!, only: %i[create active show update summary advance]
 
@@ -122,23 +121,15 @@ module Api
 
       private
 
-      # The parsed rows, or nil after rendering 422 `{error: "invalid_csv",
-      # errors: [{row_index, column, message}]}` (the collection CSV shape).
-      def parse_csv(text)
-        text = text.to_s
-        if text.bytesize > MAX_CSV_BYTES
-          return render_invalid_csv("CSV file is larger than #{MAX_CSV_BYTES / 1.megabyte} MB.", column: "file")
-        end
+      # The parsed rows, or nil after rendering 422 invalid_csv
+      # (ImportCsvUpload). Every Completionator CSV error is about the whole
+      # file, so it is reported as row 1, column "file".
+      def parse_csv(raw)
+        text = checked_csv_text(raw) or return
 
         Imports::CompletionatorCsvParser.new.parse(text).map(&:stringify_keys)
       rescue Imports::CompletionatorCsvParser::InvalidCsv => error
-        render_invalid_csv(error.message)
-      end
-
-      def render_invalid_csv(message, column: nil)
-        render json: { error: "invalid_csv", errors: [ { row_index: nil, column: column, message: message } ] },
-          status: :unprocessable_content
-        nil
+        render_invalid_csv([ csv_file_error(error.message) ])
       end
 
       def item_row(import_id, item, index)

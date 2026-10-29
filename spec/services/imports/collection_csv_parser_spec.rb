@@ -43,6 +43,21 @@ RSpec.describe Imports::CollectionCsvParser do
     expect(result.rows.sole.raw_note).to eq("multi line")
   end
 
+  it "numbers rows by the physical line they start on when a quoted field spans lines" do
+    valid = "title,note\n\"Two\nLine Title\",\"a\nb\nc\"\nNext,\n"
+
+    expect(parser.parse(valid).rows.map { |row| [ row.row_index, row.title ] })
+      .to eq([ [ 2, "Two Line Title" ], [ 6, "Next" ] ])
+    expect(parser.parse("#{valid},a note\n").errors.map { |error| [ error[:row_index], error[:column] ] })
+      .to eq([ [ 7, "title" ] ])
+  end
+
+  it "reports an unterminated quoted field at the physical line it starts on" do
+    result = parser.parse("title,note\n\"A\nB\",x\n\"Broken,oops\n")
+
+    expect(result.errors.sole).to eq(row_index: 4, column: "file", message: "Unterminated quoted field.")
+  end
+
   it "rejects the whole file with one error per bad cell" do
     csv = <<~CSV
       title,platform,ownership_type,note,gamedb_id,igdb_id

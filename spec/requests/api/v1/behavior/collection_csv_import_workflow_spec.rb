@@ -343,6 +343,18 @@ RSpec.describe "api/v1/collection_csv_import workflow behavior", type: :request 
       expect(row.reload.result_reason).to eq("no_candidate")
     end
 
+    it "keeps the empty candidate list on the next advance instead of searching the raw title again" do
+      create(:game, title: "Original #{token} Saga")
+      row = item(2, raw_title: "Original #{token}")
+
+      remap(row, "Nothing At All #{token}")
+      advance
+
+      expect(json.dig("data", "item", "item_id")).to eq(row.item_id)
+      expect(json.dig("data", "candidates")).to eq([])
+      expect(row.reload).to have_attributes(result_reason: "no_candidate", match_candidate_json: nil)
+    end
+
     it "422s on a blank title" do
       remap(item(2), "  ")
 

@@ -83,7 +83,7 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
       tags 'Completionator Imports'
       description 'Owner-only (#291); the import must be active and the item pending (else 409). Sets the item\'s ' \
                   'game from `game_id`, or from `igdb_id` (imported into GameDB first if needed; that import is ' \
-                  'kept even in test_mode), and returns the same review payload as advance, applying the ' \
+                  'rolled back with the rest in test_mode), and returns the same review payload as advance, applying the ' \
                   'automatic step (`next_step` auto_added / auto_skipped). Rolled back if the import is in test_mode.'
       produces 'application/json'
       consumes 'application/json'

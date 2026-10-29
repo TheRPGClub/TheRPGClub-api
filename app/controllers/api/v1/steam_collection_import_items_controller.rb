@@ -7,21 +7,18 @@ module Api
     # matcher has run an app. Owner-only, resolved through the parent import.
     class SteamCollectionImportItemsController < ApplicationController
       include TestModeRollback
-      include SteamCollectionImportReview
+      include CollectionImportReview
+      include ImportItemActions
 
       before_action :require_owner!, only: %i[create next_pending counts show apply_selection skip remap igdb_candidates]
       # Item results are written by the bot (service) only.
       before_action :require_service!, only: %i[update]
+      # GET .../:id/igdb_candidates searches `q` or else the Steam app name.
+      import_review_resources import: SteamCollectionImportResource, item: SteamCollectionImportItemResource
+      import_item_actions RpgClubSteamCollectionImportItem, title: :steam_app_name,
+        actionable: %i[apply_selection skip remap]
 
       UPDATE_ATTRS = %w[status match_confidence match_candidate_json gamedb_game_id collection_entry_id result_reason error_text].freeze
-
-      # The same codes and statuses as the collection CSV workflow (#290).
-      IGDB_ERROR_STATUS = {
-        "invalid_igdb_id" => :unprocessable_content,
-        "igdb_not_configured" => :unprocessable_content,
-        "igdb_game_not_found" => :not_found,
-        "igdb_request_failed" => :bad_gateway
-      }.freeze
 
       # POST /api/v1/steam_collection_imports/:id/items
       # Body: { "data": { items: [...] } }
@@ -59,13 +56,7 @@ module Api
       def counts
         import = RpgClubSteamCollectionImport.find(params[:id])
 
-        render json: {
-          data: {
-            import_id: import.import_id,
-            by_status: import.items.group(:status).count,
-            by_result_reason: import.items.group(:result_reason).count
-          }
-        }
+        render json: { data: import_item_counts(import) }
       end
 
       # GET /api/v1/steam_collection_import_items/:id
@@ -95,27 +86,21 @@ module Api
       # igdb_id (422 game_id_or_igdb_id_required). 409 import_not_active /
       # item_not_pending. Rolled back in test_mode.
       def apply_selection
-        item = RpgClubSteamCollectionImportItem.find(params[:id])
-        return unless actionable!(item)
-
-        data = request_data
-        game_id, igdb_id = data.values_at("game_id", "igdb_id").map(&:presence)
-        if game_id.nil? == igdb_id.nil?
-          return render json: { error: "game_id_or_igdb_id_required" }, status: :unprocessable_content
-        end
+        game_id, igdb_id = game_choice(request_data)
+        return if performed?
 
         error = nil
-        with_test_mode_rollback(item.import.test_mode) do
-          game, error = game_id ? find_game(game_id) : import_igdb_game(igdb_id)
+        with_test_mode_rollback(@item.import.test_mode) do
+          game, error = chosen_game(game_id, igdb_id)
           next unless game
 
-          item.lock!
-          item.update!(match_candidate_json: Imports::CandidateFinder.dump([ Imports::Candidate.new(game_id: game.game_id, title: game.title) ])) if igdb_id
-          Imports::SteamWorkflow.new(item.import).apply(item, game.game_id, reason: "manual_remap")
+          @item.lock!
+          @item.update!(match_candidate_json: Imports::CandidateFinder.dump([ Imports::Candidate.new(game_id: game.game_id, title: game.title) ])) if igdb_id
+          Imports::SteamWorkflow.new(@item.import).apply(@item, game, reason: "manual_remap")
         end
-        return render json: { error: error }, status: error_status(error) if error
+        return render_game_error(error) if error
 
-        render json: { data: SteamCollectionImportItemResource.new(item).serializable_hash }
+        render json: { data: SteamCollectionImportItemResource.new(@item).serializable_hash }
       end
 
       # POST /api/v1/steam_collection_import_items/:id/skip
@@ -123,11 +108,8 @@ module Api
       # Marks the item skipped (manual_skip) and records the Steam app as
       # skipped in the shared app map, so future imports flag it skip_mapped.
       def skip
-        item = RpgClubSteamCollectionImportItem.find(params[:id])
-        return unless actionable!(item)
-
-        with_test_mode_rollback(item.import.test_mode) { Imports::SteamWorkflow.new(item.import).skip(item) }
-        render json: { data: SteamCollectionImportItemResource.new(item).serializable_hash }
+        with_test_mode_rollback(@item.import.test_mode) { Imports::SteamWorkflow.new(@item.import).skip(@item) }
+        render json: { data: SteamCollectionImportItemResource.new(@item).serializable_hash }
       end
 
       # POST /api/v1/steam_collection_import_items/:id/remap
@@ -138,65 +120,19 @@ module Api
       # title). Returns the same review payload as advance; the next advance
       # may auto-apply a single exact match.
       def remap
-        item = RpgClubSteamCollectionImportItem.find(params[:id])
-        return unless actionable!(item)
-
         title = request_data["title"].to_s.strip
         return render json: { error: "title_required" }, status: :unprocessable_content if title.empty?
 
-        import = item.import
+        import = @item.import
         payload = with_test_mode_rollback(import.test_mode) do
-          candidates = Imports::SteamWorkflow.new(import).remap(item, title)
-          steam_review_payload(import, item: item, candidates: candidates, match_confidence: item.match_confidence)
+          candidates = Imports::SteamWorkflow.new(import).remap(@item, title)
+          collection_import_review_payload(import, Imports::Review.for(@item, candidates))
         end
 
         render json: { data: payload }
       end
 
-      # GET /api/v1/steam_collection_import_items/:id/igdb_candidates?q=
-      #
-      # Owner-scoped IGDB suggestions for the item (`q` defaults to the Steam
-      # app name), searched by progressive title variants and tagged with
-      # `already_imported`.
-      def igdb_candidates
-        item = RpgClubSteamCollectionImportItem.find(params[:id])
-        title = params[:q].presence || item.steam_app_name
-
-        render json: { data: Imports::IgdbCandidateSearch.new.search(title) }
-      rescue Igdb::Client::ConfigurationError
-        render json: { error: "igdb_not_configured" }, status: :unprocessable_content
-      rescue Igdb::Client::RequestError
-        render json: { error: "igdb_request_failed" }, status: :bad_gateway
-      end
-
       private
-
-      # Workflow actions need an active import and a pending item (409).
-      def actionable!(item)
-        error =
-          if item.import.status != "active" then "import_not_active"
-          elsif item.status != "pending" then "item_not_pending"
-          end
-        return true unless error
-
-        render json: { error: error }, status: :conflict
-        false
-      end
-
-      def find_game(raw_id)
-        game_id = Integer(raw_id.to_s, 10, exception: false)
-        game = game_id&.positive? && GamedbGame.find_by(game_id: game_id)
-        game ? [ game, nil ] : [ nil, "game_not_found" ]
-      end
-
-      def import_igdb_game(raw_id)
-        result = Imports::IgdbGameResolver.new.resolve(raw_id)
-        [ result.game, result.error ]
-      end
-
-      def error_status(error)
-        error == "game_not_found" ? :not_found : IGDB_ERROR_STATUS.fetch(error, :unprocessable_content)
-      end
 
       def item_row(import_id, item, index)
         {

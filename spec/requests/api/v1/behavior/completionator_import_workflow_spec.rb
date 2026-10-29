@@ -26,7 +26,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(json.fetch("data")).to include("total_count" => 2, "source_filename" => "export.csv", "status" => "active")
 
       items = RpgClubCompletionatorImport.find(json.dig("data", "import_id")).items.order(:row_index)
-      expect(items.map(&:row_index)).to eq([ 1, 2 ])
+      expect(items.map(&:row_index)).to eq([ 2, 3 ])
       expect(items.first).to have_attributes(
         game_title: "Chrono Trigger", platform_name: "Super Nintendo", region_name: "North America",
         source_type: "Core Game", time_text: "25h:30m:00s", completion_type: "Main Story", status: "pending"
@@ -53,6 +53,16 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(json).to include("error" => "invalid_csv")
       expect(json.dig("errors", 0, "message")).to match(/no data rows/)
+    end
+
+    it "reports a whole-file invalid_csv error at row_index 1, column file, as the collection CSV does" do
+      [ "Name,Platform,Region,Type,Time,Date\n\"broken,PC,,,,\n", "Name,Platform,Region,Type,Time,Date\n" ].each do |text|
+        post "/api/v1/users/#{owner.user_id}/completionator_imports",
+          params: { data: { csv_text: text } }, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("errors").sole).to include("row_index" => 1, "column" => "file")
+      end
     end
 
     it "forbids another user" do
@@ -326,6 +336,23 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
 
       expect(response).to have_http_status(:not_found)
       expect(json.fetch("error")).to eq("igdb_game_not_found")
+    end
+
+    it "rolls the IGDB import back with the match in test_mode, like the CSV and Steam apply" do
+      test_import = create(:completionator_import, user: owner, test_mode: true)
+      row = create(:completionator_import_item, import: test_import, game_title: "Unmatchable #{tag}")
+      importer = instance_double(Gamedb::IgdbGameImporter)
+      allow(Gamedb::IgdbGameImporter).to receive(:new).and_return(importer)
+      allow(importer).to receive(:import!).with(5151) do
+        game = game_on("Imported #{tag}", windows, switch)
+        Gamedb::IgdbGameImporter::Result.new(game: game, created: true, images: [])
+      end
+
+      expect { item_post(row, "match", igdb_id: 5151) }.not_to change(GamedbGame, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "game", "title")).to eq("Imported #{tag}")
+      expect(row.reload.gamedb_game_id).to be_nil
     end
 
     it "404s for an unknown game and 422s without exactly one of game_id or igdb_id" do

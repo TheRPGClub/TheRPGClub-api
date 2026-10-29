@@ -45,8 +45,8 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
       description 'Owner-only (the bot service token counts as owner). Creates the import job ' \
                   'and inserts all row items in one call. Send either the raw file as `csv_text` (parsed and ' \
                   'validated server-side; any problem rejects the whole file with 422 `invalid_csv` and a ' \
-                  '`errors` list of `{row_index, column, message}`, where row_index is the 1-based CSV record ' \
-                  'and 1 is the header) or the pre-parsed rows as `items`. `test_mode: true` ' \
+                  '`errors` list of `{row_index, column, message}`, where row_index is the 1-based physical line ' \
+                  'the record starts on and 1 is the header) or the pre-parsed rows as `items`. `test_mode: true` ' \
                   'marks this a dry-run session — the session row itself is always persisted, but ' \
                   'all subsequent writes scoped to it are rolled back.' \
                   ' A user may have only one active or paused import of this kind: starting another ' \

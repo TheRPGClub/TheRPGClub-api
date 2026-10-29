@@ -87,13 +87,18 @@ RSpec.describe "api/v1/now_playing behavior", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "422s when the game is already on the list (unique per user and game)" do
+    it "409s already_playing when the game is already on the list, leaving the backlog alone" do
       create(:now_playing_entry, user: owner, game: game)
+      backlog_entry = create(:backlog_entry, user: owner, game: game, note: "still queued")
 
-      post "/api/v1/users/#{owner.user_id}/now_playing",
-        params: payload, headers: auth_headers_for(owner), as: :json
+      expect {
+        post "/api/v1/users/#{owner.user_id}/now_playing",
+          params: payload, headers: auth_headers_for(owner), as: :json
+      }.not_to change(UserNowPlaying, :count)
 
-      expect(response).to have_http_status(:unprocessable_content)
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("already_playing")
+      expect(backlog_entry.reload.note).to eq("still queued")
     end
 
     it "422s once the user already has the maximum of 10 entries" do

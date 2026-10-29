@@ -12,7 +12,9 @@ module Api
     # working data.
     class SteamCollectionImportsController < ApplicationController
       include TestModeRollback
-      include SteamCollectionImportReview
+      include CollectionImportReview
+
+      import_review_resources import: SteamCollectionImportResource, item: SteamCollectionImportItemResource
 
       before_action :require_owner!, only: %i[create active show update advance]
 
@@ -81,9 +83,7 @@ module Api
 
         payload = with_test_mode_rollback(import.test_mode) do
           import.lock!
-          review = Imports::SteamWorkflow.new(import).advance
-          steam_review_payload(import, item: review.item, candidates: review.candidates,
-            match_confidence: review.match_confidence)
+          collection_import_review_payload(import, Imports::SteamWorkflow.new(import).advance)
         end
 
         render json: { data: payload }
@@ -111,15 +111,17 @@ module Api
         data = request_data
         user_id = params[:user_id]
         if RpgClubSteamCollectionImport.open_for_user(user_id).exists?
-          return render json: { error: OneOpenImportPerUser::ERROR_MESSAGE }, status: :unprocessable_entity
+          return render json: { error: OneOpenImportPerUser::ERROR_MESSAGE }, status: :unprocessable_content
         end
 
         client = Steam::Client.new
         profile = client.resolve_profile(data["steam_profile"])
         library = client.owned_games(profile[:steam_id64])
 
+        # total_count is set with the session, outside the rollback, as the
+        # collection CSV and Completionator creates do.
         record = RpgClubSteamCollectionImport.create!(
-          user_id: user_id, status: "active", current_index: 0, total_count: 0,
+          user_id: user_id, status: "active", current_index: 0, total_count: library[:games].size,
           steam_id64: library[:steam_id64], steam_profile_ref: profile[:raw_identifier].to_s.strip,
           source_profile_name: library[:profile_name],
           test_mode: ActiveModel::Type::Boolean.new.cast(data["test_mode"]) || false
@@ -127,7 +129,6 @@ module Api
         with_test_mode_rollback(record.test_mode) do
           rows = Imports::SteamWorkflow.item_rows(record.import_id, library[:games])
           RpgClubSteamCollectionImportItem.insert_all(rows) if rows.any?
-          record.update!(total_count: rows.size)
         end
 
         render json: { data: SteamCollectionImportResource.new(record).serializable_hash }, status: :created
@@ -138,7 +139,7 @@ module Api
       end
 
       def steam_error_status(code)
-        return :unprocessable_entity if STEAM_CLIENT_ERRORS.include?(code)
+        return :unprocessable_content if STEAM_CLIENT_ERRORS.include?(code)
 
         STEAM_UPSTREAM_STATUS.fetch(code, :bad_gateway)
       end

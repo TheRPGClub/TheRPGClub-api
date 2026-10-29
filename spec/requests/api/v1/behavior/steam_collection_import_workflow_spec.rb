@@ -54,14 +54,14 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
         playtime_mac_min: nil, last_played_at: Time.utc(2026, 1, 2, 3, 4, 5))
     end
 
-    it "persists the session but rolls back the items in test_mode" do
+    it "persists the session with its total_count but rolls back the items in test_mode, like the CSV create" do
       post "/api/v1/users/#{owner.user_id}/steam_collection_imports",
         params: { data: { steam_profile: "example", test_mode: true } }, headers: auth_headers_for(owner), as: :json
 
       expect(response).to have_http_status(:created)
       expect(json.fetch("data")).to include("test_mode" => true, "total_count" => 2)
       import = RpgClubSteamCollectionImport.find(json.dig("data", "import_id"))
-      expect(import.total_count).to eq(0)
+      expect(import.total_count).to eq(2)
       expect(import.items).to be_empty
     end
 
@@ -74,7 +74,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
           params: { data: { steam_profile: "example" } }, headers: auth_headers_for(owner), as: :json
       }.not_to change(RpgClubSteamCollectionImport, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json).to include("error" => "private_profile", "message" => "No visible games were returned.")
     end
 
@@ -85,7 +85,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
       post "/api/v1/users/#{owner.user_id}/steam_collection_imports",
         params: { data: { steam_profile: "bad id!" } }, headers: auth_headers_for(owner), as: :json
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to eq("invalid_identifier")
     end
 
@@ -114,7 +114,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
       post "/api/v1/users/#{owner.user_id}/steam_collection_imports",
         params: { data: { steam_profile: "example" } }, headers: auth_headers_for(owner), as: :json
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to include("user already has an active or paused import")
       expect(steam).not_to have_received(:resolve_profile)
     end
@@ -358,11 +358,11 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
 
       it "422s unless exactly one of game_id and igdb_id is given" do
         item_post("apply", { note: "nothing" })
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
 
         item_post("apply", { game_id: 1, igdb_id: 2 })
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
       end
 
@@ -433,10 +433,22 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
         expect(item.reload).to have_attributes(result_reason: "no_candidate", match_candidate_json: nil)
       end
 
+      it "keeps the empty candidate list on the next advance instead of searching the app name again" do
+        create(:game, title: "Hadez One")
+        create(:game, title: "Hadez Two")
+
+        item_post("remap", { title: "Nothing Matches This Zzqx" })
+        post "/api/v1/steam_collection_imports/#{import.import_id}/advance", headers: auth_headers_for(owner), as: :json
+
+        expect(json.dig("data", "item", "item_id")).to eq(item.item_id)
+        expect(json.dig("data", "candidates")).to eq([])
+        expect(item.reload).to have_attributes(result_reason: "no_candidate", match_candidate_json: nil)
+      end
+
       it "422s for a blank title" do
         item_post("remap", { title: "  " })
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(json.fetch("error")).to eq("title_required")
       end
 

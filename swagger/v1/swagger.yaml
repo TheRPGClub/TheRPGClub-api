@@ -3299,8 +3299,10 @@ paths:
                 required:
                 - data
                 - meta
-        '400':
-          description: invalid query parameter
+        '422':
+          description: "`invalid_<param>` (`invalid_source`, `invalid_platform_id`,
+            `invalid_max_hours`, `invalid_seed`, `invalid_position`): a query parameter
+            is out of range or not an integer"
           content:
             application/json:
               schema:
@@ -3939,9 +3941,10 @@ paths:
       - Collection CSV Imports
       description: Owner-only (#290). Re-searches GameDB with `title` and stores the
         candidates and confidence on the row (`result_reason` `no_candidate` when
-        there are none). Returns the same review payload as `advance`. A single candidate
-        that exactly matches the row's original title is auto-applied by the next
-        `advance`. Rolled back instead of persisted if the import is in test_mode.
+        there are none; the next `advance` then keeps the empty list rather than searching
+        the raw title again). Returns the same review payload as `advance`. A single
+        candidate that exactly matches the row's original title is auto-applied by
+        the next `advance`. Rolled back instead of persisted if the import is in test_mode.
       parameters: []
       responses:
         '200':
@@ -4086,11 +4089,12 @@ paths:
         import job and inserts all row items in one call. Send either the raw file
         as `csv_text` (parsed and validated server-side; any problem rejects the whole
         file with 422 `invalid_csv` and a `errors` list of `{row_index, column, message}`,
-        where row_index is the 1-based CSV record and 1 is the header) or the pre-parsed
-        rows as `items`. `test_mode: true` marks this a dry-run session — the session
-        row itself is always persisted, but all subsequent writes scoped to it are
-        rolled back. A user may have only one active or paused import of this kind:
-        starting another returns 422 `user already has an active or paused import`.'
+        where row_index is the 1-based physical line the record starts on and 1 is
+        the header) or the pre-parsed rows as `items`. `test_mode: true` marks this
+        a dry-run session — the session row itself is always persisted, but all subsequent
+        writes scoped to it are rolled back. A user may have only one active or paused
+        import of this kind: starting another returns 422 `user already has an active
+        or paused import`.'
       parameters: []
       responses:
         '201':
@@ -5122,9 +5126,9 @@ paths:
       - Completionator Imports
       description: Owner-only (#291); the import must be active and the item pending
         (else 409). Sets the item's game from `game_id`, or from `igdb_id` (imported
-        into GameDB first if needed; that import is kept even in test_mode), and returns
-        the same review payload as advance, applying the automatic step (`next_step`
-        auto_added / auto_skipped). Rolled back if the import is in test_mode.
+        into GameDB first if needed; that import is rolled back with the rest in test_mode),
+        and returns the same review payload as advance, applying the automatic step
+        (`next_step` auto_added / auto_skipped). Rolled back if the import is in test_mode.
       parameters: []
       responses:
         '200':
@@ -5475,13 +5479,15 @@ paths:
       - Completionator Imports
       description: 'Owner-only (the bot service token counts as owner). Creates the
         import job and inserts all row items in one call. Rows come either from `csv_text`
-        (the raw export, parsed server-side; a malformed or empty export is 422 `invalid_csv`)
-        or from the pre-parsed `items` (the bot). `invalid_csv` is `{error, errors:
-        [{row_index, column, message}]}`. `test_mode: true` marks this a dry-run session
-        — the session row itself is always persisted, but all subsequent writes scoped
-        to it are rolled back. A user may have only one active or paused import of
-        this kind: starting another returns 422 `user already has an active or paused
-        import`.'
+        (the raw export, parsed server-side, each item''s `row_index` being the 1-based
+        physical line its record starts on, so the header is 1; a malformed or empty
+        export is 422 `invalid_csv`) or from the pre-parsed `items` (the bot). `invalid_csv`
+        is `{error, errors: [{row_index, column, message}]}`; every Completionator
+        CSV error is about the whole file, so it is `row_index: 1, column: "file"`.
+        `test_mode: true` marks this a dry-run session — the session row itself is
+        always persisted, but all subsequent writes scoped to it are rolled back.
+        A user may have only one active or paused import of this kind: starting another
+        returns 422 `user already has an active or paused import`.'
       parameters: []
       responses:
         '201':
@@ -6138,7 +6144,9 @@ paths:
                   meta:
                     "$ref": "#/components/schemas/CommonCompletionMeta"
         '422':
-          description: missing or same-member `other_user_id`, or an unknown `sort`
+          description: missing or same-member `other_user_id`, an unknown `sort`,
+            or `invalid_year` / `invalid_platform_id` for a `year` that is not an
+            integer or `unknown`, or a non-integer `platform_id`
           content:
             application/json:
               schema:
@@ -11317,7 +11325,8 @@ paths:
         server-side (appended last) and the per-user maximum of 10 entries is enforced.
         In the same transaction, every backlog row the user has for the game is removed,
         and when `note` is absent or blank the backlog note carries over. If the entry
-        can't be created, the backlog is left unchanged.
+        can't be created, the backlog is left unchanged. A game already on the list
+        is 409 `already_playing` and the backlog is left unchanged.
       parameters: []
       responses:
         '201':
@@ -11335,9 +11344,15 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`already_playing`: the game is already on the list (the backlog
+            is left unchanged)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed (duplicate game, max entries reached, or
-            note too long)
+          description: validation failed (max entries reached, or note too long)
           content:
             application/json:
               schema:
@@ -16602,11 +16617,12 @@ paths:
       tags:
       - Steam Collection Imports
       description: 'Owner-only (#289). Re-searches GameDB for `title` and persists
-        the candidates on the item (`no_candidate` when nothing matches; 422 `title_required`
-        for a blank title). Nothing is applied; the next advance may auto-apply a
-        single exact match. Returns the same payload as advance. Only for a pending
-        item of an active import: otherwise 409 `import_not_active` / `item_not_pending`.
-        Rolled back in test_mode.'
+        the candidates on the item (`no_candidate` when nothing matches, and the next
+        advance keeps that empty list rather than searching the app name again; 422
+        `title_required` for a blank title). Nothing is applied; the next advance
+        may auto-apply a single exact match. Returns the same payload as advance.
+        Only for a pending item of an active import: otherwise 409 `import_not_active`
+        / `item_not_pending`. Rolled back in test_mode.'
       parameters: []
       responses:
         '200':
@@ -16985,8 +17001,8 @@ paths:
         Steam errors: `invalid_identifier` and `private_profile` 422; `api_unavailable`
         and `api_unauthorized` 502; `api_rate_limited` and `steam_not_configured`
         503. A member may have only one active or paused import of this kind (422,
-        checked before calling Steam). In `test_mode` the session is persisted but
-        the items are rolled back.'
+        checked before calling Steam). In `test_mode` the session (with its `total_count`)
+        is persisted but the items are rolled back.'
       parameters: []
       responses:
         '201':
