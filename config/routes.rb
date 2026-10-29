@@ -153,6 +153,7 @@ Rails.application.routes.draw do
           post "items", to: "steam_collection_import_items#create"
           get "items/next_pending", to: "steam_collection_import_items#next_pending"
           get "items/counts", to: "steam_collection_import_items#counts"
+          post "advance"
         end
       end
       resources :steam_collection_import_items, only: %i[show update]

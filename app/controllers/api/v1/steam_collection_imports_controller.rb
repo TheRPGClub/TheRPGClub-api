@@ -13,7 +13,7 @@ module Api
     class SteamCollectionImportsController < ApplicationController
       include TestModeRollback
 
-      before_action :require_owner!, only: %i[create active show update]
+      before_action :require_owner!, only: %i[create active show update advance]
 
       # Steam::Client error codes that are the member's to fix (422); the
       # others are upstream failures.
@@ -66,6 +66,27 @@ module Api
         render json: { data: SteamCollectionImportResource.new(record).serializable_hash }
       end
 
+      # POST /api/v1/steam_collection_imports/:id/advance
+      #
+      # Server-side workflow step (#289, see Imports::SteamWorkflow#advance):
+      # auto-applies single exact matches (at most AUTO_APPLY_CAP per call)
+      # and returns the next item that needs a human with its candidates, or
+      # a null item once the import is completed (or the cap was hit while the
+      # import is still active: advance again). 422 import_not_active unless
+      # the import is active. Rolled back for a test_mode import.
+      def advance
+        import = RpgClubSteamCollectionImport.find(params[:id])
+        return render_import_not_active unless import.status == "active"
+
+        payload = with_test_mode_rollback(import.test_mode) do
+          import.lock!
+          workflow = Imports::SteamWorkflow.new(import)
+          review_payload(import, workflow.advance, workflow.counts)
+        end
+
+        render json: { data: payload }
+      end
+
       private
 
       def create_session
@@ -112,6 +133,22 @@ module Api
         render json: { error: "steam_not_configured", message: error.message }, status: :service_unavailable
       rescue Steam::Client::Error => error
         render json: { error: error.code, message: error.message }, status: steam_error_status(error.code)
+      end
+
+      def render_import_not_active
+        render json: { error: "import_not_active", message: "This import is not active." },
+          status: :unprocessable_entity
+      end
+
+      def review_payload(import, review, counts)
+        {
+          import: SteamCollectionImportResource.new(import).serializable_hash,
+          item: review.item && SteamCollectionImportItemResource.new(review.item).serializable_hash,
+          candidates: Imports::CandidatePresenter.as_json(review.candidates),
+          match_confidence: review.match_confidence,
+          auto_applied: review.auto_applied,
+          counts: counts
+        }
       end
 
       def steam_error_status(code)
