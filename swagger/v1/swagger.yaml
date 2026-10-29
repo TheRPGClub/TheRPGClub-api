@@ -2205,6 +2205,35 @@ components:
       - status
       - created_at
       - updated_at
+    SteamCollectionImportReview:
+      type: object
+      properties:
+        import:
+          "$ref": "#/components/schemas/SteamCollectionImport"
+        item:
+          allOf:
+          - "$ref": "#/components/schemas/SteamCollectionImportItem"
+          nullable: true
+        candidates:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ImportCandidate"
+        match_confidence:
+          type: string
+          nullable: true
+          enum:
+          - exact
+          - fuzzy
+          - manual
+          -
+        counts:
+          "$ref": "#/components/schemas/SteamCollectionImportCounts"
+      required:
+      - import
+      - item
+      - candidates
+      - match_confidence
+      - counts
     VotingInfo:
       type: object
       properties:
@@ -16416,6 +16445,298 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/steam_collection_import_items/{id}/apply":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    post:
+      summary: Apply a GameDB or IGDB game to a Steam import item
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Pass `game_id` (a GameDB game) or `igdb_id`
+        (resolved to a GameDB game, imported from IGDB when needed, without the admin-only
+        `POST /games`). Adds the game to the owner''s collection (Digital, Steam platform),
+        maps the Steam app to it, and returns the item: `added`/`manual_remap` (`platform_unresolved`
+        without a Steam platform), `skipped`/`duplicate` when already collected, or
+        `failed`/`add_failed`. Errors: `game_not_found` and `igdb_game_not_found`
+        404; `game_id_or_igdb_id_required`, `invalid_igdb_id` and `igdb_not_configured`
+        422; `igdb_request_failed` 502. Only for a pending item of an active import:
+        otherwise 409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
+      parameters: []
+      responses:
+        '200':
+          description: the updated item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportItem"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: item, GameDB game or IGDB game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not exactly one of game_id / igdb_id, invalid igdb_id, or IGDB
+            not configured
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: IGDB request failed (`igdb_request_failed`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    game_id:
+                      type: integer
+                      description: GameDB game_id. Pass exactly one of game_id and
+                        igdb_id.
+                    igdb_id:
+                      type: integer
+                      description: IGDB game id, imported into GameDB if needed.
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_import_items/{id}/skip":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    post:
+      summary: Skip a Steam import item
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Marks the item `skipped`/`manual_skip` and
+        records the Steam app as `skipped` in the shared app map, so later imports
+        flag it `skip_mapped`. Only for a pending item of an active import: otherwise
+        409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
+      responses:
+        '200':
+          description: the updated item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportItem"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/steam_collection_import_items/{id}/remap":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    post:
+      summary: Search GameDB for a Steam import item under another title
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Re-searches GameDB for `title` and persists
+        the candidates on the item (`no_candidate` when nothing matches; 422 `title_required`
+        for a blank title). Nothing is applied; the next advance may auto-apply a
+        single exact match. Returns the same payload as advance. Only for a pending
+        item of an active import: otherwise 409 `import_not_active` / `item_not_pending`.
+        Rolled back in test_mode.'
+      parameters: []
+      responses:
+        '200':
+          description: the item with its new candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportReview"
+                required:
+                - data
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: blank title (`title_required`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                      description: Title to search for.
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_import_items/{id}/igdb_candidates":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImportItem item_id.
+    - name: q
+      in: query
+      schema:
+        type: string
+      required: false
+      description: Title to search. Defaults to the item's Steam app name.
+    get:
+      summary: IGDB suggestions for a Steam import item
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289): the member-facing counterpart of the admin-only
+        `GET /igdb/search`. Searches IGDB by progressive title variants (the first
+        variant with hits wins, at most 10) and flags each hit `already_imported`
+        when a GameDB game has that igdb_id. Pick one with `POST .../apply {igdb_id}`.'
+      responses:
+        '200':
+          description: IGDB candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ImportIgdbCandidate"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: IGDB is not configured (`igdb_not_configured`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: IGDB request failed (`igdb_request_failed`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/steam_collection_imports":
     post:
       summary: Start a Steam collection import job
@@ -16645,6 +16966,153 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/steam_collection_imports":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Import owner user_id.
+    post:
+      summary: Start a Steam collection import from a Steam profile
+      tags:
+      - Steam Collection Imports
+      description: 'Owner-only (#289). Resolves `steam_profile` (a SteamID64, a steamcommunity.com
+        `profiles/` or `id/` URL, or a vanity name) and fetches the owned library
+        server-side (needs `STEAM_WEB_API_KEY`), then creates the import and one pending
+        item per app (`row_index` 1..n). Drive it with `POST /steam_collection_imports/{id}/advance`.
+        Steam errors: `invalid_identifier` and `private_profile` 422; `api_unavailable`
+        and `api_unauthorized` 502; `api_rate_limited` and `steam_not_configured`
+        503. A member may have only one active or paused import of this kind (422,
+        checked before calling Steam). In `test_mode` the session is persisted but
+        the items are rolled back.'
+      parameters: []
+      responses:
+        '201':
+          description: import created with its items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImport"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid or private Steam profile, or an import is already open
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: Steam API failed (`api_unavailable`, `api_unauthorized`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: Steam is rate limiting (`api_rate_limited`) or not configured
+            (`steam_not_configured`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    steam_profile:
+                      type: string
+                      example: https://steamcommunity.com/id/example
+                      description: SteamID64, profile URL or vanity name. Required.
+                    test_mode:
+                      type: boolean
+                      default: false
+                      description: Dry-run session (see TestModeRollback).
+                  required:
+                  - steam_profile
+              required:
+              - data
+        required: true
+  "/api/v1/steam_collection_imports/{id}/advance":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSteamCollectionImport import_id.
+    post:
+      summary: Advance a Steam import to the next item that needs a human
+      tags:
+      - Steam Collection Imports
+      description: Owner-only (#289). Pops pending items in `row_index` order and
+        computes their GameDB candidates (the Steam app map, then a GameDB title search,
+        then the member's historically mapped games), persisting them on the item.
+        A single candidate whose title exactly matches the Steam name is applied automatically
+        (`auto_match`), up to 25 per request. Returns the first item that needs a
+        human with its candidates; `item` is null when the import is `completed`,
+        or when the cap was hit while the import is still `active` (advance again).
+        409 `import_not_active` unless the import is active. Rolled back in test_mode.
+      responses:
+        '200':
+          description: the next item to review, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SteamCollectionImportReview"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: import is not active (`import_not_active`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/suggestions/review_sessions":
     get:
       summary: List suggestion review sessions

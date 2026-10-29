@@ -113,6 +113,7 @@ Rails.application.routes.draw do
           get "collection_csv_imports/active", to: "collection_csv_imports#active"
           post "completionator_imports", to: "completionator_imports#create"
           get "completionator_imports/active", to: "completionator_imports#active"
+          post "steam_collection_imports", to: "steam_collection_imports#create"
           get "steam_collection_imports/active", to: "steam_collection_imports#active"
           get "steam_app_gamedb_maps/historical", to: "steam_app_gamedb_maps#historical"
         end
@@ -172,9 +173,19 @@ Rails.application.routes.draw do
           post "items", to: "steam_collection_import_items#create"
           get "items/next_pending", to: "steam_collection_import_items#next_pending"
           get "items/counts", to: "steam_collection_import_items#counts"
+          post "advance"
         end
       end
-      resources :steam_collection_import_items, only: %i[show update]
+      # Server-side workflow actions on one item (#289): apply a GameDB or
+      # IGDB game, skip, re-search under another title, IGDB suggestions.
+      resources :steam_collection_import_items, only: %i[show update] do
+        member do
+          post "apply", action: :apply_selection
+          post "skip"
+          post "remap"
+          get "igdb_candidates"
+        end
+      end
       # Steam app -> GameDB game mapping cache (#166), shared across every
       # user's import. `create` upserts keyed on steam_app_id; `show` is
       # keyed on steam_app_id too (not the internal map_id), so it's declared
