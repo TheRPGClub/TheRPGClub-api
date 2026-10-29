@@ -55,6 +55,16 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(json.dig("errors", 0, "message")).to match(/no data rows/)
     end
 
+    it "reports a whole-file invalid_csv error at row_index 1, column file, as the collection CSV does" do
+      [ "Name,Platform,Region,Type,Time,Date\n\"broken,PC,,,,\n", "Name,Platform,Region,Type,Time,Date\n" ].each do |text|
+        post "/api/v1/users/#{owner.user_id}/completionator_imports",
+          params: { data: { csv_text: text } }, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("errors").sole).to include("row_index" => 1, "column" => "file")
+      end
+    end
+
     it "forbids another user" do
       post "/api/v1/users/#{owner.user_id}/completionator_imports",
         params: { data: { csv_text: csv_text } }, headers: auth_headers_for(other_user), as: :json

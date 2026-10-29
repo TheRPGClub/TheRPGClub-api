@@ -127,7 +127,7 @@ module Api
       def parse_csv(text)
         text = text.to_s
         if text.bytesize > MAX_CSV_BYTES
-          return render_invalid_csv("CSV file is larger than #{MAX_CSV_BYTES / 1.megabyte} MB.", column: "file")
+          return render_invalid_csv("CSV file is larger than #{MAX_CSV_BYTES / 1.megabyte} MB.")
         end
 
         Imports::CompletionatorCsvParser.new.parse(text).map(&:stringify_keys)
@@ -135,8 +135,10 @@ module Api
         render_invalid_csv(error.message)
       end
 
-      def render_invalid_csv(message, column: nil)
-        render json: { error: "invalid_csv", errors: [ { row_index: nil, column: column, message: message } ] },
+      # Every Completionator CSV error is about the whole file, so it is
+      # reported as row 1, column "file", as the collection CSV does.
+      def render_invalid_csv(message)
+        render json: { error: "invalid_csv", errors: [ { row_index: 1, column: "file", message: message } ] },
           status: :unprocessable_content
         nil
       end
