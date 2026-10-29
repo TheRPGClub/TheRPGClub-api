@@ -697,6 +697,23 @@ module OpenapiSchemas
         reddit_url: str(nullable: true), voting_results_message_id: str(nullable: true),
         gamedb_game_id: int(nullable: true), game: ref("GameWithPlatforms", nullable: true)
       ),
+      # Gotm::RoundHistory (GotmRoundsController): one round of GOTM history.
+      # A kind's block is null when that kind has no (matching) entries in the
+      # round; NR-GOTM "N/A" placeholder games are left out of `games`, so an
+      # NR block can be present with an empty `games` list.
+      GotmRoundGame: obj(
+        game_index: int, gamedb_game_id: int(nullable: true), reddit_url: str(nullable: true),
+        thread_id: str(nullable: true, description: "The game's newest linked Discord thread."),
+        game: ref("GameWithPlatforms", nullable: true)
+      ),
+      GotmRoundBlock: obj(
+        month_year: str, voting_results_message_id: str(nullable: true), games: array_of("GotmRoundGame"),
+        _required: %w[month_year games]
+      ),
+      GotmRound: obj(
+        round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
+        _required: %w[round_number gotm nr_gotm]
+      ),
       # NominationResource (gotm + nr-gotm share it). `user`/`game` are
       # bot-sourced and FK-unenforced, so either may be null.
       Nomination: obj(
