@@ -841,6 +841,49 @@ components:
       - gamedb_game_id
       - completion_type
       - created_at
+    CommonCompletionSide:
+      type: object
+      properties:
+        latest:
+          "$ref": "#/components/schemas/CompletionEntry"
+        count:
+          type: integer
+      required:
+      - latest
+      - count
+    CommonCompletionEntry:
+      type: object
+      properties:
+        gamedb_game_id:
+          type: integer
+        latest_shared_date:
+          type: string
+          format: date-time
+          nullable: true
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        left:
+          "$ref": "#/components/schemas/CommonCompletionSide"
+        right:
+          "$ref": "#/components/schemas/CommonCompletionSide"
+      required:
+      - gamedb_game_id
+      - latest_shared_date
+      - game
+      - left
+      - right
+    CommonCompletionMeta:
+      allOf:
+      - "$ref": "#/components/schemas/PaginationMeta"
+      - type: object
+        properties:
+          left_user_id:
+            type: string
+          right_user_id:
+            type: string
+        required:
+        - left_user_id
+        - right_user_id
     CompletionUserEntry:
       type: object
       properties:
@@ -4621,10 +4664,10 @@ paths:
       tags:
       - Completions
       description: Ordered by `completed_at` descending, then `created_at` descending.
-        Open to any authenticated caller. The optional `game_id`, `year`, `q`, `completed_after`
-        and `completed_before` params filter the list (each ANDs in). `meta.count`
-        reflects the filtered total, so a count-only caller can request `per=1` and
-        read it without fetching every row.
+        Open to any authenticated caller. The optional `game_id`, `platform_id`, `year`,
+        `q`, `completed_after` and `completed_before` params filter the list (each
+        ANDs in). `meta.count` reflects the filtered total, so a count-only caller
+        can request `per=1` and read it without fetching every row.
       parameters:
       - name: game_id
         in: query
@@ -4632,6 +4675,12 @@ paths:
           type: integer
         required: false
         description: Filter to completions of this game (`gamedb_game_id`).
+      - name: platform_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to completions on this platform (exact `platform_id`).
       - name: year
         in: query
         schema:
@@ -4789,6 +4838,107 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/completions/common":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The left member.
+    get:
+      summary: List games two members have both completed
+      tags:
+      - Completions
+      description: 'Games that both `user_id` (left) and `other_user_id` (right) have
+        completed, one row per game with each member''s latest entry and completion
+        count. Open to any authenticated caller. Filters match a game when any of
+        either member''s entries for it match. `sort` defaults to `date_desc`: date
+        sorts order by `latest_shared_date` (undated games last, ties by title); title
+        sorts are case-insensitive.'
+      parameters:
+      - name: other_user_id
+        in: query
+        schema:
+          type: string
+        required: true
+        description: The right member. Must differ from `user_id`.
+      - name: year
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Keep games with an entry completed in this year (`YYYY`); `unknown`
+          keeps games with an undated entry.
+      - name: platform_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Keep games with an entry on this platform.
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by game title (case-insensitive substring).
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - date_desc
+          - date_asc
+          - title_asc
+          - title_desc
+          default: date_desc
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: common completions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CommonCompletionEntry"
+                  meta:
+                    "$ref": "#/components/schemas/CommonCompletionMeta"
+        '422':
+          description: missing or same-member `other_user_id`, or an unknown `sort`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: either member not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/completions/export":
     parameters:
     - name: user_id

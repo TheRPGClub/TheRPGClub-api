@@ -63,6 +63,19 @@ RSpec.describe "api/v1/completions behavior", type: :request do
       expect(json.fetch("data").map { |c| c.fetch("completion_id") }).to eq([ match.completion_id ])
     end
 
+    it "filters by exact platform_id with an exact meta.count" do
+      platform = create(:platform)
+      match = create(:completion, user: owner, platform: platform)
+      create(:completion, user: owner, platform: create(:platform))
+      create(:completion, user: owner)
+
+      get "/api/v1/users/#{owner.user_id}/completions",
+        params: { platform_id: platform.platform_id }, headers: service_headers
+
+      expect(json.fetch("data").map { |c| c.fetch("completion_id") }).to eq([ match.completion_id ])
+      expect(json.dig("meta", "count")).to eq(1)
+    end
+
     it "requires authentication" do
       get "/api/v1/users/#{owner.user_id}/completions"
 

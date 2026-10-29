@@ -14,6 +14,33 @@ module Api
         render_collection(scope.preload(:game, :platform), resource: CompletionEntryResource, default_order: { completed_at: :desc, created_at: :desc })
       end
 
+      # Games both members completed (`:user_id` on the left, `other_user_id`
+      # on the right). See Completions::Common for the filter/sort semantics.
+      # A grouped query, so the count is computed explicitly for pagy (as in
+      # `leaderboard`).
+      def common
+        other_user_id = params[:other_user_id].presence
+        return render(json: { error: "other_user_id is required" }, status: :unprocessable_entity) unless other_user_id
+        if other_user_id.to_s == params[:user_id].to_s
+          return render(json: { error: "other_user_id must be a different member" }, status: :unprocessable_entity)
+        end
+
+        left = RpgClubUser.find(params[:user_id])
+        right = RpgClubUser.find(other_user_id)
+        query = Completions::Common.new(
+          left_user_id: left.user_id, right_user_id: right.user_id,
+          **params.permit(:year, :platform_id, :q, :sort).to_h.symbolize_keys
+        )
+
+        pagy, page = pagy(query.relation, count: query.count, **pagy_options)
+        render json: {
+          data: CommonCompletionEntryResource.new(query.rows(page)).serializable_hash,
+          meta: pagy_meta(pagy).merge(left_user_id: left.user_id, right_user_id: right.user_id)
+        }
+      rescue Completions::Common::InvalidSort => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
       # Every one of the user's completions as a CSV download, in the bot's
       # export format (see Completions::CsvExport). Owner-only, like the bot's
       # self-only `/game-completion export`, even though the JSON index is open.
@@ -98,6 +125,7 @@ module Api
       # `per=1`) in place of `countCompletions`.
       #
       # - `game_id`        exact `gamedb_game_id`
+      # - `platform_id`    exact `platform_id`
       # - `year`           completion year via `EXTRACT(YEAR FROM completed_at)`;
       #                    the literal `unknown` matches rows with no
       #                    `completed_at` (the bot's `year: "unknown"` case)
@@ -105,6 +133,7 @@ module Api
       # - `completed_after` / `completed_before`  inclusive `completed_at` range
       def filtered_completions(scope)
         scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
+        scope = scope.where(platform_id: params[:platform_id]) if params[:platform_id].present?
 
         if params[:year].present?
           scope =
