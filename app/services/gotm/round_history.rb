@@ -80,10 +80,13 @@ module Gotm
 
     private
 
-    # `(SELECT round_number ... UNION SELECT round_number ...) gotm_rounds`
-    # over the selected kinds' filtered entries.
+    # `(SELECT DISTINCT round_number ... UNION SELECT DISTINCT round_number ...)
+    # gotm_rounds` over the selected kinds' filtered entries: one row per
+    # round. The DISTINCT matters for a single kind, where there is no UNION
+    # to dedupe and a round with co-winners would otherwise appear once per
+    # entry, inflating the count and repeating rounds across pages.
     def round_numbers_source
-      selects = @kinds.map { |kind| filtered_scope(kind).select(:round_number).arel }
+      selects = @kinds.map { |kind| filtered_scope(kind).select(:round_number).distinct.arel }
       union = selects.reduce { |left, right| Arel::Nodes::Union.new(left, right) }
       Arel::Nodes::TableAlias.new(Arel::Nodes::Grouping.new(union), "gotm_rounds")
     end
