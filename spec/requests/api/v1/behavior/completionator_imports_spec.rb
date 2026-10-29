@@ -117,9 +117,6 @@ RSpec.describe "api/v1/completionator_imports behavior", type: :request do
     end
 
     it "defaults test_mode to false when omitted" do
-      pending "possible bug: omitting test_mode inserts NULL (PG::NotNullViolation -> 500) " \
-              "instead of applying the documented false default"
-
       post "/api/v1/users/#{owner.user_id}/completionator_imports",
         params: { data: { items: [ { game_title: "A" } ] } }, headers: auth_headers_for(owner), as: :json
 

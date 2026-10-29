@@ -16,18 +16,23 @@ module Api
       before_action :require_owner!, only: %i[create active show update summary]
 
       # POST /api/v1/users/:user_id/completionator_imports
-      # Body: { "data": { source_filename, items: [...], test_mode } }
+      # Body: { "data": { source_filename, csv_text | items: [...], test_mode } }
       #
-      # Creates the import job and inserts all row items in one call. Each
-      # entry in `items` becomes a pending RpgClubCompletionatorImportItem;
+      # Creates the import job and inserts all row items in one call. With
+      # `csv_text` (the web, #291) the raw Completionator export is parsed
+      # server-side (Imports::CompletionatorCsvParser); a malformed or empty
+      # export is a 422 `invalid_csv` and creates nothing. Otherwise (the bot)
+      # each entry in `items` becomes a pending RpgClubCompletionatorImportItem;
       # `row_index` defaults to the entry's position in the array. `test_mode:
       # true` marks this a dry-run session — the session row itself is always
       # persisted, but all subsequent writes scoped to it are rolled back
       # (see TestModeRollback).
       def create
         data = request_data
-        items = Array(data["items"])
-        test_mode = ActiveModel::Type::Boolean.new.cast(data["test_mode"])
+        items = data["csv_text"].nil? ? Array(data["items"]) : parse_csv(data["csv_text"])
+        return if performed?
+
+        test_mode = ActiveModel::Type::Boolean.new.cast(data["test_mode"]) || false
 
         record = RpgClubCompletionatorImport.create!(
           user_id: params[:user_id],
@@ -91,6 +96,13 @@ module Api
       end
 
       private
+
+      def parse_csv(text)
+        Imports::CompletionatorCsvParser.new.parse(text).map(&:stringify_keys)
+      rescue Imports::CompletionatorCsvParser::InvalidCsv => error
+        render json: { error: "invalid_csv", message: error.message }, status: :unprocessable_entity
+        nil
+      end
 
       def item_row(import_id, item, index)
         {
