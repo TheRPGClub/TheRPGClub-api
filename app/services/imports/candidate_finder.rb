@@ -142,9 +142,10 @@ module Imports
     end
 
     # The parts of the bot's sanitizeUserInput that matter for a search
-    # string: NFKC, and no control or zero-width characters.
+    # string: NFKC, and no control or zero-width characters. ™ ® © go first,
+    # since NFKC would turn ™ into the letters "TM" ("Game™" -> "GameTM").
     def sanitize(title)
-      title.to_s.unicode_normalize(:nfkc).gsub(/[\p{Cc}​-‏‪-‮⁠-⁯﻿]/, " ")
+      title.to_s.gsub(TitleNormalizer::MARKS, "").unicode_normalize(:nfkc).gsub(/[\p{Cc}​-‏‪-‮⁠-⁯﻿]/, " ")
     end
   end
 end

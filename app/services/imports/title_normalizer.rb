@@ -12,10 +12,13 @@ module Imports
   #   #     "The Witcher 3 Wild Hunt", "Witcher 3 Wild Hunt"]
   #   Imports::TitleNormalizer.exact_match?("FINAL FANTASY® VII", "Final Fantasy VII") # => true
   module TitleNormalizer
+    # Trademark, registered and copyright marks.
+    MARKS = /[™®©]/
+
     # IMPORT_TITLE_IGNORE_STEPS, applied cumulatively in this order.
     STEPS = [
       ->(value) { value.gsub(%r{\s*\((?:19|20)\d{2}(?:[/-]\d{1,2}){0,2}\)\s*}, " ") }, # "(YYYY[-MM[-DD]])"
-      ->(value) { value.gsub(/[™®]/, "") },
+      ->(value) { value.gsub(MARKS, "") },
       ->(value) { value.gsub(/[-–—]/, " ") },
       ->(value) { value.tr(":", " ") },
       ->(value) { value.sub(/\A(the|a|an)\s+/i, "") },

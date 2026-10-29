@@ -84,6 +84,18 @@ RSpec.describe Imports::CandidateFinder do
     it "returns nothing for a blank title" do
       expect(finder.find("  ")).to eq([])
     end
+
+    it "strips trademark, registered and copyright marks before NFKC, so \"Game™\" finds \"Game\"" do
+      game = game!(tag)
+
+      %W[#{tag}\u2122 #{tag}\u00AE \u00A9#{tag}].each do |title|
+        result = finder.find(title)
+
+        expect(result.map(&:game_id)).to eq([ game.game_id ])
+        expect(result.first.score).to eq(100)
+        expect(Imports::TitleNormalizer.exact_match?(title, result.first.title)).to be(true)
+      end
+    end
   end
 
   describe "#find_with_fallback" do

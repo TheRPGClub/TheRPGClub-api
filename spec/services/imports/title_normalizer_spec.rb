@@ -16,6 +16,11 @@ RSpec.describe Imports::TitleNormalizer do
       expect(described_class.normalize("Halo™ — Combat Evolved (2001-11-15)")).to eq("Halo Combat Evolved")
     end
 
+    it "strips the copyright mark" do
+      expect(described_class.normalize("©Halo")).to eq("Halo")
+      expect(described_class.progressive_variants("©Halo")).to eq([ "©Halo", "Halo" ])
+    end
+
     it "keeps apostrophes and turns other punctuation into spaces" do
       expect(described_class.normalize("Baldur's Gate!! II & More")).to eq("Baldur's Gate II More")
     end
