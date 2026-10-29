@@ -227,4 +227,41 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
       end
     end
   end
+
+  path '/api/v1/collection_csv_imports/{id}/advance' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true,
+              description: 'RpgClubCollectionCsvImport import_id.'
+
+    post 'Advance a collection CSV import to the next row needing review' do
+      tags 'Collection CSV Imports'
+      description 'Owner-only (#290). Runs the import loop server-side over pending rows in row_index order: ' \
+                  'a row with `gamedb_id` is applied (`csv_gamedb_id`; `invalid_row` if the game is unknown), ' \
+                  'a row with `igdb_id` is imported from IGDB and applied (`csv_igdb_id`; `invalid_row` on ' \
+                  'failure), and a row whose title search yields a single exact candidate is applied ' \
+                  '(`auto_match`). Applying uses the row\'s platform (`platform_unresolved` when it no longer ' \
+                  'resolves; added without a platform), ownership and note; an entry already in the ' \
+                  'collection marks the row `skipped`/`duplicate`. Returns the first row that needs a human ' \
+                  'with its stored candidates. `item` is null when nothing is pending (the import is then ' \
+                  '`completed`) or when 25 rows were resolved in this call (the import stays `active`: call ' \
+                  'again). Rolled back instead of persisted if the import is in test_mode.'
+      produces 'application/json'
+
+      response '200', 'review payload' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CollectionCsvImportReview' } }
+      end
+
+      response '403', 'forbidden — caller is not the owner or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+      response '409', '`import_not_active` — the import is paused, completed or canceled' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
 end
