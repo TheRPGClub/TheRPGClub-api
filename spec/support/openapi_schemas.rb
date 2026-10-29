@@ -284,6 +284,19 @@ module OpenapiSchemas
         final_playtime_hrs: num(nullable: true), created_at: ts,
         game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
+      # CommonCompletionEntryResource (CompletionsController#common): a game both
+      # members completed. `latest_shared_date` is the latest `completed_at`
+      # across both members (null when every entry is undated); each side holds
+      # that member's latest entry for the game and their completion count.
+      CommonCompletionSide: obj(latest: ref("CompletionEntry"), count: int, _required: %w[latest count]),
+      CommonCompletionEntry: obj(
+        gamedb_game_id: int, latest_shared_date: ts(nullable: true), game: ref("GameSummary"),
+        left: ref("CommonCompletionSide"), right: ref("CommonCompletionSide"),
+        _required: %w[gamedb_game_id latest_shared_date game left right]
+      ),
+      CommonCompletionMeta: extends(
+        "PaginationMeta", left_user_id: str, right_user_id: str
+      ),
       # CompletionUserEntryResource (CompletionFields + user), for game-scoped lists.
       CompletionUserEntry: obj(
         completion_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
