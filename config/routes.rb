@@ -143,13 +143,24 @@ Rails.application.routes.draw do
       # above. The user-scoped create/active reads live under `users`;
       # `summary` and the nested `items/next_pending` poll are member routes
       # so they aren't captured by the `:id` show route.
+      # `advance` and the item workflow routes (#291) drive the server-side
+      # review loop for the web.
       resources :completionator_imports, only: %i[show update] do
         member do
           get "summary"
+          post "advance"
           get "items/next_pending", to: "completionator_import_items#next_pending"
         end
       end
-      resources :completionator_import_items, only: %i[show update]
+      resources :completionator_import_items, only: %i[show update] do
+        member do
+          post "match"
+          post "add_completion"
+          post "update_completion"
+          post "skip"
+          get "igdb_candidates"
+        end
+      end
       # Steam collection import jobs (#166), same shape as
       # collection_csv_imports above, except `create` is not user-nested (the
       # owner user_id is given in the body) and items are bulk-inserted via a
