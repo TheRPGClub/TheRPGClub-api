@@ -79,6 +79,7 @@ Rails.application.routes.draw do
           get "collections/platform_summary", to: "collections#platform_summary"
           get "collections", to: "collections#index"
           post "collections", to: "collections#create"
+          get "completions/export", to: "completions#export"
           get "completions", to: "completions#index"
           post "completions", to: "completions#create"
           get "favorites", to: "favorites#index"

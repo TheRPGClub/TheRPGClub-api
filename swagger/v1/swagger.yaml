@@ -4736,6 +4736,60 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/completions/export":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Export a user's completions as CSV
+      tags:
+      - Completions
+      description: 'Owner-only. Every completion the user has, unpaginated and in
+        the list order (`completed_at` descending, then `created_at` descending),
+        as a `text/csv` attachment named `completions.csv`. The columns match the
+        Discord bot''s export: `ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime
+        (Hours),Note,Created At`. `Completed Date` is the UTC date (`YYYY-MM-DD`)
+        and `Created At` is an ISO-8601 UTC timestamp with milliseconds. Empty values
+        are blank. Fields that contain a comma, quote or line break are quoted (RFC
+        4180). A user with no completions gets only the header row.'
+      responses:
+        '200':
+          description: completions CSV
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: '`attachment; filename="completions.csv"`'
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            text/csv:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            text/csv:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/completions/leaderboard":
     get:
       summary: Completion leaderboard
