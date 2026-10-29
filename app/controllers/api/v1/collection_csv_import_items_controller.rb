@@ -7,7 +7,7 @@ module Api
     # a row. Owner-only, resolved through the parent import.
     class CollectionCsvImportItemsController < ApplicationController
       include TestModeRollback
-      include CollectionCsvImportReview
+      include CollectionImportReview
       include ImportItemActions
 
       before_action :require_owner!, only: %i[next_pending show apply_selection skip remap igdb_candidates]
@@ -15,6 +15,7 @@ module Api
       before_action :require_service!, only: %i[update]
       # GET .../:id/igdb_candidates searches `q` or else the row's raw_title;
       # pick a hit with `apply {igdb_id}`.
+      import_review_resources import: CollectionCsvImportResource, item: CollectionCsvImportItemResource
       import_item_actions RpgClubCollectionCsvImportItem, title: :raw_title, actionable: %i[apply_selection skip remap]
 
       UPDATE_ATTRS = %w[status match_confidence match_candidate_json gamedb_game_id collection_entry_id result_reason error_text].freeze
@@ -94,8 +95,7 @@ module Api
         import = @item.import
         payload = with_test_mode_rollback(import.test_mode) do
           candidates = Imports::CollectionCsvWorkflow.new(import).remap(@item, title)
-          collection_csv_review_payload(import, item: @item, candidates: candidates,
-            match_confidence: @item.match_confidence)
+          collection_import_review_payload(import, Imports::Review.for(@item, candidates))
         end
 
         render json: { data: payload }

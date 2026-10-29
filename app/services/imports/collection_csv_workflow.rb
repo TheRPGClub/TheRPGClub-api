@@ -7,7 +7,7 @@ module Imports
   # handling (wrap calls in TestModeRollback).
   #
   #   workflow = Imports::CollectionCsvWorkflow.new(import)
-  #   review = workflow.advance        # => Review(item:, candidates:, match_confidence:)
+  #   review = workflow.advance        # => Imports::Review
   #   workflow.apply(item, game, reason: "manual_remap")
   #   workflow.skip(item)
   #   workflow.remap(item, "New title")  # => [Candidate]
@@ -33,8 +33,6 @@ module Imports
     MAX_AUTO_APPLIES = 25
     PLATFORM_WARNING = "Platform not recognized; imported without platform."
 
-    Review = Data.define(:item, :candidates, :match_confidence)
-
     def initialize(import, platform_resolver: PlatformResolver.new, candidate_finder: CandidateFinder.new,
       igdb_resolver: IgdbGameResolver.new)
       @import = import
@@ -48,14 +46,14 @@ module Imports
         item = @import.items.where(status: "pending").order(:row_index).first
         unless item
           @import.update!(status: "completed")
-          return Review.new(item: nil, candidates: [], match_confidence: nil)
+          return Review.none
         end
 
         @import.update!(current_index: item.row_index)
         review = process(item)
         return review if review
       end
-      Review.new(item: nil, candidates: [], match_confidence: nil)
+      Review.none
     end
 
     def apply(item, game, reason:)
@@ -123,7 +121,7 @@ module Imports
         return
       end
 
-      Review.new(item: item, candidates: candidates, match_confidence: item.match_confidence)
+      Review.for(item, candidates)
     end
 
     # A remap that found nothing leaves result_reason no_candidate; the row

@@ -8,8 +8,8 @@ module Imports
   #   Imports::SteamWorkflow.item_rows(import_id, library[:games])  # rows for insert_all
   #
   #   workflow = Imports::SteamWorkflow.new(import)
-  #   review = workflow.advance       # => Review(item:, candidates:, match_confidence:)
-  #   workflow.apply(item, game_id)   # add to the collection (Digital, Steam), map the app
+  #   review = workflow.advance       # => Imports::Review
+  #   workflow.apply(item, game, reason: "manual_remap")  # add to the collection (Digital, Steam), map the app
   #   workflow.skip(item)             # manual_skip, map the app as skipped
   #   workflow.remap(item, title)     # => [Candidate], stored on the item
   #
@@ -29,8 +29,6 @@ module Imports
     STEAM_PLATFORM = "steam"
     OWNERSHIP_TYPE = "Digital"
     HISTORICAL_LIMIT = 5
-
-    Review = Data.define(:item, :candidates, :match_confidence)
 
     # Insert rows for a Steam::Client#owned_games library, row_index 1..n
     # (as the bot numbers them).
@@ -67,19 +65,21 @@ module Imports
         @import.update!(current_index: item.row_index) if @import.current_index != item.row_index
         candidates = candidates_for(item)
         unless auto_match?(item, candidates)
-          return Review.new(item: item, candidates: candidates, match_confidence: item.match_confidence)
+          return Review.for(item, candidates)
         end
-        return Review.new(item: nil, candidates: [], match_confidence: nil) if auto_applied >= MAX_AUTO_APPLIES
+        return Review.none if auto_applied >= MAX_AUTO_APPLIES
 
-        apply(item, candidates.first.game_id, reason: "auto_match")
+        apply(item, candidates.first, reason: "auto_match")
         auto_applied += 1
       end
     end
 
-    # The bot's applySteamImportSelection. `game_id` must be an existing
-    # GameDB game. A manual pick (reason manual_remap) sets match_confidence
-    # to manual.
-    def apply(item, game_id, reason: "manual_remap")
+    # The bot's applySteamImportSelection, with the same signature as
+    # CollectionCsvWorkflow#apply. `game` is anything with a #game_id (a
+    # GamedbGame, or the auto-matched Imports::Candidate). A manual pick
+    # (reason manual_remap) sets match_confidence to manual.
+    def apply(item, game, reason:)
+      game_id = game.game_id
       platform_id = steam_platform_id
       result = CollectionApplier.new(user_id: @import.user_id).apply(
         game_id: game_id, platform_id: platform_id, ownership_type: OWNERSHIP_TYPE,
@@ -118,7 +118,7 @@ module Imports
 
     def complete
       @import.update!(status: "completed")
-      Review.new(item: nil, candidates: [], match_confidence: nil)
+      Review.none
     end
 
     def auto_match?(item, candidates)

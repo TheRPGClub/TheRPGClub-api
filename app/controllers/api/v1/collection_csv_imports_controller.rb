@@ -11,7 +11,9 @@ module Api
     # the owner, per `require_owner!`) — this is private per-user working data.
     class CollectionCsvImportsController < ApplicationController
       include TestModeRollback
-      include CollectionCsvImportReview
+      include CollectionImportReview
+
+      import_review_resources import: CollectionCsvImportResource, item: CollectionCsvImportItemResource
 
       before_action :require_owner!, only: %i[create active show update summary advance]
 
@@ -86,13 +88,7 @@ module Api
       def summary
         record = RpgClubCollectionCsvImport.find(params[:id])
 
-        render json: {
-          data: {
-            import_id: record.import_id,
-            by_status: record.items.group(:status).count,
-            by_result_reason: record.items.group(:result_reason).count
-          }
-        }
+        render json: { data: import_item_counts(record) }
       end
 
       # POST /api/v1/collection_csv_imports/:id/advance
@@ -110,9 +106,7 @@ module Api
 
         payload = with_test_mode_rollback(import.test_mode) do
           import.lock!
-          review = Imports::CollectionCsvWorkflow.new(import).advance
-          collection_csv_review_payload(import, item: review.item, candidates: review.candidates,
-            match_confidence: review.match_confidence)
+          collection_import_review_payload(import, Imports::CollectionCsvWorkflow.new(import).advance)
         end
 
         render json: { data: payload }

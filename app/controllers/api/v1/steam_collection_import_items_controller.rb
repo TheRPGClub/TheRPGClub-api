@@ -7,13 +7,14 @@ module Api
     # matcher has run an app. Owner-only, resolved through the parent import.
     class SteamCollectionImportItemsController < ApplicationController
       include TestModeRollback
-      include SteamCollectionImportReview
+      include CollectionImportReview
       include ImportItemActions
 
       before_action :require_owner!, only: %i[create next_pending counts show apply_selection skip remap igdb_candidates]
       # Item results are written by the bot (service) only.
       before_action :require_service!, only: %i[update]
       # GET .../:id/igdb_candidates searches `q` or else the Steam app name.
+      import_review_resources import: SteamCollectionImportResource, item: SteamCollectionImportItemResource
       import_item_actions RpgClubSteamCollectionImportItem, title: :steam_app_name,
         actionable: %i[apply_selection skip remap]
 
@@ -55,13 +56,7 @@ module Api
       def counts
         import = RpgClubSteamCollectionImport.find(params[:id])
 
-        render json: {
-          data: {
-            import_id: import.import_id,
-            by_status: import.items.group(:status).count,
-            by_result_reason: import.items.group(:result_reason).count
-          }
-        }
+        render json: { data: import_item_counts(import) }
       end
 
       # GET /api/v1/steam_collection_import_items/:id
@@ -101,7 +96,7 @@ module Api
 
           @item.lock!
           @item.update!(match_candidate_json: Imports::CandidateFinder.dump([ Imports::Candidate.new(game_id: game.game_id, title: game.title) ])) if igdb_id
-          Imports::SteamWorkflow.new(@item.import).apply(@item, game.game_id, reason: "manual_remap")
+          Imports::SteamWorkflow.new(@item.import).apply(@item, game, reason: "manual_remap")
         end
         return render_game_error(error) if error
 
@@ -131,7 +126,7 @@ module Api
         import = @item.import
         payload = with_test_mode_rollback(import.test_mode) do
           candidates = Imports::SteamWorkflow.new(import).remap(@item, title)
-          steam_review_payload(import, item: @item, candidates: candidates, match_confidence: @item.match_confidence)
+          collection_import_review_payload(import, Imports::Review.for(@item, candidates))
         end
 
         render json: { data: payload }

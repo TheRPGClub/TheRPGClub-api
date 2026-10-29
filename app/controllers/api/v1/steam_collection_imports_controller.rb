@@ -12,7 +12,9 @@ module Api
     # working data.
     class SteamCollectionImportsController < ApplicationController
       include TestModeRollback
-      include SteamCollectionImportReview
+      include CollectionImportReview
+
+      import_review_resources import: SteamCollectionImportResource, item: SteamCollectionImportItemResource
 
       before_action :require_owner!, only: %i[create active show update advance]
 
@@ -81,9 +83,7 @@ module Api
 
         payload = with_test_mode_rollback(import.test_mode) do
           import.lock!
-          review = Imports::SteamWorkflow.new(import).advance
-          steam_review_payload(import, item: review.item, candidates: review.candidates,
-            match_confidence: review.match_confidence)
+          collection_import_review_payload(import, Imports::SteamWorkflow.new(import).advance)
         end
 
         render json: { data: payload }
