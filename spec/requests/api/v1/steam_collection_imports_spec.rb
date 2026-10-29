@@ -23,7 +23,9 @@ RSpec.describe 'api/v1/steam_collection_imports', type: :request do
       tags 'Steam Collection Imports'
       description 'Owner-only (the bot service token counts as owner; owner_id is taken from `user_id` in ' \
                   'the body). Creates the import job; apps are bulk-inserted separately via ' \
-                  '`POST /steam_collection_imports/{id}/items`.'
+                  '`POST /steam_collection_imports/{id}/items`.' \
+                  ' A user may have only one active or paused import of this kind: starting another ' \
+                  'returns 422 `user already has an active or paused import`.'
       consumes 'application/json'
       produces 'application/json'
 

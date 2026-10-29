@@ -39,7 +39,9 @@ RSpec.describe 'api/v1/collection_csv_imports', type: :request do
       description 'Owner-only (the bot service token counts as owner). Creates the import job ' \
                   'and inserts all row items — given as `items` — in one call. `test_mode: true` ' \
                   'marks this a dry-run session — the session row itself is always persisted, but ' \
-                  'all subsequent writes scoped to it are rolled back.'
+                  'all subsequent writes scoped to it are rolled back.' \
+                  ' A user may have only one active or paused import of this kind: starting another ' \
+                  'returns 422 `user already has an active or paused import`.'
       consumes 'application/json'
       produces 'application/json'
 

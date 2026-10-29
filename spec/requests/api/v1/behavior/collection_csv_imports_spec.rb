@@ -25,6 +25,18 @@ RSpec.describe "api/v1/collection_csv_imports behavior", type: :request do
       } }
     end
 
+    it "refuses to start a second import while one is active or paused (one open import per kind)" do
+      create(:collection_csv_import, user: owner, status: "paused")
+
+      expect {
+        post "/api/v1/users/#{owner.user_id}/collection_csv_imports",
+          params: payload, headers: auth_headers_for(owner), as: :json
+      }.not_to change(RpgClubCollectionCsvImport, :count)
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json.fetch("error")).to include("user already has an active or paused import")
+    end
+
     it "creates the import job and all row items for the owner" do
       expect {
         post "/api/v1/users/#{owner.user_id}/collection_csv_imports",
@@ -148,10 +160,12 @@ RSpec.describe "api/v1/collection_csv_imports behavior", type: :request do
   end
 
   describe "GET /api/v1/users/:user_id/collection_csv_imports/active" do
-    it "returns the most recent active or paused import" do
+    it "returns the most recent active or paused import, even among legacy duplicates" do
       create(:collection_csv_import, user: owner, status: "completed")
-      create(:collection_csv_import, user: owner, status: "active", created_at: 2.hours.ago)
       newest = create(:collection_csv_import, user: owner, status: "paused")
+      # A legacy duplicate from before the one-open-import rule (#287):
+      # saved without validation, so /active must still pick the newest.
+      build(:collection_csv_import, user: owner, status: "active", created_at: 2.hours.ago).save!(validate: false)
 
       get "/api/v1/users/#{owner.user_id}/collection_csv_imports/active", headers: auth_headers_for(owner)
 

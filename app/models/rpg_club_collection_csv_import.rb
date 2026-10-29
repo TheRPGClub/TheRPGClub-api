@@ -9,6 +9,8 @@ class RpgClubCollectionCsvImport < ApplicationRecord
   self.table_name = "rpg_club_collection_csv_imports"
   self.primary_key = "import_id"
 
+  include OneOpenImportPerUser
+
   STATUSES = %w[active paused completed canceled].freeze
 
   has_many :items,
