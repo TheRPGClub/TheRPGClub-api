@@ -200,6 +200,10 @@ Rails.application.routes.draw do
           delete "links/:game_id", to: "thread_game_links#destroy"
         end
       end
+      # GOTM / NR-GOTM history grouped and paged by round (read-only).
+      resources :gotm_rounds, only: %i[index] do
+        collection { get "current" }
+      end
       resources :gotm_entries, only: %i[index show create update destroy]
       resources :nr_gotm_entries, only: %i[index show create update destroy]
       # GOTM / NR-GOTM nominations: the round list (open read) plus single-user
