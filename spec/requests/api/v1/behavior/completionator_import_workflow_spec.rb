@@ -328,6 +328,23 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(json.fetch("error")).to eq("igdb_game_not_found")
     end
 
+    it "rolls the IGDB import back with the match in test_mode, like the CSV and Steam apply" do
+      test_import = create(:completionator_import, user: owner, test_mode: true)
+      row = create(:completionator_import_item, import: test_import, game_title: "Unmatchable #{tag}")
+      importer = instance_double(Gamedb::IgdbGameImporter)
+      allow(Gamedb::IgdbGameImporter).to receive(:new).and_return(importer)
+      allow(importer).to receive(:import!).with(5151) do
+        game = game_on("Imported #{tag}", windows, switch)
+        Gamedb::IgdbGameImporter::Result.new(game: game, created: true, images: [])
+      end
+
+      expect { item_post(row, "match", igdb_id: 5151) }.not_to change(GamedbGame, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "game", "title")).to eq("Imported #{tag}")
+      expect(row.reload.gamedb_game_id).to be_nil
+    end
+
     it "404s for an unknown game and 422s without exactly one of game_id or igdb_id" do
       row = item
 

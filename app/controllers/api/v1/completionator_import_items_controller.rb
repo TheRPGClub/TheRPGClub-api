@@ -66,17 +66,26 @@ module Api
       # Sets the item's game and returns the same review payload as advance
       # (CompletionatorImportReview), applying the automatic step (auto-add,
       # auto-skip; `next_step` auto_added / auto_skipped). An
-      # igdb_id not yet in GameDB is imported first (Imports::IgdbGameResolver);
-      # that import is a catalog write and is kept even in test_mode.
+      # igdb_id not yet in GameDB is imported first (Imports::IgdbGameResolver),
+      # inside the test-mode rollback like the collection CSV and Steam apply.
       def match
-        game = matched_game
-        return if performed?
+        data = params[:data].present? ? request_data : {}
+        game_id, igdb_id = data.values_at("game_id", "igdb_id").map(&:presence)
+        if game_id.nil? == igdb_id.nil?
+          return render json: { error: "game_id_or_igdb_id_required" }, status: :unprocessable_content
+        end
 
         import = @item.import
+        error = nil
         payload = with_test_mode_rollback(import.test_mode) do
+          game, error = game_id ? find_game(game_id) : import_igdb_game(igdb_id)
+          next unless game
+
           @item.lock!
           completionator_review_payload(import, Imports::CompletionatorWorkflow.new(import).match(@item, game))
         end
+        return render json: { error: error }, status: error_status(error) if error
+
         render json: { data: payload }
       end
 
@@ -136,26 +145,19 @@ module Api
         render json: { error: error }, status: :conflict if error
       end
 
-      # The game from `game_id`, or from `igdb_id` via Imports::IgdbGameResolver
-      # (outside the test-mode rollback: a GameDB import is a catalog write,
-      # and its images are uploaded either way). Renders the error otherwise.
-      def matched_game
-        data = params[:data].present? ? request_data : {}
-        game_id, igdb_id = data.values_at("game_id", "igdb_id").map(&:presence)
-        if game_id.nil? == igdb_id.nil?
-          return render(json: { error: "game_id_or_igdb_id_required" }, status: :unprocessable_content)
-        end
+      def find_game(raw_id)
+        game_id = Integer(raw_id.to_s, 10, exception: false)
+        game = game_id&.positive? && GamedbGame.find_by(game_id: game_id)
+        game ? [ game, nil ] : [ nil, "game_not_found" ]
+      end
 
-        if igdb_id
-          result = Imports::IgdbGameResolver.new.resolve(igdb_id)
-          return result.game if result.ok?
+      def import_igdb_game(raw_id)
+        result = Imports::IgdbGameResolver.new.resolve(raw_id)
+        [ result.game, result.error ]
+      end
 
-          return render(json: { error: result.error }, status: IGDB_ERROR_STATUS.fetch(result.error, :unprocessable_content))
-        end
-
-        id = Integer(game_id.to_s, 10, exception: false)
-        (id&.positive? && GamedbGame.find_by(game_id: id)) ||
-          render(json: { error: "game_not_found" }, status: :not_found)
+      def error_status(error)
+        error == "game_not_found" ? :not_found : IGDB_ERROR_STATUS.fetch(error, :unprocessable_content)
       end
 
       def workflow_write
