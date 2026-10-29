@@ -13,7 +13,7 @@ module Api
     class CompletionatorImportsController < ApplicationController
       include TestModeRollback
 
-      before_action :require_owner!, only: %i[create active show update summary]
+      before_action :require_owner!, only: %i[create active show update summary advance]
 
       # POST /api/v1/users/:user_id/completionator_imports
       # Body: { "data": { source_filename, csv_text | items: [...], test_mode } }
@@ -93,6 +93,30 @@ module Api
             by_status: record.items.group(:status).count
           }
         }
+      end
+
+      # POST /api/v1/completionator_imports/:id/advance
+      #
+      # The server-side review loop (#291, see Imports::CompletionatorWorkflow):
+      # applies automatic rows (auto-add, auto-skip) and returns the first row
+      # that needs the member, as a CompletionatorReview plus the import, the
+      # number of rows handled automatically, `done` and the status counts.
+      # `item` is null when nothing is left (`done: true`, the import is now
+      # completed) or when the per-call automatic cap was hit (`done: false`,
+      # call again). Rolled back if the import is in test_mode.
+      def advance
+        record = RpgClubCompletionatorImport.find(params[:id])
+        payload = with_test_mode_rollback(record.test_mode) do
+          result = Imports::CompletionatorWorkflow.new(record).advance
+          CompletionatorReviewPayload.new(result.review).as_json.merge(
+            import: CompletionatorImportResource.new(result.import).serializable_hash,
+            auto_processed: result.auto_processed,
+            done: result.done,
+            counts: record.items.group(:status).count
+          )
+        end
+
+        render json: { data: payload }
       end
 
       private
