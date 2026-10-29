@@ -523,6 +523,41 @@ module OpenapiSchemas
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
         by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
       ),
+      # collection_csv_imports#create with `csv_text` (#290): the whole file is
+      # rejected; `errors` lists every problem (row_index 1 is the header or
+      # the file as a whole).
+      InvalidCsvError: obj(
+        error: str(example: "invalid_csv"),
+        errors: {
+          type: :array,
+          items: obj(row_index: int, column: str(example: "platform"),
+            message: str(example: "Platform not recognized. Use a platform name or id."))
+        },
+        _required: %w[error errors]
+      ),
+      # One GameDB match for an import row (Imports::Candidate), as returned
+      # by the import workflow endpoints (#290).
+      ImportCandidate: obj(game_id: int, title: str, cover_url: str(nullable: true)),
+      # An IGDB search hit for an import row (igdb_candidates, #290): the
+      # Igdb::Client#search candidate plus `already_imported`.
+      ImportIgdbCandidate: obj(
+        igdb_id: int, name: str, slug: str(nullable: true), summary: str(nullable: true),
+        url: str(nullable: true), total_rating: num(nullable: true),
+        first_release_date: str(nullable: true, description: "ISO 8601 timestamp."),
+        cover_url: str(nullable: true), already_imported: bool
+      ),
+      # collection_csv_imports#advance and collection_csv_import_items#remap
+      # (#290): the import, the item that needs a human (null when none is
+      # left or the per-request auto-apply cap was reached; see the import's
+      # status), its stored candidates and confidence, and the item counts.
+      CollectionCsvImportReview: obj(
+        import: ref("CollectionCsvImport"),
+        item: ref("CollectionCsvImportItem", nullable: true),
+        candidates: array_of("ImportCandidate"),
+        match_confidence: str(nullable: true, enum: [ "exact", "fuzzy", "manual", nil ]),
+        counts: ref("CollectionCsvImportSummary"),
+        _required: %w[import item candidates match_confidence counts]
+      ),
       # CompletionatorImportResource: every RpgClubCompletionatorImport column
       # (#164). `current_index`/`total_count` let the bot resume a
       # paused/interrupted import. `test_mode` marks a dry-run session whose
