@@ -12,14 +12,12 @@ module Api
     class CollectionCsvImportsController < ApplicationController
       include TestModeRollback
       include CollectionImportReview
+      include ImportCsvUpload
 
       import_review_resources import: CollectionCsvImportResource, item: CollectionCsvImportItemResource
 
       before_action :require_owner!, only: %i[create active show update summary advance]
 
-      # Upper bound on an uploaded `csv_text`, so one request can't parse an
-      # arbitrarily large file.
-      MAX_CSV_BYTES = 2.megabytes
       TEMPLATE_VERSION = "1.0"
 
       # POST /api/v1/users/:user_id/collection_csv_imports
@@ -115,11 +113,7 @@ module Api
       private
 
       def create_from_csv_text(data, test_mode)
-        csv_text = data["csv_text"].to_s
-        if csv_text.bytesize > MAX_CSV_BYTES
-          return render_invalid_csv([ { row_index: 1, column: "file",
-                                        message: "CSV file is larger than #{MAX_CSV_BYTES / 1.megabyte} MB." } ])
-        end
+        csv_text = checked_csv_text(data["csv_text"]) or return
 
         parsed = Imports::CollectionCsvParser.new(platform_resolver: Imports::PlatformResolver.new).parse(csv_text)
         return render_invalid_csv(parsed.errors) unless parsed.ok?
@@ -144,10 +138,6 @@ module Api
         end
 
         render json: { data: CollectionCsvImportResource.new(record).serializable_hash }, status: :created
-      end
-
-      def render_invalid_csv(errors)
-        render json: { error: "invalid_csv", errors: errors }, status: :unprocessable_content
       end
 
       def parsed_row(row)
