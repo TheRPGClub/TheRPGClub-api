@@ -85,7 +85,9 @@ module Api
 
       # Optional filters mirroring the bot's collection `searchEntries`
       # (RPGClub_GameDB#839): `q` partial-matches the game title, `platform`
-      # partial-matches any of the platform name/abbreviation/code,
+      # partial-matches any of the platform name/abbreviation/code, `platform_id`
+      # is an exact match (`none` selects entries with no platform; unlike the
+      # substring filter, "PlayStation" doesn't bleed into PS2-PS5),
       # `ownership_type` is an exact match and `game_id` filters by
       # `gamedb_game_id`. Each present param ANDs in via a subquery (no joins, so
       # the paginated `meta.count` stays exact), matching the index-side
@@ -102,6 +104,10 @@ module Api
             .where("platform_name ILIKE :term OR platform_abbreviation ILIKE :term OR platform_code ILIKE :term", term: term)
             .select(:platform_id)
           scope = scope.where(platform_id: platforms)
+        end
+
+        if params[:platform_id].present?
+          scope = scope.where(platform_id: params[:platform_id] == "none" ? nil : params[:platform_id])
         end
 
         scope = scope.where(ownership_type: params[:ownership_type]) if params[:ownership_type].present?

@@ -678,6 +678,87 @@ components:
       - entry_id
       - user_id
       - gamedb_game_id
+    BacklogPick:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - backlog
+          - collection
+        entry_id:
+          type: integer
+        gamedb_game_id:
+          type: integer
+        platform_id:
+          type: integer
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        hours:
+          type: number
+          nullable: true
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        platform:
+          allOf:
+          - "$ref": "#/components/schemas/Platform"
+          nullable: true
+        hltb:
+          allOf:
+          - "$ref": "#/components/schemas/Hltb"
+          nullable: true
+      required:
+      - kind
+      - entry_id
+      - gamedb_game_id
+    BacklogPickPlatform:
+      type: object
+      properties:
+        platform_id:
+          type: integer
+        platform_name:
+          type: string
+          nullable: true
+        platform_abbreviation:
+          type: string
+          nullable: true
+        count:
+          type: integer
+      required:
+      - platform_id
+      - count
+    BacklogPickMeta:
+      type: object
+      properties:
+        seed:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+          description: The shuffle seed; repeat it to reroll.
+        position:
+          type: integer
+          nullable: true
+          description: Where the pick sits in the shuffled order (null with no pick).
+        next_position:
+          type: integer
+          nullable: true
+          description: Pass as `position` to reroll (null with no pick).
+        wrapped:
+          type: boolean
+          description: The walk passed the end of the list, so picks may repeat.
+        total:
+          type: integer
+          description: Candidates after the source and platform filters, before `max_hours`.
+        platforms:
+          type: array
+          items:
+            "$ref": "#/components/schemas/BacklogPickPlatform"
+      required:
+      - seed
+      - wrapped
+      - total
     CollectionEntry:
       type: object
       properties:
@@ -841,6 +922,49 @@ components:
       - gamedb_game_id
       - completion_type
       - created_at
+    CommonCompletionSide:
+      type: object
+      properties:
+        latest:
+          "$ref": "#/components/schemas/CompletionEntry"
+        count:
+          type: integer
+      required:
+      - latest
+      - count
+    CommonCompletionEntry:
+      type: object
+      properties:
+        gamedb_game_id:
+          type: integer
+        latest_shared_date:
+          type: string
+          format: date-time
+          nullable: true
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        left:
+          "$ref": "#/components/schemas/CommonCompletionSide"
+        right:
+          "$ref": "#/components/schemas/CommonCompletionSide"
+      required:
+      - gamedb_game_id
+      - latest_shared_date
+      - game
+      - left
+      - right
+    CommonCompletionMeta:
+      allOf:
+      - "$ref": "#/components/schemas/PaginationMeta"
+      - type: object
+        properties:
+          left_user_id:
+            type: string
+          right_user_id:
+            type: string
+        required:
+        - left_user_id
+        - right_user_id
     CompletionUserEntry:
       type: object
       properties:
@@ -2465,6 +2589,59 @@ components:
       - round_number
       - month_year
       - game_index
+    GotmRoundGame:
+      type: object
+      properties:
+        game_index:
+          type: integer
+        gamedb_game_id:
+          type: integer
+          nullable: true
+        reddit_url:
+          type: string
+          nullable: true
+        thread_id:
+          type: string
+          nullable: true
+          description: The game's newest linked Discord thread.
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameWithPlatforms"
+          nullable: true
+      required:
+      - game_index
+    GotmRoundBlock:
+      type: object
+      properties:
+        month_year:
+          type: string
+        voting_results_message_id:
+          type: string
+          nullable: true
+        games:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GotmRoundGame"
+      required:
+      - month_year
+      - games
+    GotmRound:
+      type: object
+      properties:
+        round_number:
+          type: integer
+        gotm:
+          allOf:
+          - "$ref": "#/components/schemas/GotmRoundBlock"
+          nullable: true
+        nr_gotm:
+          allOf:
+          - "$ref": "#/components/schemas/GotmRoundBlock"
+          nullable: true
+      required:
+      - round_number
+      - gotm
+      - nr_gotm
     Nomination:
       type: object
       properties:
@@ -2784,6 +2961,102 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/backlog/pick":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Pick a game to play next
+      tags:
+      - Backlog
+      description: 'Owner-only (the bot service token may pick for anyone). Ports
+        the bot''s `/backlog pick`: a uniform random suggestion from the user''s backlog
+        and/or collection, excluding games already on Now Playing. A game in both
+        lists counts once, as its backlog entry. Deterministic for a given `seed`
+        and `position`: without a `seed` the server draws one and returns it in `meta.seed`,
+        and the client rerolls by repeating the request with `position=meta.next_position`.
+        With `max_hours`, games without an HLTB time are skipped. `data` is null when
+        nothing qualifies.'
+      parameters:
+      - name: source
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - backlog
+          - collection
+          - both
+          default: backlog
+      - name: platform_id
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+        description: Exact platform match; entries without a platform are excluded.
+      - name: max_hours
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        description: Only games whose HLTB time (main, else single player, else main
+          + sides) is at most this.
+      - name: seed
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+      - name: position
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+        description: Where to start walking the shuffled order; wraps past the end.
+      responses:
+        '200':
+          description: the pick (or null) with reroll and filter metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                    - "$ref": "#/components/schemas/BacklogPick"
+                    nullable: true
+                  meta:
+                    "$ref": "#/components/schemas/BacklogPickMeta"
+                required:
+                - data
+                - meta
+        '400':
+          description: invalid query parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/backlog/{id}":
     parameters:
     - name: id
@@ -3608,7 +3881,8 @@ paths:
       description: 'Open to any authenticated caller. The optional filters mirror
         the bot''s collection search and AND together: `q` (game title, case-insensitive
         substring), `platform` (case-insensitive substring of the platform name/abbreviation/code),
-        `ownership_type` (exact) and `game_id` (`gamedb_game_id`).'
+        `platform_id` (exact; `none` matches entries with no platform), `ownership_type`
+        (exact) and `game_id` (`gamedb_game_id`).'
       parameters:
       - name: q
         in: query
@@ -3622,6 +3896,17 @@ paths:
           type: string
         required: false
         description: Filter by platform name/abbreviation/code (case-insensitive substring).
+      - name: platform_id
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: integer
+          - type: string
+            enum:
+            - none
+        description: Filter by exact gamedb_platforms.platform_id; `none` matches
+          entries with no platform.
       - name: ownership_type
         in: query
         schema:
@@ -4560,10 +4845,10 @@ paths:
       tags:
       - Completions
       description: Ordered by `completed_at` descending, then `created_at` descending.
-        Open to any authenticated caller. The optional `game_id`, `year`, `q`, `completed_after`
-        and `completed_before` params filter the list (each ANDs in). `meta.count`
-        reflects the filtered total, so a count-only caller can request `per=1` and
-        read it without fetching every row.
+        Open to any authenticated caller. The optional `game_id`, `platform_id`, `year`,
+        `q`, `completed_after` and `completed_before` params filter the list (each
+        ANDs in). `meta.count` reflects the filtered total, so a count-only caller
+        can request `per=1` and read it without fetching every row.
       parameters:
       - name: game_id
         in: query
@@ -4571,6 +4856,12 @@ paths:
           type: integer
         required: false
         description: Filter to completions of this game (`gamedb_game_id`).
+      - name: platform_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to completions on this platform (exact `platform_id`).
       - name: year
         in: query
         schema:
@@ -4728,6 +5019,161 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/completions/common":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The left member.
+    get:
+      summary: List games two members have both completed
+      tags:
+      - Completions
+      description: 'Games that both `user_id` (left) and `other_user_id` (right) have
+        completed, one row per game with each member''s latest entry and completion
+        count. Open to any authenticated caller. Filters match a game when any of
+        either member''s entries for it match. `sort` defaults to `date_desc`: date
+        sorts order by `latest_shared_date` (undated games last, ties by title); title
+        sorts are case-insensitive.'
+      parameters:
+      - name: other_user_id
+        in: query
+        schema:
+          type: string
+        required: true
+        description: The right member. Must differ from `user_id`.
+      - name: year
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Keep games with an entry completed in this year (`YYYY`); `unknown`
+          keeps games with an undated entry.
+      - name: platform_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Keep games with an entry on this platform.
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Filter by game title (case-insensitive substring).
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - date_desc
+          - date_asc
+          - title_asc
+          - title_desc
+          default: date_desc
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: common completions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CommonCompletionEntry"
+                  meta:
+                    "$ref": "#/components/schemas/CommonCompletionMeta"
+        '422':
+          description: missing or same-member `other_user_id`, or an unknown `sort`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: either member not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/completions/export":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: Export a user's completions as CSV
+      tags:
+      - Completions
+      description: 'Owner-only. Every completion the user has, unpaginated and in
+        the list order (`completed_at` descending, then `created_at` descending),
+        as a `text/csv` attachment named `completions.csv`. The columns match the
+        Discord bot''s export: `ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime
+        (Hours),Note,Created At`. `Completed Date` is the UTC date (`YYYY-MM-DD`)
+        and `Created At` is an ISO-8601 UTC timestamp with milliseconds. Empty values
+        are blank. Fields that contain a comma, quote or line break are quoted (RFC
+        4180). A user with no completions gets only the header row.'
+      responses:
+        '200':
+          description: completions CSV
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: '`attachment; filename="completions.csv"`'
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: forbidden — caller is not the owner
+          content:
+            text/csv:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            text/csv:
+              schema:
+                "$ref": "#/components/schemas/Error"
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/completions/leaderboard":
     get:
       summary: Completion leaderboard
@@ -8101,6 +8547,139 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_rounds":
+    get:
+      summary: List GOTM history by round
+      tags:
+      - GOTM
+      description: 'GOTM and NR-GOTM history grouped by round. Pages are rounds, not
+        entries. Filters apply to each kind''s block within a round: `year` matches
+        the trailing year of `month_year`, and `q` keeps a block (with all its games)
+        when any of its game titles match. NR-GOTM "N/A" placeholder games are omitted.
+        `meta.years` lists every year for the selected kind(s), newest first, regardless
+        of the `year` and `q` filters.'
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - gotm
+          - nr_gotm
+          - both
+          default: both
+      - name: year
+        in: query
+        required: false
+        schema:
+          type: integer
+          example: 2024
+        description: Only rounds whose `month_year` ends in this year.
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Case-insensitive title search over each round block's games.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+          default: desc
+        description: Round number order.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 12
+          maximum: 100
+        required: false
+        description: Rounds per page.
+      responses:
+        '200':
+          description: GOTM rounds
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GotmRound"
+                  meta:
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      required:
+                      - years
+                      properties:
+                        years:
+                          type: array
+                          items:
+                            type: integer
+                          example:
+                          - 2025
+                          - 2024
+        '422':
+          description: invalid `kind`, `sort` or `year`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_rounds/current":
+    get:
+      summary: Show the current GOTM round
+      tags:
+      - GOTM
+      description: The highest GOTM round plus the NR-GOTM games of that same round
+        (null when it has none), in the `gotm_rounds` shape. This is the latest round
+        with winners, not the round being voted on. 404 when there are no GOTM entries.
+      responses:
+        '200':
+          description: current GOTM round
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotmRound"
+        '404':
+          description: no GOTM rounds
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/health":
     get:
       summary: Health check
@@ -9701,6 +10280,9 @@ paths:
       description: Owner-only. Adds a game to the user's now-playing list. `gamedb_game_id`
         is required; `platform_id` and `note` are optional. `sort_order` is assigned
         server-side (appended last) and the per-user maximum of 10 entries is enforced.
+        In the same transaction, every backlog row the user has for the game is removed,
+        and when `note` is absent or blank the backlog note carries over. If the entry
+        can't be created, the backlog is left unchanged.
       parameters: []
       responses:
         '201':

@@ -75,6 +75,51 @@ RSpec.describe 'api/v1/backlog', type: :request do
     end
   end
 
+  path '/api/v1/users/{user_id}/backlog/pick' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true
+
+    get 'Pick a game to play next' do
+      tags 'Backlog'
+      description 'Owner-only (the bot service token may pick for anyone). Ports the bot\'s ' \
+                  '`/backlog pick`: a uniform random suggestion from the user\'s backlog and/or ' \
+                  'collection, excluding games already on Now Playing. A game in both lists counts ' \
+                  'once, as its backlog entry. Deterministic for a given `seed` and `position`: ' \
+                  'without a `seed` the server draws one and returns it in `meta.seed`, and the ' \
+                  'client rerolls by repeating the request with `position=meta.next_position`. ' \
+                  'With `max_hours`, games without an HLTB time are skipped. `data` is null when ' \
+                  'nothing qualifies.'
+      produces 'application/json'
+      parameter name: :source, in: :query, required: false,
+        schema: { type: :string, enum: %w[backlog collection both], default: 'backlog' }
+      parameter name: :platform_id, in: :query, required: false, schema: { type: :integer, minimum: 1 },
+        description: 'Exact platform match; entries without a platform are excluded.'
+      parameter name: :max_hours, in: :query, required: false, schema: { type: :integer, minimum: 1, maximum: 1000 },
+        description: 'Only games whose HLTB time (main, else single player, else main + sides) is at most this.'
+      parameter name: :seed, in: :query, required: false, schema: { type: :integer, minimum: 0, maximum: 4_294_967_295 }
+      parameter name: :position, in: :query, required: false, schema: { type: :integer, minimum: 0, default: 0 },
+        description: 'Where to start walking the shuffled order; wraps past the end.'
+
+      response '200', 'the pick (or null) with reroll and filter metadata' do
+        schema type: :object, properties: {
+          data: { allOf: [ { '$ref' => '#/components/schemas/BacklogPick' } ], nullable: true },
+          meta: { '$ref' => '#/components/schemas/BacklogPickMeta' }
+        }, required: %w[data meta]
+      end
+
+      response '400', 'invalid query parameter' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/backlog/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'UserGameBacklog entry_id.'
 

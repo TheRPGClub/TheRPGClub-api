@@ -19,13 +19,15 @@ RSpec.describe 'api/v1/completions', type: :request do
     get 'List a user\'s completions' do
       tags 'Completions'
       description 'Ordered by `completed_at` descending, then `created_at` descending. Open to any ' \
-                  'authenticated caller. The optional `game_id`, `year`, `q`, `completed_after` and ' \
-                  '`completed_before` params filter the list (each ANDs in). `meta.count` reflects the ' \
+                  'authenticated caller. The optional `game_id`, `platform_id`, `year`, `q`, `completed_after` ' \
+                  'and `completed_before` params filter the list (each ANDs in). `meta.count` reflects the ' \
                   'filtered total, so a count-only caller can request `per=1` and read it without ' \
                   'fetching every row.'
       produces 'application/json'
       parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
         description: 'Filter to completions of this game (`gamedb_game_id`).'
+      parameter name: :platform_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter to completions on this platform (exact `platform_id`).'
       parameter name: :year, in: :query, schema: { type: :string }, required: false,
         description: 'Filter by completion year (`YYYY`); the literal `unknown` matches entries with no `completed_at`.'
       parameter name: :q, in: :query, schema: { type: :string }, required: false,
@@ -79,6 +81,83 @@ RSpec.describe 'api/v1/completions', type: :request do
       end
 
       response '400', 'missing `data` parameter' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/users/{user_id}/completions/common' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true,
+      description: 'The left member.'
+
+    get 'List games two members have both completed' do
+      tags 'Completions'
+      description 'Games that both `user_id` (left) and `other_user_id` (right) have completed, one row ' \
+                  'per game with each member\'s latest entry and completion count. Open to any ' \
+                  'authenticated caller. Filters match a game when any of either member\'s entries for ' \
+                  'it match. `sort` defaults to `date_desc`: date sorts order by `latest_shared_date` ' \
+                  '(undated games last, ties by title); title sorts are case-insensitive.'
+      produces 'application/json'
+      parameter name: :other_user_id, in: :query, schema: { type: :string }, required: true,
+        description: 'The right member. Must differ from `user_id`.'
+      parameter name: :year, in: :query, schema: { type: :string }, required: false,
+        description: 'Keep games with an entry completed in this year (`YYYY`); `unknown` keeps games with an undated entry.'
+      parameter name: :platform_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Keep games with an entry on this platform.'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Filter by game title (case-insensitive substring).'
+      parameter name: :sort, in: :query, required: false,
+        schema: { type: :string, enum: %w[date_desc date_asc title_asc title_desc], default: 'date_desc' }
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'common completions' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/CommonCompletionEntry' } },
+          meta: { '$ref' => '#/components/schemas/CommonCompletionMeta' }
+        }
+      end
+
+      response '422', 'missing or same-member `other_user_id`, or an unknown `sort`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'either member not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/users/{user_id}/completions/export' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true
+
+    get 'Export a user\'s completions as CSV' do
+      tags 'Completions'
+      description 'Owner-only. Every completion the user has, unpaginated and in the list order ' \
+                  '(`completed_at` descending, then `created_at` descending), as a `text/csv` attachment ' \
+                  'named `completions.csv`. The columns match the Discord bot\'s export: ' \
+                  '`ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime (Hours),Note,Created At`. ' \
+                  '`Completed Date` is the UTC date (`YYYY-MM-DD`) and `Created At` is an ISO-8601 UTC ' \
+                  'timestamp with milliseconds. Empty values are blank. Fields that contain a comma, ' \
+                  'quote or line break are quoted (RFC 4180). A user with no completions gets only the ' \
+                  'header row.'
+      produces 'text/csv', 'application/json'
+
+      response '200', 'completions CSV' do
+        header 'Content-Disposition', schema: { type: :string },
+          description: '`attachment; filename="completions.csv"`'
+        schema type: :string, format: :binary
+      end
+
+      response '403', 'forbidden — caller is not the owner' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

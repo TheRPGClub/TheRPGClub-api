@@ -79,12 +79,17 @@ Rails.application.routes.draw do
           get "collections/platform_summary", to: "collections#platform_summary"
           get "collections", to: "collections#index"
           post "collections", to: "collections#create"
+          # Declared before `completions` so the path reads clearly; `common`
+          # is a fixed segment, never a completion id.
+          get "completions/common", to: "completions#common"
+          get "completions/export", to: "completions#export"
           get "completions", to: "completions#index"
           post "completions", to: "completions#create"
           get "favorites", to: "favorites#index"
           post "favorites", to: "favorites#create"
           get "reviews", to: "reviews#index"
           post "reviews", to: "reviews#create"
+          get "backlog/pick", to: "backlog#pick"
           get "backlog", to: "backlog#index"
           post "backlog", to: "backlog#create"
           get "now_playing", to: "now_playing#user_index"
@@ -198,6 +203,10 @@ Rails.application.routes.draw do
           delete "links", to: "thread_game_links#destroy_all"
           delete "links/:game_id", to: "thread_game_links#destroy"
         end
+      end
+      # GOTM / NR-GOTM history grouped and paged by round (read-only).
+      resources :gotm_rounds, only: %i[index] do
+        collection { get "current" }
       end
       resources :gotm_entries, only: %i[index show create update destroy]
       resources :nr_gotm_entries, only: %i[index show create update destroy]

@@ -243,6 +243,26 @@ module OpenapiSchemas
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
+      # backlog#pick (BacklogPickResource): the suggested entry, from the backlog
+      # or the collection, with its game, platform and HLTB times. `hours` is the
+      # parsed HLTB time `max_hours` compares (main, single player, main + sides).
+      BacklogPick: obj(
+        kind: str(enum: %w[backlog collection]), entry_id: int, gamedb_game_id: int,
+        platform_id: int(nullable: true), note: str(nullable: true), hours: num(nullable: true),
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true), hltb: ref("Hltb", nullable: true)
+      ),
+      # A platform the backlog#pick filter can choose, with the distinct games on it.
+      BacklogPickPlatform: obj(
+        platform_id: int, platform_name: str(nullable: true), platform_abbreviation: str(nullable: true), count: int
+      ),
+      BacklogPickMeta: obj(
+        seed: { type: :integer, minimum: 0, maximum: 0xffffffff, description: "The shuffle seed; repeat it to reroll." },
+        position: { type: :integer, nullable: true, description: "Where the pick sits in the shuffled order (null with no pick)." },
+        next_position: { type: :integer, nullable: true, description: "Pass as `position` to reroll (null with no pick)." },
+        wrapped: { type: :boolean, description: "The walk passed the end of the list, so picks may repeat." },
+        total: { type: :integer, description: "Candidates after the source and platform filters, before `max_hours`." },
+        platforms: array_of("BacklogPickPlatform")
+      ),
       # collections#index (CollectionEntryResource): trimmed columns + the joined
       # platform name/abbreviation (CollectionFields, #101), no embeds.
       CollectionEntry: obj(
@@ -283,6 +303,19 @@ module OpenapiSchemas
         note: str(nullable: true), completion_type: str, completed_at: ts(nullable: true),
         final_playtime_hrs: num(nullable: true), created_at: ts,
         game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+      ),
+      # CommonCompletionEntryResource (CompletionsController#common): a game both
+      # members completed. `latest_shared_date` is the latest `completed_at`
+      # across both members (null when every entry is undated); each side holds
+      # that member's latest entry for the game and their completion count.
+      CommonCompletionSide: obj(latest: ref("CompletionEntry"), count: int, _required: %w[latest count]),
+      CommonCompletionEntry: obj(
+        gamedb_game_id: int, latest_shared_date: ts(nullable: true), game: ref("GameSummary"),
+        left: ref("CommonCompletionSide"), right: ref("CommonCompletionSide"),
+        _required: %w[gamedb_game_id latest_shared_date game left right]
+      ),
+      CommonCompletionMeta: extends(
+        "PaginationMeta", left_user_id: str, right_user_id: str
       ),
       # CompletionUserEntryResource (CompletionFields + user), for game-scoped lists.
       CompletionUserEntry: obj(
@@ -696,6 +729,23 @@ module OpenapiSchemas
         nr_gotm_id: int, round_number: int, month_year: str, game_index: int,
         reddit_url: str(nullable: true), voting_results_message_id: str(nullable: true),
         gamedb_game_id: int(nullable: true), game: ref("GameWithPlatforms", nullable: true)
+      ),
+      # Gotm::RoundHistory (GotmRoundsController): one round of GOTM history.
+      # A kind's block is null when that kind has no (matching) entries in the
+      # round; NR-GOTM "N/A" placeholder games are left out of `games`, so an
+      # NR block can be present with an empty `games` list.
+      GotmRoundGame: obj(
+        game_index: int, gamedb_game_id: int(nullable: true), reddit_url: str(nullable: true),
+        thread_id: str(nullable: true, description: "The game's newest linked Discord thread."),
+        game: ref("GameWithPlatforms", nullable: true)
+      ),
+      GotmRoundBlock: obj(
+        month_year: str, voting_results_message_id: str(nullable: true), games: array_of("GotmRoundGame"),
+        _required: %w[month_year games]
+      ),
+      GotmRound: obj(
+        round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
+        _required: %w[round_number gotm nr_gotm]
       ),
       # NominationResource (gotm + nr-gotm share it). `user`/`game` are
       # bot-sourced and FK-unenforced, so either may be null.

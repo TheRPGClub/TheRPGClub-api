@@ -63,10 +63,85 @@ RSpec.describe "api/v1/completions behavior", type: :request do
       expect(json.fetch("data").map { |c| c.fetch("completion_id") }).to eq([ match.completion_id ])
     end
 
+    it "filters by exact platform_id with an exact meta.count" do
+      platform = create(:platform)
+      match = create(:completion, user: owner, platform: platform)
+      create(:completion, user: owner, platform: create(:platform))
+      create(:completion, user: owner)
+
+      get "/api/v1/users/#{owner.user_id}/completions",
+        params: { platform_id: platform.platform_id }, headers: service_headers
+
+      expect(json.fetch("data").map { |c| c.fetch("completion_id") }).to eq([ match.completion_id ])
+      expect(json.dig("meta", "count")).to eq(1)
+    end
+
     it "requires authentication" do
       get "/api/v1/users/#{owner.user_id}/completions"
 
       expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "GET /api/v1/users/:user_id/completions/export" do
+    let(:header_row) { "ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime (Hours),Note,Created At" }
+
+    it "sends the owner a CSV attachment with the bot's columns, newest completion first" do
+      platform = create(:platform)
+      game = create(:game, title: "Chrono Trigger")
+      older = create(:completion, user: owner, game: game, platform: platform,
+        completed_at: Time.utc(2021, 3, 4, 22, 0), final_playtime_hrs: 25.5, note: "great")
+      older.update_columns(created_at: Time.utc(2021, 3, 5, 10, 11, 12.345))
+      newer = create(:completion, user: owner, game: game, completion_type: "Completionist",
+        completed_at: Time.utc(2022, 1, 2), final_playtime_hrs: 40)
+      newer.update_columns(created_at: Time.utc(2022, 1, 2, 8, 0, 0))
+      create(:completion, user: other_user)
+
+      get "/api/v1/users/#{owner.user_id}/completions/export", headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.media_type).to eq("text/csv")
+      expect(response.headers["Content-Disposition"]).to include("attachment", 'filename="completions.csv"')
+      expect(response.body.lines(chomp: true)).to eq([
+        header_row,
+        "#{newer.completion_id},#{game.game_id},Chrono Trigger,Completionist,,2022-01-02,40,,2022-01-02T08:00:00.000Z",
+        "#{older.completion_id},#{game.game_id},Chrono Trigger,Main Story,#{platform.platform_id},2021-03-04,25.5,great,2021-03-05T10:11:12.345Z"
+      ])
+    end
+
+    it "forbids another member from exporting someone else's completions" do
+      create(:completion, user: owner)
+
+      get "/api/v1/users/#{owner.user_id}/completions/export", headers: auth_headers_for(other_user)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "lets the service export on a member's behalf" do
+      get "/api/v1/users/#{owner.user_id}/completions/export", headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns just the header row when the user has no completions" do
+      get "/api/v1/users/#{owner.user_id}/completions/export", headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq("#{header_row}\n")
+    end
+
+    it "quotes titles and notes that contain commas, quotes or line breaks" do
+      game = create(:game, title: 'Tom Clancy\'s "Ghost Recon", Wildlands')
+      completion = create(:completion, user: owner, game: game, note: "line one\r\nline two")
+
+      get "/api/v1/users/#{owner.user_id}/completions/export", headers: auth_headers_for(owner)
+
+      row = response.body.delete_prefix("#{header_row}\n")
+      expect(row).to start_with(%(#{completion.completion_id},#{game.game_id},"Tom Clancy's ""Ghost Recon"", Wildlands",Main Story,))
+      expect(row).to include(%("line one\r\nline two"))
+      expect(CSV.parse(response.body, headers: true).first.to_h).to include(
+        "Title" => 'Tom Clancy\'s "Ghost Recon", Wildlands', "Note" => "line one\r\nline two"
+      )
     end
   end
 
