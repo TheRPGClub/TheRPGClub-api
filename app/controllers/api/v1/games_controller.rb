@@ -3,8 +3,25 @@
 module Api
   module V1
     class GamesController < ApplicationController
+      # `newest` is most recently added to GameDB (`created_at`), not release
+      # date; the title breaks ties.
+      SORTS = {
+        "title" => [ :title ],
+        "newest" => [ Arel.sql("gamedb_games.created_at DESC NULLS LAST"), :title ]
+      }.freeze
+
+      # GET /api/v1/games?q=&sort=title|newest&winner=&<taxonomy>_id=&page=&per=
+      #
+      # `sort` is validated always but ignored when `q` is present: search keeps
+      # its relevance order.
       def index
-        scope = params[:q].present? ? GamedbGame.search(params[:q]) : GamedbGame.without_images.order(:title)
+        sort = params[:sort].presence || "title"
+        unless SORTS.key?(sort)
+          return render json: { error: "invalid_sort", message: "sort must be one of: #{SORTS.keys.join(', ')}" },
+            status: :unprocessable_content
+        end
+
+        scope = params[:q].present? ? GamedbGame.search(params[:q]) : GamedbGame.without_images.order(*SORTS.fetch(sort))
         scope = apply_winner_filter(scope)
         scope = apply_taxonomy_filters(scope)
         # The scope carries computed SELECT columns and (for search) a custom

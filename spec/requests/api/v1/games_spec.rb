@@ -49,6 +49,10 @@ RSpec.describe 'api/v1/games', type: :request do
       parameter name: :q, in: :query, schema: { type: :string }, required: false, description: 'Full-text search against game titles.'
       parameter name: :winner, in: :query, schema: { type: :string, enum: %w[gotm nr_gotm any] }, required: false,
         description: 'Filter to past GOTM winners, Non-Retro GOTM winners, or either.'
+      parameter name: :sort, in: :query, required: false,
+        schema: { type: :string, enum: Api::V1::GamesController::SORTS.keys, default: 'title' },
+        description: '`title` (A–Z) or `newest` (most recently added to GameDB, `created_at` desc, title ' \
+                     'breaking ties). Ignored when `q` is present: search keeps its relevance order.'
       parameter name: :genre_id, in: :query, required: false, explode: true, style: :form,
         schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this genre id (repeat to match any of several).'
       parameter name: :engine_id, in: :query, required: false, explode: true, style: :form,
@@ -80,6 +84,10 @@ RSpec.describe 'api/v1/games', type: :request do
             ]
           }
         }
+      end
+
+      response '422', 'invalid `sort`' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '401', 'unauthenticated' do

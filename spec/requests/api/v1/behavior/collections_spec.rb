@@ -32,6 +32,32 @@ RSpec.describe "api/v1/collections behavior", type: :request do
       expect(json.fetch("meta")).to include("count" => 1)
     end
 
+    it "embeds the game and the platform alongside the flat platform fields" do
+      platform = create(:platform, platform_abbreviation: "PS5")
+      entry = create(:collection_entry, user: owner, platform: platform)
+      cover = create(:game_image, :primary, game: entry.game, kind: "cover")
+
+      get "/api/v1/users/#{owner.user_id}/collections", headers: auth_headers_for(other_user)
+
+      item = json.fetch("data").first
+      expect(item.fetch("game")).to include(
+        "game_id" => entry.gamedb_game_id, "title" => entry.game.title, "cover_url" => cover.url
+      )
+      expect(item.fetch("platform")).to include(
+        "platform_id" => platform.platform_id, "platform_name" => platform.platform_name,
+        "platform_abbreviation" => "PS5"
+      )
+      expect(item).to include("platform_name" => platform.platform_name, "platform_abbreviation" => "PS5")
+    end
+
+    it "embeds a null platform for an entry without one" do
+      create(:collection_entry, user: owner, platform: nil)
+
+      get "/api/v1/users/#{owner.user_id}/collections", headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").first).to include("platform" => nil, "platform_name" => nil, "platform_abbreviation" => nil)
+    end
+
     it "filters by game title via q" do
       game = create(:game, title: "colq chrono #{SecureRandom.hex(4)}")
       match = create(:collection_entry, user: owner, game: game)

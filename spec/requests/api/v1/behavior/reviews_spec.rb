@@ -4,29 +4,68 @@ require "rails_helper"
 
 # Behavior specs for the review endpoints: reads are open to any authenticated
 # principal, writes are gated to the owner (or the service). The user-scoped
-# list and single-record endpoints return the full record (as_json); the
+# list serves the curated ReviewEntryResource shape with the game embedded and
+# hides unshared reviews from everyone but their author, admins and the
+# service; the single-record endpoint returns the full record (as_json); the
 # game-scoped list serves the curated ReviewUserEntryResource shape.
 RSpec.describe "api/v1/reviews behavior", type: :request do
   let(:owner) { create(:user) }
   let(:other_user) { create(:user) }
 
   describe "GET /api/v1/users/:user_id/reviews" do
-    it "lists only that user's reviews as full records" do
-      review = create(:review, user: owner, rating: 91, body: { "text" => "masterpiece" })
+    it "lists only that user's reviews in the curated shape with the game embedded" do
+      review = create(:review, user: owner, rating: 91, title: "Peak", body: { "text" => "masterpiece" })
       create(:review, user: other_user)
 
       get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(other_user)
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data").length).to eq(1)
-      expect(json.fetch("data").first).to include(
+      entry = json.fetch("data").first
+      expect(entry).to include(
         "review_id" => review.review_id,
         "user_id" => owner.user_id,
         "gamedb_game_id" => review.gamedb_game_id,
         "rating" => 91,
-        "body" => { "text" => "masterpiece" },
-        "is_shared" => true
+        "title" => "Peak",
+        "body" => { "text" => "masterpiece" }
       )
+      expect(entry.fetch("game")).to include("game_id" => review.gamedb_game_id, "title" => review.game.title)
+      expect(entry.keys).not_to include("is_shared", "updated_at")
+    end
+
+    describe "unshared reviews" do
+      let!(:shared) { create(:review, user: owner) }
+      let!(:unshared) { create(:review, user: owner, is_shared: false) }
+
+      def review_ids
+        json.fetch("data").map { |review| review.fetch("review_id") }
+      end
+
+      it "hides them from other members" do
+        get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(other_user)
+
+        expect(review_ids).to eq([ shared.review_id ])
+        expect(json.fetch("meta")).to include("count" => 1)
+      end
+
+      it "shows them to their author" do
+        get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(owner)
+
+        expect(review_ids).to contain_exactly(shared.review_id, unshared.review_id)
+      end
+
+      it "shows them to admins" do
+        get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(create(:user, :admin))
+
+        expect(review_ids).to contain_exactly(shared.review_id, unshared.review_id)
+      end
+
+      it "shows them to the service" do
+        get "/api/v1/users/#{owner.user_id}/reviews", headers: service_headers
+
+        expect(review_ids).to contain_exactly(shared.review_id, unshared.review_id)
+      end
     end
 
     it "requires authentication" do

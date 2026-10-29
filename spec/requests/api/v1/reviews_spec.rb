@@ -20,7 +20,10 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     get 'List a user\'s reviews' do
       tags 'Reviews'
-      description 'Open to any authenticated caller. Returns the full review records (all columns).'
+      description 'Open to any authenticated caller. Returns the curated review shape with the game ' \
+                  'embedded, newest first. Unshared reviews (`is_shared: false`) are private: they are listed ' \
+                  'only for their author, an admin or the service, and are left out (and out of ' \
+                  '`meta.count`) for anyone else.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -31,7 +34,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
       response '200', 'reviews list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { '$ref' => '#/components/schemas/Review' } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/ReviewEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end

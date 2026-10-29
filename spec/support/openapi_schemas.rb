@@ -264,11 +264,15 @@ module OpenapiSchemas
         platforms: array_of("BacklogPickPlatform")
       ),
       # collections#index (CollectionEntryResource): trimmed columns + the joined
-      # platform name/abbreviation (CollectionFields, #101), no embeds.
+      # platform name/abbreviation (CollectionFields, #101; the bot reads the
+      # flat pair) + the embedded game and platform (null with no platform).
       CollectionEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         ownership_type: str, note: str(nullable: true),
-        platform_name: str(nullable: true), platform_abbreviation: str(nullable: true)
+        platform_name: str(nullable: true), platform_abbreviation: str(nullable: true),
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true),
+        _required: %w[entry_id user_id gamedb_game_id platform_id ownership_type note
+                      platform_name platform_abbreviation game platform]
       ),
       # collections#game_index (CollectionUserEntryResource): the CollectionEntry
       # fields + the owning user, for the community-ownership view (#101).
@@ -432,7 +436,8 @@ module OpenapiSchemas
         facets: ref("ReviewFacets", nullable: true), created_at: ts,
         user: ref("UserSummary")
       ),
-      # ReviewEntryResource (ReviewFields + game), embedded in the user profile preview.
+      # ReviewEntryResource (ReviewFields + game): the user-scoped reviews list
+      # (reviews#index) and the user profile preview.
       ReviewEntry: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
         title: str(nullable: true, maxLength: 120), body: json,
@@ -834,6 +839,14 @@ module OpenapiSchemas
       GotmRound: obj(
         round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
         _required: %w[round_number gotm nr_gotm]
+      ),
+      # Public::WinnersController: one winning game of a recent round, for the
+      # unauthenticated www landing. Club content only — no member data,
+      # Reddit URLs or Discord ids.
+      PublicWinner: obj(
+        round_number: int, month_year: str(example: "March 2024"),
+        kind: str(enum: %w[gotm nr_gotm]), game_id: int, title: str,
+        cover_url: str(nullable: true), art_url: str(nullable: true)
       ),
       # NominationResource (gotm + nr-gotm share it). `user`/`game` are
       # bot-sourced and FK-unenforced, so either may be null.

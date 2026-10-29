@@ -9,9 +9,14 @@ module Api
       # record) and the key is generated, so neither is accepted in the body.
       WRITABLE_ATTRS = %w[gamedb_game_id title body rating facets is_shared].freeze
 
+      # GET /api/v1/users/:user_id/reviews
+      #
+      # Unshared (`is_shared = false`) reviews are private: only their author,
+      # an admin or the service sees them here.
       def index
-        scope = UserGameReview.where(user_id: params[:user_id])
-        render_collection(scope, default_order: { created_at: :desc })
+        scope = UserGameReview.where(user_id: params[:user_id]).preload(game: :images)
+        scope = scope.where(is_shared: true) unless sees_unshared_reviews_of?(params[:user_id])
+        render_collection(scope, resource: ReviewEntryResource, default_order: { created_at: :desc })
       end
 
       def game_index
@@ -44,6 +49,12 @@ module Api
 
       def writable_data
         request_data.slice(*WRITABLE_ATTRS)
+      end
+
+      def sees_unshared_reviews_of?(user_id)
+        return true if current_principal&.discord_user? && current_principal.id.to_s == user_id.to_s
+
+        admin_or_service?
       end
 
       def resolve_owner_id

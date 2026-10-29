@@ -74,6 +74,23 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
       expect(round_numbers).to eq([ 2, 1 ])
     end
 
+    %w[gotm nr_gotm].each do |kind|
+      it "counts and pages rounds, not entries, with kind=#{kind} and co-winners" do
+        (1..4).each do |number|
+          create(:"#{kind}_entry", round_number: number, game_index: 0)
+          create(:"#{kind}_entry", round_number: number, game_index: 1)
+        end
+
+        get "/api/v1/gotm_rounds", params: { kind:, per: 2 }, headers: headers
+        expect(json.fetch("meta")).to include("count" => 4, "pages" => 2)
+        expect(round_numbers).to eq([ 4, 3 ])
+        expect(json.dig("data", 0, kind, "games").length).to eq(2)
+
+        get "/api/v1/gotm_rounds", params: { kind:, per: 2, page: 2 }, headers: headers
+        expect(round_numbers).to eq([ 2, 1 ])
+      end
+    end
+
     it "filters by the trailing year of month_year" do
       create(:gotm_entry, round_number: 1, month_year: "December 2023")
       create(:gotm_entry, round_number: 2, month_year: "January 2024")
