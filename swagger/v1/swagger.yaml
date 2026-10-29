@@ -2074,51 +2074,6 @@ components:
       - status
       - created_at
       - updated_at
-    ImportCandidate:
-      type: object
-      properties:
-        game_id:
-          type: integer
-        title:
-          type: string
-        cover_url:
-          type: string
-          nullable: true
-      required:
-      - game_id
-      - title
-    ImportIgdbCandidate:
-      type: object
-      properties:
-        igdb_id:
-          type: integer
-        name:
-          type: string
-        slug:
-          type: string
-          nullable: true
-        summary:
-          type: string
-          nullable: true
-        url:
-          type: string
-          nullable: true
-        total_rating:
-          type: number
-          nullable: true
-        first_release_date:
-          type: string
-          nullable: true
-          description: ISO 8601 timestamp.
-        cover_url:
-          type: string
-          nullable: true
-        already_imported:
-          type: boolean
-      required:
-      - igdb_id
-      - name
-      - already_imported
     SteamCollectionImportReview:
       type: object
       properties:
@@ -2140,8 +2095,6 @@ components:
           - fuzzy
           - manual
           -
-        auto_applied:
-          type: integer
         counts:
           "$ref": "#/components/schemas/SteamCollectionImportCounts"
       required:
@@ -2149,7 +2102,6 @@ components:
       - item
       - candidates
       - match_confidence
-      - auto_applied
       - counts
     VotingInfo:
       type: object
@@ -15963,9 +15915,9 @@ paths:
         maps the Steam app to it, and returns the item: `added`/`manual_remap` (`platform_unresolved`
         without a Steam platform), `skipped`/`duplicate` when already collected, or
         `failed`/`add_failed`. Errors: `game_not_found` and `igdb_game_not_found`
-        404, `invalid_igdb_id` and `igdb_not_configured` 422, `igdb_request_failed`
-        502. Only for a pending item of an active import: otherwise 422 `item_not_pending`
-        / `import_not_active`. Rolled back in test_mode.'
+        404; `game_id_or_igdb_id_required`, `invalid_igdb_id` and `igdb_not_configured`
+        422; `igdb_request_failed` 502. Only for a pending item of an active import:
+        otherwise 409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
       parameters: []
       responses:
         '200':
@@ -15978,7 +15930,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/SteamCollectionImportItem"
         '400':
-          description: missing `data`, or neither game_id nor igdb_id
+          description: missing `data` parameter
           content:
             application/json:
               schema:
@@ -16001,8 +15953,15 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '409':
+          description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
-          description: item not pending, import not active, or IGDB unusable
+          description: not exactly one of game_id / igdb_id, invalid igdb_id, or IGDB
+            not configured
           content:
             application/json:
               schema:
@@ -16024,7 +15983,8 @@ paths:
                   properties:
                     game_id:
                       type: integer
-                      description: GameDB game_id. Takes precedence over igdb_id.
+                      description: GameDB game_id. Pass exactly one of game_id and
+                        igdb_id.
                     igdb_id:
                       type: integer
                       description: IGDB game id, imported into GameDB if needed.
@@ -16046,7 +16006,7 @@ paths:
       description: 'Owner-only (#289). Marks the item `skipped`/`manual_skip` and
         records the Steam app as `skipped` in the shared app map, so later imports
         flag it `skip_mapped`. Only for a pending item of an active import: otherwise
-        422 `item_not_pending` / `import_not_active`. Rolled back in test_mode.'
+        409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
       responses:
         '200':
           description: the updated item
@@ -16075,7 +16035,7 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-        '422':
+        '409':
           description: item not pending or import not active
           content:
             application/json:
@@ -16094,11 +16054,11 @@ paths:
       tags:
       - Steam Collection Imports
       description: 'Owner-only (#289). Re-searches GameDB for `title` and persists
-        the candidates on the item (`no_candidate` when nothing matches, `invalid_remap`
+        the candidates on the item (`no_candidate` when nothing matches; 422 `title_required`
         for a blank title). Nothing is applied; the next advance may auto-apply a
-        single exact match. Returns the same payload as advance, with `auto_applied`
-        0. Only for a pending item of an active import: otherwise 422 `item_not_pending`
-        / `import_not_active`. Rolled back in test_mode.'
+        single exact match. Returns the same payload as advance. Only for a pending
+        item of an active import: otherwise 409 `import_not_active` / `item_not_pending`.
+        Rolled back in test_mode.'
       parameters: []
       responses:
         '200':
@@ -16136,8 +16096,14 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-        '422':
+        '409':
           description: item not pending or import not active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: blank title (`title_required`)
           content:
             application/json:
               schema:
@@ -16562,7 +16528,7 @@ paths:
         (`auto_match`), up to 25 per request. Returns the first item that needs a
         human with its candidates; `item` is null when the import is `completed`,
         or when the cap was hit while the import is still `active` (advance again).
-        422 `import_not_active` unless the import is active. Rolled back in test_mode.
+        409 `import_not_active` unless the import is active. Rolled back in test_mode.
       responses:
         '200':
           description: the next item to review, or null
@@ -16593,7 +16559,7 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-        '422':
+        '409':
           description: import is not active (`import_not_active`)
           content:
             application/json:

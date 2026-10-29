@@ -8,29 +8,29 @@ module Imports
   #   Imports::SteamWorkflow.item_rows(import_id, library[:games])  # rows for insert_all
   #
   #   workflow = Imports::SteamWorkflow.new(import)
-  #   review = workflow.advance       # => Review(item, candidates, match_confidence, auto_applied)
+  #   review = workflow.advance       # => Review(item:, candidates:, match_confidence:)
   #   workflow.apply(item, game_id)   # add to the collection (Digital, Steam), map the app
   #   workflow.skip(item)             # manual_skip, map the app as skipped
-  #   workflow.remap(item, title)     # => Review for the item with fresh candidates
-  #   workflow.counts                 # => { import_id:, by_status:, by_result_reason: }
+  #   workflow.remap(item, title)     # => [Candidate], stored on the item
   #
   # #advance pops pending items in row_index order. For each it computes the
   # candidates (#candidates_for), and when there is exactly one and its title
   # is a TitleNormalizer.exact_match? of the Steam name it applies it
   # (auto_match) and moves on. It stops at the first item that needs a human,
-  # or completes the import when none remain. At most AUTO_APPLY_CAP items
+  # or completes the import when none remain. At most MAX_AUTO_APPLIES items
   # are auto-applied per call: when the cap is hit the Review has a nil item
-  # while the import is still active, and the caller just advances again.
+  # while the import is still active, and the caller just advances again
+  # (the same contract as Imports::CollectionCsvWorkflow).
   #
   # Authorization and TestModeRollback are the caller's job: the controllers
   # check the import's owner and wrap each request's writes.
   class SteamWorkflow
-    AUTO_APPLY_CAP = 25
+    MAX_AUTO_APPLIES = 25
     STEAM_PLATFORM = "steam"
     OWNERSHIP_TYPE = "Digital"
     HISTORICAL_LIMIT = 5
 
-    Review = Data.define(:item, :candidates, :match_confidence, :auto_applied)
+    Review = Data.define(:item, :candidates, :match_confidence)
 
     # Insert rows for a Steam::Client#owned_games library, row_index 1..n
     # (as the bot numbers them).
@@ -62,14 +62,14 @@ module Imports
       auto_applied = 0
       loop do
         item = @import.items.where(status: "pending").order(:row_index).first
-        return complete(auto_applied) unless item
+        return complete unless item
 
         @import.update!(current_index: item.row_index) if @import.current_index != item.row_index
         candidates = candidates_for(item)
         unless auto_match?(item, candidates)
-          return Review.new(item: item, candidates: candidates, match_confidence: item.match_confidence, auto_applied:)
+          return Review.new(item: item, candidates: candidates, match_confidence: item.match_confidence)
         end
-        return Review.new(item: nil, candidates: [], match_confidence: nil, auto_applied:) if auto_applied >= AUTO_APPLY_CAP
+        return Review.new(item: nil, candidates: [], match_confidence: nil) if auto_applied >= MAX_AUTO_APPLIES
 
         apply(item, candidates.first.game_id, reason: "auto_match")
         auto_applied += 1
@@ -98,17 +98,11 @@ module Imports
       item
     end
 
-    # Re-searches GameDB for `title` and stores the candidates on the item
-    # (no auto-apply; the next #advance may auto-apply a single exact match).
-    # A blank title stores invalid_remap, no hits store no_candidate.
+    # Re-searches GameDB for `title` (already stripped and non-blank; the
+    # controller rejects a blank one) and stores the candidates on the item,
+    # or no_candidate when nothing matches. Nothing is applied: the next
+    # #advance may auto-apply a single exact match.
     def remap(item, title)
-      title = title.to_s.strip
-      if title.empty?
-        item.update!(result_reason: "invalid_remap")
-        return Review.new(item: item, candidates: CandidateFinder.load(item.match_candidate_json),
-          match_confidence: item.match_confidence, auto_applied: 0)
-      end
-
       candidates = @candidate_finder.find(title)
       if candidates.empty?
         item.update!(match_candidate_json: nil, match_confidence: nil, result_reason: "no_candidate",
@@ -117,22 +111,14 @@ module Imports
         item.update!(match_candidate_json: CandidateFinder.dump(candidates),
           match_confidence: CandidateFinder.confidence(title, candidates), result_reason: nil, error_text: nil)
       end
-      Review.new(item: item, candidates: candidates, match_confidence: item.match_confidence, auto_applied: 0)
-    end
-
-    def counts
-      {
-        import_id: @import.import_id,
-        by_status: @import.items.group(:status).count,
-        by_result_reason: @import.items.group(:result_reason).count
-      }
+      candidates
     end
 
     private
 
-    def complete(auto_applied)
+    def complete
       @import.update!(status: "completed")
-      Review.new(item: nil, candidates: [], match_confidence: nil, auto_applied:)
+      Review.new(item: nil, candidates: [], match_confidence: nil)
     end
 
     def auto_match?(item, candidates)

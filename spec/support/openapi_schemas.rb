@@ -619,31 +619,18 @@ module OpenapiSchemas
         map_id: int, steam_app_id: int, gamedb_game_id: int(nullable: true), status: str,
         created_by: str(nullable: true), created_at: ts, updated_at: ts
       ),
-      # A GameDB match offered for an import row by the server-side import
-      # workflows (#289-#291, Imports::CandidatePresenter).
-      ImportCandidate: obj(game_id: int, title: str, cover_url: str(nullable: true)),
-      # An IGDB suggestion for an import row (`igdb_candidates`,
-      # Imports::IgdbCandidateFinder): the IGDB search hit plus whether a
-      # GameDB game already has that igdb_id.
-      ImportIgdbCandidate: obj(
-        igdb_id: int, name: str, slug: str(nullable: true), summary: str(nullable: true),
-        url: str(nullable: true), total_rating: num(nullable: true),
-        first_release_date: str(nullable: true, description: "ISO 8601 timestamp."),
-        cover_url: str(nullable: true), already_imported: bool
-      ),
       # steam_collection_imports#advance and steam_collection_import_items#remap
-      # (#289): the import, the item that needs a human (null once the import
-      # is completed, or when the per-request auto-apply cap was hit while
-      # the import is still active), its GameDB candidates, how many items
-      # this call auto-applied, and the item counts.
+      # (#289), the same shape as CollectionCsvImportReview: the import, the
+      # item that needs a human (null once the import is completed, or when
+      # the per-request auto-apply cap was hit while the import is still
+      # active), its GameDB candidates and confidence, and the item counts.
       SteamCollectionImportReview: obj(
         import: ref("SteamCollectionImport"),
         item: ref("SteamCollectionImportItem", nullable: true),
         candidates: array_of("ImportCandidate"),
         match_confidence: str(nullable: true, enum: [ "exact", "fuzzy", "manual", nil ]),
-        auto_applied: int,
         counts: ref("SteamCollectionImportCounts"),
-        _required: %w[import item candidates match_confidence auto_applied counts]
+        _required: %w[import item candidates match_confidence counts]
       ),
       # Raw bot_voting_info columns plus the derived voting-window state
       # (VotingInfoResource): `vote_deadline` is the effective end of voting —

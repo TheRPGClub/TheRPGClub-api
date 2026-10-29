@@ -197,8 +197,8 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
                   'game to the owner\'s collection (Digital, Steam platform), maps the Steam app to it, and ' \
                   'returns the item: `added`/`manual_remap` (`platform_unresolved` without a Steam platform), ' \
                   '`skipped`/`duplicate` when already collected, or `failed`/`add_failed`. Errors: ' \
-                  '`game_not_found` and `igdb_game_not_found` 404, `invalid_igdb_id` and `igdb_not_configured` ' \
-                  '422, `igdb_request_failed` 502. Only for a pending item of an active import: otherwise 422 `item_not_pending` / `import_not_active`. Rolled back in test_mode.'
+                  '`game_not_found` and `igdb_game_not_found` 404; `game_id_or_igdb_id_required`, `invalid_igdb_id` ' \
+                  'and `igdb_not_configured` 422; `igdb_request_failed` 502. Only for a pending item of an active import: otherwise 409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -208,7 +208,7 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
           data: {
             type: :object,
             properties: {
-              game_id: { type: :integer, description: 'GameDB game_id. Takes precedence over igdb_id.' },
+              game_id: { type: :integer, description: 'GameDB game_id. Pass exactly one of game_id and igdb_id.' },
               igdb_id: { type: :integer, description: 'IGDB game id, imported into GameDB if needed.' }
             }
           }
@@ -220,7 +220,7 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SteamCollectionImportItem' } }
       end
 
-      response '400', 'missing `data`, or neither game_id nor igdb_id' do
+      response '400', 'missing `data` parameter' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -236,7 +236,11 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'item not pending, import not active, or IGDB unusable' do
+      response '409', 'item not pending or import not active' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'not exactly one of game_id / igdb_id, invalid igdb_id, or IGDB not configured' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -253,7 +257,7 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
     post 'Skip a Steam import item' do
       tags 'Steam Collection Imports'
       description 'Owner-only (#289). Marks the item `skipped`/`manual_skip` and records the Steam app as ' \
-                  '`skipped` in the shared app map, so later imports flag it `skip_mapped`. Only for a pending item of an active import: otherwise 422 `item_not_pending` / `import_not_active`. Rolled back in test_mode.'
+                  '`skipped` in the shared app map, so later imports flag it `skip_mapped`. Only for a pending item of an active import: otherwise 409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
       produces 'application/json'
 
       response '200', 'the updated item' do
@@ -272,7 +276,7 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'item not pending or import not active' do
+      response '409', 'item not pending or import not active' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
@@ -285,9 +289,9 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
     post 'Search GameDB for a Steam import item under another title' do
       tags 'Steam Collection Imports'
       description 'Owner-only (#289). Re-searches GameDB for `title` and persists the candidates on the ' \
-                  'item (`no_candidate` when nothing matches, `invalid_remap` for a blank title). Nothing is ' \
-                  'applied; the next advance may auto-apply a single exact match. Returns the same payload ' \
-                  'as advance, with `auto_applied` 0. Only for a pending item of an active import: otherwise 422 `item_not_pending` / `import_not_active`. Rolled back in test_mode.'
+                  'item (`no_candidate` when nothing matches; 422 `title_required` for a blank title). Nothing ' \
+                  'is applied; the next advance may auto-apply a single exact match. Returns the same ' \
+                  'payload as advance. Only for a pending item of an active import: otherwise 409 `import_not_active` / `item_not_pending`. Rolled back in test_mode.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -320,7 +324,11 @@ RSpec.describe 'api/v1/steam_collection_import_items', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'item not pending or import not active' do
+      response '409', 'item not pending or import not active' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'blank title (`title_required`)' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

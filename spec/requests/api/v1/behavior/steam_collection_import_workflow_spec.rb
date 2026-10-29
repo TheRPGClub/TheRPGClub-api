@@ -147,7 +147,6 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
 
       expect(response).to have_http_status(:ok)
       data = json.fetch("data")
-      expect(data.fetch("auto_applied")).to eq(1)
       expect(data.dig("import", "status")).to eq("active")
       expect(data.dig("import", "current_index")).to eq(2)
       expect(data.dig("item", "item_id")).to eq(review.item_id)
@@ -184,7 +183,7 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
     end
 
     it "caps auto-applies per request, leaving the import active for the next call" do
-      stub_const("Imports::SteamWorkflow::AUTO_APPLY_CAP", 2)
+      stub_const("Imports::SteamWorkflow::MAX_AUTO_APPLIES", 2)
       3.times do |index|
         title = "Capped Gamez #{index} #{SecureRandom.hex(2)}"
         create(:game, title: title)
@@ -194,14 +193,14 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
       advance
 
       data = json.fetch("data")
-      expect(data.fetch("auto_applied")).to eq(2)
+      expect(data.dig("counts", "by_status")).to eq("added" => 2, "pending" => 1)
       expect(data.fetch("item")).to be_nil
       expect(data.dig("import", "status")).to eq("active")
       expect(import.items.where(status: "pending").count).to eq(1)
 
       advance
 
-      expect(json.dig("data", "auto_applied")).to eq(1)
+      expect(json.dig("data", "counts", "by_status")).to eq("added" => 3)
       expect(json.dig("data", "import", "status")).to eq("completed")
     end
 
@@ -252,19 +251,19 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
 
       post "/api/v1/steam_collection_imports/#{test_import.import_id}/advance", headers: auth_headers_for(owner), as: :json
 
-      expect(json.dig("data", "auto_applied")).to eq(1)
+      expect(json.dig("data", "counts", "by_status")).to eq("added" => 1)
       expect(json.dig("data", "import", "status")).to eq("completed")
       expect(item.reload.status).to eq("pending")
       expect(test_import.reload.status).to eq("active")
       expect(UserGameCollection.where(user_id: owner.user_id)).not_to exist
     end
 
-    it "422s unless the import is active" do
+    it "409s unless the import is active" do
       import.update!(status: "paused")
 
       advance
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:conflict)
       expect(json.fetch("error")).to eq("import_not_active")
     end
 
@@ -357,18 +356,22 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
         expect(item.reload.status).to eq("pending")
       end
 
-      it "400s without game_id or igdb_id" do
+      it "422s unless exactly one of game_id and igdb_id is given" do
         item_post("apply", { note: "nothing" })
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
 
-        expect(response).to have_http_status(:bad_request)
+        item_post("apply", { game_id: 1, igdb_id: 2 })
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json.fetch("error")).to eq("game_id_or_igdb_id_required")
       end
 
-      it "422s for an item that is no longer pending" do
+      it "409s for an item that is no longer pending" do
         item.update!(status: "skipped")
 
         item_post("apply", { game_id: create(:game).game_id })
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:conflict)
         expect(json.fetch("error")).to eq("item_not_pending")
       end
 
@@ -430,11 +433,11 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
         expect(item.reload).to have_attributes(result_reason: "no_candidate", match_candidate_json: nil)
       end
 
-      it "records invalid_remap for a blank title" do
+      it "422s for a blank title" do
         item_post("remap", { title: "  " })
 
-        expect(response).to have_http_status(:ok)
-        expect(item.reload.result_reason).to eq("invalid_remap")
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json.fetch("error")).to eq("title_required")
       end
 
       it "is forbidden for another member" do

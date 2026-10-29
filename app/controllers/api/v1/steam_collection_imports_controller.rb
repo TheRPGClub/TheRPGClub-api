@@ -12,7 +12,7 @@ module Api
     # working data.
     class SteamCollectionImportsController < ApplicationController
       include TestModeRollback
-      include ImportWorkflowResponses
+      include SteamCollectionImportReview
 
       before_action :require_owner!, only: %i[create active show update advance]
 
@@ -70,20 +70,20 @@ module Api
       # POST /api/v1/steam_collection_imports/:id/advance
       #
       # Server-side workflow step (#289, see Imports::SteamWorkflow#advance):
-      # auto-applies single exact matches (at most AUTO_APPLY_CAP per call)
+      # auto-applies single exact matches (at most MAX_AUTO_APPLIES per call)
       # and returns the next item that needs a human with its candidates, or
       # a null item once the import is completed (or the cap was hit while the
-      # import is still active: advance again). 422 import_not_active unless
+      # import is still active: advance again). 409 import_not_active unless
       # the import is active. Rolled back for a test_mode import.
       def advance
         import = RpgClubSteamCollectionImport.find(params[:id])
-        return render_workflow_error("import_not_active") unless import.status == "active"
+        return render json: { error: "import_not_active" }, status: :conflict unless import.status == "active"
 
         payload = with_test_mode_rollback(import.test_mode) do
           import.lock!
-          workflow = Imports::SteamWorkflow.new(import)
-          import_review_payload(import, workflow.advance, workflow.counts,
-            import_resource: SteamCollectionImportResource, item_resource: SteamCollectionImportItemResource)
+          review = Imports::SteamWorkflow.new(import).advance
+          steam_review_payload(import, item: review.item, candidates: review.candidates,
+            match_confidence: review.match_confidence)
         end
 
         render json: { data: payload }

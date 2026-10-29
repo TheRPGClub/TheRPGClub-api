@@ -222,7 +222,7 @@ RSpec.describe 'api/v1/steam_collection_imports', type: :request do
                   'the Steam name is applied automatically (`auto_match`), up to 25 per request. Returns the ' \
                   'first item that needs a human with its candidates; `item` is null when the import is ' \
                   '`completed`, or when the cap was hit while the import is still `active` (advance again). ' \
-                  '422 `import_not_active` unless the import is active. Rolled back in test_mode.'
+                  '409 `import_not_active` unless the import is active. Rolled back in test_mode.'
       produces 'application/json'
 
       response '200', 'the next item to review, or null' do
@@ -242,7 +242,7 @@ RSpec.describe 'api/v1/steam_collection_imports', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'import is not active (`import_not_active`)' do
+      response '409', 'import is not active (`import_not_active`)' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

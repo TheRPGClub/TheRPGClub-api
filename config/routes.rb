@@ -169,7 +169,7 @@ Rails.application.routes.draw do
       # IGDB game, skip, re-search under another title, IGDB suggestions.
       resources :steam_collection_import_items, only: %i[show update] do
         member do
-          post "apply"
+          post "apply", action: :apply_selection
           post "skip"
           post "remap"
           get "igdb_candidates"

@@ -10,6 +10,7 @@
 # reflects the writes it rolls back.
 module CollectionCsvImportReview
   extend ActiveSupport::Concern
+  include ImportCandidatesJson
 
   private
 
@@ -25,13 +26,5 @@ module CollectionCsvImportReview
         by_result_reason: import.items.group(:result_reason).count
       }
     }
-  end
-
-  # Candidates in their ranked order, with each game's primary cover.
-  def import_candidates_json(candidates)
-    games = GamedbGame.where(game_id: candidates.map(&:game_id)).includes(:images).index_by(&:game_id)
-    candidates.map do |candidate|
-      { game_id: candidate.game_id, title: candidate.title, cover_url: games[candidate.game_id]&.cover_url }
-    end
   end
 end
