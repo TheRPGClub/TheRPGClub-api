@@ -3,7 +3,7 @@
 module Api
   module V1
     class BacklogController < ApplicationController
-      before_action :require_owner!, only: %i[create update destroy]
+      before_action :require_owner!, only: %i[pick create update destroy]
 
       # Caller-settable columns. `user_id` comes from the path (or the existing
       # record) and the key is generated, so neither is accepted in the body.
@@ -12,6 +12,27 @@ module Api
       def index
         scope = UserGameBacklog.where(user_id: params[:user_id]).preload(:game, :platform)
         render_collection(scope, resource: BacklogEntryResource, default_order: { sort_order: :asc, created_at: :desc })
+      end
+
+      # GET /api/v1/users/:user_id/backlog/pick
+      #
+      # Suggests a game to play next (the bot's `/backlog pick`); see
+      # BacklogPicker. Owner-only, like the bot's self-only command. Without a
+      # `seed` the server draws one and returns it in `meta.seed`, so the client
+      # rerolls by repeating the request with `position = meta.next_position`.
+      # `data` is null when nothing qualifies.
+      def pick
+        options = pick_options
+        return if performed?
+
+        result = BacklogPicker.new(user_id: params[:user_id], **options).call
+        render json: {
+          data: result.pick && BacklogPickResource.new(result.pick).serializable_hash,
+          meta: {
+            seed: options[:seed], position: result.position, next_position: result.next_position,
+            wrapped: result.wrapped, total: result.total, platforms: result.platforms
+          }
+        }
       end
 
       def show
@@ -38,6 +59,31 @@ module Api
       end
 
       private
+
+      # Validates the pick query params, rendering a 400 for the first bad one.
+      def pick_options
+        source = params[:source].presence || "backlog"
+        return pick_param_error("source must be one of #{BacklogPicker::SOURCES.join(', ')}") unless BacklogPicker::SOURCES.include?(source)
+
+        options = { source: }
+        {
+          platform_id: [ 1, nil ], max_hours: [ 1, 1000 ], seed: [ 0, BacklogPicker::MAX_SEED ], position: [ 0, nil ]
+        }.each do |key, (min, max)|
+          next if params[key].blank?
+
+          value = Integer(params[key].to_s, 10, exception: false)
+          return pick_param_error("#{key} must be an integer #{max ? "from #{min} to #{max}" : "of at least #{min}"}") if value.nil? || value < min || (max && value > max)
+
+          options[key] = value
+        end
+        options[:seed] ||= SecureRandom.random_number(BacklogPicker::MAX_SEED + 1)
+        options
+      end
+
+      def pick_param_error(message)
+        render json: { error: "bad_request", message: }, status: :bad_request
+        nil
+      end
 
       def writable_data
         request_data.slice(*WRITABLE_ATTRS)

@@ -243,6 +243,26 @@ module OpenapiSchemas
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
+      # backlog#pick (BacklogPickResource): the suggested entry, from the backlog
+      # or the collection, with its game, platform and HLTB times. `hours` is the
+      # parsed HLTB time `max_hours` compares (main, single player, main + sides).
+      BacklogPick: obj(
+        kind: str(enum: %w[backlog collection]), entry_id: int, gamedb_game_id: int,
+        platform_id: int(nullable: true), note: str(nullable: true), hours: num(nullable: true),
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true), hltb: ref("Hltb", nullable: true)
+      ),
+      # A platform the backlog#pick filter can choose, with the distinct games on it.
+      BacklogPickPlatform: obj(
+        platform_id: int, platform_name: str(nullable: true), platform_abbreviation: str(nullable: true), count: int
+      ),
+      BacklogPickMeta: obj(
+        seed: { type: :integer, minimum: 0, maximum: 0xffffffff, description: "The shuffle seed; repeat it to reroll." },
+        position: { type: :integer, nullable: true, description: "Where the pick sits in the shuffled order (null with no pick)." },
+        next_position: { type: :integer, nullable: true, description: "Pass as `position` to reroll (null with no pick)." },
+        wrapped: { type: :boolean, description: "The walk passed the end of the list, so picks may repeat." },
+        total: { type: :integer, description: "Candidates after the source and platform filters, before `max_hours`." },
+        platforms: array_of("BacklogPickPlatform")
+      ),
       # collections#index (CollectionEntryResource): trimmed columns + the joined
       # platform name/abbreviation (CollectionFields, #101), no embeds.
       CollectionEntry: obj(
