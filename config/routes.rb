@@ -156,7 +156,16 @@ Rails.application.routes.draw do
           post "advance"
         end
       end
-      resources :steam_collection_import_items, only: %i[show update]
+      # Server-side workflow actions on one item (#289): apply a GameDB or
+      # IGDB game, skip, re-search under another title, IGDB suggestions.
+      resources :steam_collection_import_items, only: %i[show update] do
+        member do
+          post "apply"
+          post "skip"
+          post "remap"
+          get "igdb_candidates"
+        end
+      end
       # Steam app -> GameDB game mapping cache (#166), shared across every
       # user's import. `create` upserts keyed on steam_app_id; `show` is
       # keyed on steam_app_id too (not the internal map_id), so it's declared

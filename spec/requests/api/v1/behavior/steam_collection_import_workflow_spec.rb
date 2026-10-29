@@ -276,4 +276,222 @@ RSpec.describe "api/v1/steam_collection_imports workflow behavior", type: :reque
       expect(response).to have_http_status(:forbidden)
     end
   end
+
+  describe "Steam import item actions" do
+    let(:import) { create(:steam_collection_import, user: owner) }
+    let(:item) { create(:steam_collection_import_item, import: import, steam_app_id: 1234, steam_app_name: "Hadez") }
+    let(:importer) { instance_double(Gamedb::IgdbGameImporter) }
+
+    before { allow(Gamedb::IgdbGameImporter).to receive(:new).and_return(importer) }
+
+    def item_post(action, data = nil, as: owner)
+      post "/api/v1/steam_collection_import_items/#{item.item_id}/#{action}",
+        params: data ? { data: data } : {}, headers: auth_headers_for(as), as: :json
+    end
+
+    describe "POST .../:id/apply" do
+      it "adds a chosen GameDB game to the collection (Digital, Steam) and maps the app" do
+        game = create(:game, title: "Hades Game")
+
+        item_post("apply", { game_id: game.game_id })
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("item_id" => item.item_id, "status" => "added",
+          "result_reason" => "manual_remap", "match_confidence" => "manual", "gamedb_game_id" => game.game_id)
+        entry = UserGameCollection.find(json.dig("data", "collection_entry_id"))
+        expect(entry).to have_attributes(user_id: owner.user_id, gamedb_game_id: game.game_id,
+          platform_id: steam_platform.platform_id, ownership_type: "Digital")
+        expect(RpgClubSteamAppGamedbMap.find_by(steam_app_id: 1234))
+          .to have_attributes(status: "mapped", gamedb_game_id: game.game_id, created_by: owner.user_id)
+      end
+
+      it "imports an IGDB game first when given igdb_id" do
+        igdb_id = SecureRandom.random_number(1_000_000_000)
+        allow(importer).to receive(:import!).with(igdb_id) do
+          Gamedb::IgdbGameImporter::Result.new(game: create(:game, title: "Hades IGDB", igdb_id: igdb_id),
+            created: true, images: [])
+        end
+
+        item_post("apply", { igdb_id: igdb_id })
+
+        expect(response).to have_http_status(:ok)
+        game = GamedbGame.find_by!(igdb_id: igdb_id)
+        expect(json.fetch("data")).to include("status" => "added", "gamedb_game_id" => game.game_id)
+      end
+
+      it "reuses a game already in GameDB for that igdb_id without calling IGDB" do
+        game = create(:game, igdb_id: SecureRandom.random_number(1_000_000_000))
+        allow(importer).to receive(:import!)
+
+        item_post("apply", { igdb_id: game.igdb_id })
+
+        expect(json.fetch("data")).to include("status" => "added", "gamedb_game_id" => game.game_id)
+        expect(importer).not_to have_received(:import!)
+      end
+
+      it "records a duplicate collection entry as skipped/duplicate and still maps the app" do
+        game = create(:game)
+        create(:collection_entry, user: owner, game: game, platform_id: steam_platform.platform_id)
+
+        item_post("apply", { game_id: game.game_id })
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("status" => "skipped", "result_reason" => "duplicate")
+        expect(RpgClubSteamAppGamedbMap.find_by(steam_app_id: 1234).status).to eq("mapped")
+      end
+
+      it "maps IGDB failures to 404 / 502 and an unknown game_id to 404" do
+        allow(importer).to receive(:import!).and_raise(Gamedb::IgdbGameImporter::MissingIgdbGameError)
+        item_post("apply", { igdb_id: 99_999_999 })
+        expect(response).to have_http_status(:not_found)
+        expect(json.fetch("error")).to eq("igdb_game_not_found")
+
+        allow(importer).to receive(:import!).and_raise(Igdb::Client::RequestError)
+        item_post("apply", { igdb_id: 99_999_998 })
+        expect(response).to have_http_status(:bad_gateway)
+        expect(json.fetch("error")).to eq("igdb_request_failed")
+
+        item_post("apply", { game_id: 0 })
+        expect(response).to have_http_status(:not_found)
+        expect(json.fetch("error")).to eq("game_not_found")
+        expect(item.reload.status).to eq("pending")
+      end
+
+      it "400s without game_id or igdb_id" do
+        item_post("apply", { note: "nothing" })
+
+        expect(response).to have_http_status(:bad_request)
+      end
+
+      it "422s for an item that is no longer pending" do
+        item.update!(status: "skipped")
+
+        item_post("apply", { game_id: create(:game).game_id })
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(json.fetch("error")).to eq("item_not_pending")
+      end
+
+      it "rolls the apply back for a test_mode import" do
+        test_item = create(:steam_collection_import_item, import: create(:steam_collection_import, user: owner, test_mode: true))
+
+        post "/api/v1/steam_collection_import_items/#{test_item.item_id}/apply",
+          params: { data: { game_id: create(:game).game_id } }, headers: auth_headers_for(owner), as: :json
+
+        expect(json.dig("data", "status")).to eq("added")
+        expect(test_item.reload.status).to eq("pending")
+        expect(UserGameCollection.where(user_id: owner.user_id)).not_to exist
+      end
+
+      it "is forbidden for another member" do
+        item_post("apply", { game_id: create(:game).game_id }, as: other_user)
+
+        expect(response).to have_http_status(:forbidden)
+        expect(item.reload.status).to eq("pending")
+      end
+    end
+
+    describe "POST .../:id/skip" do
+      it "marks the item skipped and records the app as skipped in the map" do
+        item_post("skip")
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("status" => "skipped", "result_reason" => "manual_skip")
+        expect(RpgClubSteamAppGamedbMap.find_by(steam_app_id: 1234))
+          .to have_attributes(status: "skipped", gamedb_game_id: nil, created_by: owner.user_id)
+      end
+
+      it "is forbidden for another member" do
+        item_post("skip", as: other_user)
+
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    describe "POST .../:id/remap" do
+      it "re-searches GameDB for the title and persists the candidates" do
+        hit = create(:game, title: "Remapped Titlez")
+
+        item_post("remap", { title: "Remapped Titlez" })
+
+        expect(response).to have_http_status(:ok)
+        data = json.fetch("data")
+        expect(data.dig("item", "item_id")).to eq(item.item_id)
+        expect(data.fetch("candidates").map { |c| c.fetch("game_id") }).to eq([ hit.game_id ])
+        expect(data.fetch("match_confidence")).to eq("exact")
+        expect(Imports::CandidateFinder.load(item.reload.match_candidate_json).map(&:game_id)).to eq([ hit.game_id ])
+        expect(item.status).to eq("pending")
+      end
+
+      it "records no_candidate when nothing matches" do
+        item_post("remap", { title: "Nothing Matches This Zzqx" })
+
+        expect(json.dig("data", "candidates")).to eq([])
+        expect(item.reload).to have_attributes(result_reason: "no_candidate", match_candidate_json: nil)
+      end
+
+      it "records invalid_remap for a blank title" do
+        item_post("remap", { title: "  " })
+
+        expect(response).to have_http_status(:ok)
+        expect(item.reload.result_reason).to eq("invalid_remap")
+      end
+
+      it "is forbidden for another member" do
+        item_post("remap", { title: "x" }, as: other_user)
+
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    describe "GET .../:id/igdb_candidates" do
+      let(:igdb) { instance_double(Igdb::Client) }
+
+      before { allow(Igdb::Client).to receive(:new).and_return(igdb) }
+
+      def igdb_result(igdb_id, name)
+        { igdb_id: igdb_id, name: name, slug: nil, summary: nil, url: nil, total_rating: nil,
+          first_release_date: nil, cover_url: nil }
+      end
+
+      it "searches IGDB by progressive variants of the Steam name, flagging already imported games" do
+        imported = create(:game, igdb_id: SecureRandom.random_number(1_000_000_000))
+        item.update!(steam_app_name: "Hadez™ (2020)")
+        allow(igdb).to receive(:search).and_return([])
+        allow(igdb).to receive(:search).with("Hadez™", limit: 10)
+          .and_return([ igdb_result(imported.igdb_id, "Hadez"), igdb_result(5, "Hadez II") ])
+
+        get "/api/v1/steam_collection_import_items/#{item.item_id}/igdb_candidates", headers: auth_headers_for(owner)
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data").map { |c| [ c.fetch("igdb_id"), c.fetch("already_imported") ] })
+          .to eq([ [ imported.igdb_id, true ], [ 5, false ] ])
+        expect(igdb).to have_received(:search).with("Hadez™ (2020)", limit: 10)
+      end
+
+      it "searches q instead of the Steam name when given" do
+        allow(igdb).to receive(:search).with("Custom", limit: 10).and_return([ igdb_result(7, "Custom") ])
+
+        get "/api/v1/steam_collection_import_items/#{item.item_id}/igdb_candidates",
+          params: { q: "Custom" }, headers: auth_headers_for(owner)
+
+        expect(json.fetch("data").map { |c| c.fetch("igdb_id") }).to eq([ 7 ])
+      end
+
+      it "maps an IGDB outage to 502" do
+        allow(igdb).to receive(:search).and_raise(Igdb::Client::RequestError, "boom")
+
+        get "/api/v1/steam_collection_import_items/#{item.item_id}/igdb_candidates", headers: auth_headers_for(owner)
+
+        expect(response).to have_http_status(:bad_gateway)
+        expect(json.fetch("error")).to eq("igdb_request_failed")
+      end
+
+      it "is forbidden for another member" do
+        get "/api/v1/steam_collection_import_items/#{item.item_id}/igdb_candidates", headers: auth_headers_for(other_user)
+
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+  end
 end

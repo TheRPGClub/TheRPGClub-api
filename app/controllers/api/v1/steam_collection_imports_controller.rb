@@ -12,6 +12,7 @@ module Api
     # working data.
     class SteamCollectionImportsController < ApplicationController
       include TestModeRollback
+      include ImportWorkflowResponses
 
       before_action :require_owner!, only: %i[create active show update advance]
 
@@ -76,12 +77,13 @@ module Api
       # the import is active. Rolled back for a test_mode import.
       def advance
         import = RpgClubSteamCollectionImport.find(params[:id])
-        return render_import_not_active unless import.status == "active"
+        return render_workflow_error("import_not_active") unless import.status == "active"
 
         payload = with_test_mode_rollback(import.test_mode) do
           import.lock!
           workflow = Imports::SteamWorkflow.new(import)
-          review_payload(import, workflow.advance, workflow.counts)
+          import_review_payload(import, workflow.advance, workflow.counts,
+            import_resource: SteamCollectionImportResource, item_resource: SteamCollectionImportItemResource)
         end
 
         render json: { data: payload }
@@ -133,22 +135,6 @@ module Api
         render json: { error: "steam_not_configured", message: error.message }, status: :service_unavailable
       rescue Steam::Client::Error => error
         render json: { error: error.code, message: error.message }, status: steam_error_status(error.code)
-      end
-
-      def render_import_not_active
-        render json: { error: "import_not_active", message: "This import is not active." },
-          status: :unprocessable_entity
-      end
-
-      def review_payload(import, review, counts)
-        {
-          import: SteamCollectionImportResource.new(import).serializable_hash,
-          item: review.item && SteamCollectionImportItemResource.new(review.item).serializable_hash,
-          candidates: Imports::CandidatePresenter.as_json(review.candidates),
-          match_confidence: review.match_confidence,
-          auto_applied: review.auto_applied,
-          counts: counts
-        }
       end
 
       def steam_error_status(code)
