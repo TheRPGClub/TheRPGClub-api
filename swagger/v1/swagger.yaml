@@ -7817,6 +7817,18 @@ paths:
           - any
         required: false
         description: Filter to past GOTM winners, Non-Retro GOTM winners, or either.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - title
+          - newest
+          default: title
+        description: "`title` (A–Z) or `newest` (most recently added to GameDB, `created_at`
+          desc, title breaking ties). Ignored when `q` is present: search keeps its
+          relevance order."
       - name: genre_id
         in: query
         required: false
@@ -7941,6 +7953,12 @@ paths:
                         resource:
                           type: string
                           example: gamedb_games
+        '422':
+          description: invalid `sort`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:

@@ -100,6 +100,59 @@ RSpec.describe "api/v1/games behavior", type: :request do
 
       expect(response).to have_http_status(:unauthorized)
     end
+
+    describe "sort" do
+      def ids
+        json.fetch("data").map { |g| g.fetch("game_id") }
+      end
+
+      let!(:oldest) { create(:game, title: "sort a oldest", created_at: 3.days.ago) }
+      let!(:newest_b) { create(:game, title: "sort c newest", created_at: 1.day.ago) }
+      let!(:newest_a) { create(:game, title: "sort b newest", created_at: newest_b.created_at) }
+      let!(:middle) { create(:game, title: "sort d middle", created_at: 2.days.ago) }
+
+      it "defaults to title order" do
+        get "/api/v1/games", headers: service_headers
+
+        expect(ids).to eq([ oldest, newest_a, newest_b, middle ].map(&:game_id))
+      end
+
+      it "orders newest-added first with sort=newest, title breaking ties" do
+        get "/api/v1/games", params: { sort: "newest" }, headers: service_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(ids).to eq([ newest_a, newest_b, middle, oldest ].map(&:game_id))
+      end
+
+      it "pages and filters the newest order" do
+        create(:gotm_entry, game: middle)
+        create(:gotm_entry, game: oldest)
+
+        get "/api/v1/games", params: { sort: "newest", per: 1, page: 2 }, headers: service_headers
+        expect(ids).to eq([ newest_b.game_id ])
+        expect(json.fetch("meta")).to include("count" => 4, "page" => 2)
+
+        get "/api/v1/games", params: { sort: "newest", winner: "gotm" }, headers: service_headers
+        expect(ids).to eq([ middle, oldest ].map(&:game_id))
+      end
+
+      it "ignores sort when q is present, keeping relevance order" do
+        get "/api/v1/games", params: { sort: "newest", q: "sort d middle" }, headers: service_headers
+
+        expect(ids.first).to eq(middle.game_id)
+
+        get "/api/v1/games", params: { sort: "newest", q: "sort" }, headers: service_headers
+        expect(ids).to eq([ oldest, newest_a, newest_b, middle ].map(&:game_id))
+      end
+
+      it "rejects an unknown sort with 422" do
+        get "/api/v1/games", params: { sort: "rating" }, headers: service_headers
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json).to include("error" => "invalid_sort")
+        expect(json.fetch("message")).to include("title", "newest")
+      end
+    end
   end
 
   describe "GET /api/v1/games/:id" do
