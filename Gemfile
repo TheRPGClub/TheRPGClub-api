@@ -3,7 +3,7 @@ source "https://rubygems.org"
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
 gem "rails", "~> 8.1.3"
 # Use postgresql as the database for Active Record
-gem "pg", "~> 1.1"
+gem "pg", "~> 1.7"
 # Machine-local Solid Queue database in production (config/database.yml), so
 # the always-on machine's job polling never touches (and never wakes) Neon
 gem "sqlite3", ">= 2.1"
