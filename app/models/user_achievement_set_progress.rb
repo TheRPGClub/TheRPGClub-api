@@ -20,6 +20,7 @@ class UserAchievementSetProgress < ApplicationRecord
 
   validates :achievement_set_id, uniqueness: { scope: :user_id }
 
+  scope :of_active_members, -> { where(user_id: RpgClubUser.active.select(:user_id)) }
   # Rows that have been imported at least once; every read uses this.
   scope :synced, -> { where.not(synced_at: nil) }
   # The Provider's sets waiting for an import, oldest first.

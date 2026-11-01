@@ -163,4 +163,14 @@ RSpec.describe UserAchievementSetProgress do
       expect(described_class.synced).to eq([ synced ])
     end
   end
+
+  describe ".of_active_members" do
+    it "excludes departed members" do
+      kept = create(:user_achievement_set_progress)
+      departed = create(:user_achievement_set_progress)
+      departed.user.update!(server_left_at: now)
+
+      expect(described_class.of_active_members.where(id: [ kept.id, departed.id ])).to eq([ kept ])
+    end
+  end
 end

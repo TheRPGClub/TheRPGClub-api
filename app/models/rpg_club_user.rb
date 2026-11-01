@@ -151,6 +151,9 @@ class RpgClubUser < ApplicationRecord
     dependent: :nullify,
     inverse_of: :created_by_user
 
+  # Members still in the guild: departed members (server_left_at) and bots are
+  # hidden from club-wide reads such as the Achievement Hub.
+  scope :active, -> { where(is_bot: false, server_left_at: nil) }
   scope :without_images, -> { select(*(column_names - BINARY_COLUMNS)) }
 
   validates :user_id, presence: true
