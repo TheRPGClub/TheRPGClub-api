@@ -8,7 +8,13 @@ module Api
     # due kicks its Provider's tick, which drains the durable sync state
     # (ADR 0003).
     class LinkedAccountsController < ApplicationController
-      before_action :require_owner!, only: %i[index create]
+      before_action :require_owner!, only: %i[index create retry sync]
+      before_action :require_owner_or_admin!, only: :destroy
+
+      # A Retry restarts syncing that stopped on these statuses.
+      RETRYABLE_STATUSES = %w[private not_found error].freeze
+      # Sync now can't restart these; the member presses Retry instead.
+      RETRY_REQUIRED_STATUSES = %w[private not_found].freeze
 
       # GET /api/v1/users/:user_id/linked_accounts
       # At most one per Provider, so the list is not paginated.
@@ -54,7 +60,65 @@ module Api
         member_accounts.exists?(provider: provider) ? render_provider_already_linked : render_identity_claimed
       end
 
+      # DELETE /api/v1/users/:user_id/linked_accounts/:id
+      # Unlinks. The database cascades delete the account's Unlocks and
+      # progress; the shared definitions stay.
+      def destroy
+        account.destroy!
+        render json: { deleted: true }
+      end
+
+      # POST /api/v1/users/:user_id/linked_accounts/:id/retry
+      # Only from private, not_found or error: back to pending, due now.
+      def retry
+        unless RETRYABLE_STATUSES.include?(account.sync_status)
+          return render_reason(:retry_not_allowed, "Retry is only available when syncing has stopped.")
+        end
+
+        make_due(sync_status: "pending", sync_error: nil)
+        render json: { data: serialize(account) }
+      end
+
+      # POST /api/v1/users/:user_id/linked_accounts/:id/sync
+      # Sync now, at most once per UserLinkedAccount::SYNC_COOLDOWN; 429 with
+      # `sync_available_at` inside it.
+      def sync
+        if RETRY_REQUIRED_STATUSES.include?(account.sync_status)
+          return render_reason(:retry_required, "Syncing has stopped for this account. Press Retry instead.")
+        end
+
+        now = Time.current
+        available_at = account.sync_available_at(now)
+        if available_at > now
+          return render json: {
+            error: "sync_cooldown", message: "Sync now is cooling down.", sync_available_at: available_at
+          }, status: :too_many_requests
+        end
+
+        make_due(sync_requested_at: now, now: now)
+        render json: { data: serialize(account) }
+      end
+
       private
+
+      def account
+        @account ||= member_accounts.find(params[:id])
+      end
+
+      # Due now, as a Backfill until one has finished, else incremental; then
+      # kicks the Provider's tick.
+      def make_due(now: Time.current, **attrs)
+        account.update!(
+          sync_due_at: now, sync_mode: account.backfilled_at ? "incremental" : "backfill", **attrs
+        )
+        Achievements::ProviderTickJob.perform_later(account.provider)
+      end
+
+      def require_owner_or_admin!
+        return true if admin_or_service?
+
+        require_owner!
+      end
 
       def member_accounts
         UserLinkedAccount.where(user_id: params[:user_id])
