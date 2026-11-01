@@ -2,7 +2,7 @@
 
 module Achievements
   module Providers
-    # The Provider has no such user (or the Linked Account's identity is gone).
+    # The Provider has no such account, or it can no longer be linked.
     class NotFound < Error; end
   end
 end

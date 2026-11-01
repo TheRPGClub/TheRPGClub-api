@@ -2,7 +2,9 @@
 
 module Achievements
   module Providers
-    # An Achievement Set with its definitions and one member's Unlocks of it.
+    # A full Achievement Set as a Provider defines it, plus one member's
+    # Unlocks of it and their playtime. achievements are AchievementDefinitions,
+    # unlocks are ProviderUnlocks; playtime_minutes is nil when unknown.
     SetDefinition = Data.define(
       :external_id, :title, :platform_label, :icon_url, :np_service_name, :achievements, :unlocks, :playtime_minutes
     ) do

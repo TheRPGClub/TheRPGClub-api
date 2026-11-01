@@ -2,7 +2,8 @@
 
 module Achievements
   module Providers
-    # The Provider is throttling us. `retry_after` is in seconds, nil when unknown.
+    # The Provider is throttling the club. retry_after is the Provider's
+    # Retry-After in seconds (nil when it sent none), so the caller can back off.
     class RateLimited < Error
       attr_reader :retry_after
 
