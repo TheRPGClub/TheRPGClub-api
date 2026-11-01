@@ -727,6 +727,29 @@ module OpenapiSchemas
         available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
         delivered_at: ts(nullable: true), attempts: int
       ),
+      # AchievementHighlightResource: an announceable Unlock as the bot posts
+      # it, with the www set page path.
+      AchievementHighlight: obj(
+        id: int, highlight: str(enum: UserAchievementUnlock::HIGHLIGHTS), hardcore: bool, unlocked_at: ts,
+        user_id: str, display_name: str,
+        url_path: str.merge(description: "The www set page path: /members/{user_id}/achievements/{set_id}."),
+        achievement: obj(
+          id: int, name: str(nullable: true), description: str(nullable: true), icon_url: str(nullable: true),
+          tier: str(enum: Achievement::TIERS, nullable: true), points: int(nullable: true),
+          rarity: num(nullable: true)
+        ),
+        achievement_set: obj(
+          id: int, title: str(nullable: true), provider: str(enum: UserLinkedAccount::PROVIDERS),
+          platform_label: str(nullable: true), icon_url: str(nullable: true)
+        ),
+        _required: %w[id highlight hardcore unlocked_at user_id display_name url_path achievement achievement_set]
+      ),
+      # Achievements::HighlightOutbox.alerts: the PSN auth alert. Post it while
+      # `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ack.
+      AchievementHubAlerts: obj(
+        psn_auth_expired_at: ts(nullable: true), psn_auth_alerted: bool,
+        _required: %w[psn_auth_expired_at psn_auth_alerted]
+      ),
       PublicReminder: obj(
         reminder_id: int, channel_id: str, message: str, due_at: ts,
         recur_every: int(nullable: true), recur_unit: str(nullable: true), enabled: bool,
