@@ -85,6 +85,8 @@ module Psn
     end
 
     # The member's played Achievement Sets (their trophy titles), newest first.
+    # UNVERIFIED: the trophy-titles endpoint answering for another user's
+    # accountId (xergasa only ever read `users/me`).
     # With `since`, stops at the first title last updated before it: the list
     # is sorted by lastUpdatedDateTime descending (research §4).
     def played_sets(account_id, since: nil)
@@ -118,7 +120,63 @@ module Psn
         raise(Achievements::Providers::NotFound, "No PSN account with online ID #{online_id}")
     end
 
+    # The set's definitions merged with the member's Unlocks. Rarity
+    # (trophyEarnedRate) only comes from the per-member endpoint (research §4);
+    # when the member has never synced the title, Sony answers 404 there and
+    # the set counts as nothing earned (and carries no Rarity).
+    def set_with_progress(account_id, np_communication_id, np_service_name)
+      params = { npServiceName: np_service_name }
+      definitions = api_get("/trophy/v1/npCommunicationIds/#{escape(np_communication_id)}/trophyGroups/all/trophies", params)
+      earned = member_trophies(account_id, np_communication_id, params)
+
+      Achievements::Providers::SetDefinition.new(
+        external_id: np_communication_id,
+        np_service_name: np_service_name,
+        version: definitions["trophySetVersion"],
+        achievements: Array(definitions["trophies"]).map { |trophy| achievement(trophy, earned[trophy["trophyId"].to_s]) },
+        unlocks: earned.values.select { |trophy| trophy["earned"] == true }.map { |trophy| unlock(trophy) }
+      )
+    end
+
     private
+
+    # trophyId (string) -> the member's trophy row.
+    def member_trophies(account_id, np_communication_id, params)
+      data = api_get(
+        "/trophy/v1/users/#{escape(account_id)}/npCommunicationIds/#{escape(np_communication_id)}/trophyGroups/all/trophies",
+        params
+      )
+      Array(data["trophies"]).index_by { |trophy| trophy["trophyId"].to_s }
+    rescue Achievements::Providers::NotFound
+      {}
+    end
+
+    def achievement(trophy, earned)
+      Achievements::Providers::AchievementDefinition.new(
+        external_id: trophy["trophyId"].to_s,
+        name: trophy["trophyName"],
+        description: trophy["trophyDetail"],
+        icon_url: trophy["trophyIconUrl"],
+        hidden: trophy["trophyHidden"] == true,
+        tier: trophy["trophyType"],
+        display_order: trophy["trophyId"].to_i,
+        rarity: rarity(earned && earned["trophyEarnedRate"])
+      )
+    end
+
+    def unlock(trophy)
+      Achievements::Providers::ProviderUnlock.new(
+        achievement_external_id: trophy["trophyId"].to_s,
+        unlocked_at: parse_time(trophy["earnedDateTime"])
+      )
+    end
+
+    # trophyEarnedRate is a string percentage such as "12.5".
+    def rarity(value)
+      BigDecimal(value.to_s)
+    rescue ArgumentError
+      nil
+    end
 
     def search_account(online_id)
       data = api_call(:post, SEARCH_URL, json: {
@@ -259,6 +317,7 @@ module Psn
       call = -> { request(method, url, params: params, json: json, headers: { "Authorization" => "Bearer #{access_token}" }) }
       response = call.call
       if response.status == 401
+        # UNVERIFIED: that Sony answers a revoked or expired token with 401.
         # A cached token Sony has revoked: renew once before giving up.
         @cache.delete(ACCESS_TOKEN_CACHE_KEY)
         response = call.call
@@ -273,6 +332,7 @@ module Psn
     def check_response!(response, body)
       error = body.is_a?(Hash) ? body["error"] : nil
       raise Achievements::Providers::Private, "PSN trophies are private" if access_control_error?(error) || response.status == 403
+      # UNVERIFIED: that an unknown accountId or online ID answers 404.
       raise Achievements::Providers::NotFound, "PSN returned 404" if response.status == 404
       if response.status == 429
         raise Achievements::Providers::RateLimited.new("PSN rate limit reached", retry_after: retry_after(response))

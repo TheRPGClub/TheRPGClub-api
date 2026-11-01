@@ -277,4 +277,77 @@ RSpec.describe Psn::Client do
       expect { client.resolve_account("Xergg") }.to raise_error(Achievements::Providers::NotFound)
     end
   end
+
+  describe "#set_with_progress" do
+    let(:np_comm_id) { "NPWR20188_00" }
+    let(:definitions_url) { "https://m.np.playstation.com/api/trophy/v1/npCommunicationIds/#{np_comm_id}/trophyGroups/all/trophies" }
+    let(:earned_url) do
+      "https://m.np.playstation.com/api/trophy/v1/users/#{account_id}/npCommunicationIds/#{np_comm_id}/trophyGroups/all/trophies"
+    end
+
+    before do
+      stub_authorize
+      stub_code_exchange
+      stub_request(:get, definitions_url).with(query: { "npServiceName" => "trophy2" })
+        .to_return(json({
+          trophySetVersion: "01.10", hasTrophyGroups: true, totalItemCount: 2,
+          trophies: [
+            { trophyId: 0, trophyHidden: false, trophyType: "platinum", trophyName: "All Trophies",
+              trophyDetail: "Unlock every trophy", trophyIconUrl: "https://example.test/0.png", trophyGroupId: "default" },
+            { trophyId: 1, trophyHidden: true, trophyType: "bronze", trophyName: "Secret",
+              trophyDetail: "Find it", trophyIconUrl: "https://example.test/1.png", trophyGroupId: "001" }
+          ]
+        }))
+    end
+
+    it "merges definitions with the member's Unlocks, taking Rarity from the member endpoint" do
+      stub_request(:get, earned_url).with(query: { "npServiceName" => "trophy2" })
+        .to_return(json({
+          trophySetVersion: "01.10", totalItemCount: 2,
+          trophies: [
+            { trophyId: 0, trophyHidden: false, earned: false, trophyType: "platinum", trophyRare: 0, trophyEarnedRate: "1.2" },
+            { trophyId: 1, trophyHidden: true, earned: true, earnedDateTime: "2026-10-30T21:15:04Z",
+              trophyType: "bronze", trophyRare: 3, trophyEarnedRate: "54.7" }
+          ]
+        }))
+
+      set = client.set_with_progress(account_id, np_comm_id, "trophy2")
+
+      expect(set).to have_attributes(external_id: np_comm_id, np_service_name: "trophy2", version: "01.10")
+      expect(set.achievements).to eq([
+        Achievements::Providers::AchievementDefinition.new(
+          external_id: "0", name: "All Trophies", description: "Unlock every trophy",
+          icon_url: "https://example.test/0.png", hidden: false, tier: "platinum", display_order: 0,
+          rarity: BigDecimal("1.2")
+        ),
+        Achievements::Providers::AchievementDefinition.new(
+          external_id: "1", name: "Secret", description: "Find it",
+          icon_url: "https://example.test/1.png", hidden: true, tier: "bronze", display_order: 1,
+          rarity: BigDecimal("54.7")
+        )
+      ])
+      expect(set.unlocks).to eq([
+        Achievements::Providers::ProviderUnlock.new(achievement_external_id: "1", unlocked_at: Time.utc(2026, 10, 30, 21, 15, 4))
+      ])
+    end
+
+    it "treats a 404 on the member's trophies (never synced) as nothing earned" do
+      stub_request(:get, earned_url).with(query: hash_including({}))
+        .to_return(json({ error: { code: 2_240_525, message: "Resource not found" } }, status: 404))
+
+      set = client.set_with_progress(account_id, np_comm_id, "trophy2")
+
+      expect(set.unlocks).to eq([])
+      expect(set.achievements.map(&:external_id)).to eq(%w[0 1])
+      expect(set.achievements.map(&:rarity)).to eq([ nil, nil ])
+    end
+
+    it "raises Private when the member's trophies are hidden" do
+      stub_request(:get, earned_url).with(query: hash_including({}))
+        .to_return(json({ error: { code: 2_240_526, message: "Not permitted by access control" } }))
+
+      expect { client.set_with_progress(account_id, np_comm_id, "trophy2") }
+        .to raise_error(Achievements::Providers::Private)
+    end
+  end
 end
