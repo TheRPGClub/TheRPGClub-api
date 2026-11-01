@@ -50,8 +50,14 @@ Rails.application.routes.draw do
           patch "release_announcements", to: "release_announcements#sync"
           put "release_announcements", to: "release_announcements#sync"
           get "threads", to: "threads#game_index"
+          # Achievement Hub game showcase (api-09).
+          get "achievement_sets", to: "achievements#game_sets"
         end
       end
+
+      # Achievement Hub reads (api-09): the community feed and the set page.
+      get "achievements/feed", to: "achievements#feed"
+      get "achievement_sets/:id", to: "achievements#show_set"
 
       resources :platforms, only: %i[index show create]
       resources :regions, only: %i[index show create]
