@@ -226,6 +226,126 @@ RSpec.describe Steam::Client do
     end
   end
 
+  describe "#set_with_progress" do
+    let(:schema_path) { "/ISteamUserStats/GetSchemaForGame/v2/" }
+    let(:player_path) { "/ISteamUserStats/GetPlayerAchievements/v1/" }
+    let(:global_path) { "/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/" }
+    let(:schema) do
+      json(game: {
+        gameName: "ValveTestApp620",
+        availableGameStats: {
+          achievements: [
+            {
+              name: "ACH_WAKE_UP", displayName: "Wake Up Call", description: "Survive the manual override.",
+              icon: "https://cdn.example/wake.jpg", icongray: "https://cdn.example/wake_gray.jpg", hidden: 0
+            },
+            {
+              name: "ACH_SECRET", displayName: "Secret Ending", icon: "https://cdn.example/secret.jpg",
+              icongray: "https://cdn.example/secret_gray.jpg", hidden: 1
+            },
+            {
+              name: "ACH_LATE", displayName: "Late Addition", description: "",
+              icon: "https://cdn.example/late.jpg", icongray: "https://cdn.example/late_gray.jpg", hidden: 0
+            }
+          ]
+        }
+      })
+    end
+    let(:player) do
+      json(playerstats: {
+        steamID: steam_id, gameName: "Portal 2", success: true,
+        achievements: [
+          { apiname: "ACH_WAKE_UP", achieved: 1, unlocktime: 1_700_000_000 },
+          { apiname: "ACH_SECRET", achieved: 0, unlocktime: 0 },
+          { apiname: "ACH_LATE", achieved: 0, unlocktime: 0 }
+        ]
+      })
+    end
+    let(:global) do
+      json(achievementpercentages: {
+        achievements: [ { name: "ACH_WAKE_UP", percent: 71.25 }, { name: "ACH_SECRET", percent: "4.3" } ]
+      })
+    end
+
+    it "merges the schema, the member's Unlocks and the global Rarity into a SetDefinition" do
+      stubs.get(schema_path) do |env|
+        expect(env.params).to include("appid" => "620", "l" => "english")
+        schema
+      end
+      stubs.get(player_path) do |env|
+        expect(env.params).to include("steamid" => steam_id, "appid" => "620")
+        player
+      end
+      stubs.get(global_path) do |env|
+        expect(env.params).to include("gameid" => "620")
+        global
+      end
+
+      set = client.set_with_progress(steam_id, 620)
+
+      expect(set).to eq(
+        Achievements::Providers::SetDefinition.new(
+          external_id: "620", title: "Portal 2", platform_label: "PC",
+          achievements: [
+            Achievements::Providers::AchievementDefinition.new(
+              external_id: "ACH_WAKE_UP", name: "Wake Up Call", description: "Survive the manual override.",
+              icon_url: "https://cdn.example/wake.jpg", icon_locked_url: "https://cdn.example/wake_gray.jpg",
+              hidden: false, display_order: 1, rarity: BigDecimal("71.25")
+            ),
+            Achievements::Providers::AchievementDefinition.new(
+              external_id: "ACH_SECRET", name: "Secret Ending", description: nil,
+              icon_url: "https://cdn.example/secret.jpg", icon_locked_url: "https://cdn.example/secret_gray.jpg",
+              hidden: true, display_order: 2, rarity: BigDecimal("4.3")
+            ),
+            Achievements::Providers::AchievementDefinition.new(
+              external_id: "ACH_LATE", name: "Late Addition", description: nil,
+              icon_url: "https://cdn.example/late.jpg", icon_locked_url: "https://cdn.example/late_gray.jpg",
+              hidden: false, display_order: 3, rarity: nil
+            )
+          ],
+          unlocks: [
+            Achievements::Providers::ProviderUnlock.new(
+              achievement_external_id: "ACH_WAKE_UP", unlocked_at: Time.utc(2023, 11, 14, 22, 13, 20)
+            )
+          ]
+        )
+      )
+      stubs.verify_stubbed_calls
+    end
+
+    it "returns nil for a game with an empty schema, without asking for progress" do
+      stubs.get(schema_path) { json(game: {}) }
+
+      expect(client.set_with_progress(steam_id, 620)).to be_nil
+      stubs.verify_stubbed_calls
+    end
+
+    it "raises Private when GetPlayerAchievements answers 403" do
+      stubs.get(schema_path) { schema }
+      stubs.get(player_path) do
+        json(status: 403, playerstats: { error: "Profile is not public", success: false })
+      end
+
+      expect { client.set_with_progress(steam_id, 620) }.to raise_error(Achievements::Providers::Private)
+    end
+
+    it "raises Private when Steam reports a non-public profile with success: false" do
+      stubs.get(schema_path) { schema }
+      stubs.get(player_path) { json(playerstats: { error: "Profile is not public", success: false }) }
+
+      expect { client.set_with_progress(steam_id, 620) }.to raise_error(Achievements::Providers::Private)
+    end
+
+    it "returns nil when Steam has no stats for the member on this app" do
+      stubs.get(schema_path) { schema }
+      stubs.get(player_path) do
+        json(status: 400, playerstats: { error: "Requested app has no stats", success: false })
+      end
+
+      expect(client.set_with_progress(steam_id, 620)).to be_nil
+    end
+  end
+
   describe "upstream failures" do
     let(:summary_path) { "/ISteamUser/GetPlayerSummaries/v2/" }
     let(:ok_summary) { json(response: { players: [ { personaname: "Rabscuttle" } ] }) }
