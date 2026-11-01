@@ -1,0 +1,233 @@
+# frozen_string_literal: true
+
+require "rails_helper"
+
+RSpec.describe Psn::Client do
+  include ActiveSupport::Testing::TimeHelpers
+
+  subject(:client) do
+    described_class.new(npsso: "test-npsso", cache: cache, hub_state: hub_state, sleeper: ->(seconds) { sleeps << seconds })
+  end
+
+  # In-memory stand-in for AchievementHubState (get/set), so the spec does not
+  # depend on the hub state table.
+  let(:hub_state_class) do
+    Class.new do
+      attr_reader :values, :writes
+
+      def initialize
+        @values = {}
+        @writes = []
+      end
+
+      def get(key) = values[key]
+
+      def set(key, value)
+        writes << [ key, value ]
+        values[key] = value
+      end
+    end
+  end
+  let(:hub_state) { hub_state_class.new }
+  let(:cache) { ActiveSupport::Cache::MemoryStore.new }
+  let(:sleeps) { [] }
+  let(:account_id) { "2984038888603282554" }
+  let(:redirect_with_code) { "com.scee.psxandroid.scecompcall://redirect/?code=v3.AUTHCODE&cid=abc" }
+
+  def json(body = {}, status: 200, headers: {})
+    { status: status, body: body.to_json, headers: { "Content-Type" => "application/json" }.merge(headers) }
+  end
+
+  def stub_authorize(location: redirect_with_code)
+    stub_request(:get, described_class::AUTHORIZE_URL)
+      .with(query: hash_including("client_id" => described_class::OAUTH_CLIENT_ID, "response_type" => "code"),
+        headers: { "Cookie" => "npsso=test-npsso" })
+      .to_return(status: 302, headers: { "Location" => location })
+  end
+
+  def stub_code_exchange(access_token: "access-1", refresh_token: "refresh-1")
+    stub_request(:post, described_class::TOKEN_URL)
+      .with(body: hash_including("grant_type" => "authorization_code", "code" => "v3.AUTHCODE"),
+        headers: { "Authorization" => described_class::CLIENT_AUTH })
+      .to_return(json({ access_token: access_token, expires_in: 3599, refresh_token: refresh_token,
+        refresh_token_expires_in: 5_183_999, token_type: "bearer" }))
+  end
+
+  def titles_url(id = account_id)
+    "https://m.np.playstation.com/api/trophy/v1/users/#{id}/trophyTitles"
+  end
+
+  def title_row(np_comm_id, updated_at, service: "trophy2", name: "Game #{np_comm_id}")
+    {
+      npServiceName: service, npCommunicationId: np_comm_id, trophySetVersion: "01.00",
+      trophyTitleName: name, trophyTitleIconUrl: "https://image.api.playstation.com/#{np_comm_id}.png",
+      trophyTitlePlatform: service == "trophy2" ? "PS5" : "PS4,PSVITA", hasTrophyGroups: false,
+      definedTrophies: { bronze: 10, silver: 3, gold: 1, platinum: 1 }, progress: 40,
+      earnedTrophies: { bronze: 5, silver: 1, gold: 0, platinum: 0 }, hiddenFlag: false,
+      lastUpdatedDateTime: updated_at
+    }
+  end
+
+  def stub_titles(rows, offset: 0, total: rows.size, token: "access-1")
+    stub_request(:get, titles_url)
+      .with(query: { "limit" => described_class::TITLES_PAGE.to_s, "offset" => offset.to_s },
+        headers: { "Authorization" => "Bearer #{token}" })
+      .to_return(json({ trophyTitles: rows, totalItemCount: total }))
+  end
+
+  describe "auth" do
+    it "exchanges the NPSSO for an access token and caches it" do
+      stub_authorize
+      stub_code_exchange
+      titles = stub_titles([])
+
+      client.played_sets(account_id)
+      client.played_sets(account_id)
+
+      expect(a_request(:get, described_class::AUTHORIZE_URL).with(query: hash_including({}))).to have_been_made.once
+      expect(titles).to have_been_made.twice
+    end
+
+    it "renews an expired access token with the cached refresh token instead of the NPSSO" do
+      stub_authorize
+      stub_code_exchange
+      stub_titles([])
+      refresh = stub_request(:post, described_class::TOKEN_URL)
+        .with(body: hash_including("grant_type" => "refresh_token", "refresh_token" => "refresh-1"))
+        .to_return(json({ access_token: "access-2", expires_in: 3599, refresh_token: "refresh-2",
+          refresh_token_expires_in: 5_183_999 }))
+      second = stub_titles([], token: "access-2")
+
+      client.played_sets(account_id)
+      travel(3600.seconds) { client.played_sets(account_id) }
+
+      expect(refresh).to have_been_made.once
+      expect(second).to have_been_made.once
+      expect(a_request(:get, described_class::AUTHORIZE_URL).with(query: hash_including({}))).to have_been_made.once
+    end
+
+    it "raises AuthExpired and records psn_auth_expired_at once when the NPSSO no longer yields a code" do
+      stub_authorize(location: "com.scee.psxandroid.scecompcall://redirect/?error=login_required")
+
+      freeze_time do
+        2.times do
+          expect { client.played_sets(account_id) }.to raise_error(Achievements::Providers::AuthExpired)
+        end
+
+        expect(hub_state.writes).to eq([ [ "psn_auth_expired_at", Time.current.iso8601 ] ])
+      end
+    end
+
+    it "clears psn_auth_expired_at after a successful auth" do
+      hub_state.set("psn_auth_expired_at", "2026-10-01T00:00:00Z")
+      stub_authorize
+      stub_code_exchange
+      stub_titles([])
+
+      client.played_sets(account_id)
+
+      expect(hub_state.get("psn_auth_expired_at")).to be_nil
+    end
+
+    it "raises AuthExpired when Sony refuses the code exchange" do
+      stub_authorize
+      stub_request(:post, described_class::TOKEN_URL).to_return(json({ error: "invalid_grant" }, status: 400))
+
+      expect { client.played_sets(account_id) }.to raise_error(Achievements::Providers::AuthExpired)
+      expect(hub_state.get("psn_auth_expired_at")).to be_present
+    end
+  end
+
+  describe "#played_sets" do
+    before do
+      stub_authorize
+      stub_code_exchange
+    end
+
+    it "normalises the member's trophy titles into PlayedSets" do
+      stub_titles([ title_row("NPWR20188_00", "2026-10-30T12:00:00Z") ])
+
+      played = client.played_sets(account_id)
+
+      expect(played).to contain_exactly(
+        have_attributes(
+          class: Achievements::Providers::PlayedSet,
+          external_id: "NPWR20188_00",
+          np_service_name: "trophy2",
+          title: "Game NPWR20188_00",
+          platform_label: "PS5",
+          icon_url: "https://image.api.playstation.com/NPWR20188_00.png",
+          last_played_at: Time.utc(2026, 10, 30, 12),
+          earned_count: 6,
+          total_count: 15
+        )
+      )
+    end
+
+    it "pages through every title without since" do
+      stub_titles([ title_row("NPWR1_00", "2026-10-30T12:00:00Z") ], total: 2)
+      stub_titles([ title_row("NPWR2_00", "2020-01-01T00:00:00Z", service: "trophy") ], offset: 1, total: 2)
+
+      expect(client.played_sets(account_id).map(&:external_id)).to eq(%w[NPWR1_00 NPWR2_00])
+    end
+
+    it "with since, stops at the first title last updated before it" do
+      stub_titles([
+        title_row("NPWR1_00", "2026-10-30T12:00:00Z"),
+        title_row("NPWR2_00", "2026-10-29T00:00:00Z"),
+        title_row("NPWR3_00", "2026-10-01T00:00:00Z")
+      ], total: 1_500)
+
+      played = client.played_sets(account_id, since: Time.utc(2026, 10, 28))
+
+      expect(played.map(&:external_id)).to eq(%w[NPWR1_00 NPWR2_00])
+      expect(a_request(:get, titles_url).with(query: hash_including("offset" => "3"))).not_to have_been_made
+    end
+
+    it "raises Private on Sony's access-control error, even with HTTP 200" do
+      stub_request(:get, titles_url).with(query: hash_including({}))
+        .to_return(json({ error: { referenceId: "abc", code: 2_240_526, message: "Not permitted by access control" } }))
+
+      expect { client.played_sets(account_id) }.to raise_error(Achievements::Providers::Private)
+    end
+
+    it "raises Private on a 403 access-control error" do
+      stub_request(:get, titles_url).with(query: hash_including({}))
+        .to_return(json({ error: { code: 2_240_526, message: "Not permitted by access control" } }, status: 403))
+
+      expect { client.played_sets(account_id) }.to raise_error(Achievements::Providers::Private)
+    end
+
+    it "raises NotFound for an unknown accountId" do
+      stub_request(:get, titles_url).with(query: hash_including({}))
+        .to_return(json({ error: { code: 2_240_525, message: "Resource not found" } }, status: 404))
+
+      expect { client.played_sets(account_id) }.to raise_error(Achievements::Providers::NotFound)
+    end
+
+    it "raises RateLimited on 429, carrying Retry-After" do
+      stub_request(:get, titles_url).with(query: hash_including({}))
+        .to_return(status: 429, headers: { "Retry-After" => "3" })
+
+      expect { client.played_sets(account_id) }
+        .to raise_error(Achievements::Providers::RateLimited) { |error| expect(error.retry_after).to eq(3.0) }
+    end
+
+    it "retries once after an SSL EOF" do
+      stub_request(:get, titles_url).with(query: hash_including({}))
+        .to_raise(OpenSSL::SSL::SSLError.new("SSL_read: unexpected eof while reading")).then
+        .to_return(json({ trophyTitles: [ title_row("NPWR1_00", "2026-10-30T12:00:00Z") ], totalItemCount: 1 }))
+
+      expect(client.played_sets(account_id).map(&:external_id)).to eq(%w[NPWR1_00])
+    end
+
+    it "retries a transient 5xx with a short backoff" do
+      stub_request(:get, titles_url).with(query: hash_including({}))
+        .to_return(status: 503).then
+        .to_return(json({ trophyTitles: [], totalItemCount: 0 }))
+
+      expect(client.played_sets(account_id)).to eq([])
+      expect(sleeps).to eq([ 0.5 ])
+    end
+  end
+end
