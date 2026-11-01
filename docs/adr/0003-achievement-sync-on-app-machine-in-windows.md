@@ -6,3 +6,7 @@ Sync jobs run in the existing in-Puma Solid Queue on the single Fly app machine,
 
 - **Separate Fly worker machine** with its own SQLite queue, fed by the API over private networking. Revisit if `[JobCPU]` logs show sync starving API requests.
 - **Staggered per-account schedule.** Rejected: spreads database wake-ups across the whole day.
+
+## Consequences
+
+The machine-local queue database is recreated on every deploy, so pending jobs never survive one. Sync state therefore lives in Postgres: accounts due for listing and sets pending import. One self-re-enqueuing tick job per Provider drains that state one unit at a time and stops when nothing is due. This same chain is what enforces global per-Provider pacing. On boot the ticks are enqueued once, so a window that a deploy interrupted resumes.
