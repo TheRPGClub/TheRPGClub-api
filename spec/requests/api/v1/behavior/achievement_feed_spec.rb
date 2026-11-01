@@ -80,6 +80,32 @@ RSpec.describe "api/v1 achievement feed behavior", type: :request do
       expect(body.fetch("meta")).to include("count" => 5, "pages" => 3, "page" => 3)
     end
 
+    it "counts the cards in the same aggregation as the page, not in a second one" do
+      3.times { |i| unlock(alice_steam, steam_set, Time.utc(2026, 10, 1) + i.days) }
+      grouped = []
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        grouped << payload[:sql] if payload[:sql].include?("GROUP BY")
+      end
+
+      begin
+        body = feed(per: 2)
+      ensure
+        ActiveSupport::Notifications.unsubscribe(subscriber)
+      end
+
+      expect(body.fetch("meta")).to include("count" => 3, "pages" => 2, "next" => 2)
+      expect(grouped.size).to eq(1)
+    end
+
+    it "still reports the count on a page past the last one" do
+      unlock(alice_steam, steam_set, 1.day.ago)
+
+      body = feed(per: 2, page: 4)
+
+      expect(body.fetch("data")).to be_empty
+      expect(body.fetch("meta")).to include("count" => 1, "pages" => 1, "page" => 4)
+    end
+
     it "filters by Provider" do
       unlock(alice_steam, steam_set, 1.day.ago)
       unlock(bob_psn, psn_set, 1.day.ago)
