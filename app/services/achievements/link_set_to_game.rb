@@ -19,6 +19,12 @@ module Achievements
       new(set).call
     end
 
+    # Retries every unlinked set (the `achievements:link_sets` rake task).
+    # Returns how many sets it linked.
+    def self.link_unlinked
+      AchievementSet.where(game_id: nil).find_each.count { |set| call(set).game_id.present? }
+    end
+
     def initialize(set)
       @set = set
     end
@@ -37,7 +43,7 @@ module Achievements
       map = RpgClubSteamAppGamedbMap.find_by(steam_app_id: @set.external_id.to_i)
       return title_game_id if map.nil?
 
-      map.gamedb_game_id if map.status == "mapped"
+      map.gamedb_game_id if map.status == "mapped" && GamedbGame.exists?(game_id: map.gamedb_game_id)
     end
 
     def title_game_id

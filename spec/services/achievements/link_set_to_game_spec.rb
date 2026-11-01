@@ -76,6 +76,14 @@ RSpec.describe Achievements::LinkSetToGame do
       expect(set.reload.game_id).to be_nil
     end
 
+    it "ignores a Steam app map row whose GameDB game is gone" do
+      set = create(:achievement_set, provider: "steam", title: "No Such Game #{SecureRandom.hex(6)}")
+      create(:steam_app_gamedb_map, steam_app_id: set.external_id.to_i, gamedb_game_id: 2_000_000_000, status: "mapped")
+
+      expect { described_class.call(set) }.not_to raise_error
+      expect(set.reload.game_id).to be_nil
+    end
+
     it "falls back to title matching for a Steam app with no map row" do
       title = "Celeste #{SecureRandom.hex(3)}"
       game = create(:game, title: title)
@@ -84,6 +92,21 @@ RSpec.describe Achievements::LinkSetToGame do
       described_class.call(set)
 
       expect(set.reload.game_id).to eq(game.game_id)
+    end
+  end
+
+  describe ".link_unlinked" do
+    it "relinks only unlinked sets and returns how many it linked" do
+      title = "Ico #{SecureRandom.hex(3)}"
+      game = create(:game, title: title)
+      unlinked = create(:achievement_set, provider: "psn", title: title)
+      manual = create(:game, title: "Manually Chosen #{SecureRandom.hex(3)}")
+      linked = create(:achievement_set, provider: "psn", title: title, game_id: manual.game_id)
+      create(:achievement_set, provider: "psn", title: "No Such Game #{SecureRandom.hex(6)}")
+
+      expect(described_class.link_unlinked).to eq(1)
+      expect(unlinked.reload.game_id).to eq(game.game_id)
+      expect(linked.reload.game_id).to eq(manual.game_id)
     end
   end
 end

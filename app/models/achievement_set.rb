@@ -22,4 +22,7 @@ class AchievementSet < ApplicationRecord
     inverse_of: :achievement_set
 
   validates :external_id, presence: true, uniqueness: { scope: :provider }
+
+  # Best-effort GameDB link (research §6); see Achievements::LinkSetToGame.
+  after_create_commit { Achievements::LinkSetToGameJob.perform_later(self) }
 end
