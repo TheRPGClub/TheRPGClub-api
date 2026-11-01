@@ -40,6 +40,10 @@ Rails.application.configure do
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
 
+  # Enqueued jobs are recorded, never run, so callbacks that enqueue (e.g.
+  # AchievementSet's GameDB link) stay inside the spec's transaction.
+  config.active_job.queue_adapter = :test
+
   config.after_initialize do
     database_name = ActiveRecord::Base.connection_db_config.database.to_s
     unless database_name.end_with?("_test")

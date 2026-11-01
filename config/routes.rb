@@ -50,8 +50,15 @@ Rails.application.routes.draw do
           patch "release_announcements", to: "release_announcements#sync"
           put "release_announcements", to: "release_announcements#sync"
           get "threads", to: "threads#game_index"
+          # Achievement Hub game showcase (api-09).
+          get "achievement_sets", to: "achievements#game_sets"
         end
       end
+
+      # Achievement Hub: the community feed (api-09), the set page (api-09)
+      # and the admin-only manual fix for a set's GameDB link (api-08).
+      get "achievements/feed", to: "achievements#feed"
+      resources :achievement_sets, only: %i[show update]
 
       resources :platforms, only: %i[index show create]
       resources :regions, only: %i[index show create]
@@ -121,6 +128,16 @@ Rails.application.routes.draw do
           post "steam_collection_imports", to: "steam_collection_imports#create"
           get "steam_collection_imports/active", to: "steam_collection_imports#active"
           get "steam_app_gamedb_maps/historical", to: "steam_app_gamedb_maps#historical"
+          # Achievement Hub reads (api-09).
+          get "achievements/summary", to: "member_achievements#summary"
+          get "achievements/sets", to: "member_achievements#sets"
+          get "achievements/unlocks", to: "member_achievements#unlocks"
+          # Linked Accounts (api-05). Owner-only; an admin may also unlink.
+          get "linked_accounts", to: "linked_accounts#index"
+          post "linked_accounts", to: "linked_accounts#create"
+          delete "linked_accounts/:id", to: "linked_accounts#destroy"
+          post "linked_accounts/:id/retry", to: "linked_accounts#retry"
+          post "linked_accounts/:id/sync", to: "linked_accounts#sync"
         end
       end
 
@@ -315,6 +332,10 @@ Rails.application.routes.draw do
       end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
+      # The bot's Achievement Hub Highlights and alerts (service-only).
+      get  "achievements/highlights/pending", to: "achievement_highlights#pending"
+      post "achievements/highlights/ack",     to: "achievement_highlights#ack"
+      post "achievements/alerts/ack",         to: "achievement_highlights#ack_alert"
       # Bot presence history (service-only, #94). The Discord bot records each
       # `/setpresence` change and reads back the latest/recent activity as it
       # migrates `BotPresenceHistory` off direct SQL (RPGClub_GameDB#795). Plain

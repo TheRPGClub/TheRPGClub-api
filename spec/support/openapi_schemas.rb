@@ -658,6 +658,13 @@ module OpenapiSchemas
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
         by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
       ),
+      # AchievementSetLinkResource: an Achievement Set and its GameDB link
+      # (admin PATCH /achievement_sets/:id).
+      AchievementSetLink: obj(
+        id: int, provider: str(enum: %w[retroachievements steam psn]), external_id: str,
+        title: str(nullable: true), platform_label: str(nullable: true), icon_url: str(nullable: true),
+        game_id: int(nullable: true)
+      ),
       # SteamAppGamedbMapResource: every RpgClubSteamAppGamedbMap column
       # (#166) — the cached Steam app -> GameDB game mapping.
       SteamAppGamedbMap: obj(
@@ -719,6 +726,32 @@ module OpenapiSchemas
         id: int, round_number: int, kind: str(enum: VotingEvent::KINDS), payload: json(nullable: false),
         available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
         delivered_at: ts(nullable: true), attempts: int
+      ),
+      # AchievementHighlightResource: an announceable Unlock as the bot posts
+      # it, with the www set page path.
+      AchievementHighlight: obj(
+        id: int, highlight: str(enum: UserAchievementUnlock::HIGHLIGHTS), hardcore: bool,
+        unlocked_at: ts.merge(description: "The Highlight's date: a Mastery's hardcore time, otherwise the Unlock time."),
+        user_id: str, display_name: str,
+        url_path: str.merge(description: "The www set page path: /members/{user_id}/achievements/{set_id}."),
+        achievement: obj(
+          id: int, name: str(nullable: true), description: str(nullable: true), icon_url: str(nullable: true),
+          tier: str(enum: Achievement::TIERS, nullable: true), points: int(nullable: true),
+          rarity: num(nullable: true),
+          hidden: bool.merge(description: "A hidden Achievement: mask its name and description when posting."),
+          _required: %w[id name description icon_url tier points rarity hidden]
+        ),
+        achievement_set: obj(
+          id: int, title: str(nullable: true), provider: str(enum: UserLinkedAccount::PROVIDERS),
+          platform_label: str(nullable: true), icon_url: str(nullable: true)
+        ),
+        _required: %w[id highlight hardcore unlocked_at user_id display_name url_path achievement achievement_set]
+      ),
+      # Achievements::HighlightOutbox.alerts: the PSN auth alert. Post it while
+      # `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ack.
+      AchievementHubAlerts: obj(
+        psn_auth_expired_at: ts(nullable: true), psn_auth_alerted: bool,
+        _required: %w[psn_auth_expired_at psn_auth_alerted]
       ),
       PublicReminder: obj(
         reminder_id: int, channel_id: str, message: str, due_at: ts,
@@ -881,6 +914,168 @@ module OpenapiSchemas
         runoff: bool,
         warning: str(nullable: true),
         _required: %w[action removed_votes cap runoff]
+      ),
+
+      # ---- Achievement Hub reads (api-09) ----------------------------------
+      # An Achievement Set (AchievementSetResource): a Provider's list for one
+      # title. `external_id` is the RA game id, Steam appid or PSN
+      # npCommunicationId; `game_id` is the optional GameDB link.
+      AchievementSet: obj(
+        id: int, provider: str(enum: UserLinkedAccount::PROVIDERS), external_id: str,
+        title: str(nullable: true), platform_label: str(nullable: true), icon_url: str(nullable: true),
+        game_id: int(nullable: true), achievements_count: int, points_total: int
+      ),
+      # An Achievement definition (AchievementResource). `rarity` is the
+      # Provider's global unlock percentage (0-100); `rarity_hardcore` and
+      # `points` are RA only, `tier` PSN only. `hidden` ones are blurred by www
+      # unless the viewer unlocked them.
+      Achievement: obj(
+        id: int, name: str(nullable: true), description: str(nullable: true),
+        icon_url: str(nullable: true), icon_locked_url: str(nullable: true), hidden: bool,
+        points: int(nullable: true), tier: str(nullable: true, enum: [ *Achievement::TIERS, nil ]),
+        display_order: int(nullable: true), removed_at: ts(nullable: true),
+        rarity: num(nullable: true), rarity_hardcore: num(nullable: true)
+      ),
+      # An Unlock (AchievementUnlockResource) with its Achievement and set.
+      # `viewer_unlocked` is whether the signed-in viewer has the same
+      # Achievement (always false for the service principal).
+      AchievementUnlock: obj(
+        id: int, user_id: str, unlocked_at: ts, hardcore: bool,
+        highlight: str(nullable: true, enum: [ *UserAchievementUnlock::HIGHLIGHTS, nil ]),
+        viewer_unlocked: bool,
+        achievement: ref("Achievement"), achievement_set: ref("AchievementSet"),
+        _required: %w[id user_id unlocked_at hardcore highlight viewer_unlocked achievement achievement_set]
+      ),
+      # A member's cached progress on one set (SetProgressResource). Completion,
+      # Mastery (RA, every Unlock hardcore) and Platinum (PSN) are timestamps.
+      SetProgress: obj(
+        id: int, user_id: str, achievement_set_id: int, earned_count: int, hardcore_earned_count: int,
+        total_count: int, points_earned: int, completed_at: ts(nullable: true), mastered_at: ts(nullable: true),
+        platinum_at: ts(nullable: true), last_unlocked_at: ts(nullable: true), playtime_minutes: int(nullable: true)
+      ),
+      # A progress-grid card (AchievementSetProgressResource): SetProgress plus
+      # the set and its Provider.
+      AchievementSetProgress: extends(
+        "SetProgress",
+        provider: str(enum: UserLinkedAccount::PROVIDERS), achievement_set: ref("AchievementSet"),
+        required: %w[provider achievement_set]
+      ),
+      # Hub totals for one Provider, or overall (`totals`, which has no
+      # `provider`). Read from the cached progress rows.
+      AchievementTotals: obj(
+        unlocks: int, completions: int, masteries: int, platinums: int, points: int,
+        _description: "Unlocks, Completions, Masteries, Platinums and RA points earned."
+      ),
+      AchievementProviderTotals: extends(
+        "AchievementTotals", provider: str(enum: UserLinkedAccount::PROVIDERS), required: %w[provider]
+      ),
+      # A Linked Account as its owner sees it (LinkedAccountResource,
+      # users/:user_id/linked_accounts): the Provider identity and sync state.
+      LinkedAccount: obj(
+        id: int, user_id: str,
+        provider: str(enum: UserLinkedAccount::PROVIDERS),
+        external_id: str(description: "The Provider's stable id: RA ULID, SteamID64 or PSN accountId."),
+        display_name: str(nullable: true, description: "The member's name on the Provider, as resolved when linked."),
+        sync_status: str(enum: UserLinkedAccount::SYNC_STATUSES,
+          description: "pending until the first sync finishes; private/not_found stop syncing until Retry; " \
+                       "error is transient (the next Sync Window tries again)."),
+        sync_mode: str(enum: UserLinkedAccount::SYNC_MODES,
+          description: "backfill until the first full import finishes, then incremental."),
+        sync_error: str(nullable: true, description: "The Provider's message for the last failure."),
+        last_synced_at: ts(nullable: true), backfilled_at: ts(nullable: true),
+        sync_requested_at: ts(nullable: true).merge(description: "The last Sync now."),
+        sync_available_at: ts.merge(description: "When Sync now is next allowed: now, or the end of the 15-minute cooldown."),
+        created_at: ts
+      ),
+      # 422 from the Linked Account writes. `error` is the machine reason.
+      LinkedAccountError: obj(
+        error: str(enum: %w[provider_already_linked identity_claimed not_found private invalid_provider
+          retry_not_allowed retry_required]),
+        message: str,
+        _required: %w[error message],
+        _description: "provider_already_linked: the member already has a Linked Account on this Provider. " \
+                      "identity_claimed: another member linked this Provider identity. " \
+                      "not_found / private: the Provider can't find or can't see the account. " \
+                      "invalid_provider: unknown Provider. retry_not_allowed: Retry only from " \
+                      "private/not_found/error. retry_required: Sync now on a private/not_found account."
+      ),
+      # 429 from Sync now inside the cooldown.
+      SyncCooldownError: obj(
+        error: str(enum: %w[sync_cooldown]), message: str, sync_available_at: ts,
+        _required: %w[error message sync_available_at]
+      ),
+      # A Linked Account's public face: Provider and display name only.
+      LinkedAccountSummary: obj(
+        provider: str(enum: UserLinkedAccount::PROVIDERS), display_name: str(nullable: true)
+      ),
+      # users/:user_id/achievements/summary.
+      MemberAchievementSummary: obj(
+        user: ref("UserSummary"), totals: ref("AchievementTotals"),
+        providers: array_of("AchievementProviderTotals"),
+        linked_accounts: array_of("LinkedAccountSummary"),
+        latest_unlocks: array_of("AchievementUnlock"),
+        rarest_unlocks: array_of("AchievementUnlock"),
+        _required: %w[user totals providers linked_accounts latest_unlocks rarest_unlocks],
+        _description: "One `providers` row per Linked Account, zeros until its first sync. " \
+                      "`latest_unlocks` holds at most 5, newest first. `rarest_unlocks` holds at most 4, " \
+                      "by the Achievement's `rarity` ascending, those with no Rarity last."
+      ),
+      # An Achievement on the set page (SetAchievementResource): the definition
+      # plus the subject member's Unlock state (null/false when locked or when
+      # no `user_id` was given) and the viewer's.
+      SetAchievement: extends(
+        "Achievement",
+        unlocked_at: ts(nullable: true), hardcore: bool, viewer_unlocked: bool,
+        required: %w[unlocked_at hardcore viewer_unlocked]
+      ),
+      # achievement_sets/:id.
+      AchievementSetDetail: extends(
+        "AchievementSet",
+        game: ref("GameSummary", nullable: true),
+        user: ref("UserSummary", nullable: true),
+        progress: ref("SetProgress", nullable: true),
+        achievements: array_of("SetAchievement"),
+        removed_achievements: array_of("SetAchievement"),
+        required: %w[game user progress achievements removed_achievements]
+      ),
+      # A `latest` feed card: one member's Unlocks in one set on one UTC day.
+      AchievementFeedGroup: obj(
+        kind: str(enum: %w[group]), user: ref("UserSummary"), achievement_set: ref("AchievementSet"),
+        day: str(format: "date", example: "2026-10-31"), count: int, latest_unlocked_at: ts,
+        unlocks: array_of("AchievementUnlock"),
+        _required: %w[kind user achievement_set day count latest_unlocked_at unlocks],
+        _description: "`count` is every Unlock of the card; `unlocks` holds at most 8, newest first."
+      ),
+      # A `highlights` feed card: one Highlight Unlock and its member.
+      AchievementFeedHighlight: extends(
+        "AchievementUnlock",
+        kind: str(enum: %w[highlight]), user: ref("UserSummary"),
+        unlocked_at: ts.merge(description: "The Highlight's date: a Mastery's hardcore time, otherwise the Unlock time."),
+        required: %w[kind user]
+      ),
+      # A member who completed a set on the game showcase.
+      AchievementSetCompletion: obj(user: ref("UserSummary"), completed_at: ts, _required: %w[user completed_at]),
+      # An Achievement on the game showcase (GameSetAchievementResource).
+      GameSetAchievement: obj(
+        id: int, name: str(nullable: true),
+        description: str(nullable: true, description: "Kept for hidden Achievements; www blurs it."),
+        icon_url: str(nullable: true), icon_locked_url: str(nullable: true), hidden: bool,
+        tier: str(nullable: true, enum: [ *Achievement::TIERS, nil ]), points: int(nullable: true),
+        rarity: num(nullable: true),
+        holders: { type: :array, items: { type: :string },
+                   description: "user_ids of the active members who unlocked it, earliest Unlock first." },
+        viewer_unlocked: bool,
+        _required: %w[id name description icon_url icon_locked_url hidden tier points rarity holders viewer_unlocked]
+      ),
+      # games/:id/achievement_sets (GameAchievementSetResource).
+      GameAchievementSet: extends(
+        "AchievementSet",
+        completions: array_of("AchievementSetCompletion"),
+        viewer_progress: ref("SetProgress", nullable: true),
+        achievements: array_of("GameSetAchievement").merge(
+          description: "The set's non-removed Achievements in display order."
+        ),
+        required: %w[completions viewer_progress achievements]
       ),
 
       # ---- aggregate game-profile sub-shapes (#115) ------------------------

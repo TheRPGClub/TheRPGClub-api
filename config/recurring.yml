@@ -20,3 +20,10 @@ production:
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
+  # Achievement Hub Sync Windows (ADR 0003): marks the Linked Accounts due
+  # and starts the per-Provider ticks, which stop once everything is drained
+  # so Neon can idle until the next window.
+  achievement_sync_window:
+    class: Achievements::SyncWindowJob
+    queue: default
+    schedule: "0 0,6,12,18 * * *"
