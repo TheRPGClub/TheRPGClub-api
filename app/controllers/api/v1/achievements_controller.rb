@@ -57,6 +57,26 @@ module Api
         end
         render json: { data: data, meta: pagy_meta(pagy) }
       end
+
+      # The Achievement Sets linked to a GameDB game, each with the active
+      # members who completed it and the viewer's own progress. Unpaginated: a
+      # game has a handful of sets.
+      def game_sets
+        game = GamedbGame.without_images.find(params[:id])
+        sets = game.achievement_sets.order(Arel.sql("provider ASC, LOWER(title) ASC NULLS LAST, id ASC")).to_a
+        completed = Achievements::Reads.progress.where(achievement_set_id: sets.map(&:id)).where.not(completed_at: nil)
+          .order(:completed_at, :id).to_a
+        viewer_progress = Achievements::Reads.progress.where(achievement_set_id: sets.map(&:id), user_id: viewer_id)
+          .index_by(&:achievement_set_id)
+
+        render json: {
+          data: GameAchievementSetResource.new(sets, params: {
+            completions: completed.group_by(&:achievement_set_id),
+            users: RpgClubUser.without_images.where(user_id: completed.map(&:user_id).uniq).index_by(&:user_id),
+            viewer_progress: viewer_progress
+          }).serializable_hash
+        }
+      end
     end
   end
 end
