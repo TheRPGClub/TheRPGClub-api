@@ -7,7 +7,7 @@ module Achievements
   # so the bot can't double-post across restarts.
   module HighlightOutbox
     CURSOR_KEY = "bot_highlight_cursor"
-    PSN_AUTH_EXPIRED_KEY = "psn_auth_expired_at"
+    PSN_AUTH_EXPIRED_KEY = Psn::Client::AUTH_EXPIRED_KEY
     # The `psn_auth_expired_at` value the bot last posted. A new expiry
     # timestamp differs from it, which re-arms the alert.
     PSN_AUTH_ALERTED_KEY = "psn_auth_alerted_for"
