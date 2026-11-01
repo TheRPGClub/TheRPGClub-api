@@ -316,22 +316,19 @@ RSpec.describe Achievements::SyncSet do
     let!(:row) { pending_row(account, set) }
     let!(:other_row) { pending_row(account, create(:achievement_set, provider: "steam")) }
 
-    it "stops a private account and clears every pending marker" do
-      allow(client).to receive(:set_with_progress).and_raise(Achievements::Providers::Private, "private")
+    # A title-level 404/403 (delisted PS title, wrong npServiceName) says
+    # nothing about the account: the listing owns account-level Private /
+    # NotFound.
+    [ Achievements::Providers::NotFound, Achievements::Providers::Private ].each do |error|
+      it "skips only this set on #{error.name.demodulize}, leaving the account and its other sets" do
+        allow(client).to receive(:set_with_progress).and_raise(error, "title gone")
 
-      described_class.call(row)
+        described_class.call(row)
 
-      expect(account.reload).to have_attributes(sync_status: "private", sync_error: "private", sync_due_at: nil)
-      expect([ row.reload.sync_pending_at, other_row.reload.sync_pending_at ]).to eq([ nil, nil ])
-    end
-
-    it "stops an account the Provider no longer knows" do
-      allow(client).to receive(:set_with_progress).and_raise(Achievements::Providers::NotFound, "gone")
-
-      described_class.call(row)
-
-      expect(account.reload.sync_status).to eq("not_found")
-      expect(other_row.reload.sync_pending_at).to be_nil
+        expect(account.reload).to have_attributes(sync_status: "ok", sync_error: nil)
+        expect(row.reload.sync_pending_at).to be_nil
+        expect(other_row.reload.sync_pending_at).to eq(listed_at)
+      end
     end
 
     [ Achievements::Providers::RateLimited.new(retry_after: 30), Achievements::Providers::AuthExpired.new("npsso") ]
@@ -345,14 +342,33 @@ RSpec.describe Achievements::SyncSet do
       end
     end
 
-    it "marks any other failure as an error and clears only this set's marker" do
+    it "skips this set on any other failure, leaving the account and its other sets" do
       allow(client).to receive(:set_with_progress).and_raise(RuntimeError, "boom")
 
       described_class.call(row)
 
-      expect(account.reload).to have_attributes(sync_status: "error", sync_error: "boom")
+      expect(account.reload).to have_attributes(sync_status: "ok", sync_error: nil)
       expect(row.reload.sync_pending_at).to be_nil
       expect(other_row.reload.sync_pending_at).to eq(listed_at)
+    end
+
+    it "still finishes the account when its last pending set fails" do
+      other_row.update!(sync_pending_at: nil)
+      allow(client).to receive(:set_with_progress).and_raise(Achievements::Providers::NotFound, "title gone")
+
+      described_class.call(row)
+
+      expect(account.reload).to have_attributes(sync_status: "ok", last_synced_at: listed_at)
+    end
+
+    it "finishes an account a failed listing left in error once its sets drain" do
+      account.update!(sync_status: "error", sync_error: "Steam API returned HTTP 500.", last_synced_at: now - 1.day)
+      other_row.update!(sync_pending_at: nil)
+      allow(client).to receive(:set_with_progress).and_return(nil)
+
+      described_class.call(row)
+
+      expect(account.reload).to have_attributes(sync_status: "ok", sync_error: nil, last_synced_at: listed_at)
     end
   end
 end

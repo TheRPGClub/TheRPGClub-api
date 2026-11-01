@@ -14,7 +14,8 @@ module Achievements
   # softcore -> hardcore upgrade is never announced again. A Provider set that
   # is missing (nil) or empty counts as no set: nothing is written but the
   # marker. Title, platform and icon come from the listing; a definition only
-  # fills them when blank.
+  # fills them when blank. A failing set is skipped without touching the
+  # account (see #with_set_errors).
   class SyncSet
     include SyncUnit
 
@@ -37,18 +38,33 @@ module Achievements
 
     def call
       cursor = @row.sync_pending_at || @now
-      with_sync_errors(@account) do
+      with_set_errors do
         definition = fetch_definition
         if definition.nil? || definition.achievements.empty?
           @row.update!(sync_pending_at: nil)
         else
           import(definition)
         end
-        finish_if_drained(@account, cursor: cursor, now: @now)
       end
+      finish_if_drained(@account, cursor: cursor, now: @now)
     end
 
     private
+
+    # A failure here belongs to one title (a delisted PS title's 404, a 403 on
+    # its definitions, one malformed Steam schema), never to the account: the
+    # set is skipped and logged, and the account keeps syncing. The listing
+    # owns account-level Private / NotFound. The set is retried when it is
+    # next listed.
+    def with_set_errors
+      yield
+    rescue *PASSED_THROUGH
+      raise
+    rescue StandardError => error
+      Rails.logger.warn("[Achievements::SyncSet] skipped set #{@set.id} (#{@set.provider} #{@set.external_id}) " \
+        "for linked account #{@account.id}: #{error.class}: #{error.message}")
+      @row.update!(sync_pending_at: nil)
+    end
 
     def fetch_definition
       client = Providers.client_for(@account.provider)
@@ -160,10 +176,6 @@ module Achievements
     # Backfill) within 48h of the Unlock.
     def announceable?(unlock)
       @account.incremental? && unlock.unlocked_at >= @now - ANNOUNCE_WITHIN
-    end
-
-    def clear_unit_marker
-      @row.update!(sync_pending_at: nil)
     end
   end
 end
