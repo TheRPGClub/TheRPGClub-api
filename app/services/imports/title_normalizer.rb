@@ -26,6 +26,23 @@ module Imports
       ->(value) { value.gsub(/[^\p{L}\p{N}'-]+/, " ") }
     ].freeze
 
+    # Trailing edition suffixes, ported from xergasa's Game.normalize_title.
+    # Each must follow a separator, so "Shadow" never loses its "hd".
+    EDITION_SUFFIXES = [
+      "game of the year edition", "game of the year",
+      "complete edition", "complete collection",
+      "definitive edition", "deluxe edition", "ultimate edition",
+      "gold edition", "special edition", "standard edition",
+      "legendary edition", "anniversary edition", "enhanced edition",
+      "goty edition", "goty",
+      "remastered", "remaster",
+      "director's cut", "directors cut",
+      "hd"
+    ].sort_by { |term| -term.length }.freeze
+    EDITION_SUFFIX = /[\s:_()\[\]\-]+(?:#{EDITION_SUFFIXES.map { |term| Regexp.escape(term) }.join("|")})[\s)\]]*\z/i
+    # Marks STEPS leaves in place (xergasa also drops ℠ and ℗).
+    EXTRA_MARKS = /[℠℗]/
+
     module_function
 
     # Applies the first `step_count` STEPS (all by default) to the trimmed
@@ -52,6 +69,21 @@ module Imports
     # (the bot's auto-match gate for a single candidate).
     def exact_match?(source_title, gamedb_title)
       normalize(source_title).downcase == normalize(gamedb_title).downcase
+    end
+
+    # The title without edition noise, for matching a Provider title against
+    # GameDB: smart apostrophes folded, ™ ® © ℠ ℗ dropped, and trailing
+    # edition suffixes stripped repeatedly, but never down to "" (a title that
+    # is only an edition word keeps itself). Case is preserved.
+    def without_edition(title)
+      value = squish(title.to_s.tr("‘’‛`´", "'").gsub(MARKS, " ").gsub(EXTRA_MARKS, " "))
+      loop do
+        stripped = value.sub(EDITION_SUFFIX, "").strip
+        break if stripped == value || stripped.empty?
+
+        value = stripped
+      end
+      value
     end
 
     def squish(value)

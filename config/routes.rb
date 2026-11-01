@@ -55,9 +55,10 @@ Rails.application.routes.draw do
         end
       end
 
-      # Achievement Hub reads (api-09): the community feed and the set page.
+      # Achievement Hub: the community feed (api-09), the set page (api-09)
+      # and the admin-only manual fix for a set's GameDB link (api-08).
       get "achievements/feed", to: "achievements#feed"
-      resources :achievement_sets, only: %i[show]
+      resources :achievement_sets, only: %i[show update]
 
       resources :platforms, only: %i[index show create]
       resources :regions, only: %i[index show create]
@@ -325,6 +326,10 @@ Rails.application.routes.draw do
       end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
+      # The bot's Achievement Hub Highlights and alerts (service-only).
+      get  "achievements/highlights/pending", to: "achievement_highlights#pending"
+      post "achievements/highlights/ack",     to: "achievement_highlights#ack"
+      post "achievements/alerts/ack",         to: "achievement_highlights#ack_alert"
       # Bot presence history (service-only, #94). The Discord bot records each
       # `/setpresence` change and reads back the latest/recent activity as it
       # migrates `BotPresenceHistory` off direct SQL (RPGClub_GameDB#795). Plain

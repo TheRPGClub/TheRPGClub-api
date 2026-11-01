@@ -658,6 +658,13 @@ module OpenapiSchemas
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
         by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
       ),
+      # AchievementSetLinkResource: an Achievement Set and its GameDB link
+      # (admin PATCH /achievement_sets/:id).
+      AchievementSetLink: obj(
+        id: int, provider: str(enum: %w[retroachievements steam psn]), external_id: str,
+        title: str(nullable: true), platform_label: str(nullable: true), icon_url: str(nullable: true),
+        game_id: int(nullable: true)
+      ),
       # SteamAppGamedbMapResource: every RpgClubSteamAppGamedbMap column
       # (#166) — the cached Steam app -> GameDB game mapping.
       SteamAppGamedbMap: obj(
@@ -719,6 +726,29 @@ module OpenapiSchemas
         id: int, round_number: int, kind: str(enum: VotingEvent::KINDS), payload: json(nullable: false),
         available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
         delivered_at: ts(nullable: true), attempts: int
+      ),
+      # AchievementHighlightResource: an announceable Unlock as the bot posts
+      # it, with the www set page path.
+      AchievementHighlight: obj(
+        id: int, highlight: str(enum: UserAchievementUnlock::HIGHLIGHTS), hardcore: bool, unlocked_at: ts,
+        user_id: str, display_name: str,
+        url_path: str.merge(description: "The www set page path: /members/{user_id}/achievements/{set_id}."),
+        achievement: obj(
+          id: int, name: str(nullable: true), description: str(nullable: true), icon_url: str(nullable: true),
+          tier: str(enum: Achievement::TIERS, nullable: true), points: int(nullable: true),
+          rarity: num(nullable: true)
+        ),
+        achievement_set: obj(
+          id: int, title: str(nullable: true), provider: str(enum: UserLinkedAccount::PROVIDERS),
+          platform_label: str(nullable: true), icon_url: str(nullable: true)
+        ),
+        _required: %w[id highlight hardcore unlocked_at user_id display_name url_path achievement achievement_set]
+      ),
+      # Achievements::HighlightOutbox.alerts: the PSN auth alert. Post it while
+      # `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ack.
+      AchievementHubAlerts: obj(
+        psn_auth_expired_at: ts(nullable: true), psn_auth_alerted: bool,
+        _required: %w[psn_auth_expired_at psn_auth_alerted]
       ),
       PublicReminder: obj(
         reminder_id: int, channel_id: str, message: str, due_at: ts,
