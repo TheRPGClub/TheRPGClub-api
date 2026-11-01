@@ -62,7 +62,68 @@ module Retroachievements
       since ? recently_played_sets(ulid, since) : completion_progress_sets(ulid)
     end
 
+    # One game's Achievement Set and the member's progress, from a single
+    # GetGameInfoAndUserProgress call, as an Achievements::Providers::SetDefinition.
+    #
+    # Rarity is the share of the game's players (NumDistinctPlayers) holding
+    # the Achievement, as a percentage rounded to 2 decimals: NumAwarded for
+    # `rarity`, NumAwardedHardcore for `rarity_hardcore`. Both use the same
+    # denominator, which is what the RA site shows. Each Unlock keeps both
+    # dates: a hardcore Unlock carries hardcore_unlocked_at, a softcore one
+    # only unlocked_at. Playtime is reported in seconds and floored to minutes.
+    def set_with_progress(ulid, game_id)
+      data = get("API_GetGameInfoAndUserProgress.php", g: game_id, u: ulid, a: 1)
+      raise Error, "RetroAchievements returned no game #{game_id}." unless data.is_a?(Hash)
+
+      # Achievements is an object keyed by id, not an array ([] when empty).
+      raw_achievements = data["Achievements"].is_a?(Hash) ? data["Achievements"].values : []
+      players = data["NumDistinctPlayers"].to_i
+
+      Achievements::Providers::SetDefinition.new(
+        external_id: (data["ID"] || game_id).to_s,
+        title: data["Title"],
+        platform_label: data["ConsoleName"],
+        icon_url: media_url(data["ImageIcon"]),
+        achievements: raw_achievements.map { |raw| achievement_definition(raw, players) },
+        unlocks: raw_achievements.filter_map { |raw| provider_unlock(raw) },
+        playtime_minutes: data["UserTotalPlaytime"]&.then { |seconds| seconds.to_i / 60 }
+      )
+    end
+
     private
+
+    def achievement_definition(raw, players)
+      badge = raw["BadgeName"].presence
+      Achievements::Providers::AchievementDefinition.new(
+        external_id: raw["ID"].to_s,
+        name: raw["Title"],
+        description: raw["Description"],
+        icon_url: badge && "#{MEDIA_BASE_URL}/Badge/#{badge}.png",
+        # UNVERIFIED: RA serves a greyed `_lock.png` variant of every badge.
+        icon_locked_url: badge && "#{MEDIA_BASE_URL}/Badge/#{badge}_lock.png",
+        hidden: false,
+        points: raw["Points"]&.to_i,
+        display_order: raw["DisplayOrder"]&.to_i,
+        rarity: rarity(raw["NumAwarded"], players),
+        rarity_hardcore: rarity(raw["NumAwardedHardcore"], players)
+      )
+    end
+
+    def provider_unlock(raw)
+      hardcore_at = parse_time(raw["DateEarnedHardcore"])
+      unlocked_at = parse_time(raw["DateEarned"]) || hardcore_at
+      return unless unlocked_at
+
+      Achievements::Providers::ProviderUnlock.new(
+        achievement_external_id: raw["ID"].to_s, unlocked_at: unlocked_at, hardcore_unlocked_at: hardcore_at
+      )
+    end
+
+    def rarity(awarded, players)
+      return unless players.positive?
+
+      [ BigDecimal(awarded.to_i) * 100 / players, BigDecimal(100) ].min.round(2)
+    end
 
     def completion_progress_sets(ulid)
       sets = []

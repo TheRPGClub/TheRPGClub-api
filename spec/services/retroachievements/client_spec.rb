@@ -162,6 +162,105 @@ RSpec.describe Retroachievements::Client do
     end
   end
 
+  describe "#set_with_progress" do
+    def achievement(id, order:, awarded:, awarded_hardcore:, **dates)
+      {
+        "ID" => id, "Title" => "Cheevo #{id}", "Description" => "Do thing #{id}", "Points" => 10,
+        "TrueRatio" => 25, "BadgeName" => "1#{id}", "DisplayOrder" => order, "type" => nil,
+        "NumAwarded" => awarded, "NumAwardedHardcore" => awarded_hardcore
+      }.merge(dates.transform_keys(&:to_s))
+    end
+
+    let(:game) do
+      {
+        "ID" => 14402, "Title" => "Dragon Quest III", "ConsoleID" => 7, "ConsoleName" => "NES/Famicom",
+        "ImageIcon" => "/Images/067895.png", "NumDistinctPlayers" => 200,
+        "NumDistinctPlayersCasual" => 120, "NumDistinctPlayersHardcore" => 80,
+        "UserTotalPlaytime" => 7_290,
+        # The RA quirk: Achievements is an object keyed by id, not an array.
+        "Achievements" => {
+          "101" => achievement(101, order: 2, awarded: 150, awarded_hardcore: 60,
+                                    DateEarned: "2024-06-02 20:00:00", DateEarnedHardcore: "2024-06-02 20:00:00"),
+          "102" => achievement(102, order: 1, awarded: 9, awarded_hardcore: 1,
+                                    DateEarned: "2024-06-03 08:30:00"),
+          "103" => achievement(103, order: 3, awarded: 0, awarded_hardcore: 0)
+        }
+      }
+    end
+
+    it "normalises definitions, Rarity, Unlocks with both dates, and playtime" do
+      stubs.get("/API/API_GetGameInfoAndUserProgress.php") do |env|
+        expect(env.params).to include("g" => "14402", "u" => ulid, "a" => "1", "y" => "test-key")
+        json(game)
+      end
+
+      set = client.set_with_progress(ulid, 14402)
+
+      expect(set).to have_attributes(
+        external_id: "14402", title: "Dragon Quest III", platform_label: "NES/Famicom",
+        icon_url: "https://media.retroachievements.org/Images/067895.png",
+        playtime_minutes: 121, np_service_name: nil
+      )
+      expect(set.achievements.first).to eq(
+        Achievements::Providers::AchievementDefinition.new(
+          external_id: "101", name: "Cheevo 101", description: "Do thing 101",
+          icon_url: "https://media.retroachievements.org/Badge/1101.png",
+          icon_locked_url: "https://media.retroachievements.org/Badge/1101_lock.png",
+          hidden: false, points: 10, tier: nil, display_order: 2,
+          rarity: BigDecimal("75.0"), rarity_hardcore: BigDecimal("30.0")
+        )
+      )
+      expect(set.achievements.map { |a| [ a.external_id, a.rarity, a.rarity_hardcore ] }).to eq([
+        [ "101", BigDecimal("75"), BigDecimal("30") ],
+        [ "102", BigDecimal("4.5"), BigDecimal("0.5") ],
+        [ "103", BigDecimal("0"), BigDecimal("0") ]
+      ])
+      expect(set.unlocks).to contain_exactly(
+        Achievements::Providers::ProviderUnlock.new(
+          achievement_external_id: "101",
+          unlocked_at: Time.utc(2024, 6, 2, 20), hardcore_unlocked_at: Time.utc(2024, 6, 2, 20)
+        ),
+        Achievements::Providers::ProviderUnlock.new(
+          achievement_external_id: "102", unlocked_at: Time.utc(2024, 6, 3, 8, 30), hardcore_unlocked_at: nil
+        )
+      )
+      expect(set.unlocks.find { |u| u.achievement_external_id == "101" }).to be_hardcore
+    end
+
+    it "rounds Rarity to two decimals and leaves it nil when the set has no players" do
+      game["NumDistinctPlayers"] = 3
+      game["Achievements"]["102"]["NumAwarded"] = 1
+      stubs.get("/API/API_GetGameInfoAndUserProgress.php") { json(game) }
+      expect(client.set_with_progress(ulid, 14402).achievements.find { |a| a.external_id == "102" }.rarity)
+        .to eq(BigDecimal("33.33"))
+
+      game["NumDistinctPlayers"] = 0
+      expect(client.set_with_progress(ulid, 14402).achievements.map(&:rarity)).to all(be_nil)
+    end
+
+    it "uses the hardcore date as the Unlock date when RA only reports a hardcore one" do
+      game["Achievements"] = { "101" => achievement(101, order: 1, awarded: 1, awarded_hardcore: 1,
+                                                         DateEarnedHardcore: "2024-06-02 20:00:00") }
+      stubs.get("/API/API_GetGameInfoAndUserProgress.php") { json(game) }
+
+      unlock = client.set_with_progress(ulid, 14402).unlocks.sole
+      expect(unlock).to have_attributes(unlocked_at: Time.utc(2024, 6, 2, 20), hardcore_unlocked_at: Time.utc(2024, 6, 2, 20))
+    end
+
+    it "returns an empty set when RA lists no Achievements (an empty array)" do
+      stubs.get("/API/API_GetGameInfoAndUserProgress.php") { json(game.merge("Achievements" => [], "UserTotalPlaytime" => nil)) }
+
+      set = client.set_with_progress(ulid, 14402)
+      expect(set).to have_attributes(achievements: [], unlocks: [], playtime_minutes: nil)
+    end
+
+    it "raises NotFound for an unknown game" do
+      stubs.get("/API/API_GetGameInfoAndUserProgress.php") { json({}, status: 404) }
+
+      expect { client.set_with_progress(ulid, 999_999) }.to raise_error(Achievements::Providers::NotFound)
+    end
+  end
+
   describe "upstream failures" do
     let(:profile) { { "User" => "Member", "ULID" => ulid, "UserPic" => "/UserPic/Member.png" } }
 
