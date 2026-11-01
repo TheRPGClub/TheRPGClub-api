@@ -45,6 +45,15 @@ RSpec.describe Achievements::ListAccount do
         user_id: account.user_id)
     end
 
+    it "enqueues the GameDB link for each newly created set, after commit" do
+      create(:achievement_set, provider: "steam", external_id: "20")
+
+      expect { described_class.call(account) }
+        .to have_enqueued_job(Achievements::LinkSetToGameJob).exactly(:once)
+      expect(Achievements::LinkSetToGameJob).to have_been_enqueued
+        .with(AchievementSet.find_by!(provider: "steam", external_id: "10"))
+    end
+
     it "clears sync_due_at but leaves the account pending until its sets are imported" do
       described_class.call(account)
 
