@@ -230,4 +230,51 @@ RSpec.describe Psn::Client do
       expect(sleeps).to eq([ 0.5 ])
     end
   end
+
+  describe "#resolve_account" do
+    before do
+      stub_authorize
+      stub_code_exchange
+    end
+
+    def search_result(online_id, id)
+      { socialMetadata: { accountId: id, onlineId: online_id, country: "PT",
+                          avatarUrl: "https://psn-rsc.prod.dl.playstation.net/#{id}.png" } }
+    end
+
+    def stub_search(*results)
+      stub_request(:post, described_class::SEARCH_URL)
+        .with(body: hash_including("searchTerm" => "Xergg", "domainRequests" => [ { "domain" => "SocialAllAccounts" } ]))
+        .to_return(json({ domainResponses: [ { domain: "SocialAllAccounts", results: results } ] }))
+    end
+
+    it "resolves an online ID to its accountId by exact, case-insensitive search match" do
+      stub_search(search_result("Xergg_2", "111"), search_result("xergg", account_id))
+
+      expect(client.resolve_account("Xergg")).to eq(
+        external_id: account_id,
+        display_name: "xergg",
+        avatar_url: "https://psn-rsc.prod.dl.playstation.net/#{account_id}.png"
+      )
+    end
+
+    it "falls back to the profile endpoint when search has no exact match" do
+      stub_search(search_result("Xergg_2", "111"))
+      stub_request(:get, format(described_class::PROFILE_URL, "Xergg")).with(query: hash_including({}))
+        .to_return(json({ profile: { onlineId: "Xergg", accountId: account_id,
+                                     avatarUrls: [ { size: "l", avatarUrl: "https://example.test/a.png" } ] } }))
+
+      expect(client.resolve_account("Xergg")).to eq(
+        external_id: account_id, display_name: "Xergg", avatar_url: "https://example.test/a.png"
+      )
+    end
+
+    it "raises NotFound for an unknown online ID" do
+      stub_search
+      stub_request(:get, format(described_class::PROFILE_URL, "Xergg")).with(query: hash_including({}))
+        .to_return(json({ error: { code: 2_105_356, message: "User not found" } }, status: 404))
+
+      expect { client.resolve_account("Xergg") }.to raise_error(Achievements::Providers::NotFound)
+    end
+  end
 end

@@ -32,6 +32,7 @@ module Psn
     # UNVERIFIED: legacy profile host, may be retired (research §4 (b)).
     PROFILE_URL = "https://us-prof.np.community.playstation.net/userProfile/v1/users/%s/profile2"
     PROFILE_FIELDS = "npId,onlineId,accountId,avatarUrls"
+    AVATAR_SIZES = %w[s m l xl].freeze
     REDIRECT_URI = "com.scee.psxandroid.scecompcall://redirect"
     OAUTH_CLIENT_ID = "09515159-7237-4370-9b40-3806e67c0891"
     SCOPE = "psn:mobile.v2.core psn:clientapp"
@@ -104,7 +105,43 @@ module Psn
       collected
     end
 
+    # Online ID -> { external_id: accountId, display_name: onlineId,
+    # avatar_url: }. Online IDs can be renamed, so callers store the
+    # accountId. Searches first (an exact, case-insensitive onlineId match),
+    # then falls back to the legacy profile endpoint, which also finds the
+    # club account itself (search never returns the authenticating account).
+    def resolve_account(online_id)
+      online_id = online_id.to_s.strip
+      raise Achievements::Providers::NotFound, "PSN online ID is required" if online_id.empty?
+
+      search_account(online_id) || profile_account(online_id) ||
+        raise(Achievements::Providers::NotFound, "No PSN account with online ID #{online_id}")
+    end
+
     private
+
+    def search_account(online_id)
+      data = api_call(:post, SEARCH_URL, json: {
+        searchTerm: online_id, domainRequests: [ { domain: "SocialAllAccounts" } ]
+      })
+      results = Array(data.dig("domainResponses", 0, "results"))
+      match = results.map { |result| result["socialMetadata"] || {} }
+        .find { |meta| meta["onlineId"].to_s.casecmp?(online_id) && meta["accountId"].present? }
+      return unless match
+
+      { external_id: match["accountId"].to_s, display_name: match["onlineId"], avatar_url: match["avatarUrl"] }
+    end
+
+    def profile_account(online_id)
+      data = api_call(:get, format(PROFILE_URL, escape(online_id)), params: { fields: PROFILE_FIELDS })
+      profile = data["profile"] || {}
+      return if profile["accountId"].blank?
+
+      avatar = Array(profile["avatarUrls"]).max_by { |entry| AVATAR_SIZES.index(entry["size"]) || -1 }
+      { external_id: profile["accountId"].to_s, display_name: profile["onlineId"], avatar_url: avatar&.dig("avatarUrl") }
+    rescue Achievements::Providers::NotFound
+      nil
+    end
 
     def played_set(row)
       Achievements::Providers::PlayedSet.new(
@@ -211,15 +248,20 @@ module Psn
 
     # --- HTTP -------------------------------------------------------------
 
-    # Authenticated GET against the trophy API. Raises Private on an
-    # access-control error (even on HTTP 200), NotFound on 404, RateLimited on
-    # 429 and AuthExpired when a fresh token is still refused.
-    def api_get(path, params = {}, url: "#{API_BASE_URL}#{path}")
-      response = request(:get, url, params: params, headers: { "Authorization" => "Bearer #{access_token}" })
+    # Authenticated call to a PSN API. Raises Private on an access-control
+    # error (even on HTTP 200), NotFound on 404, RateLimited on 429 and
+    # AuthExpired when a fresh token is still refused.
+    def api_get(path, params = {})
+      api_call(:get, "#{API_BASE_URL}#{path}", params: params)
+    end
+
+    def api_call(method, url, params: {}, json: nil)
+      call = -> { request(method, url, params: params, json: json, headers: { "Authorization" => "Bearer #{access_token}" }) }
+      response = call.call
       if response.status == 401
         # A cached token Sony has revoked: renew once before giving up.
         @cache.delete(ACCESS_TOKEN_CACHE_KEY)
-        response = request(:get, url, params: params, headers: { "Authorization" => "Bearer #{access_token}" })
+        response = call.call
         auth_expired!("PSN refused a fresh access token (HTTP 401)") if response.status == 401
       end
 
