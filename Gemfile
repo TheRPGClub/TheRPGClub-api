@@ -75,11 +75,6 @@ group :development, :test do
   gem "dotenv-rails", "~> 3.2"
 end
 
-group :test do
-  # Stubs Provider HTTP calls; specs never reach the network
-  gem "webmock", "~> 3.25"
-end
-
 gem "warden", "~> 1.2"
 gem "rack-cors", "~> 3.0"
 gem "faraday", "~> 2.14"
