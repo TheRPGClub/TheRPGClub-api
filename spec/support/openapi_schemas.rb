@@ -736,7 +736,9 @@ module OpenapiSchemas
         achievement: obj(
           id: int, name: str(nullable: true), description: str(nullable: true), icon_url: str(nullable: true),
           tier: str(enum: Achievement::TIERS, nullable: true), points: int(nullable: true),
-          rarity: num(nullable: true)
+          rarity: num(nullable: true),
+          hidden: bool.merge(description: "A hidden Achievement: mask its name and description when posting."),
+          _required: %w[id name description icon_url tier points rarity hidden]
         ),
         achievement_set: obj(
           id: int, title: str(nullable: true), provider: str(enum: UserLinkedAccount::PROVIDERS),

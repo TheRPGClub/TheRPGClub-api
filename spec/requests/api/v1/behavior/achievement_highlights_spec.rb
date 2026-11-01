@@ -31,9 +31,18 @@ RSpec.describe "api/v1/achievements highlights behavior", type: :request do
         "user_id" => member.user_id, "display_name" => "Sir Grind",
         "url_path" => "/members/#{member.user_id}/achievements/#{set.id}",
         "achievement" => include("name" => "Elden Lord", "icon_url" => "https://img/plat.png",
-                                 "tier" => "platinum", "rarity" => 12.3),
+                                 "tier" => "platinum", "rarity" => 12.3, "hidden" => false),
         "achievement_set" => include("id" => set.id, "title" => "Elden Ring", "provider" => "psn")
       )
+    end
+
+    it "flags a hidden Achievement, so the bot can mask its name and description" do
+      hidden = highlight
+      hidden.achievement.update!(hidden: true)
+
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+
+      expect(json.fetch("data").sole.dig("achievement", "hidden")).to be(true)
     end
 
     it "is forbidden to admins and members" do
