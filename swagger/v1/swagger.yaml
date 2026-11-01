@@ -2453,6 +2453,8 @@ components:
         unlocked_at:
           type: string
           format: date-time
+          description: 'The Highlight''s date: a Mastery''s hardcore time, otherwise
+            the Unlock time.'
         user_id:
           type: string
         display_name:
@@ -3642,6 +3644,11 @@ components:
             - highlight
           user:
             "$ref": "#/components/schemas/UserSummary"
+          unlocked_at:
+            type: string
+            format: date-time
+            description: 'The Highlight''s date: a Mastery''s hardcore time, otherwise
+              the Unlock time.'
         required:
         - kind
         - user
