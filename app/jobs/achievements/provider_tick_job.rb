@@ -8,6 +8,8 @@ module Achievements
   # the chain stops, so Neon can idle. The chain is also the global
   # per-Provider pacing: at most one call stream per Provider.
   class ProviderTickJob < ApplicationJob
+    include CpuLogging
+
     # Seconds between two units of one Provider. PSN is one shared budget of
     # about 300 requests per 15 minutes across every member (research §4).
     SPACING = {
