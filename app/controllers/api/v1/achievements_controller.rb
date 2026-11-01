@@ -38,6 +38,25 @@ module Api
           )
         }
       end
+
+      # The community feed: `view=latest` (default) groups Unlocks into cards
+      # per member + set + UTC day; `view=highlights` is one card per Highlight
+      # Unlock. Both filter by `provider` and page through `page`/`per`.
+      def feed
+        query = Achievements::Feed.new(provider: enum_param(:provider, Achievements::Reads::PROVIDERS))
+        if enum_param(:view, Achievements::Feed::VIEWS) == "highlights"
+          pagy, unlocks = pagy(query.highlights, **pagy_options)
+          unlocks = unlocks.to_a
+          data = AchievementFeedHighlightResource.new(unlocks, params: viewer_params(unlocks).merge(
+            users: query.users_by_id(unlocks.map(&:user_id))
+          )).serializable_hash
+        else
+          pagy, rows = pagy(query.groups, count: query.group_count, **pagy_options)
+          cards = query.cards(rows.to_a)
+          data = AchievementFeedGroupResource.new(cards, params: viewer_params(cards.flat_map(&:unlocks))).serializable_hash
+        end
+        render json: { data: data, meta: pagy_meta(pagy) }
+      end
     end
   end
 end
