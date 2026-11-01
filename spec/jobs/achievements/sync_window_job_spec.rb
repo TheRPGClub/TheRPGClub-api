@@ -29,6 +29,15 @@ RSpec.describe Achievements::SyncWindowJob do
     expect([ ok, pending, errored ].map { |linked| marked?(linked) }).to all(be(true))
   end
 
+  it "resumes a Backfill whose listing failed (error, never backfilled), keeping it a Backfill" do
+    errored = account(sync_status: "error", sync_error: "HTTP 500", sync_mode: "backfill", backfilled_at: nil,
+      last_synced_at: nil)
+
+    described_class.perform_now
+
+    expect(errored.reload).to have_attributes(sync_due_at: now, sync_mode: "backfill")
+  end
+
   it "skips accounts waiting for Retry, never backfilled, already due or of departed members" do
     skipped = [
       account(sync_status: "private"),

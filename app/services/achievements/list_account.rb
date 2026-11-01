@@ -29,23 +29,35 @@ module Achievements
         since = @account.incremental? ? @account.last_synced_at : nil
         played_sets = Providers.client_for(@account.provider).played_sets(@account.external_id, since: since)
 
-        UserLinkedAccount.transaction do
-          queue_sets(played_sets.uniq(&:external_id))
+        new_set_ids = UserLinkedAccount.transaction do
           @account.update!(sync_due_at: nil)
+          queue_sets(played_sets.uniq(&:external_id))
         end
+        link_new_sets(new_set_ids)
         finish_if_drained(@account, cursor: @now, now: @now)
       end
     end
 
     private
 
+    # Returns the ids of the sets this listing created.
     def queue_sets(played_sets)
-      return if played_sets.empty?
+      return [] if played_sets.empty?
 
+      known_ids = AchievementSet.where(provider: @account.provider, external_id: played_sets.map(&:external_id)).ids
       set_ids = upsert_sets(played_sets)
       with_playtime, without_playtime = played_sets.partition(&:playtime_minutes)
       upsert_progress(with_playtime, set_ids, playtime: true)
       upsert_progress(without_playtime, set_ids, playtime: false)
+      set_ids.values - known_ids
+    end
+
+    # upsert_all skips AchievementSet's after_create_commit, so the GameDB link
+    # (best-effort) is enqueued here, once the sets are committed.
+    def link_new_sets(set_ids)
+      return if set_ids.empty?
+
+      ActiveJob.perform_all_later(AchievementSet.where(id: set_ids).map { |set| LinkSetToGameJob.new(set) })
     end
 
     # external_id => achievement_sets.id

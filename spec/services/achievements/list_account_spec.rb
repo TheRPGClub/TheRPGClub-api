@@ -45,6 +45,15 @@ RSpec.describe Achievements::ListAccount do
         user_id: account.user_id)
     end
 
+    it "enqueues the GameDB link for each newly created set, after commit" do
+      create(:achievement_set, provider: "steam", external_id: "20")
+
+      expect { described_class.call(account) }
+        .to have_enqueued_job(Achievements::LinkSetToGameJob).exactly(:once)
+      expect(Achievements::LinkSetToGameJob).to have_been_enqueued
+        .with(AchievementSet.find_by!(provider: "steam", external_id: "10"))
+    end
+
     it "clears sync_due_at but leaves the account pending until its sets are imported" do
       described_class.call(account)
 
@@ -98,6 +107,16 @@ RSpec.describe Achievements::ListAccount do
 
     expect(account.reload).to have_attributes(backfilled_at: now, last_synced_at: now, sync_status: "ok",
       sync_mode: "incremental")
+  end
+
+  it "recovers an account a failed listing left in error: ok, with an advanced cursor" do
+    account.update!(sync_status: "error", sync_error: "Steam API returned HTTP 500.", sync_mode: "incremental",
+      last_synced_at: now - 1.day, backfilled_at: now - 2.days)
+    allow(client).to receive(:played_sets).and_return([])
+
+    described_class.call(account)
+
+    expect(account.reload).to have_attributes(sync_status: "ok", sync_error: nil, last_synced_at: now)
   end
 
   describe "errors" do

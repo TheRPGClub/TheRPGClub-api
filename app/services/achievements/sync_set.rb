@@ -14,7 +14,8 @@ module Achievements
   # softcore -> hardcore upgrade is never announced again. A Provider set that
   # is missing (nil) or empty counts as no set: nothing is written but the
   # marker. Title, platform and icon come from the listing; a definition only
-  # fills them when blank.
+  # fills them when blank. A failing set is skipped without touching the
+  # account (see #with_set_errors).
   class SyncSet
     include SyncUnit
 
@@ -37,18 +38,33 @@ module Achievements
 
     def call
       cursor = @row.sync_pending_at || @now
-      with_sync_errors(@account) do
+      with_set_errors do
         definition = fetch_definition
         if definition.nil? || definition.achievements.empty?
           @row.update!(sync_pending_at: nil)
         else
           import(definition)
         end
-        finish_if_drained(@account, cursor: cursor, now: @now)
       end
+      finish_if_drained(@account, cursor: cursor, now: @now)
     end
 
     private
+
+    # A failure here belongs to one title (a delisted PS title's 404, a 403 on
+    # its definitions, one malformed Steam schema), never to the account: the
+    # set is skipped and logged, and the account keeps syncing. The listing
+    # owns account-level Private / NotFound. The set is retried when it is
+    # next listed.
+    def with_set_errors
+      yield
+    rescue *PASSED_THROUGH
+      raise
+    rescue StandardError => error
+      Rails.logger.warn("[Achievements::SyncSet] skipped set #{@set.id} (#{@set.provider} #{@set.external_id}) " \
+        "for linked account #{@account.id}: #{error.class}: #{error.message}")
+      @row.update!(sync_pending_at: nil)
+    end
 
     def fetch_definition
       client = Providers.client_for(@account.provider)
@@ -120,6 +136,7 @@ module Achievements
           user_linked_account_id: @account.id,
           unlocked_at: unlock.unlocked_at || UNKNOWN_UNLOCK_TIME,
           hardcore: unlock.hardcore?,
+          hardcore_unlocked_at: unlock.hardcore_unlocked_at,
           announceable: false
         }
       end
@@ -130,7 +147,8 @@ module Achievements
     end
 
     def refresh_unlock(existing, unlock)
-      existing.assign_attributes(hardcore: unlock.hardcore?, user_linked_account_id: @account.id)
+      existing.assign_attributes(hardcore: unlock.hardcore?, hardcore_unlocked_at: unlock.hardcore_unlocked_at,
+        user_linked_account_id: @account.id)
       existing.unlocked_at = unlock.unlocked_at if unlock.unlocked_at
       existing.save! if existing.changed?
     end
@@ -142,8 +160,10 @@ module Achievements
       return if new_unlock_ids.empty?
 
       unlocks = UserAchievementUnlock.where(id: new_unlock_ids).includes(achievement: :achievement_set).to_a
-      completing_times = [ progress.completed_at, progress.mastered_at ].compact
-      completer = unlocks.select { |unlock| completing_times.include?(unlock.unlocked_at) }
+      completer = unlocks.select do |unlock|
+        (progress.completed_at && unlock.unlocked_at == progress.completed_at) ||
+          (progress.mastered_at && unlock.hardcore? && unlock.mastery_time == progress.mastered_at)
+      end
         .max_by { |unlock| [ unlock.achievement.display_order || -1, unlock.id ] }
       no_completion = UserAchievementSetProgress.new
 
@@ -160,10 +180,6 @@ module Achievements
     # Backfill) within 48h of the Unlock.
     def announceable?(unlock)
       @account.incremental? && unlock.unlocked_at >= @now - ANNOUNCE_WITHIN
-    end
-
-    def clear_unit_marker
-      @row.update!(sync_pending_at: nil)
     end
   end
 end

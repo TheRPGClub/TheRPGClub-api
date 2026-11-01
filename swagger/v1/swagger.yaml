@@ -2488,8 +2488,19 @@ components:
             rarity:
               type: number
               nullable: true
+            hidden:
+              type: boolean
+              description: 'A hidden Achievement: mask its name and description when
+                posting.'
           required:
           - id
+          - name
+          - description
+          - icon_url
+          - tier
+          - points
+          - rarity
+          - hidden
         achievement_set:
           type: object
           properties:
@@ -3744,10 +3755,12 @@ paths:
       tags:
       - Achievement Hub
       description: 'Service only. Announceable Unlocks (Highlights found by an incremental
-        sync within 48h of their `unlocked_at`) with an id past the stored cursor,
-        oldest first, at most 25. Departed members are excluded. Post them, then ack
-        `meta.next_cursor`. `alerts` carries the PSN auth alert: post it while `psn_auth_expired_at`
-        is set and `psn_auth_alerted` is false, then ack it.'
+        sync within 48h of their `unlocked_at`) not yet acked, oldest id first, at
+        most 25. Departed members are excluded. Post them, then ack the ids posted
+        (or skipped as permanently failing) with `POST /achievements/highlights/ack`.
+        Mask a `hidden` Achievement. `alerts` carries the PSN auth alert: post it
+        while `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ack
+        it.'
       responses:
         '200':
           description: pending Highlights and alerts
@@ -3760,25 +3773,10 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/AchievementHighlight"
-                  meta:
-                    type: object
-                    properties:
-                      cursor:
-                        type: integer
-                        description: The stored cursor (0 when unset).
-                      next_cursor:
-                        type: integer
-                        nullable: true
-                        description: The id of the last listed Unlock; null when nothing
-                          is pending.
-                    required:
-                    - cursor
-                    - next_cursor
                   alerts:
                     "$ref": "#/components/schemas/AchievementHubAlerts"
                 required:
                 - data
-                - meta
                 - alerts
         '403':
           description: not the service
@@ -3791,13 +3789,14 @@ paths:
       summary: Acknowledge posted Achievement Highlights
       tags:
       - Achievement Hub
-      description: 'Service only. Stores the cursor: the id of the last Unlock posted.
-        The cursor only moves forward, so a stale ack is a no-op; the response carries
-        the stored cursor.'
+      description: Service only. Marks the given Unlocks announced, so they leave
+        the pending list. Idempotent (an Unlock keeps its first ack time); ids that
+        are not announceable are ignored. The response lists the given ids that are
+        now announced.
       parameters: []
       responses:
         '200':
-          description: cursor stored
+          description: Highlights acknowledged
           content:
             application/json:
               schema:
@@ -3806,10 +3805,14 @@ paths:
                   data:
                     type: object
                     properties:
-                      cursor:
-                        type: integer
+                      ids:
+                        type: array
+                        items:
+                          type: integer
                     required:
-                    - cursor
+                    - ids
+                required:
+                - data
         '403':
           description: not the service
           content:
@@ -3817,7 +3820,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: missing or malformed cursor
+          description: missing or malformed ids
           content:
             application/json:
               schema:
@@ -3828,11 +3831,19 @@ paths:
             schema:
               type: object
               properties:
-                cursor:
-                  type: integer
-                  minimum: 0
+                data:
+                  type: object
+                  properties:
+                    ids:
+                      type: array
+                      maxItems: 100
+                      items:
+                        type: integer
+                        minimum: 1
+                  required:
+                  - ids
               required:
-              - cursor
+              - data
         required: true
   "/api/v1/achievements/alerts/ack":
     post:

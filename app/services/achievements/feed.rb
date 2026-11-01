@@ -8,9 +8,10 @@ module Achievements
   #   up to CARD_UNLOCKS of its newest Unlocks.
   # - `highlights`: one card per Highlight Unlock, newest first.
   #
-  # Both page through a relation (`groups` is grouped, so it comes with an
-  # explicit `group_count` for pagy) and turn a page into cards in a fixed
-  # number of queries.
+  # `highlights` pages through a relation; `latest` reads one page of groups
+  # together with their total (#group_page), so the club's history is
+  # aggregated once per page. Both turn a page into cards in a fixed number of
+  # queries.
   class Feed
     VIEWS = %w[latest highlights].freeze
     CARD_UNLOCKS = 8
@@ -35,6 +36,14 @@ module Achievements
         "MAX(user_achievement_unlocks.unlocked_at) AS latest_unlocked_at"
       ).order(Arel.sql("MAX(user_achievement_unlocks.unlocked_at) DESC, user_achievement_unlocks.user_id ASC, " \
                        "achievements.achievement_set_id ASC"))
+    end
+
+    # One page of #groups and the total number of groups, from one aggregation
+    # (a window count over the grouped rows). Only a page past the last one
+    # has no row to carry the total, and counts it apart.
+    def group_page(page:, limit:)
+      rows = groups.select("COUNT(*) OVER () AS groups_count").offset(limit * (page - 1)).limit(limit).to_a
+      [ rows.first&.groups_count || (page > 1 ? group_count : 0), rows ]
     end
 
     def group_count

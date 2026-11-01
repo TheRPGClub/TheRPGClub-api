@@ -21,8 +21,10 @@ module Api
             users: query.users_by_id(unlocks.map(&:user_id))
           )).serializable_hash
         else
-          pagy, rows = pagy(query.groups, count: query.group_count, **pagy_options)
-          cards = query.cards(rows.to_a)
+          options = pagy_options
+          count, rows = query.group_page(**options)
+          pagy = Pagy::Offset.new(count: count, **options)
+          cards = query.cards(rows)
           data = AchievementFeedGroupResource.new(cards, params: viewer_params(cards.flat_map(&:unlocks))).serializable_hash
         end
         render json: { data: data, meta: pagy_meta(pagy) }

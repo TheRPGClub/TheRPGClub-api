@@ -7,25 +7,18 @@ RSpec.describe 'api/v1/achievements highlights', type: :request do
     get 'List pending Achievement Highlights' do
       tags 'Achievement Hub'
       description 'Service only. Announceable Unlocks (Highlights found by an incremental sync within 48h of ' \
-                  'their `unlocked_at`) with an id past the stored cursor, oldest first, at most 25. Departed ' \
-                  'members are excluded. Post them, then ack `meta.next_cursor`. `alerts` carries the PSN auth ' \
-                  'alert: post it while `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ack it.'
+                  'their `unlocked_at`) not yet acked, oldest id first, at most 25. Departed members are ' \
+                  'excluded. Post them, then ack the ids posted (or skipped as permanently failing) with ' \
+                  '`POST /achievements/highlights/ack`. Mask a `hidden` Achievement. `alerts` carries the PSN ' \
+                  'auth alert: post it while `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ' \
+                  'ack it.'
       produces 'application/json'
 
       response '200', 'pending Highlights and alerts' do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/AchievementHighlight' } },
-          meta: {
-            type: :object,
-            properties: {
-              cursor: { type: :integer, description: 'The stored cursor (0 when unset).' },
-              next_cursor: { type: :integer, nullable: true,
-                             description: 'The id of the last listed Unlock; null when nothing is pending.' }
-            },
-            required: %w[cursor next_cursor]
-          },
           alerts: { '$ref' => '#/components/schemas/AchievementHubAlerts' }
-        }, required: %w[data meta alerts]
+        }, required: %w[data alerts]
       end
 
       response '403', 'not the service' do
@@ -37,25 +30,41 @@ RSpec.describe 'api/v1/achievements highlights', type: :request do
   path '/api/v1/achievements/highlights/ack' do
     post 'Acknowledge posted Achievement Highlights' do
       tags 'Achievement Hub'
-      description 'Service only. Stores the cursor: the id of the last Unlock posted. The cursor only moves ' \
-                  'forward, so a stale ack is a no-op; the response carries the stored cursor.'
+      description 'Service only. Marks the given Unlocks announced, so they leave the pending list. ' \
+                  'Idempotent (an Unlock keeps its first ack time); ids that are not announceable are ignored. ' \
+                  'The response lists the given ids that are now announced.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
-        type: :object, properties: { cursor: { type: :integer, minimum: 0 } }, required: %w[cursor]
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              ids: { type: :array, maxItems: Achievements::HighlightOutbox::MAX_ACK,
+                     items: { type: :integer, minimum: 1 } }
+            },
+            required: %w[ids]
+          }
+        },
+        required: %w[data]
       }
 
-      response '200', 'cursor stored' do
+      response '200', 'Highlights acknowledged' do
         schema type: :object, properties: {
-          data: { type: :object, properties: { cursor: { type: :integer } }, required: %w[cursor] }
-        }
+          data: {
+            type: :object,
+            properties: { ids: { type: :array, items: { type: :integer } } },
+            required: %w[ids]
+          }
+        }, required: %w[data]
       end
 
       response '403', 'not the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'missing or malformed cursor' do
+      response '422', 'missing or malformed ids' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

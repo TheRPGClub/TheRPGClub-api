@@ -33,8 +33,9 @@ class UserAchievementSetProgress < ApplicationRecord
 
   # Rebuilds the member's cached progress on a set from their Unlocks and the
   # set's non-removed Achievements, and stamps `synced_at`. Completion and
-  # Mastery take the time of the Unlock that produced them; Mastery is RA only
-  # and needs every Unlock to be hardcore. Creates the row when missing.
+  # Mastery take the time of the Unlock that produced them; Mastery is RA only,
+  # needs every Unlock to be hardcore, and is dated by their hardcore dates
+  # (RA's softcore date can be years earlier). Creates the row when missing.
   def self.recompute!(user_id:, achievement_set_id:)
     set = AchievementSet.find(achievement_set_id)
     progress = find_or_initialize_by(user_id: user_id, achievement_set_id: set.id)
@@ -48,7 +49,8 @@ class UserAchievementSetProgress < ApplicationRecord
       Arel.sql("COUNT(*) FILTER (WHERE user_achievement_unlocks.hardcore)"),
       Arel.sql("COALESCE(SUM(achievements.points), 0)"),
       Arel.sql("MAX(user_achievement_unlocks.unlocked_at)"),
-      Arel.sql("MAX(user_achievement_unlocks.unlocked_at) FILTER (WHERE user_achievement_unlocks.hardcore)"),
+      Arel.sql("MAX(COALESCE(user_achievement_unlocks.hardcore_unlocked_at, user_achievement_unlocks.unlocked_at)) " \
+               "FILTER (WHERE user_achievement_unlocks.hardcore)"),
       Arel.sql("MAX(user_achievement_unlocks.unlocked_at) FILTER (WHERE achievements.tier = 'platinum')")
     )
     complete = total.positive? && earned == total

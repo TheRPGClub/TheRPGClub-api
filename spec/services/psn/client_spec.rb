@@ -293,6 +293,13 @@ RSpec.describe Psn::Client do
       expect { client.played_sets(account_id) }.to raise_error(Achievements::Providers::NotFound)
     end
 
+    it "passes Sony's full Retry-After on 429 to the tick, uncapped" do
+      stub_titles_reply([ 429, { "Retry-After" => "900" }, "" ])
+
+      expect { client.played_sets(account_id) }
+        .to raise_error(Achievements::Providers::RateLimited) { |error| expect(error.retry_after).to eq(900.0) }
+    end
+
     it "raises RateLimited on 429, carrying Retry-After" do
       stub_titles_reply([ 429, { "Retry-After" => "3" }, "" ])
 

@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # An Unlock: the fact that a member earned an Achievement, and when. RA Unlocks
-# are hardcore or softcore. `highlight` and `announceable` are set by the sync
+# are hardcore or softcore; `unlocked_at` is the first earn (RA's softcore
+# date) and `hardcore_unlocked_at` the hardcore one, which dates a Mastery. `highlight` and `announceable` are set by the sync
 # on newly inserted Unlocks only (see .classify_highlight).
 class UserAchievementUnlock < ApplicationRecord
   HIGHLIGHTS = %w[platinum completion mastery rare].freeze
@@ -34,11 +35,17 @@ class UserAchievementUnlock < ApplicationRecord
     achievement = unlock.achievement
     return "platinum" if achievement.tier == "platinum"
     if unlock.hardcore? && achievement.achievement_set.retroachievements? &&
-        progress_after.mastered_at.present? && progress_after.mastered_at == unlock.unlocked_at
+        progress_after.mastered_at.present? && progress_after.mastered_at == unlock.mastery_time
       return "mastery"
     end
     return "completion" if progress_after.completed_at.present? && progress_after.completed_at == unlock.unlocked_at
 
     "rare" if achievement.rarity.present? && achievement.rarity < RARE_BELOW
+  end
+
+  # When this Unlock counted towards a Mastery: its hardcore date (rows from
+  # before that date was stored fall back to unlocked_at).
+  def mastery_time
+    hardcore_unlocked_at || unlocked_at
   end
 end

@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # An announceable Unlock as the bot posts it (see Achievements::HighlightOutbox):
-# the member, the Achievement, its set and the www set page path.
+# the member, the Achievement, its set and the www set page path. `hidden`
+# lets the bot mask a hidden Achievement's name and description.
 class AchievementHighlightResource
   include BaseResource
 
@@ -18,7 +19,7 @@ class AchievementHighlightResource
   attribute :achievement do |unlock|
     achievement = unlock.achievement
     {
-      id: achievement.id, name: achievement.name, description: achievement.description,
+      id: achievement.id, name: achievement.name, description: achievement.description, hidden: achievement.hidden,
       icon_url: achievement.icon_url, tier: achievement.tier, points: achievement.points,
       rarity: achievement.rarity&.to_f
     }

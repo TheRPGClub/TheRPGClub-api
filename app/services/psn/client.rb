@@ -332,7 +332,7 @@ module Psn
       # UNVERIFIED: that an unknown accountId or online ID answers 404.
       raise Achievements::Providers::NotFound, "PSN returned 404" if response.status == 404
       if response.status == 429
-        raise Achievements::Providers::RateLimited.new("PSN rate limit reached", retry_after: retry_after(response))
+        raise Achievements::Providers::RateLimited.new("PSN rate limit reached", retry_after: retry_after_header(response))
       end
       raise Error, "PSN returned HTTP #{response.status}" unless response.success?
       raise Error, "PSN returned an error: #{error.inspect}" if error.present?
@@ -365,7 +365,8 @@ module Psn
         end
         return response unless TRANSIENT_STATUSES.include?(response.status) && attempt < MAX_ATTEMPTS
 
-        @sleeper.call(retry_after(response) || [ BASE_BACKOFF_SECONDS * (2**(attempt - 1)), MAX_BACKOFF_SECONDS ].min)
+        @sleeper.call([ retry_after_header(response) || BASE_BACKOFF_SECONDS * (2**(attempt - 1)),
+                        MAX_BACKOFF_SECONDS ].min)
       end
     rescue Faraday::Error => e
       raise Error, "PSN request to #{URI(url).host} failed: #{e.class}: #{e.message}"
@@ -387,9 +388,11 @@ module Psn
       content_type ? headers.merge("Content-Type" => content_type) : headers
     end
 
-    def retry_after(response)
+    # Sony's Retry-After, uncapped: a 429 hands it to the tick (which owns the
+    # back-off); only the in-client sleep caps it at MAX_BACKOFF_SECONDS.
+    def retry_after_header(response)
       seconds = Float(response.headers["Retry-After"], exception: false)
-      [ seconds, MAX_BACKOFF_SECONDS ].min if seconds && seconds >= 0
+      seconds if seconds && seconds >= 0
     end
 
     def http

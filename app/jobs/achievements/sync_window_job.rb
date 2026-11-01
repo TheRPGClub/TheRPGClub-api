@@ -6,7 +6,8 @@ module Achievements
   # then starts the three Provider ticks, which drain the marks and stop.
   #
   # Marked: backfilled accounts in `ok`, `pending` or `error` (transient) that
-  # aren't already due. Skipped: `private` / `not_found` (they wait for the
+  # aren't already due; and, still as a Backfill, an `error` account whose
+  # Backfill listing failed (else it would wait for Retry forever). Skipped: `private` / `not_found` (they wait for the
   # member's Retry), accounts still in their Backfill, departed members (their
   # data is kept, so a rejoin resumes without a new Backfill), and PSN accounts
   # while the club account's auth has expired (the PSN pause).
@@ -19,7 +20,9 @@ module Achievements
 
     def perform
       now = Time.current
-      eligible.update_all(sync_due_at: now, sync_mode: "incremental", updated_at: now)
+      scope = eligible
+      scope.where.not(backfilled_at: nil).update_all(sync_due_at: now, sync_mode: "incremental", updated_at: now)
+      scope.where(backfilled_at: nil, sync_status: "error").update_all(sync_due_at: now, updated_at: now)
       ProviderTickJob.enqueue_all
     end
 
@@ -28,7 +31,6 @@ module Achievements
     def eligible
       scope = UserLinkedAccount
         .where(sync_status: MARKED_STATUSES, sync_due_at: nil)
-        .where.not(backfilled_at: nil)
         .where(user_id: RpgClubUser.active.select(:user_id))
       psn_paused? ? scope.where.not(provider: "psn") : scope
     end
