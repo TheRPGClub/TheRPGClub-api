@@ -9,7 +9,7 @@ module Steam
   # games plus the persona name. Error codes and the retry/backoff policy match
   # the bot so both clients report the same failures.
   class Client
-    class ConfigurationError < StandardError; end
+    class ConfigurationError < Achievements::Providers::ConfigurationError; end
 
     class Error < StandardError
       CODES = %w[

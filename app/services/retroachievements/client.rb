@@ -14,7 +14,7 @@ module Retroachievements
   # 429 that outlasts the short in-client retry raises RateLimited; any other
   # failure raises Retroachievements::Client::Error.
   class Client
-    class ConfigurationError < StandardError; end
+    class ConfigurationError < Achievements::Providers::ConfigurationError; end
     class Error < StandardError; end
 
     API_BASE_URL = "https://retroachievements.org"

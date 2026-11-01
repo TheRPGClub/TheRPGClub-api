@@ -98,6 +98,14 @@ module Psn
       collected
     end
 
+    # Authenticates the club account (a cached token counts). Clears
+    # `psn_auth_expired_at` on success; raises AuthExpired while the NPSSO is
+    # still refused. The Sync Window's way out of the PSN pause.
+    def authenticate!
+      access_token
+      true
+    end
+
     # Online ID -> { external_id: accountId, display_name: onlineId,
     # avatar_url: }. Online IDs can be renamed, so callers store the
     # accountId. Searches first (an exact, case-insensitive onlineId match),

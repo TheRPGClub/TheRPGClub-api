@@ -9,12 +9,13 @@ module Achievements
 
     # Private / NotFound stop the account's syncing until the member presses
     # Retry. AuthExpired and RateLimited leave the state untouched so a later
-    # tick retries (the tick owns back-off). Anything else marks the account
+    # tick retries (the tick owns back-off), and so does a missing Provider
+    # configuration, which is the deploy's fault, not the account's. Anything else marks the account
     # errored and clears only this unit's marker, so one bad unit can't wedge
     # the queue.
     def with_sync_errors(account)
       yield
-    rescue Providers::AuthExpired, Providers::RateLimited
+    rescue Providers::AuthExpired, Providers::RateLimited, Providers::ConfigurationError
       raise
     rescue Providers::Private, Providers::NotFound => error
       stop_account(account, error.is_a?(Providers::Private) ? "private" : "not_found", error.message)
