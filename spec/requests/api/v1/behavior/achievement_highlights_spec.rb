@@ -97,6 +97,15 @@ RSpec.describe "api/v1/achievements highlights behavior", type: :request do
       expect(json.fetch("data").pluck("id")).to eq([ kept.id ])
     end
 
+    it "excludes removed Achievements" do
+      highlight.achievement.update!(removed_at: 1.hour.ago)
+      kept = highlight
+
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+
+      expect(json.fetch("data").pluck("id")).to eq([ kept.id ])
+    end
+
     it "reports the PSN auth alert" do
       get "/api/v1/achievements/highlights/pending", headers: service_headers
       expect(json.fetch("alerts")).to eq("psn_auth_expired_at" => nil, "psn_auth_alerted" => false)
