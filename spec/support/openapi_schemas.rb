@@ -1014,9 +1014,11 @@ module OpenapiSchemas
         providers: array_of("AchievementProviderTotals"),
         linked_accounts: array_of("LinkedAccountSummary"),
         latest_unlocks: array_of("AchievementUnlock"),
-        _required: %w[user totals providers linked_accounts latest_unlocks],
+        rarest_unlocks: array_of("AchievementUnlock"),
+        _required: %w[user totals providers linked_accounts latest_unlocks rarest_unlocks],
         _description: "One `providers` row per Linked Account, zeros until its first sync. " \
-                      "`latest_unlocks` holds at most 5, newest first."
+                      "`latest_unlocks` holds at most 5, newest first. `rarest_unlocks` holds at most 4, " \
+                      "by the Achievement's `rarity` ascending, those with no Rarity last."
       ),
       # An Achievement on the set page (SetAchievementResource): the definition
       # plus the subject member's Unlock state (null/false when locked or when

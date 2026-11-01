@@ -22,7 +22,8 @@ RSpec.describe 'api/v1/achievements', type: :request do
       tags 'Achievements'
       description 'Totals per Provider and overall (Unlocks, Completions, Masteries, Platinums, RA points), ' \
                   'read from the cached progress rows; the Linked Accounts (Provider and display name only); ' \
-                  'and the 5 latest Unlocks. 404 when the member has no Linked Account or has left the server, ' \
+                  'the 5 latest Unlocks; and the 4 rarest Unlocks by overall Rarity (unknown Rarity last). ' \
+                  '404 when the member has no Linked Account or has left the server, ' \
                   'so www shows the profile section only on a 200.'
       produces 'application/json'
 
