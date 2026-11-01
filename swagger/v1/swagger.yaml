@@ -3543,14 +3543,20 @@ components:
           type: array
           items:
             "$ref": "#/components/schemas/AchievementUnlock"
+        rarest_unlocks:
+          type: array
+          items:
+            "$ref": "#/components/schemas/AchievementUnlock"
       required:
       - user
       - totals
       - providers
       - linked_accounts
       - latest_unlocks
+      - rarest_unlocks
       description: One `providers` row per Linked Account, zeros until its first sync.
-        `latest_unlocks` holds at most 5, newest first.
+        `latest_unlocks` holds at most 5, newest first. `rarest_unlocks` holds at
+        most 4, by the Achievement's `rarity` ascending, those with no Rarity last.
     SetAchievement:
       allOf:
       - "$ref": "#/components/schemas/Achievement"
@@ -3663,6 +3669,61 @@ components:
       required:
       - user
       - completed_at
+    GameSetAchievement:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+          description: Kept for hidden Achievements; www blurs it.
+        icon_url:
+          type: string
+          nullable: true
+        icon_locked_url:
+          type: string
+          nullable: true
+        hidden:
+          type: boolean
+        tier:
+          type: string
+          nullable: true
+          enum:
+          - bronze
+          - silver
+          - gold
+          - platinum
+          -
+        points:
+          type: integer
+          nullable: true
+        rarity:
+          type: number
+          nullable: true
+        holders:
+          type: array
+          items:
+            type: string
+          description: user_ids of the active members who unlocked it, earliest Unlock
+            first.
+        viewer_unlocked:
+          type: boolean
+      required:
+      - id
+      - name
+      - description
+      - icon_url
+      - icon_locked_url
+      - hidden
+      - tier
+      - points
+      - rarity
+      - holders
+      - viewer_unlocked
     GameAchievementSet:
       allOf:
       - "$ref": "#/components/schemas/AchievementSet"
@@ -3676,9 +3737,15 @@ components:
             allOf:
             - "$ref": "#/components/schemas/SetProgress"
             nullable: true
+          achievements:
+            type: array
+            items:
+              "$ref": "#/components/schemas/GameSetAchievement"
+            description: The set's non-removed Achievements in display order.
         required:
         - completions
         - viewer_progress
+        - achievements
     GotmWin:
       type: object
       properties:
@@ -4023,9 +4090,10 @@ paths:
       - Achievements
       description: Totals per Provider and overall (Unlocks, Completions, Masteries,
         Platinums, RA points), read from the cached progress rows; the Linked Accounts
-        (Provider and display name only); and the 5 latest Unlocks. 404 when the member
-        has no Linked Account or has left the server, so www shows the profile section
-        only on a 200.
+        (Provider and display name only); the 5 latest Unlocks; and the 4 rarest Unlocks
+        by overall Rarity (unknown Rarity last). 404 when the member has no Linked
+        Account or has left the server, so www shows the profile section only on a
+        200.
       responses:
         '200':
           description: summary
@@ -4274,8 +4342,10 @@ paths:
       tags:
       - Achievements
       description: The Achievement Sets linked to the game (by Provider, then title),
-        each with the members who completed it (oldest Completion first) and the viewer's
-        own progress (null when none). Unpaginated.
+        each with the members who completed it (oldest Completion first), the viewer's
+        own progress (null when none) and its non-removed Achievements in display
+        order, each with the active members who unlocked it (`holders`) and whether
+        the viewer did. Hidden Achievements keep their name and description. Unpaginated.
       responses:
         '200':
           description: sets
