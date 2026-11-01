@@ -730,7 +730,8 @@ module OpenapiSchemas
       # AchievementHighlightResource: an announceable Unlock as the bot posts
       # it, with the www set page path.
       AchievementHighlight: obj(
-        id: int, highlight: str(enum: UserAchievementUnlock::HIGHLIGHTS), hardcore: bool, unlocked_at: ts,
+        id: int, highlight: str(enum: UserAchievementUnlock::HIGHLIGHTS), hardcore: bool,
+        unlocked_at: ts.merge(description: "The Highlight's date: a Mastery's hardcore time, otherwise the Unlock time."),
         user_id: str, display_name: str,
         url_path: str.merge(description: "The www set page path: /members/{user_id}/achievements/{set_id}."),
         achievement: obj(
@@ -1047,6 +1048,7 @@ module OpenapiSchemas
       AchievementFeedHighlight: extends(
         "AchievementUnlock",
         kind: str(enum: %w[highlight]), user: ref("UserSummary"),
+        unlocked_at: ts.merge(description: "The Highlight's date: a Mastery's hardcore time, otherwise the Unlock time."),
         required: %w[kind user]
       ),
       # A member who completed a set on the game showcase.

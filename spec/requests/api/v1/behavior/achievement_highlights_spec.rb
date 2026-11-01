@@ -36,6 +36,15 @@ RSpec.describe "api/v1/achievements highlights behavior", type: :request do
       )
     end
 
+    it "dates a Mastery by its hardcore time" do
+      mastered_at = Time.utc(2026, 10, 30, 12)
+      highlight(highlight: "mastery", hardcore: true, unlocked_at: Time.utc(2024, 1, 1), hardcore_unlocked_at: mastered_at)
+
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+
+      expect(Time.iso8601(json.fetch("data").sole.fetch("unlocked_at"))).to eq(mastered_at)
+    end
+
     it "flags a hidden Achievement, so the bot can mask its name and description" do
       hidden = highlight
       hidden.achievement.update!(hidden: true)
@@ -90,6 +99,15 @@ RSpec.describe "api/v1/achievements highlights behavior", type: :request do
       highlight(user: departed, linked_account: create(:user_linked_account, user: departed))
       bot = create(:user, is_bot: true)
       highlight(user: bot, linked_account: create(:user_linked_account, user: bot))
+      kept = highlight
+
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+
+      expect(json.fetch("data").pluck("id")).to eq([ kept.id ])
+    end
+
+    it "excludes removed Achievements" do
+      highlight.achievement.update!(removed_at: 1.hour.ago)
       kept = highlight
 
       get "/api/v1/achievements/highlights/pending", headers: service_headers

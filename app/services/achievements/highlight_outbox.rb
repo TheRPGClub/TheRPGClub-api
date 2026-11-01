@@ -16,11 +16,11 @@ module Achievements
 
     module_function
 
-    # Unannounced announceable Unlocks of active members, oldest first.
+    # Unannounced announceable Unlocks of active members on non-removed
+    # Achievements, oldest first.
     def pending(limit: LIMIT)
-      UserAchievementUnlock
+      Reads.unlocks
         .where(announceable: true, announced_at: nil)
-        .of_active_members
         .includes(:user, achievement: :achievement_set)
         .order(:id)
         .limit(limit)

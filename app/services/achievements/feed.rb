@@ -6,7 +6,8 @@ module Achievements
   # - `latest`: Unlocks grouped into cards per member + Achievement Set + UTC
   #   day of `unlocked_at`, newest card first. Each card carries its count and
   #   up to CARD_UNLOCKS of its newest Unlocks.
-  # - `highlights`: one card per Highlight Unlock, newest first.
+  # - `highlights`: one card per Highlight Unlock, newest first by its
+  #   highlight_time (a Mastery's hardcore time).
   #
   # `highlights` pages through a relation; `latest` reads one page of groups
   # together with their total (#group_page), so the club's history is
@@ -68,10 +69,11 @@ module Achievements
       end
     end
 
-    # Highlight Unlocks, newest first.
+    # Highlight Unlocks, newest first by their highlight_time (a Mastery is
+    # dated by its hardcore time).
     def highlights
       scoped.where.not(highlight: nil).includes(achievement: :achievement_set)
-        .order(unlocked_at: :desc, id: :desc)
+        .order(Arel.sql("#{UserAchievementUnlock::HIGHLIGHT_TIME_SQL} DESC"), id: :desc)
     end
 
     # Members of the given Unlocks, without their image columns, by user_id.

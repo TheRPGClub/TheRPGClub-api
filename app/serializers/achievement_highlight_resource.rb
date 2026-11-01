@@ -6,7 +6,9 @@
 class AchievementHighlightResource
   include BaseResource
 
-  attributes :id, :highlight, :hardcore, :unlocked_at, :user_id
+  attributes :id, :highlight, :hardcore, :user_id
+  # The Highlight's date: a Mastery's hardcore time, otherwise unlocked_at.
+  attribute(:unlocked_at, &:highlight_time)
 
   attribute :display_name do |unlock|
     unlock.user.global_name.presence || unlock.user.username.presence || unlock.user_id
