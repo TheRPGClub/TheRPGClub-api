@@ -48,4 +48,15 @@ class UserAchievementUnlock < ApplicationRecord
   def mastery_time
     hardcore_unlocked_at || unlocked_at
   end
+
+  # #highlight_time in SQL, for ordering Highlights.
+  HIGHLIGHT_TIME_SQL = "CASE WHEN user_achievement_unlocks.highlight = 'mastery' " \
+    "THEN COALESCE(user_achievement_unlocks.hardcore_unlocked_at, user_achievement_unlocks.unlocked_at) " \
+    "ELSE user_achievement_unlocks.unlocked_at END"
+
+  # When the Highlight happened: a Mastery's #mastery_time, otherwise
+  # unlocked_at. Highlight cards and posts are dated and ordered by it.
+  def highlight_time
+    mastery? ? mastery_time : unlocked_at
+  end
 end

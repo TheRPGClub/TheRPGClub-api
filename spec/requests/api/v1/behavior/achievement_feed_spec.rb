@@ -191,6 +191,22 @@ RSpec.describe "api/v1 achievement feed behavior", type: :request do
       expect(feed(view: "highlights").fetch("data").map { |c| c.fetch("id") }).to eq([ known.id, unknown.id ])
     end
 
+    it "dates and orders a Mastery by its hardcore time, not the softcore unlocked_at" do
+      ra_set = create(:achievement_set, provider: "retroachievements")
+      ra = create(:user_linked_account, user: alice, provider: "retroachievements")
+      mastered_at = Time.utc(2026, 10, 30, 12)
+      mastery = unlock(ra, ra_set, Time.utc(2024, 1, 1), highlight: "mastery", hardcore: true,
+        hardcore_unlocked_at: mastered_at)
+      rare = unlock(bob_psn, psn_set, Time.utc(2026, 10, 29), highlight: "rare")
+      legacy = unlock(ra, ra_set, Time.utc(2026, 10, 28), highlight: "mastery", hardcore: true)
+
+      cards = feed(view: "highlights").fetch("data")
+
+      expect(cards.map { |c| c.fetch("id") }).to eq([ mastery.id, rare.id, legacy.id ])
+      expect(Time.iso8601(cards.first.fetch("unlocked_at"))).to eq(mastered_at)
+      expect(Time.iso8601(cards.last.fetch("unlocked_at"))).to eq(Time.utc(2026, 10, 28))
+    end
+
     it "filters by Provider and excludes departed members" do
       unlock(bob_psn, psn_set, 1.hour.ago, highlight: "completion")
       unlock(alice_steam, steam_set, 1.hour.ago, highlight: "rare")
