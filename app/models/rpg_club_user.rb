@@ -116,6 +116,25 @@ class RpgClubUser < ApplicationRecord
     dependent: nil,
     inverse_of: :uploaded_by
 
+  has_many :linked_accounts,
+    class_name: "UserLinkedAccount",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil, # on delete cascade
+    inverse_of: :user
+  has_many :achievement_unlocks,
+    class_name: "UserAchievementUnlock",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil, # on delete cascade
+    inverse_of: :user
+  has_many :achievement_set_progress,
+    class_name: "UserAchievementSetProgress",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil, # on delete cascade
+    inverse_of: :user
+
   has_many :socials,
     class_name: "UserSocial",
     foreign_key: :user_id,
@@ -132,6 +151,9 @@ class RpgClubUser < ApplicationRecord
     dependent: :nullify,
     inverse_of: :created_by_user
 
+  # Members still in the guild: departed members (server_left_at) and bots are
+  # hidden from club-wide reads such as the Achievement Hub.
+  scope :active, -> { where(is_bot: false, server_left_at: nil) }
   scope :without_images, -> { select(*(column_names - BINARY_COLUMNS)) }
 
   validates :user_id, presence: true

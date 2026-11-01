@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_09_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_01_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,6 +21,50 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_000100) do
     t.string "steam_url", limit: 512
     t.string "user_id", limit: 30
     t.string "xbl_username", limit: 100
+  end
+
+  create_table "achievement_hub_states", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "key", limit: 100, null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "value"
+    t.index ["key"], name: "ux_achievement_hub_states_key", unique: true
+  end
+
+  create_table "achievement_sets", force: :cascade do |t|
+    t.integer "achievements_count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "definitions_synced_at"
+    t.string "external_id", limit: 64, null: false
+    t.bigint "game_id"
+    t.string "icon_url", limit: 1024
+    t.string "np_service_name", limit: 32
+    t.string "platform_label", limit: 100
+    t.integer "points_total", default: 0, null: false
+    t.string "provider", limit: 32, null: false
+    t.string "title", limit: 512
+    t.datetime "updated_at", null: false
+    t.index ["game_id"], name: "ix_achievement_sets_game"
+    t.index ["provider", "external_id"], name: "ux_achievement_sets_provider_external", unique: true
+  end
+
+  create_table "achievements", force: :cascade do |t|
+    t.bigint "achievement_set_id", null: false
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.integer "display_order"
+    t.string "external_id", limit: 64, null: false
+    t.boolean "hidden", default: false, null: false
+    t.string "icon_locked_url", limit: 1024
+    t.string "icon_url", limit: 1024
+    t.string "name", limit: 512
+    t.integer "points"
+    t.decimal "rarity", precision: 5, scale: 2
+    t.decimal "rarity_hardcore", precision: 5, scale: 2
+    t.datetime "removed_at"
+    t.string "tier", limit: 16
+    t.datetime "updated_at", null: false
+    t.index ["achievement_set_id", "external_id"], name: "ux_achievements_set_external", unique: true
   end
 
   create_table "bot_presence_history", force: :cascade do |t|
@@ -830,6 +874,47 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_000100) do
     t.check_constraint "skip_linking::text = ANY (ARRAY['Y'::character varying::text, 'N'::character varying::text])", name: "ck_threads_skip_linking"
   end
 
+  create_table "user_achievement_set_progress", force: :cascade do |t|
+    t.bigint "achievement_set_id", null: false
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.integer "earned_count", default: 0, null: false
+    t.integer "hardcore_earned_count", default: 0, null: false
+    t.datetime "last_unlocked_at"
+    t.datetime "mastered_at"
+    t.datetime "platinum_at"
+    t.integer "playtime_minutes"
+    t.integer "points_earned", default: 0, null: false
+    t.datetime "sync_pending_at"
+    t.datetime "synced_at"
+    t.integer "total_count", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 30, null: false
+    t.bigint "user_linked_account_id", null: false
+    t.index ["achievement_set_id"], name: "ix_user_achievement_set_progress_set"
+    t.index ["sync_pending_at"], name: "ix_user_achievement_set_progress_sync_pending", where: "(sync_pending_at IS NOT NULL)"
+    t.index ["user_id", "achievement_set_id"], name: "ux_user_achievement_set_progress_user_set", unique: true
+    t.index ["user_id", "last_unlocked_at"], name: "ix_user_achievement_set_progress_user_last_unlocked"
+    t.index ["user_linked_account_id"], name: "ix_user_achievement_set_progress_linked_account"
+  end
+
+  create_table "user_achievement_unlocks", force: :cascade do |t|
+    t.bigint "achievement_id", null: false
+    t.boolean "announceable", default: false, null: false
+    t.datetime "created_at", null: false
+    t.boolean "hardcore", default: false, null: false
+    t.string "highlight", limit: 16
+    t.datetime "unlocked_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 30, null: false
+    t.bigint "user_linked_account_id", null: false
+    t.index ["achievement_id"], name: "ix_user_achievement_unlocks_achievement"
+    t.index ["id"], name: "ix_user_achievement_unlocks_announceable", where: "announceable"
+    t.index ["unlocked_at"], name: "ix_user_achievement_unlocks_unlocked_at"
+    t.index ["user_id", "achievement_id"], name: "ux_user_achievement_unlocks_user_achievement", unique: true
+    t.index ["user_linked_account_id"], name: "ix_user_achievement_unlocks_linked_account"
+  end
+
   create_table "user_game_backlog", primary_key: "entry_id", force: :cascade do |t|
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.bigint "gamedb_game_id", null: false
@@ -916,6 +1001,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_000100) do
     t.check_constraint "rating >= 0 AND rating <= 100", name: "ck_user_game_reviews_rating_range"
   end
 
+  create_table "user_linked_accounts", force: :cascade do |t|
+    t.datetime "backfilled_at"
+    t.datetime "created_at", null: false
+    t.string "display_name", limit: 255
+    t.string "external_id", limit: 64, null: false
+    t.datetime "last_synced_at"
+    t.string "provider", limit: 32, null: false
+    t.datetime "sync_due_at"
+    t.text "sync_error"
+    t.string "sync_mode", limit: 32, default: "backfill", null: false
+    t.datetime "sync_requested_at"
+    t.string "sync_status", limit: 32, default: "pending", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 30, null: false
+    t.index ["provider", "external_id"], name: "ux_user_linked_accounts_provider_external", unique: true
+    t.index ["provider", "sync_due_at"], name: "ix_user_linked_accounts_sync_due", where: "(sync_due_at IS NOT NULL)"
+    t.index ["user_id", "provider"], name: "ux_user_linked_accounts_user_provider", unique: true
+  end
+
   create_table "user_now_playing", primary_key: "entry_id", force: :cascade do |t|
     t.timestamptz "added_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "gamedb_game_id"
@@ -985,6 +1089,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_000100) do
     t.index ["round_number"], name: "ix_voting_rounds_undecided", where: "(decided_at IS NULL)"
   end
 
+  add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
+  add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"
@@ -1016,6 +1122,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_000100) do
   add_foreign_key "rpg_club_steam_collection_import_items", "rpg_club_steam_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_steam_coll_import_items"
   add_foreign_key "rpg_club_xbox_collection_import_items", "rpg_club_xbox_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_xbox_coll_import_items"
   add_foreign_key "threads", "gamedb_games", primary_key: "game_id", name: "fk_threads_gamedb_game"
+  add_foreign_key "user_achievement_set_progress", "achievement_sets", name: "fk_user_achievement_set_progress_set", on_delete: :cascade
+  add_foreign_key "user_achievement_set_progress", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_achievement_set_progress_user", on_delete: :cascade
+  add_foreign_key "user_achievement_set_progress", "user_linked_accounts", name: "fk_user_achievement_set_progress_linked_account", on_delete: :cascade
+  add_foreign_key "user_achievement_unlocks", "achievements", name: "fk_user_achievement_unlocks_achievement", on_delete: :cascade
+  add_foreign_key "user_achievement_unlocks", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_achievement_unlocks_user", on_delete: :cascade
+  add_foreign_key "user_achievement_unlocks", "user_linked_accounts", name: "fk_user_achievement_unlocks_linked_account", on_delete: :cascade
   add_foreign_key "user_game_backlog", "gamedb_games", primary_key: "game_id", name: "fk_user_game_backlog_gamedb"
   add_foreign_key "user_game_backlog", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", name: "fk_user_game_backlog_platform"
   add_foreign_key "user_game_backlog", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_backlog_user"
@@ -1029,6 +1141,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_09_000100) do
   add_foreign_key "user_game_journal_entries", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_journal_entries_user"
   add_foreign_key "user_game_reviews", "gamedb_games", primary_key: "game_id", name: "fk_user_game_reviews_gamedb"
   add_foreign_key "user_game_reviews", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_reviews_user"
+  add_foreign_key "user_linked_accounts", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_linked_accounts_user", on_delete: :cascade
   add_foreign_key "user_now_playing", "gamedb_games", primary_key: "game_id", name: "fk_user_now_playing_gamedb"
   add_foreign_key "user_now_playing", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", name: "fk_user_now_playing_platform"
 end
