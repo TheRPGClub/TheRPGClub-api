@@ -2,11 +2,14 @@
 
 module Achievements
   module Providers
-    # An Achievement Set's definitions plus one member's Unlocks in it.
-    # `version` is the Provider's definitions version (PSN trophySetVersion).
-    SetDefinition = ValueObject.define(
-      :external_id, :np_service_name, :title, :platform_label, :icon_url, :version,
-      :achievements, :unlocks, :playtime_minutes
-    )
+    # An Achievement Set with its definitions and one member's Unlocks of it.
+    SetDefinition = Data.define(
+      :external_id, :title, :platform_label, :icon_url, :np_service_name, :achievements, :unlocks, :playtime_minutes
+    ) do
+      def initialize(external_id:, title:, platform_label: nil, icon_url: nil, np_service_name: nil,
+                     achievements: [], unlocks: [], playtime_minutes: nil)
+        super
+      end
+    end
   end
 end
