@@ -2,7 +2,8 @@
 
 module Achievements
   module Providers
-    # The Provider hides this user's achievements. Never read as zero Unlocks.
+    # The account exists but hides its achievements from the club.
+    # Never read as zero Unlocks.
     class Private < Error; end
   end
 end

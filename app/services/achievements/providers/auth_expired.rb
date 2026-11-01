@@ -2,7 +2,7 @@
 
 module Achievements
   module Providers
-    # The club's own Provider credentials (PSN NPSSO) no longer authenticate.
+    # The club's own Provider credentials no longer authenticate (PSN NPSSO).
     class AuthExpired < Error; end
   end
 end

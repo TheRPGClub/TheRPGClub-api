@@ -2,8 +2,9 @@
 
 module Achievements
   module Providers
-    # One Achievement as a Provider defines it. `rarity` / `rarity_hardcore` are
-    # the Provider's global percentages (0-100), nil when unknown.
+    # One Achievement as its Provider defines it, shared by every member.
+    # points and rarity_hardcore are RA only, tier (bronze/silver/gold/platinum)
+    # is PSN only. rarity values are percentages (0-100), or nil when unknown.
     AchievementDefinition = Data.define(
       :external_id, :name, :description, :icon_url, :icon_locked_url, :hidden, :points, :tier,
       :display_order, :rarity, :rarity_hardcore
