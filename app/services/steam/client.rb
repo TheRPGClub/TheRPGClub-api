@@ -39,6 +39,8 @@ module Steam
     BASE_BACKOFF_SECONDS = 0.5
     MAX_JITTER_SECONDS = 0.25
     USER_AGENT = "RPGClubApi/SteamImport"
+    PLATFORM_LABEL = "PC"
+    APP_ICON_URL = "https://media.steampowered.com/steamcommunity/public/images/apps/%<app_id>s/%<hash>s.jpg"
 
     # `http`, `sleeper` and `clock` are seams for specs: a Faraday connection, a
     # callable taking seconds to wait, and a callable returning monotonic
@@ -108,7 +110,139 @@ module Steam
       { steam_id64: steam_id64, profile_name: profile_name, game_count: game_count, games: games }
     end
 
+    # Achievement Hub: the member's played games as
+    # Achievements::Providers::PlayedSet, one per appid with playtime. With
+    # `since`, only games last played after it (rtime_last_played is the delta
+    # signal). Skips the persona-name lookup owned_games makes. Raises
+    # Achievements::Providers::Private when Steam hides the game details.
+    def played_sets(steam_id64, since: nil)
+      ensure_steam_id64!(steam_id64)
+
+      response = provider_errors do
+        request_json(
+          "/IPlayerService/GetOwnedGames/v1/",
+          steamid: steam_id64, include_appinfo: "1", include_played_free_games: "1"
+        )["response"] || {}
+      end
+      # A profile with private game details answers with an empty response;
+      # a public, empty library still reports its game_count.
+      raise Achievements::Providers::Private, "Steam game details are private." unless response.key?("games") ||
+        response.key?("game_count")
+
+      Array(response["games"]).filter_map { |raw_game| played_set(raw_game, since) }
+    end
+
+    # Achievement Hub: one game's Achievement Set merged from GetSchemaForGame
+    # (definitions), GetPlayerAchievements (the member's Unlocks) and
+    # GetGlobalAchievementPercentagesForApp (Rarity), as an
+    # Achievements::Providers::SetDefinition. nil when the game has no
+    # Achievement Set (empty schema) or Steam has no stats for the member on it.
+    # A non-public profile raises Achievements::Providers::Private, never zero
+    # Unlocks. Steam reports no playtime here: it rides on the PlayedSet.
+    def set_with_progress(steam_id64, app_id)
+      ensure_steam_id64!(steam_id64)
+
+      provider_errors do
+        game = request_json("/ISteamUserStats/GetSchemaForGame/v2/", appid: app_id.to_s, l: "english")["game"] || {}
+        raw_achievements = Array(game.dig("availableGameStats", "achievements"))
+        next if raw_achievements.empty?
+
+        stats = player_stats(steam_id64, app_id)
+        next unless stats
+
+        rarities = global_rarities(app_id)
+        Achievements::Providers::SetDefinition.new(
+          external_id: app_id.to_s,
+          title: stats["gameName"].to_s.strip.presence || game["gameName"].to_s.strip,
+          platform_label: PLATFORM_LABEL,
+          achievements: raw_achievements.each_with_index.map do |raw, index|
+            achievement_definition(raw, index + 1, rarities[raw["name"]])
+          end,
+          unlocks: Array(stats["achievements"]).filter_map { |entry| provider_unlock(entry) }
+        )
+      end
+    end
+
     private
+
+    # The member's playerstats for one app, or nil when Steam has no stats for
+    # them there (an unowned app or one without stats answers 400 or
+    # success: false). A non-public profile raises private_profile.
+    def player_stats(steam_id64, app_id)
+      payload = request_json_tolerating(
+        "/ISteamUserStats/GetPlayerAchievements/v1/", { steamid: steam_id64, appid: app_id.to_s, l: "english" }, [ 400 ]
+      )
+      stats = payload["playerstats"]
+      return stats if stats.is_a?(Hash) && stats["success"]
+
+      if stats.is_a?(Hash) && stats["error"].to_s.match?(/not public/i)
+        raise Error.new("private_profile", "Steam profile appears private. Set games/profile visibility to public.")
+      end
+
+      nil
+    end
+
+    # apiname => Rarity (BigDecimal, two places). Steam has served `percent` as
+    # both a number and a string, so both parse.
+    def global_rarities(app_id)
+      payload = request_json("/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/", gameid: app_id.to_s)
+      Array(payload.dig("achievementpercentages", "achievements")).each_with_object({}) do |entry, rarities|
+        percent = BigDecimal(entry["percent"].to_s, exception: false)
+        rarities[entry["name"]] = percent.round(2) if percent
+      end
+    end
+
+    # Hidden achievements come without a description; it stays nil.
+    def achievement_definition(raw, display_order, rarity)
+      Achievements::Providers::AchievementDefinition.new(
+        external_id: raw["name"],
+        name: raw["displayName"].to_s.strip,
+        description: raw["description"].to_s.strip.presence,
+        icon_url: raw["icon"].presence,
+        icon_locked_url: raw["icongray"].presence,
+        hidden: raw["hidden"].to_i == 1,
+        display_order: display_order,
+        rarity: rarity
+      )
+    end
+
+    def provider_unlock(entry)
+      return unless entry["achieved"].to_i == 1
+
+      unlock_time = entry["unlocktime"].to_i
+      Achievements::Providers::ProviderUnlock.new(
+        achievement_external_id: entry["apiname"],
+        unlocked_at: unlock_time.positive? ? Time.at(unlock_time).utc : nil
+      )
+    end
+
+    # Maps this client's privacy and rate-limit failures onto the shared
+    # Provider errors the sync units understand; other failures pass through.
+    def provider_errors
+      yield
+    rescue Error => error
+      case error.code
+      when "private_profile" then raise Achievements::Providers::Private, error.message
+      when "api_rate_limited" then raise Achievements::Providers::RateLimited, error.message
+      else raise
+      end
+    end
+
+    def played_set(raw_game, since)
+      game = owned_game(raw_game)
+      return if game.nil? || game[:playtime_forever_minutes] <= 0
+      return if since && (game[:last_played_at].nil? || game[:last_played_at] <= since)
+
+      icon_hash = raw_game["img_icon_url"].to_s.strip
+      Achievements::Providers::PlayedSet.new(
+        external_id: game[:app_id].to_s,
+        title: game[:name],
+        platform_label: PLATFORM_LABEL,
+        icon_url: icon_hash.empty? ? nil : format(APP_ICON_URL, app_id: game[:app_id], hash: icon_hash),
+        last_played_at: game[:last_played_at],
+        playtime_minutes: game[:playtime_forever_minutes]
+      )
+    end
 
     def ensure_steam_id64!(steam_id64)
       return if steam_id64.to_s.match?(STEAM_ID64_REGEX)
@@ -139,6 +273,12 @@ module Steam
     # retried with exponential backoff (or Retry-After) up to MAX_ATTEMPTS, and
     # network or JSON failures are retried the same way.
     def request_json(path, params)
+      request_json_tolerating(path, params, [])
+    end
+
+    # request_json, except that the HTTP statuses in `tolerated` return their
+    # JSON body instead of failing.
+    def request_json_tolerating(path, params, tolerated)
       query = params.merge(key: api_key)
       last_failure = nil
 
@@ -147,7 +287,7 @@ module Steam
 
         begin
           response = http.get(path, query)
-          return JSON.parse(response.body) if response.success?
+          return JSON.parse(response.body) if response.success? || tolerated.include?(response.status)
 
           retry_after = handle_http_failure!(response, attempt)
         rescue Faraday::Error, JSON::ParserError => error
