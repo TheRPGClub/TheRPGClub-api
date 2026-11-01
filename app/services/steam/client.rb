@@ -239,7 +239,7 @@ module Steam
         title: game[:name],
         platform_label: PLATFORM_LABEL,
         icon_url: icon_hash.empty? ? nil : format(APP_ICON_URL, app_id: game[:app_id], hash: icon_hash),
-        last_played_at: game[:last_played_at],
+        activity_at: game[:last_played_at],
         playtime_minutes: game[:playtime_forever_minutes]
       )
     end
