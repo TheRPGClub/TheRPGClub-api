@@ -1,0 +1,63 @@
+# frozen_string_literal: true
+
+module Achievements
+  # Best-effort link of an Achievement Set to a GameDB game (research §6).
+  #
+  # - Steam: the global `rpg_club_steam_app_gamedb_map` decides when it has a
+  #   row (mapped links, skipped stays unlinked); without a row the set falls
+  #   back to title matching.
+  # - RetroAchievements and PSN: title matching through the import matcher
+  #   (Imports::CandidateFinder + TitleNormalizer.exact_match?).
+  #
+  # Title matching links only when exactly one GameDB candidate is an exact
+  # match. It tries the Provider title first, then the title without edition
+  # noise ("Remastered", "GOTY Edition"...). Ambiguous or missing matches leave
+  # `game_id` nil. A set that is already linked is never relinked here; manual
+  # fixes go through the admin PATCH endpoint.
+  class LinkSetToGame
+    def self.call(set)
+      new(set).call
+    end
+
+    def initialize(set)
+      @set = set
+    end
+
+    def call
+      return @set if @set.game_id.present?
+
+      game_id = @set.steam? ? steam_game_id : title_game_id
+      @set.update!(game_id:) if game_id
+      @set
+    end
+
+    private
+
+    def steam_game_id
+      map = RpgClubSteamAppGamedbMap.find_by(steam_app_id: @set.external_id.to_i)
+      return title_game_id if map.nil?
+
+      map.gamedb_game_id if map.status == "mapped"
+    end
+
+    def title_game_id
+      title_variants.each do |variant|
+        exact = finder.find(variant)
+          .select { |candidate| Imports::TitleNormalizer.exact_match?(variant, candidate.title) }
+          .uniq(&:game_id)
+        return exact.first.game_id if exact.one?
+        return if exact.many?
+      end
+      nil
+    end
+
+    def title_variants
+      title = @set.title.to_s.strip
+      [ title, Imports::TitleNormalizer.without_edition(title) ].compact_blank.uniq
+    end
+
+    def finder
+      @finder ||= Imports::CandidateFinder.new
+    end
+  end
+end
