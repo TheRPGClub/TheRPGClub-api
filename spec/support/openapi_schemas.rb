@@ -966,6 +966,41 @@ module OpenapiSchemas
       AchievementProviderTotals: extends(
         "AchievementTotals", provider: str(enum: UserLinkedAccount::PROVIDERS), required: %w[provider]
       ),
+      # A Linked Account as its owner sees it (LinkedAccountResource,
+      # users/:user_id/linked_accounts): the Provider identity and sync state.
+      LinkedAccount: obj(
+        id: int, user_id: str,
+        provider: str(enum: UserLinkedAccount::PROVIDERS),
+        external_id: str(description: "The Provider's stable id: RA ULID, SteamID64 or PSN accountId."),
+        display_name: str(nullable: true, description: "The member's name on the Provider, as resolved when linked."),
+        sync_status: str(enum: UserLinkedAccount::SYNC_STATUSES,
+          description: "pending until the first sync finishes; private/not_found stop syncing until Retry; " \
+                       "error is transient (the next Sync Window tries again)."),
+        sync_mode: str(enum: UserLinkedAccount::SYNC_MODES,
+          description: "backfill until the first full import finishes, then incremental."),
+        sync_error: str(nullable: true, description: "The Provider's message for the last failure."),
+        last_synced_at: ts(nullable: true), backfilled_at: ts(nullable: true),
+        sync_requested_at: ts(nullable: true).merge(description: "The last Sync now."),
+        sync_available_at: ts.merge(description: "When Sync now is next allowed: now, or the end of the 15-minute cooldown."),
+        created_at: ts
+      ),
+      # 422 from the Linked Account writes. `error` is the machine reason.
+      LinkedAccountError: obj(
+        error: str(enum: %w[provider_already_linked identity_claimed not_found private invalid_provider
+          retry_not_allowed retry_required]),
+        message: str,
+        _required: %w[error message],
+        _description: "provider_already_linked: the member already has a Linked Account on this Provider. " \
+                      "identity_claimed: another member linked this Provider identity. " \
+                      "not_found / private: the Provider can't find or can't see the account. " \
+                      "invalid_provider: unknown Provider. retry_not_allowed: Retry only from " \
+                      "private/not_found/error. retry_required: Sync now on a private/not_found account."
+      ),
+      # 429 from Sync now inside the cooldown.
+      SyncCooldownError: obj(
+        error: str(enum: %w[sync_cooldown]), message: str, sync_available_at: ts,
+        _required: %w[error message sync_available_at]
+      ),
       # A Linked Account's public face: Provider and display name only.
       LinkedAccountSummary: obj(
         provider: str(enum: UserLinkedAccount::PROVIDERS), display_name: str(nullable: true)
