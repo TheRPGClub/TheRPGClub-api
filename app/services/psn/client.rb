@@ -66,15 +66,6 @@ module Psn
     STALE_CONNECTION_ERRORS = [ Faraday::SSLError, Faraday::ConnectionFailed ].freeze
     USER_AGENT = "RPGClubApi/AchievementHub"
 
-    # Used until AchievementHubState (api-01) exists: auth expiry is only logged.
-    module NullHubState
-      def self.get(_key) = nil
-
-      def self.set(key, value)
-        Rails.logger.warn("[PSN] #{key}=#{value.inspect} (no AchievementHubState to record it in)")
-      end
-    end
-
     def initialize(npsso: nil, http: nil, cache: nil, hub_state: nil, sleeper: nil, clock: nil)
       @npsso = npsso
       @http = http
@@ -293,9 +284,8 @@ module Psn
       hub_state.set(AUTH_EXPIRED_KEY, nil) if hub_state.get(AUTH_EXPIRED_KEY).present?
     end
 
-    # Seam until api-01's AchievementHubState is merged.
     def hub_state
-      @hub_state ||= Object.const_defined?(:AchievementHubState) ? ::AchievementHubState : NullHubState
+      @hub_state ||= AchievementHubState
     end
 
     def npsso

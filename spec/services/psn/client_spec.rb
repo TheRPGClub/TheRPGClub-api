@@ -188,6 +188,24 @@ RSpec.describe Psn::Client do
       expect(hub_state.get("psn_auth_expired_at")).to be_nil
     end
 
+    it "records the expiry in AchievementHubState by default, and clears it on the next success" do
+      client = described_class.new(npsso: "test-npsso", http: http, cache: cache)
+      stub_authorize(location: "com.scee.psxandroid.scecompcall://redirect/?error=login_required")
+
+      freeze_time do
+        expect { client.played_sets(account_id) }.to raise_error(Achievements::Providers::AuthExpired)
+        expect(AchievementHubState.get("psn_auth_expired_at")).to eq(Time.current.iso8601)
+      end
+
+      routes.clear
+      stub_authorize
+      stub_code_exchange
+      stub_titles([])
+      client.played_sets(account_id)
+
+      expect(AchievementHubState.get("psn_auth_expired_at")).to be_nil
+    end
+
     it "raises AuthExpired when Sony refuses the code exchange" do
       stub_authorize
       stub_http(:post, described_class::TOKEN_URL, reply: json({ error: "invalid_grant" }, status: 400))
