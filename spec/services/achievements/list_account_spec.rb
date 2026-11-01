@@ -109,6 +109,16 @@ RSpec.describe Achievements::ListAccount do
       sync_mode: "incremental")
   end
 
+  it "recovers an account a failed listing left in error: ok, with an advanced cursor" do
+    account.update!(sync_status: "error", sync_error: "Steam API returned HTTP 500.", sync_mode: "incremental",
+      last_synced_at: now - 1.day, backfilled_at: now - 2.days)
+    allow(client).to receive(:played_sets).and_return([])
+
+    described_class.call(account)
+
+    expect(account.reload).to have_attributes(sync_status: "ok", sync_error: nil, last_synced_at: now)
+  end
+
   describe "errors" do
     let!(:pending_row) { create(:user_achievement_set_progress, linked_account: account, sync_pending_at: now) }
 
