@@ -27,6 +27,8 @@ module Retroachievements
     BASE_BACKOFF_SECONDS = 0.5
     MAX_BACKOFF_SECONDS = 5.0
     TRANSIENT_STATUSES = [ 307, 408, 425, 429 ].freeze
+    COMPLETION_PAGE_SIZE = 500 # GetUserCompletionProgress's max `c`
+    RECENTLY_PLAYED_PAGE_SIZE = 50 # GetUserRecentlyPlayedGames's max `c`
 
     # `http` and `sleeper` are seams for specs: a Faraday connection and a
     # callable taking seconds to wait.
@@ -48,7 +50,81 @@ module Retroachievements
       { external_id: ulid, display_name: data["User"], avatar_url: media_url(data["UserPic"]) }
     end
 
+    # The member's played Achievement Sets as Achievements::Providers::PlayedSet.
+    #
+    # Without `since` (Backfill): GetUserCompletionProgress, 500 per page,
+    # keeping sets with at least one award; activity_at is the most recent
+    # award. With `since` (incremental): GetUserRecentlyPlayedGames, 50 per
+    # page, newest first, stopping at the first game last played before
+    # `since` (CompletionProgress carries no last-played date); games without
+    # Achievements or without any Unlock are skipped, matching the Backfill.
+    def played_sets(ulid, since: nil)
+      since ? recently_played_sets(ulid, since) : completion_progress_sets(ulid)
+    end
+
     private
+
+    def completion_progress_sets(ulid)
+      sets = []
+      offset = 0
+      loop do
+        data = get("API_GetUserCompletionProgress.php", u: ulid, c: COMPLETION_PAGE_SIZE, o: offset)
+        page = data.is_a?(Hash) ? Array(data["Results"]) : []
+        page.each do |game|
+          next unless game["NumAwarded"].to_i.positive? || game["NumAwardedHardcore"].to_i.positive?
+
+          sets << played_set(game, achievements_count: game["MaxPossible"], activity_at: game["MostRecentAwardedDate"])
+        end
+
+        offset += page.size
+        break if page.size < COMPLETION_PAGE_SIZE || offset >= data["Total"].to_i
+      end
+      sets
+    end
+
+    def recently_played_sets(ulid, since)
+      sets = []
+      offset = 0
+      loop do
+        data = get("API_GetUserRecentlyPlayedGames.php", u: ulid, c: RECENTLY_PLAYED_PAGE_SIZE, o: offset)
+        page = data.is_a?(Array) ? data : []
+        page.each do |game|
+          last_played = parse_time(game["LastPlayed"])
+          return sets if last_played.nil? || last_played < since
+
+          achievements_count = (game["NumPossibleAchievements"] || game["AchievementsTotal"]).to_i
+          next unless achievements_count.positive?
+          next unless game["NumAchieved"].to_i.positive? || game["NumAchievedHardcore"].to_i.positive?
+
+          sets << played_set(game, achievements_count: achievements_count, activity_at: last_played)
+        end
+
+        break if page.size < RECENTLY_PLAYED_PAGE_SIZE
+
+        offset += page.size
+      end
+      sets
+    end
+
+    def played_set(game, achievements_count:, activity_at:)
+      Achievements::Providers::PlayedSet.new(
+        external_id: game["GameID"].to_s,
+        title: game["Title"],
+        platform_label: game["ConsoleName"],
+        icon_url: media_url(game["ImageIcon"]),
+        achievements_count: achievements_count.to_i,
+        activity_at: activity_at.is_a?(String) ? parse_time(activity_at) : activity_at
+      )
+    end
+
+    # RA returns plain "YYYY-MM-DD HH:MM:SS" UTC strings.
+    def parse_time(value)
+      return if value.blank?
+
+      Time.find_zone!("UTC").parse(value.to_s)
+    rescue ArgumentError
+      nil
+    end
 
     def media_url(path)
       return if path.blank?

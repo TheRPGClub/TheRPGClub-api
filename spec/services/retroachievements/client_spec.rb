@@ -63,4 +63,159 @@ RSpec.describe Retroachievements::Client do
       expect { client.user_profile("cheater") }.to raise_error(Achievements::Providers::NotFound)
     end
   end
+
+  describe "#played_sets" do
+    def completion_entry(game_id, awarded:, hardcore: 0, recent: "2024-05-01 10:00:00")
+      {
+        "GameID" => game_id, "Title" => "Game #{game_id}", "ImageIcon" => "/Images/0#{game_id}.png",
+        "ConsoleID" => 7, "ConsoleName" => "NES/Famicom", "MaxPossible" => 40,
+        "NumAwarded" => awarded, "NumAwardedHardcore" => hardcore,
+        "MostRecentAwardedDate" => (recent if awarded.positive?),
+        "HighestAwardKind" => nil, "HighestAwardDate" => nil
+      }
+    end
+
+    context "without since (Backfill)" do
+      it "lists every set with at least one award from GetUserCompletionProgress, paging by 500" do
+        first_page = Array.new(500) { |i| completion_entry(1000 + i, awarded: i.zero? ? 0 : 1) }
+        second_page = [ completion_entry(14402, awarded: 3, hardcore: 3, recent: "2024-06-02 21:15:03") ]
+        stubs.get("/API/API_GetUserCompletionProgress.php") do |env|
+          expect(env.params).to include("u" => ulid, "c" => "500", "y" => "test-key")
+          page = env.params["o"] == "0" ? first_page : second_page
+          json({ "Count" => page.size, "Total" => 501, "Results" => page })
+        end
+
+        sets = client.played_sets(ulid)
+
+        expect(sets.size).to eq(500)
+        expect(sets.last).to eq(
+          Achievements::Providers::PlayedSet.new(
+            external_id: "14402", title: "Game 14402", platform_label: "NES/Famicom",
+            icon_url: "https://media.retroachievements.org/Images/014402.png",
+            achievements_count: 40, activity_at: Time.utc(2024, 6, 2, 21, 15, 3)
+          )
+        )
+        expect(sets.map(&:external_id)).not_to include("1000")
+      end
+
+      it "stops after a short first page" do
+        stubs.get("/API/API_GetUserCompletionProgress.php") do |env|
+          expect(env.params["o"]).to eq("0")
+          json({ "Count" => 1, "Total" => 1, "Results" => [ completion_entry(1, awarded: 1) ] })
+        end
+
+        expect(client.played_sets(ulid).map(&:external_id)).to eq([ "1" ])
+        stubs.verify_stubbed_calls
+      end
+    end
+
+    context "with since (incremental)" do
+      let(:since) { Time.utc(2024, 6, 1) }
+
+      def recent_entry(game_id, last_played:, achieved: 1, possible: 20)
+        {
+          "GameID" => game_id, "ConsoleID" => 7, "ConsoleName" => "SNES/Super Famicom", "Title" => "Game #{game_id}",
+          "ImageIcon" => "/Images/0#{game_id}.png", "LastPlayed" => last_played,
+          "AchievementsTotal" => possible, "NumPossibleAchievements" => possible, "PossibleScore" => 200,
+          "NumAchieved" => achieved, "ScoreAchieved" => 10, "NumAchievedHardcore" => 0, "ScoreAchievedHardcore" => 0
+        }
+      end
+
+      it "pages GetUserRecentlyPlayedGames and stops once LastPlayed is older than since" do
+        first_page = Array.new(50) { |i| recent_entry(i + 1, last_played: "2024-06-#{format("%02d", 30 - (i / 2))} 12:00:00") }
+        second_page = [
+          recent_entry(900, last_played: "2024-06-01 08:00:00"),
+          recent_entry(901, last_played: "2024-05-31 23:59:59"),
+          recent_entry(902, last_played: "2024-05-20 00:00:00")
+        ] + Array.new(47) { |i| recent_entry(1000 + i, last_played: "2024-05-01 00:00:00") }
+        requested_offsets = []
+        stubs.get("/API/API_GetUserRecentlyPlayedGames.php") do |env|
+          expect(env.params).to include("u" => ulid, "c" => "50")
+          requested_offsets << env.params["o"]
+          json(env.params["o"] == "0" ? first_page : second_page)
+        end
+
+        sets = client.played_sets(ulid, since: since)
+
+        expect(requested_offsets).to eq(%w[0 50])
+        expect(sets.size).to eq(51)
+        expect(sets.last).to eq(
+          Achievements::Providers::PlayedSet.new(
+            external_id: "900", title: "Game 900", platform_label: "SNES/Super Famicom",
+            icon_url: "https://media.retroachievements.org/Images/0900.png",
+            achievements_count: 20, activity_at: Time.utc(2024, 6, 1, 8)
+          )
+        )
+      end
+
+      it "skips recently played games with no Unlocks or no Achievements" do
+        stubs.get("/API/API_GetUserRecentlyPlayedGames.php") do
+          json([
+            recent_entry(1, last_played: "2024-06-05 00:00:00"),
+            recent_entry(2, last_played: "2024-06-04 00:00:00", achieved: 0),
+            recent_entry(3, last_played: "2024-06-03 00:00:00", achieved: 0, possible: 0)
+          ])
+        end
+
+        expect(client.played_sets(ulid, since: since).map(&:external_id)).to eq([ "1" ])
+      end
+    end
+  end
+
+  describe "upstream failures" do
+    let(:profile) { { "User" => "Member", "ULID" => ulid, "UserPic" => "/UserPic/Member.png" } }
+
+    def stub_profile_responses(*responses)
+      queue = responses.dup
+      stubs.get("/API/API_GetUserProfile.php") { queue.shift }
+    end
+
+    it "retries a short 429, honouring Retry-After, and returns the eventual success" do
+      stub_profile_responses(json({}, status: 429, headers: { "Retry-After" => "2" }), json(profile))
+
+      expect(client.user_profile(ulid)).to include(external_id: ulid)
+      expect(sleeps).to eq([ 2.0 ])
+    end
+
+    it "raises RateLimited with Retry-After at once when the wait is longer than the client retries" do
+      stub_profile_responses(json({}, status: 429, headers: { "Retry-After" => "60" }))
+
+      expect { client.user_profile(ulid) }.to raise_error(Achievements::Providers::RateLimited) { |error|
+        expect(error.retry_after).to eq(60.0)
+      }
+      expect(sleeps).to be_empty
+    end
+
+    it "raises RateLimited once repeated 429s exhaust the attempts" do
+      stub_profile_responses(*Array.new(3) { json({}, status: 429) })
+
+      expect { client.user_profile(ulid) }.to raise_error(Achievements::Providers::RateLimited) { |error|
+        expect(error.retry_after).to be_nil
+      }
+      expect(sleeps).to eq([ 0.5, 1.0 ])
+    end
+
+    it "retries a 5xx and raises Error once the attempts are exhausted" do
+      stub_profile_responses(*Array.new(3) { json({}, status: 503) })
+
+      expect { client.user_profile(ulid) }.to raise_error(described_class::Error, /HTTP 503/)
+      expect(sleeps).to eq([ 0.5, 1.0 ])
+    end
+
+    it "raises Error on a non-transient status without retrying" do
+      stub_profile_responses(json({}, status: 401))
+
+      expect { client.user_profile(ulid) }.to raise_error(described_class::Error, /HTTP 401/)
+      expect(sleeps).to be_empty
+    end
+
+    it "raises ConfigurationError when no API key is set" do
+      original = ENV.delete("RETROACHIEVEMENTS_API_KEY")
+
+      expect { described_class.new(http: http, sleeper: sleeper).user_profile(ulid) }
+        .to raise_error(described_class::ConfigurationError, "RETROACHIEVEMENTS_API_KEY must be set")
+    ensure
+      ENV["RETROACHIEVEMENTS_API_KEY"] = original if original
+    end
+  end
 end
