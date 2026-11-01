@@ -20,6 +20,11 @@ class GamedbGame < ApplicationRecord
     foreign_key: :game_id,
     dependent: nil,
     inverse_of: :game
+  has_many :achievement_sets,
+    class_name: "AchievementSet",
+    foreign_key: :game_id,
+    dependent: nil, # on delete nullify
+    inverse_of: :game
   has_many :game_platforms,
     class_name: "GamedbGamePlatform",
     foreign_key: :game_id,
