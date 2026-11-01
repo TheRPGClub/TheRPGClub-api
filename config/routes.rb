@@ -315,6 +315,10 @@ Rails.application.routes.draw do
       end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
+      # The bot's Achievement Hub Highlights and alerts (service-only).
+      get  "achievements/highlights/pending", to: "achievement_highlights#pending"
+      post "achievements/highlights/ack",     to: "achievement_highlights#ack"
+      post "achievements/alerts/ack",         to: "achievement_highlights#ack_alert"
       # Bot presence history (service-only, #94). The Discord bot records each
       # `/setpresence` change and reads back the latest/recent activity as it
       # migrates `BotPresenceHistory` off direct SQL (RPGClub_GameDB#795). Plain
