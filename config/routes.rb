@@ -57,7 +57,7 @@ Rails.application.routes.draw do
 
       # Achievement Hub reads (api-09): the community feed and the set page.
       get "achievements/feed", to: "achievements#feed"
-      get "achievement_sets/:id", to: "achievements#show_set"
+      resources :achievement_sets, only: %i[show]
 
       resources :platforms, only: %i[index show create]
       resources :regions, only: %i[index show create]

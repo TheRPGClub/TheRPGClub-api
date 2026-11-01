@@ -51,6 +51,16 @@ RSpec.describe "api/v1 achievement feed behavior", type: :request do
       expect(body.fetch("meta")).to include("count" => 3)
     end
 
+    it "sorts Unlocks with no Provider time (stored at the epoch) last, exposing unlocked_at as-is" do
+      unknown = unlock(bob_psn, psn_set, Time.utc(1970, 1, 1))
+      known = unlock(alice_steam, steam_set, Time.utc(2020, 1, 1))
+
+      cards = feed.fetch("data")
+
+      expect(cards.map { |c| c.fetch("unlocks").first.fetch("id") }).to eq([ known.id, unknown.id ])
+      expect(cards.last).to include("day" => "1970-01-01", "latest_unlocked_at" => "1970-01-01T00:00:00.000Z")
+    end
+
     it "caps a card at 8 Unlocks but counts them all" do
       day = Time.utc(2026, 10, 1)
       10.times { |i| unlock(alice_steam, steam_set, day + i.minutes) }
@@ -146,6 +156,13 @@ RSpec.describe "api/v1 achievement feed behavior", type: :request do
       expect(cards.first.fetch("user")).to include("user_id" => bob.user_id)
       expect(cards.first.fetch("achievement")).to include("tier" => "platinum")
       expect(cards.first.fetch("achievement_set")).to include("id" => psn_set.id)
+    end
+
+    it "sorts a Highlight with no Provider time (stored at the epoch) last" do
+      unknown = unlock(bob_psn, psn_set, Time.utc(1970, 1, 1), highlight: "rare")
+      known = unlock(alice_steam, steam_set, Time.utc(2020, 1, 1), highlight: "rare")
+
+      expect(feed(view: "highlights").fetch("data").map { |c| c.fetch("id") }).to eq([ known.id, unknown.id ])
     end
 
     it "filters by Provider and excludes departed members" do
