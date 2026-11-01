@@ -170,7 +170,9 @@ RSpec.describe 'api/v1/achievements', type: :request do
     get "A GameDB game's Achievement showcase" do
       tags 'Achievements'
       description 'The Achievement Sets linked to the game (by Provider, then title), each with the members ' \
-                  "who completed it (oldest Completion first) and the viewer's own progress (null when none). " \
+                  "who completed it (oldest Completion first), the viewer's own progress (null when none) and its " \
+                  'non-removed Achievements in display order, each with the active members who unlocked it ' \
+                  "(`holders`) and whether the viewer did. Hidden Achievements keep their name and description. " \
                   'Unpaginated.'
       produces 'application/json'
 

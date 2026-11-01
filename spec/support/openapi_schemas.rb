@@ -1055,12 +1055,27 @@ module OpenapiSchemas
       ),
       # A member who completed a set on the game showcase.
       AchievementSetCompletion: obj(user: ref("UserSummary"), completed_at: ts, _required: %w[user completed_at]),
+      # An Achievement on the game showcase (GameSetAchievementResource).
+      GameSetAchievement: obj(
+        id: int, name: str(nullable: true),
+        description: str(nullable: true, description: "Kept for hidden Achievements; www blurs it."),
+        icon_url: str(nullable: true), icon_locked_url: str(nullable: true), hidden: bool,
+        tier: str(nullable: true, enum: [ *Achievement::TIERS, nil ]), points: int(nullable: true),
+        rarity: num(nullable: true),
+        holders: { type: :array, items: { type: :string },
+                   description: "user_ids of the active members who unlocked it, earliest Unlock first." },
+        viewer_unlocked: bool,
+        _required: %w[id name description icon_url icon_locked_url hidden tier points rarity holders viewer_unlocked]
+      ),
       # games/:id/achievement_sets (GameAchievementSetResource).
       GameAchievementSet: extends(
         "AchievementSet",
         completions: array_of("AchievementSetCompletion"),
         viewer_progress: ref("SetProgress", nullable: true),
-        required: %w[completions viewer_progress]
+        achievements: array_of("GameSetAchievement").merge(
+          description: "The set's non-removed Achievements in display order."
+        ),
+        required: %w[completions viewer_progress achievements]
       ),
 
       # ---- aggregate game-profile sub-shapes (#115) ------------------------
