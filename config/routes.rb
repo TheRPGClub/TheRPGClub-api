@@ -50,8 +50,15 @@ Rails.application.routes.draw do
           patch "release_announcements", to: "release_announcements#sync"
           put "release_announcements", to: "release_announcements#sync"
           get "threads", to: "threads#game_index"
+          # Achievement Hub game showcase (api-09).
+          get "achievement_sets", to: "achievements#game_sets"
         end
       end
+
+      # Achievement Hub: the community feed (api-09), the set page (api-09)
+      # and the admin-only manual fix for a set's GameDB link (api-08).
+      get "achievements/feed", to: "achievements#feed"
+      resources :achievement_sets, only: %i[show update]
 
       resources :platforms, only: %i[index show create]
       resources :regions, only: %i[index show create]
@@ -121,6 +128,10 @@ Rails.application.routes.draw do
           post "steam_collection_imports", to: "steam_collection_imports#create"
           get "steam_collection_imports/active", to: "steam_collection_imports#active"
           get "steam_app_gamedb_maps/historical", to: "steam_app_gamedb_maps#historical"
+          # Achievement Hub reads (api-09).
+          get "achievements/summary", to: "member_achievements#summary"
+          get "achievements/sets", to: "member_achievements#sets"
+          get "achievements/unlocks", to: "member_achievements#unlocks"
         end
       end
 
@@ -197,8 +208,6 @@ Rails.application.routes.draw do
       # manually rather than via `resources`.
       get "steam_app_gamedb_maps/:steam_app_id", to: "steam_app_gamedb_maps#show"
       post "steam_app_gamedb_maps", to: "steam_app_gamedb_maps#create"
-      # Achievement Hub: the admin-only manual fix for a set's GameDB link.
-      resources :achievement_sets, only: %i[update]
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
         collection { get "leaderboard" }

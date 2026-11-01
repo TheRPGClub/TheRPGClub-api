@@ -3177,6 +3177,381 @@ components:
       - removed_votes
       - cap
       - runoff
+    AchievementSet:
+      type: object
+      properties:
+        id:
+          type: integer
+        provider:
+          type: string
+          enum:
+          - retroachievements
+          - steam
+          - psn
+        external_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        platform_label:
+          type: string
+          nullable: true
+        icon_url:
+          type: string
+          nullable: true
+        game_id:
+          type: integer
+          nullable: true
+        achievements_count:
+          type: integer
+        points_total:
+          type: integer
+      required:
+      - id
+      - provider
+      - external_id
+      - achievements_count
+      - points_total
+    Achievement:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        icon_url:
+          type: string
+          nullable: true
+        icon_locked_url:
+          type: string
+          nullable: true
+        hidden:
+          type: boolean
+        points:
+          type: integer
+          nullable: true
+        tier:
+          type: string
+          nullable: true
+          enum:
+          - bronze
+          - silver
+          - gold
+          - platinum
+          -
+        display_order:
+          type: integer
+          nullable: true
+        removed_at:
+          type: string
+          format: date-time
+          nullable: true
+        rarity:
+          type: number
+          nullable: true
+        rarity_hardcore:
+          type: number
+          nullable: true
+      required:
+      - id
+      - hidden
+    AchievementUnlock:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: string
+        unlocked_at:
+          type: string
+          format: date-time
+        hardcore:
+          type: boolean
+        highlight:
+          type: string
+          nullable: true
+          enum:
+          - platinum
+          - completion
+          - mastery
+          - rare
+          -
+        viewer_unlocked:
+          type: boolean
+        achievement:
+          "$ref": "#/components/schemas/Achievement"
+        achievement_set:
+          "$ref": "#/components/schemas/AchievementSet"
+      required:
+      - id
+      - user_id
+      - unlocked_at
+      - hardcore
+      - highlight
+      - viewer_unlocked
+      - achievement
+      - achievement_set
+    SetProgress:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: string
+        achievement_set_id:
+          type: integer
+        earned_count:
+          type: integer
+        hardcore_earned_count:
+          type: integer
+        total_count:
+          type: integer
+        points_earned:
+          type: integer
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        mastered_at:
+          type: string
+          format: date-time
+          nullable: true
+        platinum_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_unlocked_at:
+          type: string
+          format: date-time
+          nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+      required:
+      - id
+      - user_id
+      - achievement_set_id
+      - earned_count
+      - hardcore_earned_count
+      - total_count
+      - points_earned
+    AchievementSetProgress:
+      allOf:
+      - "$ref": "#/components/schemas/SetProgress"
+      - type: object
+        properties:
+          provider:
+            type: string
+            enum:
+            - retroachievements
+            - steam
+            - psn
+          achievement_set:
+            "$ref": "#/components/schemas/AchievementSet"
+        required:
+        - provider
+        - achievement_set
+    AchievementTotals:
+      type: object
+      properties:
+        unlocks:
+          type: integer
+        completions:
+          type: integer
+        masteries:
+          type: integer
+        platinums:
+          type: integer
+        points:
+          type: integer
+      required:
+      - unlocks
+      - completions
+      - masteries
+      - platinums
+      - points
+      description: Unlocks, Completions, Masteries, Platinums and RA points earned.
+    AchievementProviderTotals:
+      allOf:
+      - "$ref": "#/components/schemas/AchievementTotals"
+      - type: object
+        properties:
+          provider:
+            type: string
+            enum:
+            - retroachievements
+            - steam
+            - psn
+        required:
+        - provider
+    LinkedAccountSummary:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum:
+          - retroachievements
+          - steam
+          - psn
+        display_name:
+          type: string
+          nullable: true
+      required:
+      - provider
+    MemberAchievementSummary:
+      type: object
+      properties:
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+        totals:
+          "$ref": "#/components/schemas/AchievementTotals"
+        providers:
+          type: array
+          items:
+            "$ref": "#/components/schemas/AchievementProviderTotals"
+        linked_accounts:
+          type: array
+          items:
+            "$ref": "#/components/schemas/LinkedAccountSummary"
+        latest_unlocks:
+          type: array
+          items:
+            "$ref": "#/components/schemas/AchievementUnlock"
+      required:
+      - user
+      - totals
+      - providers
+      - linked_accounts
+      - latest_unlocks
+      description: One `providers` row per Linked Account, zeros until its first sync.
+        `latest_unlocks` holds at most 5, newest first.
+    SetAchievement:
+      allOf:
+      - "$ref": "#/components/schemas/Achievement"
+      - type: object
+        properties:
+          unlocked_at:
+            type: string
+            format: date-time
+            nullable: true
+          hardcore:
+            type: boolean
+          viewer_unlocked:
+            type: boolean
+        required:
+        - unlocked_at
+        - hardcore
+        - viewer_unlocked
+    AchievementSetDetail:
+      allOf:
+      - "$ref": "#/components/schemas/AchievementSet"
+      - type: object
+        properties:
+          game:
+            allOf:
+            - "$ref": "#/components/schemas/GameSummary"
+            nullable: true
+          user:
+            allOf:
+            - "$ref": "#/components/schemas/UserSummary"
+            nullable: true
+          progress:
+            allOf:
+            - "$ref": "#/components/schemas/SetProgress"
+            nullable: true
+          achievements:
+            type: array
+            items:
+              "$ref": "#/components/schemas/SetAchievement"
+          removed_achievements:
+            type: array
+            items:
+              "$ref": "#/components/schemas/SetAchievement"
+        required:
+        - game
+        - user
+        - progress
+        - achievements
+        - removed_achievements
+    AchievementFeedGroup:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - group
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+        achievement_set:
+          "$ref": "#/components/schemas/AchievementSet"
+        day:
+          type: string
+          format: date
+          example: '2026-10-31'
+        count:
+          type: integer
+        latest_unlocked_at:
+          type: string
+          format: date-time
+        unlocks:
+          type: array
+          items:
+            "$ref": "#/components/schemas/AchievementUnlock"
+      required:
+      - kind
+      - user
+      - achievement_set
+      - day
+      - count
+      - latest_unlocked_at
+      - unlocks
+      description: "`count` is every Unlock of the card; `unlocks` holds at most 8,
+        newest first."
+    AchievementFeedHighlight:
+      allOf:
+      - "$ref": "#/components/schemas/AchievementUnlock"
+      - type: object
+        properties:
+          kind:
+            type: string
+            enum:
+            - highlight
+          user:
+            "$ref": "#/components/schemas/UserSummary"
+        required:
+        - kind
+        - user
+    AchievementSetCompletion:
+      type: object
+      properties:
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+        completed_at:
+          type: string
+          format: date-time
+      required:
+      - user
+      - completed_at
+    GameAchievementSet:
+      allOf:
+      - "$ref": "#/components/schemas/AchievementSet"
+      - type: object
+        properties:
+          completions:
+            type: array
+            items:
+              "$ref": "#/components/schemas/AchievementSetCompletion"
+          viewer_progress:
+            allOf:
+            - "$ref": "#/components/schemas/SetProgress"
+            nullable: true
+        required:
+        - completions
+        - viewer_progress
     GotmWin:
       type: object
       properties:
@@ -3401,7 +3776,6 @@ paths:
       schema:
         type: integer
       required: true
-      description: achievement_sets.id.
     patch:
       summary: Fix an Achievement Set's GameDB link
       tags:
@@ -3469,6 +3843,338 @@ paths:
               required:
               - data
         required: true
+    get:
+      summary: An Achievement Set page
+      tags:
+      - Achievements
+      description: The set and every non-removed Achievement in `display_order`. With
+        `user_id`, each Achievement carries that member's `unlocked_at` and `hardcore`,
+        `progress` is their progress row, and `removed_achievements` lists the removed
+        Achievements they unlocked (for a "Removed" footer). `viewer_unlocked` is
+        always the signed-in viewer's own state, for spoiler blur.
+      parameters:
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: The member whose Unlocks and progress to show.
+      responses:
+        '200':
+          description: set page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/AchievementSetDetail"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown set, or `user_id` is not an active member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/achievements/summary":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: A member's Achievement Hub summary
+      tags:
+      - Achievements
+      description: Totals per Provider and overall (Unlocks, Completions, Masteries,
+        Platinums, RA points), read from the cached progress rows; the Linked Accounts
+        (Provider and display name only); and the 5 latest Unlocks. 404 when the member
+        has no Linked Account or has left the server, so www shows the profile section
+        only on a 200.
+      responses:
+        '200':
+          description: summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/MemberAchievementSummary"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no Linked Account, departed or unknown member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/achievements/sets":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: A member's Achievement Set progress grid
+      tags:
+      - Achievements
+      description: One card per Achievement Set the member has played. `status=in_progress`
+        keeps sets with at least one Unlock and no Completion; `completed` keeps Completions;
+        omitted lists every set. `sort=recent` (default) orders by latest Unlock,
+        `progress` by earned share, `title` A to Z.
+      parameters:
+      - name: provider
+        in: query
+        schema:
+          type: string
+          enum:
+          - retroachievements
+          - steam
+          - psn
+        required: false
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - in_progress
+          - completed
+        required: false
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - recent
+          - progress
+          - title
+          default: recent
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: progress grid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/AchievementSetProgress"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unknown provider, status or sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/achievements/unlocks":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: A member's Unlocks
+      tags:
+      - Achievements
+      description: The member's Unlocks across every set, newest first.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Unlocks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/AchievementUnlock"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/achievements/feed":
+    get:
+      summary: The community Achievement feed
+      tags:
+      - Achievements
+      description: "`view=latest` (default): cards grouping Unlocks per member + Achievement
+        Set + UTC day of `unlocked_at`, newest first, each with its count and up to
+        8 Unlocks (`AchievementFeedGroup`). `meta.count` counts cards. `view=highlights`:
+        one card per Highlight Unlock, newest first (`AchievementFeedHighlight`).
+        Cards carry `kind` to tell them apart."
+      parameters:
+      - name: view
+        in: query
+        schema:
+          type: string
+          enum:
+          - latest
+          - highlights
+          default: latest
+        required: false
+      - name: provider
+        in: query
+        schema:
+          type: string
+          enum:
+          - retroachievements
+          - steam
+          - psn
+        required: false
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: feed cards
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      oneOf:
+                      - "$ref": "#/components/schemas/AchievementFeedGroup"
+                      - "$ref": "#/components/schemas/AchievementFeedHighlight"
+                      discriminator:
+                        propertyName: kind
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unknown view or provider
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/achievement_sets":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: A GameDB game's Achievement showcase
+      tags:
+      - Achievements
+      description: The Achievement Sets linked to the game (by Provider, then title),
+        each with the members who completed it (oldest Completion first) and the viewer's
+        own progress (null when none). Unpaginated.
+      responses:
+        '200':
+          description: sets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameAchievementSet"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/backlog":
     parameters:
     - name: user_id

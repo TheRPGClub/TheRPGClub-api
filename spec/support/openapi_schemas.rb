@@ -913,6 +913,115 @@ module OpenapiSchemas
         _required: %w[action removed_votes cap runoff]
       ),
 
+      # ---- Achievement Hub reads (api-09) ----------------------------------
+      # An Achievement Set (AchievementSetResource): a Provider's list for one
+      # title. `external_id` is the RA game id, Steam appid or PSN
+      # npCommunicationId; `game_id` is the optional GameDB link.
+      AchievementSet: obj(
+        id: int, provider: str(enum: UserLinkedAccount::PROVIDERS), external_id: str,
+        title: str(nullable: true), platform_label: str(nullable: true), icon_url: str(nullable: true),
+        game_id: int(nullable: true), achievements_count: int, points_total: int
+      ),
+      # An Achievement definition (AchievementResource). `rarity` is the
+      # Provider's global unlock percentage (0-100); `rarity_hardcore` and
+      # `points` are RA only, `tier` PSN only. `hidden` ones are blurred by www
+      # unless the viewer unlocked them.
+      Achievement: obj(
+        id: int, name: str(nullable: true), description: str(nullable: true),
+        icon_url: str(nullable: true), icon_locked_url: str(nullable: true), hidden: bool,
+        points: int(nullable: true), tier: str(nullable: true, enum: [ *Achievement::TIERS, nil ]),
+        display_order: int(nullable: true), removed_at: ts(nullable: true),
+        rarity: num(nullable: true), rarity_hardcore: num(nullable: true)
+      ),
+      # An Unlock (AchievementUnlockResource) with its Achievement and set.
+      # `viewer_unlocked` is whether the signed-in viewer has the same
+      # Achievement (always false for the service principal).
+      AchievementUnlock: obj(
+        id: int, user_id: str, unlocked_at: ts, hardcore: bool,
+        highlight: str(nullable: true, enum: [ *UserAchievementUnlock::HIGHLIGHTS, nil ]),
+        viewer_unlocked: bool,
+        achievement: ref("Achievement"), achievement_set: ref("AchievementSet"),
+        _required: %w[id user_id unlocked_at hardcore highlight viewer_unlocked achievement achievement_set]
+      ),
+      # A member's cached progress on one set (SetProgressResource). Completion,
+      # Mastery (RA, every Unlock hardcore) and Platinum (PSN) are timestamps.
+      SetProgress: obj(
+        id: int, user_id: str, achievement_set_id: int, earned_count: int, hardcore_earned_count: int,
+        total_count: int, points_earned: int, completed_at: ts(nullable: true), mastered_at: ts(nullable: true),
+        platinum_at: ts(nullable: true), last_unlocked_at: ts(nullable: true), playtime_minutes: int(nullable: true)
+      ),
+      # A progress-grid card (AchievementSetProgressResource): SetProgress plus
+      # the set and its Provider.
+      AchievementSetProgress: extends(
+        "SetProgress",
+        provider: str(enum: UserLinkedAccount::PROVIDERS), achievement_set: ref("AchievementSet"),
+        required: %w[provider achievement_set]
+      ),
+      # Hub totals for one Provider, or overall (`totals`, which has no
+      # `provider`). Read from the cached progress rows.
+      AchievementTotals: obj(
+        unlocks: int, completions: int, masteries: int, platinums: int, points: int,
+        _description: "Unlocks, Completions, Masteries, Platinums and RA points earned."
+      ),
+      AchievementProviderTotals: extends(
+        "AchievementTotals", provider: str(enum: UserLinkedAccount::PROVIDERS), required: %w[provider]
+      ),
+      # A Linked Account's public face: Provider and display name only.
+      LinkedAccountSummary: obj(
+        provider: str(enum: UserLinkedAccount::PROVIDERS), display_name: str(nullable: true)
+      ),
+      # users/:user_id/achievements/summary.
+      MemberAchievementSummary: obj(
+        user: ref("UserSummary"), totals: ref("AchievementTotals"),
+        providers: array_of("AchievementProviderTotals"),
+        linked_accounts: array_of("LinkedAccountSummary"),
+        latest_unlocks: array_of("AchievementUnlock"),
+        _required: %w[user totals providers linked_accounts latest_unlocks],
+        _description: "One `providers` row per Linked Account, zeros until its first sync. " \
+                      "`latest_unlocks` holds at most 5, newest first."
+      ),
+      # An Achievement on the set page (SetAchievementResource): the definition
+      # plus the subject member's Unlock state (null/false when locked or when
+      # no `user_id` was given) and the viewer's.
+      SetAchievement: extends(
+        "Achievement",
+        unlocked_at: ts(nullable: true), hardcore: bool, viewer_unlocked: bool,
+        required: %w[unlocked_at hardcore viewer_unlocked]
+      ),
+      # achievement_sets/:id.
+      AchievementSetDetail: extends(
+        "AchievementSet",
+        game: ref("GameSummary", nullable: true),
+        user: ref("UserSummary", nullable: true),
+        progress: ref("SetProgress", nullable: true),
+        achievements: array_of("SetAchievement"),
+        removed_achievements: array_of("SetAchievement"),
+        required: %w[game user progress achievements removed_achievements]
+      ),
+      # A `latest` feed card: one member's Unlocks in one set on one UTC day.
+      AchievementFeedGroup: obj(
+        kind: str(enum: %w[group]), user: ref("UserSummary"), achievement_set: ref("AchievementSet"),
+        day: str(format: "date", example: "2026-10-31"), count: int, latest_unlocked_at: ts,
+        unlocks: array_of("AchievementUnlock"),
+        _required: %w[kind user achievement_set day count latest_unlocked_at unlocks],
+        _description: "`count` is every Unlock of the card; `unlocks` holds at most 8, newest first."
+      ),
+      # A `highlights` feed card: one Highlight Unlock and its member.
+      AchievementFeedHighlight: extends(
+        "AchievementUnlock",
+        kind: str(enum: %w[highlight]), user: ref("UserSummary"),
+        required: %w[kind user]
+      ),
+      # A member who completed a set on the game showcase.
+      AchievementSetCompletion: obj(user: ref("UserSummary"), completed_at: ts, _required: %w[user completed_at]),
+      # games/:id/achievement_sets (GameAchievementSetResource).
+      GameAchievementSet: extends(
+        "AchievementSet",
+        completions: array_of("AchievementSetCompletion"),
+        viewer_progress: ref("SetProgress", nullable: true),
+        required: %w[completions viewer_progress]
+      ),
+
       # ---- aggregate game-profile sub-shapes (#115) ------------------------
       GotmWin: obj(round: int, reddit_url: str(nullable: true)),
       GotmNominationSummary: obj(round: int, user_id: str, username: str(nullable: true)),
