@@ -29,6 +29,12 @@ module Achievements
     # outlasts a slow unit (a large Backfill listing).
     limits_concurrency to: 1, key: ->(provider) { provider.to_s }, on_conflict: :discard, duration: 15.minutes
 
+    # Starts (or, thanks to the concurrency limit, joins) every Provider's
+    # chain. Used by the Sync Window and the boot catch-up.
+    def self.enqueue_all
+      UserLinkedAccount::PROVIDERS.each { |provider| perform_later(provider) }
+    end
+
     # The PSN pause: while the club account's auth has expired, no PSN unit
     # runs and the Sync Window marks no PSN account. The next successful PSN
     # auth (Psn::Client) clears `psn_auth_expired_at`.

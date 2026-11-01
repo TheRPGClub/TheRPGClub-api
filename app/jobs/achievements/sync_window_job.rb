@@ -20,7 +20,7 @@ module Achievements
     def perform
       now = Time.current
       eligible.update_all(sync_due_at: now, sync_mode: "incremental", updated_at: now)
-      UserLinkedAccount::PROVIDERS.each { |provider| ProviderTickJob.perform_later(provider) }
+      ProviderTickJob.enqueue_all
     end
 
     private
