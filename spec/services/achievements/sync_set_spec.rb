@@ -32,9 +32,9 @@ RSpec.describe Achievements::SyncSet do
       rarity: 50.0, **attributes)
   end
 
-  def unlock(external_id, at, hardcore: false)
+  def unlock(external_id, at, hardcore: false, hardcore_at: nil)
     Achievements::Providers::ProviderUnlock.new(achievement_external_id: external_id, unlocked_at: at,
-      hardcore_unlocked_at: (at if hardcore))
+      hardcore_unlocked_at: hardcore_at || (at if hardcore))
   end
 
   def set_definition(set, achievements:, unlocks: [], **attributes)
@@ -188,6 +188,16 @@ RSpec.describe Achievements::SyncSet do
       expect(unlock_of(account, "2")).to have_attributes(highlight: "mastery", hardcore: true, announceable: true)
     end
 
+    it "dates an RA Mastery by the hardcore Unlocks, not the earlier softcore ones" do
+      softcore = Time.utc(2024, 3, 1)
+      account = import("retroachievements",
+        [ unlock("1", softcore, hardcore_at: now - 3.hours), unlock("2", softcore + 1.day, hardcore_at: now - 1.hour) ])
+
+      progress = account.set_progress.first
+      expect(progress).to have_attributes(completed_at: softcore + 1.day, mastered_at: now - 1.hour)
+      expect(unlock_of(account, "2")).to have_attributes(highlight: "mastery", hardcore_unlocked_at: now - 1.hour)
+    end
+
     it "marks a softcore RA set's last Unlock as its Completion" do
       account = import("retroachievements",
         [ unlock("1", now - 2.hours, hardcore: true), unlock("2", now - 1.hour) ])
@@ -221,7 +231,8 @@ RSpec.describe Achievements::SyncSet do
       row.update!(sync_pending_at: now)
       described_class.call(row.reload)
 
-      expect(unlock_of(account, "1")).to have_attributes(hardcore: true, highlight: "rare", announceable: false)
+      expect(unlock_of(account, "1")).to have_attributes(hardcore: true, hardcore_unlocked_at: now - 1.hour,
+        highlight: "rare", announceable: false)
       expect(row.reload.hardcore_earned_count).to eq(1)
     end
   end

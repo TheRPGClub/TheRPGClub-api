@@ -136,6 +136,7 @@ module Achievements
           user_linked_account_id: @account.id,
           unlocked_at: unlock.unlocked_at || UNKNOWN_UNLOCK_TIME,
           hardcore: unlock.hardcore?,
+          hardcore_unlocked_at: unlock.hardcore_unlocked_at,
           announceable: false
         }
       end
@@ -146,7 +147,8 @@ module Achievements
     end
 
     def refresh_unlock(existing, unlock)
-      existing.assign_attributes(hardcore: unlock.hardcore?, user_linked_account_id: @account.id)
+      existing.assign_attributes(hardcore: unlock.hardcore?, hardcore_unlocked_at: unlock.hardcore_unlocked_at,
+        user_linked_account_id: @account.id)
       existing.unlocked_at = unlock.unlocked_at if unlock.unlocked_at
       existing.save! if existing.changed?
     end
@@ -158,8 +160,10 @@ module Achievements
       return if new_unlock_ids.empty?
 
       unlocks = UserAchievementUnlock.where(id: new_unlock_ids).includes(achievement: :achievement_set).to_a
-      completing_times = [ progress.completed_at, progress.mastered_at ].compact
-      completer = unlocks.select { |unlock| completing_times.include?(unlock.unlocked_at) }
+      completer = unlocks.select do |unlock|
+        (progress.completed_at && unlock.unlocked_at == progress.completed_at) ||
+          (progress.mastered_at && unlock.hardcore? && unlock.mastery_time == progress.mastered_at)
+      end
         .max_by { |unlock| [ unlock.achievement.display_order || -1, unlock.id ] }
       no_completion = UserAchievementSetProgress.new
 

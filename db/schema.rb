@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_01_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_01_000200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -903,6 +903,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000100) do
     t.boolean "announceable", default: false, null: false
     t.datetime "created_at", null: false
     t.boolean "hardcore", default: false, null: false
+    t.datetime "hardcore_unlocked_at"
     t.string "highlight", limit: 16
     t.datetime "unlocked_at", null: false
     t.datetime "updated_at", null: false
