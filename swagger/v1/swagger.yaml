@@ -2190,6 +2190,35 @@ components:
       - import_id
       - by_status
       - by_result_reason
+    AchievementSetLink:
+      type: object
+      properties:
+        id:
+          type: integer
+        provider:
+          type: string
+          enum:
+          - retroachievements
+          - steam
+          - psn
+        external_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        platform_label:
+          type: string
+          nullable: true
+        icon_url:
+          type: string
+          nullable: true
+        game_id:
+          type: integer
+          nullable: true
+      required:
+      - id
+      - provider
+      - external_id
     SteamAppGamedbMap:
       type: object
       properties:
@@ -3364,6 +3393,81 @@ paths:
                   - psn_auth_expired
               required:
               - alert
+        required: true
+  "/api/v1/achievement_sets/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: achievement_sets.id.
+    patch:
+      summary: Fix an Achievement Set's GameDB link
+      tags:
+      - Achievement Sets
+      description: Admin-only (a role_admin member or a dev; the service token is
+        refused). Sets or clears the set's GameDB game. Sets are linked best-effort
+        when created and an existing link is never overwritten automatically, so this
+        is the manual fix.
+      parameters: []
+      responses:
+        '200':
+          description: link updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/AchievementSetLink"
+        '400':
+          description: missing game_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not an admin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: Achievement Set not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unknown GameDB game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    game_id:
+                      type: integer
+                      nullable: true
+                      description: gamedb_games.game_id, or null to unlink. Required.
+                  required:
+                  - game_id
+              required:
+              - data
         required: true
   "/api/v1/users/{user_id}/backlog":
     parameters:

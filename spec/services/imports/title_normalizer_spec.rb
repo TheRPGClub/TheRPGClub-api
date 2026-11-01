@@ -68,4 +68,23 @@ RSpec.describe Imports::TitleNormalizer do
       expect(described_class.exact_match?("Final Fantasy VII", "Final Fantasy VII Remake")).to be(false)
     end
   end
+
+  describe ".without_edition" do
+    it "strips trailing edition suffixes repeatedly" do
+      expect(described_class.without_edition("Dark Souls: Remastered")).to eq("Dark Souls")
+      expect(described_class.without_edition("Okami HD - Game of the Year Edition")).to eq("Okami")
+    end
+
+    it "drops trademark marks and folds smart apostrophes" do
+      expect(described_class.without_edition("Marvel’s Spider-Man℠™ Deluxe Edition")).to eq("Marvel's Spider-Man")
+    end
+
+    it "only strips a suffix after a separator" do
+      expect(described_class.without_edition("Shadow")).to eq("Shadow")
+    end
+
+    it "keeps a title that is only an edition word" do
+      expect(described_class.without_edition("Remastered")).to eq("Remastered")
+    end
+  end
 end

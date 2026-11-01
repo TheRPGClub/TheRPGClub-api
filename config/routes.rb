@@ -197,6 +197,8 @@ Rails.application.routes.draw do
       # manually rather than via `resources`.
       get "steam_app_gamedb_maps/:steam_app_id", to: "steam_app_gamedb_maps#show"
       post "steam_app_gamedb_maps", to: "steam_app_gamedb_maps#create"
+      # Achievement Hub: the admin-only manual fix for a set's GameDB link.
+      resources :achievement_sets, only: %i[update]
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
         collection { get "leaderboard" }

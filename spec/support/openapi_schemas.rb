@@ -658,6 +658,13 @@ module OpenapiSchemas
         by_status: { type: :object, description: "Item count keyed by status.", additionalProperties: { type: :integer } },
         by_result_reason: { type: :object, description: "Item count keyed by result_reason.", additionalProperties: { type: :integer } }
       ),
+      # AchievementSetLinkResource: an Achievement Set and its GameDB link
+      # (admin PATCH /achievement_sets/:id).
+      AchievementSetLink: obj(
+        id: int, provider: str(enum: %w[retroachievements steam psn]), external_id: str,
+        title: str(nullable: true), platform_label: str(nullable: true), icon_url: str(nullable: true),
+        game_id: int(nullable: true)
+      ),
       # SteamAppGamedbMapResource: every RpgClubSteamAppGamedbMap column
       # (#166) — the cached Steam app -> GameDB game mapping.
       SteamAppGamedbMap: obj(

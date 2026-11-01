@@ -20,4 +20,17 @@ RSpec.describe AchievementSet do
 
     expect(set.reload.game_id).to be_nil
   end
+
+  it "enqueues a GameDB link once it is created" do
+    set = nil
+
+    expect { set = create(:achievement_set) }.to have_enqueued_job(Achievements::LinkSetToGameJob)
+    expect(Achievements::LinkSetToGameJob).to have_been_enqueued.with(set)
+  end
+
+  it "does not enqueue a GameDB link on update" do
+    set = create(:achievement_set)
+
+    expect { set.update!(title: "Renamed") }.not_to have_enqueued_job(Achievements::LinkSetToGameJob)
+  end
 end
