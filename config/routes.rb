@@ -121,6 +121,10 @@ Rails.application.routes.draw do
           post "steam_collection_imports", to: "steam_collection_imports#create"
           get "steam_collection_imports/active", to: "steam_collection_imports#active"
           get "steam_app_gamedb_maps/historical", to: "steam_app_gamedb_maps#historical"
+          # Achievement Hub reads (api-09).
+          get "achievements/summary", to: "member_achievements#summary"
+          get "achievements/sets", to: "member_achievements#sets"
+          get "achievements/unlocks", to: "member_achievements#unlocks"
         end
       end
 
