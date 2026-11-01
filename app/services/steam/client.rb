@@ -39,6 +39,8 @@ module Steam
     BASE_BACKOFF_SECONDS = 0.5
     MAX_JITTER_SECONDS = 0.25
     USER_AGENT = "RPGClubApi/SteamImport"
+    PLATFORM_LABEL = "PC"
+    APP_ICON_URL = "https://media.steampowered.com/steamcommunity/public/images/apps/%<app_id>s/%<hash>s.jpg"
 
     # `http`, `sleeper` and `clock` are seams for specs: a Faraday connection, a
     # callable taking seconds to wait, and a callable returning monotonic
@@ -108,7 +110,57 @@ module Steam
       { steam_id64: steam_id64, profile_name: profile_name, game_count: game_count, games: games }
     end
 
+    # Achievement Hub: the member's played games as
+    # Achievements::Providers::PlayedSet, one per appid with playtime. With
+    # `since`, only games last played after it (rtime_last_played is the delta
+    # signal). Skips the persona-name lookup owned_games makes. Raises
+    # Achievements::Providers::Private when Steam hides the game details.
+    def played_sets(steam_id64, since: nil)
+      ensure_steam_id64!(steam_id64)
+
+      response = provider_errors do
+        request_json(
+          "/IPlayerService/GetOwnedGames/v1/",
+          steamid: steam_id64, include_appinfo: "1", include_played_free_games: "1"
+        )["response"] || {}
+      end
+      # A profile with private game details answers with an empty response;
+      # a public, empty library still reports its game_count.
+      raise Achievements::Providers::Private, "Steam game details are private." unless response.key?("games") ||
+        response.key?("game_count")
+
+      Array(response["games"]).filter_map { |raw_game| played_set(raw_game, since) }
+    end
+
     private
+
+    # Maps this client's privacy and rate-limit failures onto the shared
+    # Provider errors the sync units understand; other failures pass through.
+    def provider_errors
+      yield
+    rescue Error => error
+      case error.code
+      when "private_profile" then raise Achievements::Providers::Private, error.message
+      when "api_rate_limited" then raise Achievements::Providers::RateLimited, error.message
+      else raise
+      end
+    end
+
+    def played_set(raw_game, since)
+      game = owned_game(raw_game)
+      return if game.nil? || game[:playtime_forever_minutes] <= 0
+      return if since && (game[:last_played_at].nil? || game[:last_played_at] <= since)
+
+      icon_hash = raw_game["img_icon_url"].to_s.strip
+      Achievements::Providers::PlayedSet.new(
+        external_id: game[:app_id].to_s,
+        title: game[:name],
+        platform_label: PLATFORM_LABEL,
+        icon_url: icon_hash.empty? ? nil : format(APP_ICON_URL, app_id: game[:app_id], hash: icon_hash),
+        last_played_at: game[:last_played_at],
+        playtime_minutes: game[:playtime_forever_minutes]
+      )
+    end
 
     def ensure_steam_id64!(steam_id64)
       return if steam_id64.to_s.match?(STEAM_ID64_REGEX)

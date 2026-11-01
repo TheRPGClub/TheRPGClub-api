@@ -161,6 +161,71 @@ RSpec.describe Steam::Client do
     end
   end
 
+  describe "#played_sets" do
+    let(:owned_games) do
+      json(response: {
+        game_count: 3,
+        games: [
+          { appid: 620, name: " Portal 2 ", playtime_forever: 900, rtime_last_played: 1_700_000_000, img_icon_url: "abc123" },
+          { appid: 220, name: "Half-Life 2", playtime_forever: 0, rtime_last_played: 0 },
+          { appid: 400, name: "Portal", playtime_forever: 120, rtime_last_played: 1_600_000_000, img_icon_url: "" }
+        ]
+      })
+    end
+
+    it "lists only the games with playtime, as PlayedSets, without fetching the persona name" do
+      stubs.get("/IPlayerService/GetOwnedGames/v1/") do |env|
+        expect(env.params).to include("steamid" => steam_id, "include_appinfo" => "1", "include_played_free_games" => "1")
+        owned_games
+      end
+
+      expect(client.played_sets(steam_id)).to eq([
+        Achievements::Providers::PlayedSet.new(
+          external_id: "620", title: "Portal 2", platform_label: "PC",
+          icon_url: "https://media.steampowered.com/steamcommunity/public/images/apps/620/abc123.jpg",
+          last_played_at: Time.utc(2023, 11, 14, 22, 13, 20), playtime_minutes: 900
+        ),
+        Achievements::Providers::PlayedSet.new(
+          external_id: "400", title: "Portal", platform_label: "PC", icon_url: nil,
+          last_played_at: Time.utc(2020, 9, 13, 12, 26, 40), playtime_minutes: 120
+        )
+      ])
+      stubs.verify_stubbed_calls
+    end
+
+    it "keeps only the games last played after `since`" do
+      stubs.get("/IPlayerService/GetOwnedGames/v1/") { owned_games }
+
+      sets = client.played_sets(steam_id, since: Time.utc(2023, 1, 1))
+
+      expect(sets.map(&:external_id)).to eq([ "620" ])
+    end
+
+    it "returns no sets for a public library whose played games list is empty" do
+      stubs.get("/IPlayerService/GetOwnedGames/v1/") { json(response: { game_count: 0, games: [] }) }
+
+      expect(client.played_sets(steam_id)).to eq([])
+    end
+
+    it "raises Private when Steam hides the game details" do
+      stubs.get("/IPlayerService/GetOwnedGames/v1/") { json(response: {}) }
+
+      expect { client.played_sets(steam_id) }.to raise_error(Achievements::Providers::Private)
+    end
+
+    it "raises Private on HTTP 403" do
+      stubs.get("/IPlayerService/GetOwnedGames/v1/") { json(status: 403) }
+
+      expect { client.played_sets(steam_id) }.to raise_error(Achievements::Providers::Private)
+    end
+
+    it "raises RateLimited once the 429 retries are exhausted" do
+      stubs.get("/IPlayerService/GetOwnedGames/v1/") { json(status: 429) }
+
+      expect { client.played_sets(steam_id) }.to raise_error(Achievements::Providers::RateLimited)
+    end
+  end
+
   describe "upstream failures" do
     let(:summary_path) { "/ISteamUser/GetPlayerSummaries/v2/" }
     let(:ok_summary) { json(response: { players: [ { personaname: "Rabscuttle" } ] }) }
