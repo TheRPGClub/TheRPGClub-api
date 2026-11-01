@@ -2407,6 +2407,105 @@ components:
       - payload
       - available_at
       - attempts
+    AchievementHighlight:
+      type: object
+      properties:
+        id:
+          type: integer
+        highlight:
+          type: string
+          enum:
+          - platinum
+          - completion
+          - mastery
+          - rare
+        hardcore:
+          type: boolean
+        unlocked_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+        display_name:
+          type: string
+        url_path:
+          type: string
+          description: 'The www set page path: /members/{user_id}/achievements/{set_id}.'
+        achievement:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+              nullable: true
+            description:
+              type: string
+              nullable: true
+            icon_url:
+              type: string
+              nullable: true
+            tier:
+              type: string
+              nullable: true
+              enum:
+              - bronze
+              - silver
+              - gold
+              - platinum
+            points:
+              type: integer
+              nullable: true
+            rarity:
+              type: number
+              nullable: true
+          required:
+          - id
+        achievement_set:
+          type: object
+          properties:
+            id:
+              type: integer
+            title:
+              type: string
+              nullable: true
+            provider:
+              type: string
+              enum:
+              - retroachievements
+              - steam
+              - psn
+            platform_label:
+              type: string
+              nullable: true
+            icon_url:
+              type: string
+              nullable: true
+          required:
+          - id
+          - provider
+      required:
+      - id
+      - highlight
+      - hardcore
+      - unlocked_at
+      - user_id
+      - display_name
+      - url_path
+      - achievement
+      - achievement_set
+    AchievementHubAlerts:
+      type: object
+      properties:
+        psn_auth_expired_at:
+          type: string
+          format: date-time
+          nullable: true
+        psn_auth_alerted:
+          type: boolean
+      required:
+      - psn_auth_expired_at
+      - psn_auth_alerted
     PublicReminder:
       type: object
       properties:
@@ -3126,6 +3225,146 @@ components:
 security:
 - bearerAuth: []
 paths:
+  "/api/v1/achievements/highlights/pending":
+    get:
+      summary: List pending Achievement Highlights
+      tags:
+      - Achievement Hub
+      description: 'Service only. Announceable Unlocks (Highlights found by an incremental
+        sync within 48h of their `unlocked_at`) with an id past the stored cursor,
+        oldest first, at most 25. Departed members are excluded. Post them, then ack
+        `meta.next_cursor`. `alerts` carries the PSN auth alert: post it while `psn_auth_expired_at`
+        is set and `psn_auth_alerted` is false, then ack it.'
+      responses:
+        '200':
+          description: pending Highlights and alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/AchievementHighlight"
+                  meta:
+                    type: object
+                    properties:
+                      cursor:
+                        type: integer
+                        description: The stored cursor (0 when unset).
+                      next_cursor:
+                        type: integer
+                        nullable: true
+                        description: The id of the last listed Unlock; null when nothing
+                          is pending.
+                    required:
+                    - cursor
+                    - next_cursor
+                  alerts:
+                    "$ref": "#/components/schemas/AchievementHubAlerts"
+                required:
+                - data
+                - meta
+                - alerts
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/achievements/highlights/ack":
+    post:
+      summary: Acknowledge posted Achievement Highlights
+      tags:
+      - Achievement Hub
+      description: 'Service only. Stores the cursor: the id of the last Unlock posted.
+        The cursor only moves forward, so a stale ack is a no-op; the response carries
+        the stored cursor.'
+      parameters: []
+      responses:
+        '200':
+          description: cursor stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      cursor:
+                        type: integer
+                    required:
+                    - cursor
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: missing or malformed cursor
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cursor:
+                  type: integer
+                  minimum: 0
+              required:
+              - cursor
+        required: true
+  "/api/v1/achievements/alerts/ack":
+    post:
+      summary: Acknowledge a posted Achievement Hub alert
+      tags:
+      - Achievement Hub
+      description: 'Service only. Marks the alert as posted, once per expiry: a new
+        `psn_auth_expired_at` re-arms it. A no-op while PSN auth is healthy. Returns
+        the alerts after the ack.'
+      parameters: []
+      responses:
+        '200':
+          description: alert acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/AchievementHubAlerts"
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unknown alert
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                alert:
+                  type: string
+                  enum:
+                  - psn_auth_expired
+              required:
+              - alert
+        required: true
   "/api/v1/users/{user_id}/backlog":
     parameters:
     - name: user_id
