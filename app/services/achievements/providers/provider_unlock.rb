@@ -8,6 +8,10 @@ module Achievements
       def initialize(achievement_external_id:, unlocked_at:, hardcore_unlocked_at: nil)
         super
       end
+
+      def hardcore?
+        !hardcore_unlocked_at.nil?
+      end
     end
   end
 end

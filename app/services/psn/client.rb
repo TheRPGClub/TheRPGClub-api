@@ -97,7 +97,7 @@ module Psn
         data = api_get("/trophy/v1/users/#{escape(account_id)}/trophyTitles", { limit: TITLES_PAGE, offset: offset })
         page = Array(data["trophyTitles"])
         sets = page.map { |row| played_set(row) }
-        fresh = since ? sets.take_while { |set| set.last_played_at.nil? || set.last_played_at >= since } : sets
+        fresh = since ? sets.take_while { |set| set.activity_at.nil? || set.activity_at >= since } : sets
         collected.concat(fresh)
 
         offset += page.size
@@ -131,8 +131,8 @@ module Psn
 
       Achievements::Providers::SetDefinition.new(
         external_id: np_communication_id,
+        title: nil, # the definitions endpoint has no title; it comes from the PlayedSet
         np_service_name: np_service_name,
-        version: definitions["trophySetVersion"],
         achievements: Array(definitions["trophies"]).map { |trophy| achievement(trophy, earned[trophy["trophyId"].to_s]) },
         unlocks: earned.values.select { |trophy| trophy["earned"] == true }.map { |trophy| unlock(trophy) }
       )
@@ -208,9 +208,8 @@ module Psn
         title: row["trophyTitleName"],
         platform_label: row["trophyTitlePlatform"],
         icon_url: row["trophyTitleIconUrl"],
-        last_played_at: parse_time(row["lastUpdatedDateTime"]),
-        earned_count: trophy_count(row["earnedTrophies"]),
-        total_count: trophy_count(row["definedTrophies"])
+        activity_at: parse_time(row["lastUpdatedDateTime"]),
+        achievements_count: trophy_count(row["definedTrophies"])
       )
     end
 

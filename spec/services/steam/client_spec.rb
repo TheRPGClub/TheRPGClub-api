@@ -183,11 +183,11 @@ RSpec.describe Steam::Client do
         Achievements::Providers::PlayedSet.new(
           external_id: "620", title: "Portal 2", platform_label: "PC",
           icon_url: "https://media.steampowered.com/steamcommunity/public/images/apps/620/abc123.jpg",
-          last_played_at: Time.utc(2023, 11, 14, 22, 13, 20), playtime_minutes: 900
+          activity_at: Time.utc(2023, 11, 14, 22, 13, 20), playtime_minutes: 900
         ),
         Achievements::Providers::PlayedSet.new(
           external_id: "400", title: "Portal", platform_label: "PC", icon_url: nil,
-          last_played_at: Time.utc(2020, 9, 13, 12, 26, 40), playtime_minutes: 120
+          activity_at: Time.utc(2020, 9, 13, 12, 26, 40), playtime_minutes: 120
         )
       ])
       stubs.verify_stubbed_calls
