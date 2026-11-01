@@ -22,7 +22,8 @@ RSpec.describe 'api/v1/achievements', type: :request do
       tags 'Achievements'
       description 'Totals per Provider and overall (Unlocks, Completions, Masteries, Platinums, RA points), ' \
                   'read from the cached progress rows; the Linked Accounts (Provider and display name only); ' \
-                  'and the 5 latest Unlocks. 404 when the member has no Linked Account or has left the server, ' \
+                  'the 5 latest Unlocks; and the 4 rarest Unlocks by overall Rarity (unknown Rarity last). ' \
+                  '404 when the member has no Linked Account or has left the server, ' \
                   'so www shows the profile section only on a 200.'
       produces 'application/json'
 
@@ -169,7 +170,9 @@ RSpec.describe 'api/v1/achievements', type: :request do
     get "A GameDB game's Achievement showcase" do
       tags 'Achievements'
       description 'The Achievement Sets linked to the game (by Provider, then title), each with the members ' \
-                  "who completed it (oldest Completion first) and the viewer's own progress (null when none). " \
+                  "who completed it (oldest Completion first), the viewer's own progress (null when none) and its " \
+                  'non-removed Achievements in display order, each with the active members who unlocked it ' \
+                  "(`holders`) and whether the viewer did. Hidden Achievements keep their name and description. " \
                   'Unpaginated.'
       produces 'application/json'
 

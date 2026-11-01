@@ -2,9 +2,12 @@
 
 # An Achievement Set on a GameDB game's showcase: the set, the members who
 # completed it (oldest Completion first) and the viewer's own progress, or
-# null. Params: `completions` ({ set_id => [UserAchievementSetProgress] }),
-# `users` ({ user_id => RpgClubUser }) and `viewer_progress`
-# ({ set_id => UserAchievementSetProgress }).
+# null, and its non-removed Achievements in display order. Params:
+# `completions` ({ set_id => [UserAchievementSetProgress] }), `users`
+# ({ user_id => RpgClubUser }), `viewer_progress`
+# ({ set_id => UserAchievementSetProgress }), `achievements`
+# ({ set_id => [Achievement] }) and GameSetAchievementResource's `holders` and
+# `viewer_unlocked_ids`.
 class GameAchievementSetResource
   include BaseResource
 
@@ -23,5 +26,12 @@ class GameAchievementSetResource
   attribute(:viewer_progress) do |set|
     progress = params.fetch(:viewer_progress)[set.id]
     progress && SetProgressResource.new(progress).serializable_hash
+  end
+
+  attribute(:achievements) do |set|
+    GameSetAchievementResource.new(
+      params.fetch(:achievements).fetch(set.id, []),
+      params: params.slice(:holders, :viewer_unlocked_ids)
+    ).serializable_hash
   end
 end

@@ -17,13 +17,16 @@ module Api
         return render(json: { error: "not_found" }, status: :not_found) if summary.nil? || summary.accounts.empty?
 
         latest = summary.latest_unlocks
+        rarest = summary.rarest_unlocks
+        viewer = viewer_params(latest + rarest)
         render json: {
           data: {
             user: UserSummaryResource.new(user).serializable_hash,
             totals: summary.totals,
             providers: summary.providers,
             linked_accounts: LinkedAccountSummaryResource.new(summary.accounts).serializable_hash,
-            latest_unlocks: AchievementUnlockResource.new(latest, params: viewer_params(latest)).serializable_hash
+            latest_unlocks: AchievementUnlockResource.new(latest, params: viewer).serializable_hash,
+            rarest_unlocks: AchievementUnlockResource.new(rarest, params: viewer).serializable_hash
           }
         }
       end

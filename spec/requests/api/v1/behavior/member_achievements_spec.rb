@@ -60,6 +60,37 @@ RSpec.describe "api/v1 member achievements behavior", type: :request do
       expect(latest.first.dig("achievement_set", "id")).to eq(steam_set.id)
     end
 
+    it "lists the 4 rarest Unlocks, rarest first, leaving out removed Achievements" do
+      steam = link(member, "steam")
+      set = create(:achievement_set, provider: "steam")
+      common = unlock(steam, create(:achievement, achievement_set: set, rarity: 80.5))
+      rarest = unlock(steam, create(:achievement, achievement_set: set, rarity: 0.4))
+      unlock(steam, create(:achievement, achievement_set: set, rarity: 99))
+      rare = unlock(steam, create(:achievement, achievement_set: set, rarity: 3.2))
+      uncommon = unlock(steam, create(:achievement, achievement_set: set, rarity: 40))
+      unlock(steam, create(:achievement, achievement_set: set, rarity: 0.1, removed_at: 1.day.ago))
+      unlock(link(viewer, "steam"), create(:achievement, achievement_set: set, rarity: 0.2))
+
+      get "/api/v1/users/#{member.user_id}/achievements/summary", headers: auth_headers_for(viewer)
+
+      expect(response).to have_http_status(:ok)
+      rarest_unlocks = json.dig("data", "rarest_unlocks")
+      expect(rarest_unlocks.map { |u| u.fetch("id") }).to eq([ rarest.id, rare.id, uncommon.id, common.id ])
+      expect(rarest_unlocks.first.dig("achievement", "rarity")).to eq(0.4)
+      expect(rarest_unlocks.first.dig("achievement_set", "id")).to eq(set.id)
+    end
+
+    it "ranks Unlocks with no known Rarity after every rated one" do
+      steam = link(member, "steam")
+      set = create(:achievement_set, provider: "steam")
+      unrated = unlock(steam, create(:achievement, achievement_set: set, rarity: nil), unlocked_at: 1.hour.ago)
+      rated = unlock(steam, create(:achievement, achievement_set: set, rarity: 95), unlocked_at: 2.hours.ago)
+
+      get "/api/v1/users/#{member.user_id}/achievements/summary", headers: auth_headers_for(viewer)
+
+      expect(json.dig("data", "rarest_unlocks").map { |u| u.fetch("id") }).to eq([ rated.id, unrated.id ])
+    end
+
     it "lists a linked Provider with nothing synced yet as zero totals" do
       link(member, "psn")
 

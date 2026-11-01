@@ -43,6 +43,81 @@ RSpec.describe "api/v1 game achievement sets behavior", type: :request do
     ])
   end
 
+  def unlock(user, achievement)
+    account = UserLinkedAccount.find_by(user: user, provider: achievement.achievement_set.provider) ||
+      create(:user_linked_account, user: user, provider: achievement.achievement_set.provider)
+    create(:user_achievement_unlock, linked_account: account, user: user, achievement: achievement)
+  end
+
+  def game_sets
+    get "/api/v1/games/#{game.game_id}/achievement_sets", headers: auth_headers_for(viewer)
+    expect(response).to have_http_status(:ok)
+    json.fetch("data")
+  end
+
+  it "lists each set's Achievements in display order with their holders and the viewer's Unlock" do
+    second = create(:achievement, achievement_set: steam_set, display_order: 2, name: "Second", rarity: 12.5)
+    secret = create(:achievement, achievement_set: steam_set, display_order: 1, name: "Secret", description: "Spoiler",
+      hidden: true, rarity: nil)
+    create(:achievement, achievement_set: steam_set, display_order: 0, removed_at: 1.day.ago)
+    trophy = create(:achievement, achievement_set: psn_set, display_order: 1, tier: "gold")
+    holder = create(:user)
+    unlock(holder, second)
+    unlock(viewer, second)
+    unlock(create(:user, server_left_at: 1.day.ago), second)
+    unlock(holder, trophy)
+
+    psn, steam = game_sets
+
+    expect(steam.fetch("achievements")).to eq([
+      {
+        "id" => secret.id, "name" => "Secret", "description" => "Spoiler",
+        "icon_url" => secret.icon_url, "icon_locked_url" => secret.icon_locked_url,
+        "hidden" => true, "tier" => nil, "points" => secret.points, "rarity" => nil,
+        "holders" => [], "viewer_unlocked" => false
+      },
+      {
+        "id" => second.id, "name" => "Second", "description" => second.description,
+        "icon_url" => second.icon_url, "icon_locked_url" => second.icon_locked_url,
+        "hidden" => false, "tier" => nil, "points" => second.points, "rarity" => 12.5,
+        "holders" => [ holder.user_id, viewer.user_id ], "viewer_unlocked" => true
+      }
+    ])
+    expect(psn.fetch("achievements")).to contain_exactly(
+      include("id" => trophy.id, "tier" => "gold", "holders" => [ holder.user_id ], "viewer_unlocked" => false)
+    )
+  end
+
+  it "reads every set's Achievements in a fixed number of queries" do
+    headers = auth_headers_for(viewer)
+    count_queries = lambda do
+      queries = 0
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+        # Cached hits count too, so the query cache cannot mask a per-set query.
+        queries += 1 unless payload[:name] == "SCHEMA"
+      end
+      begin
+        get "/api/v1/games/#{game.game_id}/achievement_sets", headers: headers
+      ensure
+        ActiveSupport::Notifications.unsubscribe(subscriber)
+      end
+      expect(response).to have_http_status(:ok)
+      queries
+    end
+
+    unlock(create(:user), create(:achievement, achievement_set: steam_set))
+    small = count_queries.call
+
+    3.times do
+      set = create(:achievement_set, provider: "retroachievements", game_id: game.game_id)
+      2.times { unlock(create(:user), create(:achievement, achievement_set: set)) }
+    end
+    unlock(viewer, create(:achievement, achievement_set: psn_set))
+    large = count_queries.call
+
+    expect(large).to eq(small)
+  end
+
   it "is an empty list for a game without sets" do
     get "/api/v1/games/#{create(:game).game_id}/achievement_sets", headers: auth_headers_for(viewer)
 
