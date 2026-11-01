@@ -12,6 +12,8 @@ class UserLinkedAccount < ApplicationRecord
   PROVIDERS = %w[retroachievements steam psn].freeze
   SYNC_STATUSES = %w[pending ok private not_found error].freeze
   SYNC_MODES = %w[backfill incremental].freeze
+  # How long after a Sync now the member must wait before the next one.
+  SYNC_COOLDOWN = 15.minutes
 
   enum :provider, PROVIDERS.index_with(&:itself), validate: true
   # Prefixed: a bare `private` scope would clash with Module#private.
@@ -39,4 +41,11 @@ class UserLinkedAccount < ApplicationRecord
   scope :sync_due, lambda { |provider, now = Time.current|
     where(provider: provider, sync_due_at: ..now).order(:sync_due_at, :id)
   }
+
+  # When Sync now is next allowed: `now`, or the end of the cooldown.
+  def sync_available_at(now = Time.current)
+    return now if sync_requested_at.nil?
+
+    [ sync_requested_at + SYNC_COOLDOWN, now ].max
+  end
 end

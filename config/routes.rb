@@ -132,6 +132,12 @@ Rails.application.routes.draw do
           get "achievements/summary", to: "member_achievements#summary"
           get "achievements/sets", to: "member_achievements#sets"
           get "achievements/unlocks", to: "member_achievements#unlocks"
+          # Linked Accounts (api-05). Owner-only; an admin may also unlink.
+          get "linked_accounts", to: "linked_accounts#index"
+          post "linked_accounts", to: "linked_accounts#create"
+          delete "linked_accounts/:id", to: "linked_accounts#destroy"
+          post "linked_accounts/:id/retry", to: "linked_accounts#retry"
+          post "linked_accounts/:id/sync", to: "linked_accounts#sync"
         end
       end
 
