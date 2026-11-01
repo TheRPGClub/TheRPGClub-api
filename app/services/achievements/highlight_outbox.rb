@@ -1,51 +1,38 @@
 # frozen_string_literal: true
 
 module Achievements
-  # The bot's view of the Achievement Hub: announceable Highlights past a
-  # stored cursor, and the PSN auth alert. The cursor is the id of the last
-  # Unlock the bot posted, kept in AchievementHubState; it only moves forward,
-  # so the bot can't double-post across restarts.
+  # The bot's view of the Achievement Hub: announceable Highlights the bot has
+  # not announced yet, and the PSN auth alert. The bot acks each Unlock it
+  # posts (`announced_at`), so each is posted once, whatever order the
+  # concurrent Provider chains commit Unlocks in.
   module HighlightOutbox
-    CURSOR_KEY = "bot_highlight_cursor"
     PSN_AUTH_EXPIRED_KEY = Psn::Client::AUTH_EXPIRED_KEY
     # The `psn_auth_expired_at` value the bot last posted. A new expiry
     # timestamp differs from it, which re-arms the alert.
     PSN_AUTH_ALERTED_KEY = "psn_auth_alerted_for"
     ALERTS = %w[psn_auth_expired].freeze
     LIMIT = 25
+    MAX_ACK = 100
 
     module_function
 
-    def cursor
-      AchievementHubState.get(CURSOR_KEY).to_i
-    end
-
-    # Announceable Unlocks of active members past the cursor, oldest first.
+    # Unannounced announceable Unlocks of active members, oldest first.
     def pending(limit: LIMIT)
       UserAchievementUnlock
-        .where(announceable: true)
-        .where(UserAchievementUnlock.arel_table[:id].gt(cursor))
+        .where(announceable: true, announced_at: nil)
         .of_active_members
         .includes(:user, achievement: :achievement_set)
         .order(:id)
         .limit(limit)
     end
 
-    # Moves the cursor to `value` unless it is already further along (a stale
-    # ack is a no-op). Atomic, so concurrent acks can't move it backwards.
-    # Returns the stored cursor.
-    def ack!(value)
-      sql = <<~SQL.squish
-        INSERT INTO achievement_hub_states (key, value, created_at, updated_at)
-        VALUES (:key, to_jsonb(:value::bigint), now(), now())
-        ON CONFLICT (key) DO UPDATE
-          SET value = to_jsonb(GREATEST((achievement_hub_states.value #>> '{}')::bigint, :value::bigint)),
-              updated_at = now()
-        RETURNING (value #>> '{}')::bigint
-      SQL
-      AchievementHubState.connection.select_value(
-        AchievementHubState.sanitize_sql([ sql, { key: CURSOR_KEY, value: value } ])
-      ).to_i
+    # Stamps `announced_at` on the given announceable Unlocks. Idempotent: an
+    # Unlock keeps its first time; ids that aren't announceable are ignored.
+    # Returns the given ids that are now announced.
+    def ack!(ids, now: Time.current)
+      announceable = UserAchievementUnlock.where(id: ids, announceable: true)
+      announceable.where(announced_at: nil).update_all(announced_at: now, updated_at: now)
+      announceable.order(:id).ids
     end
 
     def alerts

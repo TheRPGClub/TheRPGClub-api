@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_01_000200) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -901,6 +901,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000200) do
   create_table "user_achievement_unlocks", force: :cascade do |t|
     t.bigint "achievement_id", null: false
     t.boolean "announceable", default: false, null: false
+    t.datetime "announced_at"
     t.datetime "created_at", null: false
     t.boolean "hardcore", default: false, null: false
     t.datetime "hardcore_unlocked_at"
@@ -910,7 +911,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000200) do
     t.string "user_id", limit: 30, null: false
     t.bigint "user_linked_account_id", null: false
     t.index ["achievement_id"], name: "ix_user_achievement_unlocks_achievement"
-    t.index ["id"], name: "ix_user_achievement_unlocks_announceable", where: "announceable"
+    t.index ["id"], name: "ix_user_achievement_unlocks_unannounced", where: "(announceable AND (announced_at IS NULL))"
     t.index ["unlocked_at"], name: "ix_user_achievement_unlocks_unlocked_at"
     t.index ["user_id", "achievement_id"], name: "ux_user_achievement_unlocks_user_achievement", unique: true
     t.index ["user_linked_account_id"], name: "ix_user_achievement_unlocks_linked_account"

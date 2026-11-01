@@ -2,8 +2,8 @@
 
 require "rails_helper"
 
-# Behavior specs for the bot's Highlight endpoints: the pending list past the
-# stored cursor, the monotonic cursor ack and the PSN auth alert ack.
+# Behavior specs for the bot's Highlight endpoints: the pending list of
+# unannounced Highlights, the per-Unlock ack and the PSN auth alert ack.
 RSpec.describe "api/v1/achievements highlights behavior", type: :request do
   let(:member) { create(:user, global_name: "Sir Grind") }
   let(:account) { create(:user_linked_account, user: member, provider: "psn") }
@@ -51,16 +51,30 @@ RSpec.describe "api/v1/achievements highlights behavior", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "lists only Unlocks past the stored cursor, oldest first" do
-      seen = highlight
+    it "lists only Unlocks not yet announced, oldest first" do
+      highlight(announced_at: 1.hour.ago)
       first = highlight
       second = highlight
-      AchievementHubState.set("bot_highlight_cursor", seen.id)
 
       get "/api/v1/achievements/highlights/pending", headers: service_headers
 
       expect(json.fetch("data").pluck("id")).to eq([ first.id, second.id ])
-      expect(json.fetch("meta")).to eq("cursor" => seen.id, "next_cursor" => second.id)
+      expect(json).not_to have_key("meta")
+    end
+
+    # Ids are assigned at INSERT but seen at COMMIT, and the three Provider
+    # chains sync concurrently: an older Unlock can appear after a newer one
+    # was acked, and must still be listed.
+    it "still lists an older Unlock that appears after a newer one was acked" do
+      older = highlight(announceable: false)
+      newer = highlight
+      post "/api/v1/achievements/highlights/ack", params: { data: { ids: [ newer.id ] } }, headers: service_headers,
+        as: :json
+      older.update!(announceable: true)
+
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+
+      expect(json.fetch("data").pluck("id")).to eq([ older.id ])
     end
 
     it "caps the list at 25" do
@@ -94,42 +108,69 @@ RSpec.describe "api/v1/achievements highlights behavior", type: :request do
   end
 
   describe "POST /api/v1/achievements/highlights/ack" do
-    def ack(cursor, headers: service_headers)
-      post "/api/v1/achievements/highlights/ack", params: { cursor: cursor }, headers: headers, as: :json
+    def ack(ids, headers: service_headers)
+      post "/api/v1/achievements/highlights/ack", params: { data: { ids: ids } }, headers: headers, as: :json
     end
 
-    it "stores the cursor, so acked Unlocks are not listed again" do
+    def pending_ids
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+      json.fetch("data").pluck("id")
+    end
+
+    it "marks the acked Unlocks announced, so they are not listed again" do
       posted = highlight
+      skipped = highlight
       later = highlight
 
-      ack(posted.id)
+      ack([ posted.id, skipped.id ])
 
       expect(response).to have_http_status(:ok)
-      expect(json.dig("data", "cursor")).to eq(posted.id)
-      get "/api/v1/achievements/highlights/pending", headers: service_headers
-      expect(json.fetch("data").pluck("id")).to eq([ later.id ])
+      expect(json.dig("data", "ids")).to contain_exactly(posted.id, skipped.id)
+      expect(posted.reload.announced_at).to be_present
+      expect(pending_ids).to eq([ later.id ])
     end
 
-    it "only moves forward: a stale ack is a no-op" do
-      ack(500)
-      ack(200)
+    it "is idempotent, keeping the first announcement time" do
+      posted = highlight
+      ack([ posted.id ])
+      first_at = posted.reload.announced_at
+
+      ack([ posted.id ])
 
       expect(response).to have_http_status(:ok)
-      expect(json.dig("data", "cursor")).to eq(500)
-      get "/api/v1/achievements/highlights/pending", headers: service_headers
-      expect(json.dig("meta", "cursor")).to eq(500)
+      expect(json.dig("data", "ids")).to eq([ posted.id ])
+      expect(posted.reload.announced_at).to eq(first_at)
     end
 
-    it "rejects a missing or malformed cursor" do
-      ack("abc")
+    it "ignores ids that are not announceable" do
+      quiet = highlight(announceable: false)
+
+      ack([ quiet.id, 999_999_999 ])
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "ids")).to eq([])
+      expect(quiet.reload.announced_at).to be_nil
+    end
+
+    it "rejects missing or malformed ids" do
+      post "/api/v1/achievements/highlights/ack", params: { data: {} }, headers: service_headers, as: :json
       expect(response).to have_http_status(:unprocessable_content)
 
-      ack(-1)
+      ack("1")
+      expect(response).to have_http_status(:unprocessable_content)
+
+      ack([ "abc" ])
+      expect(response).to have_http_status(:unprocessable_content)
+
+      ack([ -1 ])
+      expect(response).to have_http_status(:unprocessable_content)
+
+      ack(Array.new(101) { |index| index + 1 })
       expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "is forbidden to admins and members" do
-      ack(1, headers: auth_headers_for(create(:user, role_admin: true)))
+      ack([ 1 ], headers: auth_headers_for(create(:user, role_admin: true)))
 
       expect(response).to have_http_status(:forbidden)
     end
