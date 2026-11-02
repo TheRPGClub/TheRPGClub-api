@@ -130,6 +130,13 @@ RSpec.describe "api/v1/journal behavior", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
+    it "forbids an Admin writing into another member's journal" do
+      post "/api/v1/users/#{owner.user_id}/journal",
+        params: payload, headers: auth_headers_for(create(:user, role_admin: true)), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
     it "422s when entry_body is missing" do
       post "/api/v1/users/#{owner.user_id}/journal",
         params: { data: { gamedb_game_id: game.game_id } }, headers: auth_headers_for(owner), as: :json
@@ -179,6 +186,17 @@ RSpec.describe "api/v1/journal behavior", type: :request do
       expect(json.fetch("data").map { |e| e.fetch("entry_id") }).to eq([ mine.entry_id ])
     end
 
+    it "pages the results with pagination meta" do
+      create_list(:journal_entry, 3, user: owner, entry_body: "jpage shared text")
+
+      get "/api/v1/journal_entries",
+        params: { q: "jpage", per: 2, page: 2 }, headers: auth_headers_for(other_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").length).to eq(1)
+      expect(json.fetch("meta")).to include("page" => 2, "pages" => 2, "count" => 3, "per" => 2, "prev" => 1, "next" => nil)
+    end
+
     it "requires authentication" do
       get "/api/v1/journal_entries"
 
@@ -206,6 +224,25 @@ RSpec.describe "api/v1/journal behavior", type: :request do
       expect(ids).not_to include(bot.user_id, departed.user_id)
       row = json.fetch("data").find { |r| r.fetch("user_id") == contributor.user_id }
       expect(row).to include("username" => contributor.username, "game_count" => 2, "entry_count" => 3)
+    end
+
+    it "pages the list with pagination meta" do
+      create_list(:journal_entry, 3) # three distinct contributors
+
+      get "/api/v1/journal_entries/contributors", params: { per: 1 }, headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").length).to eq(1)
+      meta = json.fetch("meta")
+      expect(meta).to include("page" => 1, "per" => 1, "prev" => nil, "next" => 2)
+      expect(meta.fetch("count")).to eq(meta.fetch("pages"))
+      expect(meta.fetch("count")).to be >= 3
+    end
+
+    it "requires authentication" do
+      get "/api/v1/journal_entries/contributors"
+
+      expect(response).to have_http_status(:unauthorized)
     end
   end
 
@@ -286,6 +323,35 @@ RSpec.describe "api/v1/journal behavior", type: :request do
       expect(entry.reload.entry_body).not_to eq("hijacked")
     end
 
+    it "forbids staff editing another member's entry (journals stay personal)" do
+      entry = create(:journal_entry, user: owner)
+
+      [ auth_headers_for(create(:user, role_admin: true)),
+        auth_headers_for(create(:user, role_moderator: true)),
+        auth_headers_for(create(:user), is_dev: true) ].each do |headers|
+        patch "/api/v1/journal_entries/#{entry.entry_id}",
+          params: { data: { entry_body: "staff edit" } }, headers: headers, as: :json
+
+        expect(response).to have_http_status(:forbidden)
+      end
+      expect(entry.reload.entry_body).not_to eq("staff edit")
+    end
+
+    it "404s for an unknown id with a user bearer" do
+      patch "/api/v1/journal_entries/999999999",
+        params: { data: { entry_body: "x" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "requires authentication" do
+      entry = create(:journal_entry, user: owner)
+
+      patch "/api/v1/journal_entries/#{entry.entry_id}", params: { data: { entry_body: "x" } }, as: :json
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
     it "404s for an unknown id (as the service)" do
       patch "/api/v1/journal_entries/999999999",
         params: { data: { entry_body: "x" } }, headers: service_headers, as: :json
@@ -320,6 +386,30 @@ RSpec.describe "api/v1/journal behavior", type: :request do
       delete "/api/v1/journal_entries/#{entry.entry_id}", headers: auth_headers_for(other_user)
 
       expect(response).to have_http_status(:forbidden)
+      expect(UserGameJournalEntry.exists?(entry.entry_id)).to be(true)
+    end
+
+    it "forbids an Admin deleting another member's entry" do
+      entry = create(:journal_entry, user: owner)
+
+      delete "/api/v1/journal_entries/#{entry.entry_id}", headers: auth_headers_for(create(:user, role_admin: true))
+
+      expect(response).to have_http_status(:forbidden)
+      expect(UserGameJournalEntry.exists?(entry.entry_id)).to be(true)
+    end
+
+    it "404s for an unknown id with a user bearer" do
+      delete "/api/v1/journal_entries/999999999", headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "requires authentication" do
+      entry = create(:journal_entry, user: owner)
+
+      delete "/api/v1/journal_entries/#{entry.entry_id}"
+
+      expect(response).to have_http_status(:unauthorized)
       expect(UserGameJournalEntry.exists?(entry.entry_id)).to be(true)
     end
   end
