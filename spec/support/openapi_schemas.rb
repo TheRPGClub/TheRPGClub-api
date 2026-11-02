@@ -802,6 +802,14 @@ module OpenapiSchemas
         key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim and to GET /api/v1/game_keys/{id}."),
         game: ref("GameSummary", nullable: true)
       ),
+      # GameKeysController#claim meta: the queued claim notice bot job, so the
+      # website can poll GET /api/v1/bot_jobs/{id}.
+      GameKeyClaimMeta: obj(
+        claim_notice_job_id: int(nullable: true).merge(
+          description: "The giveaway_claim_notice bot job (DM the key, log the claim, notify the donor). " \
+                       "Null when the bot service token claimed, since the bot does that work itself."
+        )
+      ),
       # GiveawaySettingsController. The donor's notify-on-claim preference,
       # derived from rpg_club_users.donor_notify_on_claim.
       GiveawaySettings: obj(user_id: str, notify_on_claim: bool),

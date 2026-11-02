@@ -2790,6 +2790,15 @@ components:
       - donor_notify_on_claim
       - created_at
       - updated_at
+    GameKeyClaimMeta:
+      type: object
+      properties:
+        claim_notice_job_id:
+          type: integer
+          nullable: true
+          description: The giveaway_claim_notice bot job (DM the key, log the claim,
+            notify the donor). Null when the bot service token claimed, since the
+            bot does that work itself.
     GiveawaySettings:
       type: object
       properties:
@@ -9096,7 +9105,9 @@ paths:
       - Game Keys
       description: 'Owner-only: a Discord caller may only donate as themselves (`donor_user_id`
         must be their own id); the bot service token may donate on anyone''s behalf.
-        The claim fields are read-only on donation.'
+        The claim fields are read-only on donation. A member''s donation queues a
+        `giveaway_hub_refresh` bot job (payload `{ reason: "donate", key_id }`); the
+        service token''s does not.'
       parameters: []
       responses:
         '201':
@@ -9235,8 +9246,10 @@ paths:
       summary: Revoke a game key
       tags:
       - Game Keys
-      description: Revokes (deletes) a key. Restricted to the original donor, an admin,
-        or the bot service token.
+      description: 'Revokes (deletes) a key. Restricted to the original donor, an
+        Admin, a Superadmin, or the bot service token. A member''s revoke queues a
+        `giveaway_hub_refresh` bot job (payload `{ reason: "revoke", key_id }`); the
+        service token''s does not.'
       responses:
         '200':
           description: key revoked
@@ -9250,8 +9263,8 @@ paths:
                 required:
                 - deleted
         '403':
-          description: forbidden — caller is not the donor, an admin, or the service
-            token
+          description: 'forbidden: caller is not the donor, an Admin, a Superadmin,
+            or the service token'
           content:
             application/json:
               schema:
@@ -9280,10 +9293,16 @@ paths:
       summary: Claim a game key
       tags:
       - Game Keys
-      description: Atomically claims an unclaimed key and returns it with the secret
-        `key_value` revealed to the claimer. A Discord caller claims as themselves;
-        the bot service token claims on behalf of the `claimed_by_user_id` supplied
-        in the body.
+      description: 'Claims an unclaimed key and returns it with the secret `key_value`
+        revealed to the claimer. Requires the Discord Members role (or the bot service
+        token). The key row is locked, so of two concurrent claims one wins and the
+        other gets 409. A Discord caller claims as themselves; the bot service token
+        claims on behalf of the `claimed_by_user_id` supplied in the body. A member''s
+        claim queues two bot jobs: `giveaway_claim_notice` (payload `{ key_id, claimed_by_user_id,
+        donor_user_id, game_title, platform }`; the bot DMs the key, logs the claim
+        and notifies the donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id
+        }`). `meta.claim_notice_job_id` is the notice job, for polling GET /api/v1/bot_jobs/{id}.
+        The service token''s claims queue nothing.'
       parameters: []
       responses:
         '200':
@@ -9295,6 +9314,14 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GameKey"
+                  meta:
+                    "$ref": "#/components/schemas/GameKeyClaimMeta"
+        '403':
+          description: 'forbidden: caller lacks the Members role'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '409':
           description: already claimed
           content:
