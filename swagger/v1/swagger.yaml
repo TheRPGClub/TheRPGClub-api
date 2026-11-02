@@ -2436,6 +2436,111 @@ components:
       - payload
       - available_at
       - attempts
+    BotJob:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum:
+          - giveaway_claim_notice
+          - giveaway_hub_refresh
+          - suggestion_submitted
+          - suggestion_outcome
+          - voting_poll_wakeup
+        status:
+          type: string
+          enum:
+          - queued
+          - claimed
+          - done
+          - failed
+        requested_by_user_id:
+          type: string
+          nullable: true
+          description: The member whose action queued the job; null for system jobs.
+        attempts:
+          type: integer
+          description: Claims so far. A claim not acked within the lease counts too.
+        error_message:
+          type: string
+          nullable: true
+          description: The bot's error, or the claim-timeout error.
+        claimed_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - kind
+      - status
+      - attempts
+      - created_at
+      - updated_at
+    BotJobClaim:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum:
+          - giveaway_claim_notice
+          - giveaway_hub_refresh
+          - suggestion_submitted
+          - suggestion_outcome
+          - voting_poll_wakeup
+        payload:
+          type: object
+          description: Per kind; a breaking change gets a new kind name.
+        status:
+          type: string
+          enum:
+          - queued
+          - claimed
+          - done
+          - failed
+        requested_by_user_id:
+          type: string
+          nullable: true
+        attempts:
+          type: integer
+        error_message:
+          type: string
+          nullable: true
+        claimed_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - kind
+      - payload
+      - status
+      - attempts
+      - created_at
+      - updated_at
     AchievementHighlight:
       type: object
       properties:
@@ -4783,6 +4888,201 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs/claim":
+    post:
+      summary: Poll for and claim bot jobs
+      tags:
+      - Bot Jobs
+      description: Service only. Poll about every 10 seconds. While no work is waiting
+        the API answers an empty list from a machine-local signal without touching
+        Postgres. Otherwise it claims up to `limit` queued jobs, oldest first. Act
+        on each one in Discord, then ack it done or failed. A claim not acked within
+        five minutes goes back to the queue, and fails after 3 claims, so delivery
+        is at-least-once.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50
+        required: false
+      responses:
+        '200':
+          description: claimed jobs (empty when nothing is waiting)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/BotJobClaim"
+                required:
+                - data
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs/{id}/done":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Acknowledge a bot job done
+      tags:
+      - Bot Jobs
+      description: Service only. Records the job done; idempotent. A late ack of a
+        job whose claim timed out still counts.
+      responses:
+        '200':
+          description: job done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: the job already failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs/{id}/failed":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Acknowledge a bot job failed
+      tags:
+      - Bot Jobs
+      description: 'Service only. Records the job failed with the bot''s error message;
+        idempotent. Failed is final: the job is not retried.'
+      parameters: []
+      responses:
+        '200':
+          description: job failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '400':
+          description: missing error message
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: the job is already done
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    error_message:
+                      type: string
+                      minLength: 1
+                      maxLength: 2000
+                  required:
+                  - error_message
+              required:
+              - data
+        required: true
+  "/api/v1/bot_jobs/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Read a bot job's status
+      tags:
+      - Bot Jobs
+      description: The member who queued the job, Admins, Superadmins and the service.
+        Shows whether the Discord action is queued, claimed, done or failed (with
+        the bot's error). The payload is not included.
+      responses:
+        '200':
+          description: job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the requesting member or staff
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
           content:
             application/json:
               schema:
