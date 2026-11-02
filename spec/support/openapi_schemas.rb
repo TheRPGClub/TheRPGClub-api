@@ -1135,6 +1135,17 @@ module OpenapiSchemas
         main: str(nullable: true), main_sides: str(nullable: true), completionist: str(nullable: true),
         single_player: str(nullable: true), co_op: str(nullable: true), vs: str(nullable: true),
         source_query: str(nullable: true), scraped_at: ts(nullable: true), updated_at: ts(nullable: true)
+      ),
+      # POST /games/{id}/hltb/lookup: where the times came from and whether
+      # they are now in the HLTB cache.
+      HltbLookup: obj(
+        data: ref("Hltb"),
+        meta: obj(
+          source: str(enum: %w[cache hltb], description: "cache: the saved times, no scrape. hltb: a fresh scrape."),
+          saved: bool,
+          _description: "saved is false for a fresh scrape of a game released within six months, or undated."
+        ),
+        _required: %w[data meta]
       )
     }
   end
