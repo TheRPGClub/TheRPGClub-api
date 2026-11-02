@@ -11450,7 +11450,8 @@ paths:
       summary: Write a journal entry
       tags:
       - Journal
-      description: Owner-only. Creates an entry for the given game.
+      description: 'Owner-only: the path user (user bearer) or the service; staff
+        get 403 for another member. Creates an entry for the given game.'
       parameters: []
       responses:
         '201':
@@ -11754,7 +11755,9 @@ paths:
       summary: Update a journal entry
       tags:
       - Journal
-      description: Owner-only.
+      description: 'Owner-only: the entry author (user bearer) or the service. Admins,
+        Moderators and Superadmins get 403 on another member''s entry. An unknown
+        id is 404 for every caller.'
       parameters: []
       responses:
         '200':
@@ -11816,7 +11819,7 @@ paths:
       summary: Replace a journal entry (alias)
       tags:
       - Journal
-      description: Owner-only. Alias for PATCH (applied as a partial assign).
+      description: Owner-only (as PATCH). Alias for PATCH (applied as a partial assign).
       parameters: []
       responses:
         '200':
@@ -11828,6 +11831,18 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/JournalEntryGame"
+        '403':
+          description: 'forbidden: caller is not the owner'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -11858,7 +11873,9 @@ paths:
       summary: Delete a journal entry
       tags:
       - Journal
-      description: Owner-only.
+      description: 'Owner-only: the entry author (user bearer) or the service. Admins,
+        Moderators and Superadmins get 403 on another member''s entry. An unknown
+        id is 404 for every caller.'
       responses:
         '200':
           description: deleted

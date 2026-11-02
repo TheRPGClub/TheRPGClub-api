@@ -188,11 +188,14 @@ module Api
         ActiveRecord::Base.sanitize_sql_like(value.to_s.strip)
       end
 
+      # An unknown entry id raises RecordNotFound (404) before the owner check,
+      # so a user bearer gets the same 404 the service does. Entries are public
+      # reads, so the 404 reveals nothing a GET would not.
       def resolve_owner_id
         return params[:user_id] if params[:user_id].present?
         return nil unless params[:id].present?
 
-        UserGameJournalEntry.find_by(entry_id: params[:id])&.user_id
+        UserGameJournalEntry.find(params[:id]).user_id
       end
     end
   end
