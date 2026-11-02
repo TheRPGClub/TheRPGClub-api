@@ -43,6 +43,25 @@ module Api
         render json: { deleted: true }
       end
 
+      # The author takes back their own Pending Suggestion. Anyone else
+      # (staff and the service included) is refused; a reviewed or already
+      # withdrawn Suggestion is a 409.
+      def withdraw
+        suggestion = RpgClubSuggestion.find(params[:id])
+        unless current_principal.discord_user? && suggestion.created_by == current_principal.id
+          return render json: { error: "forbidden" }, status: :forbidden
+        end
+
+        suggestion.with_lock do
+          unless suggestion.status == "pending"
+            return render json: { error: "suggestion is #{suggestion.status}, not pending" }, status: :conflict
+          end
+
+          suggestion.update!(status: "withdrawn")
+        end
+        render json: { data: SuggestionResource.new(suggestion).serializable_hash }
+      end
+
       private
 
       def author_name

@@ -308,7 +308,11 @@ Rails.application.routes.draw do
         resources :review_sessions, only: %i[index show create update destroy],
           controller: "suggestion_review_sessions"
       end
-      resources :suggestions, only: %i[index show create destroy]
+      resources :suggestions, only: %i[index show create destroy] do
+        member do
+          post :withdraw
+        end
+      end
       resources :rss_feeds, only: %i[index show create update destroy] do
         resources :items, only: %i[index create], controller: "rss_feed_items"
       end

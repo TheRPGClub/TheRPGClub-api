@@ -187,6 +187,63 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
     end
   end
 
+  describe "POST /api/v1/suggestions/:id/withdraw" do
+    let(:author) { create(:user) }
+    let(:suggestion) { create(:suggestion, created_by: author.user_id) }
+
+    it "lets the author withdraw a pending suggestion" do
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/withdraw", headers: auth_headers_for(author)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("suggestion_id" => suggestion.suggestion_id, "status" => "withdrawn")
+      get "/api/v1/suggestions/#{suggestion.suggestion_id}", headers: auth_headers_for(author)
+      expect(json.dig("data", "status")).to eq("withdrawn")
+    end
+
+    it "refuses another member" do
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/withdraw", headers: auth_headers_for(create(:user))
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "refuses staff who are not the author" do
+      admin = create(:user, role_admin: true)
+
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/withdraw", headers: auth_headers_for(admin, is_dev: true)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "refuses the service, which has no author identity" do
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/withdraw", headers: service_headers
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    %w[approved rejected withdrawn].each do |status|
+      it "409s when the suggestion is #{status}" do
+        suggestion.update!(status: status)
+
+        post "/api/v1/suggestions/#{suggestion.suggestion_id}/withdraw", headers: auth_headers_for(author)
+
+        expect(response).to have_http_status(:conflict)
+        expect(json.fetch("error")).to include(status)
+      end
+    end
+
+    it "404s for an unknown id" do
+      post "/api/v1/suggestions/999999999/withdraw", headers: auth_headers_for(author)
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "requires authentication" do
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/withdraw"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "DELETE /api/v1/suggestions/:id" do
     it "deletes a suggestion for an admin" do
       suggestion = create(:suggestion)
