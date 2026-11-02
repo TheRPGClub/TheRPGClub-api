@@ -14973,9 +14973,10 @@ paths:
       summary: Create a public reminder
       tags:
       - Public Reminders
-      description: Admin or service only. `channel_id`, `message` and `due_at` are
-        required; `recur_every`/`recur_unit` (recurrence), `enabled` (defaults true)
-        and `created_by` are optional.
+      description: Admin or above (Admin, Superadmin, service). `channel_id`, `message`
+        and `due_at` are required; `recur_every`/`recur_unit` (recurrence), `enabled`
+        (defaults true) and `created_by` are optional. 422 when `channel_id` is not
+        a synced text channel.
       parameters: []
       responses:
         '201':
@@ -14994,7 +14995,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -15017,13 +15019,16 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
+                        checked on create and whenever it changes.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -15117,7 +15122,9 @@ paths:
       summary: Update a public reminder
       tags:
       - Public Reminders
-      description: 'Partial update: send any subset of the writable columns.'
+      description: 'Admin or above (Admin, Superadmin, service). Partial update: send
+        any subset of the writable columns. 422 when `channel_id` changes to a channel
+        that is not a synced text channel.'
       parameters: []
       responses:
         '200':
@@ -15142,7 +15149,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -15165,13 +15173,16 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
+                        checked on create and whenever it changes.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -15207,8 +15218,15 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/PublicReminder"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -15231,13 +15249,16 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
+                        checked on create and whenever it changes.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -15273,7 +15294,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
