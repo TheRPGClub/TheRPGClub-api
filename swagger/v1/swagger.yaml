@@ -3959,6 +3959,30 @@ components:
           type: string
           format: date-time
           nullable: true
+    HltbLookup:
+      type: object
+      properties:
+        data:
+          "$ref": "#/components/schemas/Hltb"
+        meta:
+          type: object
+          properties:
+            source:
+              type: string
+              enum:
+              - cache
+              - hltb
+              description: 'cache: the saved times, no scrape. hltb: a fresh scrape.'
+            saved:
+              type: boolean
+          required:
+          - source
+          - saved
+          description: saved is false for a fresh scrape of a game released within
+            six months, or undated.
+      required:
+      - data
+      - meta
 security:
 - bearerAuth: []
 paths:
@@ -8780,6 +8804,64 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/hltb/lookup":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    post:
+      summary: Look up HowLongToBeat times
+      tags:
+      - Games
+      description: Members role, Moderator, Admin, Superadmin or service. Returns
+        the game's saved HLTB times when it has them (no scrape). Otherwise finds
+        the game's HowLongToBeat page through Google Custom Search ("How long is <title>?")
+        and scrapes it, as the bot's `/hltb` does. A fresh scrape is saved to the
+        HLTB cache only when the game's initial release is more than six months ago
+        (`meta.saved`). Takes no body.
+      responses:
+        '200':
+          description: HLTB times
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HltbLookup"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: Members role or staff required'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found, or `hltb_no_match` when HowLongToBeat has no
+            page for it
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`hltb_lookup_failed`: Google Custom Search or HowLongToBeat
+            failed"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: "`hltb_not_configured`: Google Custom Search credentials are
+            not set"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{game_id}/images":
     parameters:
     - name: game_id
@@ -9911,10 +9993,11 @@ paths:
       summary: Upsert HowLongToBeat cache
       tags:
       - Games
-      description: Admin/service-only. Upserts the bot's scraped HowLongToBeat cache
-        for the game, keyed on gamedb_game_id (mirrors the bot's `rpg_club_hltb_cache`
-        `ON CONFLICT (gamedb_game_id) DO UPDATE`). Fields are accepted under the same
-        logical names returned by the `hltb` slice of GET /api/v1/games/{id}/profile.
+      description: Members role, Moderator, Admin, Superadmin or service. Upserts
+        the bot's scraped HowLongToBeat cache for the game, keyed on gamedb_game_id
+        (mirrors the bot's `rpg_club_hltb_cache` `ON CONFLICT (gamedb_game_id) DO
+        UPDATE`). Fields are accepted under the same logical names returned by the
+        `hltb` slice of GET /api/v1/games/{id}/profile.
       parameters: []
       responses:
         '200':
@@ -9927,7 +10010,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Hltb"
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
