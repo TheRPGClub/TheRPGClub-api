@@ -12,7 +12,8 @@ RSpec.describe 'api/v1/games/{id}/hltb/lookup', type: :request do
                   'times when it has them (no scrape). Otherwise finds the game\'s HowLongToBeat page ' \
                   'through Google Custom Search ("How long is <title>?") and scrapes it, as the bot\'s ' \
                   '`/hltb` does. A fresh scrape is saved to the HLTB cache only when the game\'s initial ' \
-                  'release is more than six months ago (`meta.saved`). Takes no body.'
+                  'release is more than six months ago (`meta.saved`). An unsaved result (or no match) is ' \
+                  'kept for about a day, then served with `meta.source` `cache`. Takes no body.'
       produces 'application/json'
 
       response '200', 'HLTB times' do

@@ -6,6 +6,8 @@ require "rails_helper"
 # lookup (web parity 2). Hltb::Client is stubbed at its constructor; its own
 # Google and HLTB traffic is covered by spec/services/hltb/client_spec.rb.
 RSpec.describe "api/v1/games/:id/hltb/lookup behavior", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:client) { instance_double(Hltb::Client) }
   let(:game) { create(:game, title: "Chrono Trigger", initial_release_date: Time.utc(1995, 3, 11)) }
   let(:member) { auth_headers_for(create(:user, role_member: true)) }
@@ -18,7 +20,10 @@ RSpec.describe "api/v1/games/:id/hltb/lookup behavior", type: :request do
     )
   end
 
-  before { allow(Hltb::Client).to receive(:new).and_return(client) }
+  before do
+    allow(Hltb::Client).to receive(:new).and_return(client)
+    allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+  end
 
   def lookup(headers)
     post "/api/v1/games/#{game.game_id}/hltb/lookup", headers: headers, as: :json
@@ -56,6 +61,23 @@ RSpec.describe "api/v1/games/:id/hltb/lookup behavior", type: :request do
       expect(json.fetch("data")).to include("main" => "23 Hours")
       expect(json.fetch("meta")).to eq("source" => "hltb", "saved" => false)
     end
+
+    it "keeps the unsaved times for about a day, so repeated lookups do not search again" do
+      allow(client).to receive(:search).and_return(scraped)
+
+      lookup(member)
+      lookup(member)
+
+      expect(client).to have_received(:search).once
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("main" => "23 Hours")
+      expect(json.fetch("meta")).to eq("source" => "cache", "saved" => false)
+
+      travel 25.hours do
+        lookup(member)
+      end
+      expect(client).to have_received(:search).twice
+    end
   end
 
   context "when the game has no release date" do
@@ -90,6 +112,35 @@ RSpec.describe "api/v1/games/:id/hltb/lookup behavior", type: :request do
 
     expect(response).to have_http_status(:not_found)
     expect(json).to include("error" => "hltb_no_match")
+  end
+
+  it "keeps a no-match for about a day, so repeated lookups do not search again" do
+    allow(client).to receive(:search).and_return(nil)
+
+    lookup(member)
+    lookup(member)
+
+    expect(response).to have_http_status(:not_found)
+    expect(json).to include("error" => "hltb_no_match")
+    expect(client).to have_received(:search).once
+
+    travel 25.hours do
+      lookup(member)
+    end
+    expect(client).to have_received(:search).twice
+  end
+
+  it "returns the stored times when a concurrent lookup saved them first" do
+    allow(client).to receive(:search) do
+      RpgClubHltbCache.create!(gamedb_game_id: game.game_id, hltb_name: "Chrono Trigger", main: "22 Hours")
+      scraped
+    end
+
+    expect { lookup(member) }.to change(RpgClubHltbCache, :count).by(1)
+
+    expect(response).to have_http_status(:ok)
+    expect(json.fetch("data")).to include("name" => "Chrono Trigger", "main" => "22 Hours")
+    expect(json.fetch("meta")).to eq("source" => "cache", "saved" => true)
   end
 
   it "502s with hltb_lookup_failed when Google or HLTB fails" do
