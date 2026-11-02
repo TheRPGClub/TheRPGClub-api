@@ -178,9 +178,8 @@ RSpec.describe "api/v1 write authorization", type: :request do
       expect_member_blocked_and_admin_allowed(:delete, "/api/v1/public_reminders/#{reminder.reminder_id}")
     end
 
-    it "guards suggestion writes" do
-      expect_member_blocked_and_admin_allowed(:post, "/api/v1/suggestions",
-        { data: { title: "t", created_by: owner.user_id, created_by_name: "n" } })
+    # Create is open to members (web parity 2, #318); see the suggestions behaviour spec.
+    it "guards suggestion deletes" do
       expect_member_blocked_and_admin_allowed(:delete, "/api/v1/suggestions/#{create(:suggestion).suggestion_id}")
     end
 
