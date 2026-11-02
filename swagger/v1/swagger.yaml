@@ -1588,6 +1588,15 @@ components:
         github_issue_url:
           type: string
           nullable: true
+        github_issue_state:
+          type: string
+          nullable: true
+          enum:
+          - open
+          - closed
+          -
+          description: 'Approved only: the GitHub issue''s state, cached about ten
+            minutes. Null otherwise, or when GitHub cannot say.'
         upvote_count:
           type: integer
         viewer_upvoted:
@@ -1601,6 +1610,14 @@ components:
       - status
       - upvote_count
       - viewer_upvoted
+    SuggestionReviewMeta:
+      type: object
+      properties:
+        outcome_job_id:
+          type: integer
+          description: The suggestion_outcome bot job (the bot announces the outcome).
+      required:
+      - outcome_job_id
     SuggestionReviewSession:
       type: object
       properties:
@@ -20122,17 +20139,63 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-    delete:
-      summary: Delete a suggestion
+  "/api/v1/suggestions/{id}/approve":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Approve a suggestion into a GitHub issue
       tags:
       - Suggestions
+      description: 'Superadmin or the service, while Pending. Opens a GitHub issue
+        in `target_repo` (title = the Suggestion title, body = "<author name>: <details>",
+        labels = the comma-separated `labels`) through the GitHub App, stores its
+        number and URL, and sets status approved. Enqueues a `suggestion_outcome`
+        bot job (payload `{ suggestion_id, outcome, created_by, title, github_issue_number,
+        github_issue_url, rejection_reason }`), the bot''s own reviews included; `meta.outcome_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
+      parameters: []
       responses:
         '200':
-          description: deleted
+          description: approved
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/DeletedResponse"
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+                  meta:
+                    "$ref": "#/components/schemas/SuggestionReviewMeta"
+        '422':
+          description: target_repo missing or not in the allowlist
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: GitHub refused or failed (error github_issue_failed); nothing
+            changed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: GitHub App not configured (error github_not_configured)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -20140,7 +20203,13 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
           content:
             application/json:
               schema:
@@ -20151,6 +20220,117 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    target_repo:
+                      type: string
+                      enum:
+                      - TheRPGClub/TheRPGClub-bot
+                      - TheRPGClub/TheRPGClub-api
+                      - TheRPGClub/TheRPGClub-www
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - target_repo
+              required:
+              - data
+        required: true
+  "/api/v1/suggestions/{id}/reject":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Reject a suggestion
+      tags:
+      - Suggestions
+      description: Superadmin or the service, while Pending. Sets status rejected
+        with the (trimmed) reason. Enqueues a `suggestion_outcome` bot job (payload
+        `{ suggestion_id, outcome, created_by, title, github_issue_number, github_issue_url,
+        rejection_reason }`), the bot's own reviews included; `meta.outcome_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
+      parameters: []
+      responses:
+        '200':
+          description: rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+                  meta:
+                    "$ref": "#/components/schemas/SuggestionReviewMeta"
+        '422':
+          description: blank or too long rejection_reason
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    rejection_reason:
+                      type: string
+                      maxLength: 2000
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - rejection_reason
+              required:
+              - data
+        required: true
   "/api/v1/suggestions/{id}/withdraw":
     parameters:
     - name: id

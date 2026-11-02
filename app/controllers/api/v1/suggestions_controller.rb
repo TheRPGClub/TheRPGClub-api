@@ -7,7 +7,7 @@ module Api
       # server-managed; a member's authorship comes from their session.
       WRITABLE = %w[title details labels created_by created_by_name].freeze
 
-      before_action :require_admin_or_service!, only: %i[destroy]
+      before_action :require_superadmin!, only: %i[approve reject]
       before_action :require_member_or_staff!, only: %i[create upvote remove_upvote]
       before_action :require_member!, only: %i[withdraw upvote remove_upvote]
 
@@ -41,9 +41,39 @@ module Api
         render_suggestion(record.suggestion_id, status: :created)
       end
 
-      def destroy
-        RpgClubSuggestion.find(params[:id]).destroy!
-        render json: { deleted: true }
+      # Superadmin (or the bot, for a Discord reviewer named in `reviewed_by`).
+      # Opens a GitHub issue in `target_repo` (one of
+      # RpgClubSuggestion::TARGET_REPOS) as the bot did, stores it and asks the
+      # bot to announce the outcome. The row stays locked across the GitHub call
+      # so two approvals cannot open two issues. A GitHub failure changes nothing.
+      def approve
+        data = request_data
+        repo = data["target_repo"].to_s.strip
+        unless RpgClubSuggestion::TARGET_REPOS.include?(repo)
+          return render json: { error: "target_repo must be one of #{RpgClubSuggestion::TARGET_REPOS.join(', ')}" },
+            status: :unprocessable_content
+        end
+
+        review(data) do |suggestion|
+          issue = Github::Client.new.create_issue(
+            repo: repo, title: suggestion.title, body: issue_body(suggestion), labels: issue_labels(suggestion)
+          )
+          Github::IssueStateCache.store(repo, issue.number, issue.state)
+          { status: "approved", target_repo: repo, github_issue_number: issue.number, github_issue_url: issue.url }
+        end
+      rescue Github::Client::ConfigurationError => error
+        render json: { error: "github_not_configured", message: error.message }, status: :service_unavailable
+      rescue Github::Client::RequestError => error
+        render json: { error: "github_issue_failed", message: error.message }, status: :bad_gateway
+      end
+
+      # Superadmin (or the bot, as for approve). `rejection_reason` is required.
+      def reject
+        data = request_data
+        reason = data["rejection_reason"].to_s.strip
+        return render json: { error: "rejection_reason is required" }, status: :unprocessable_content if reason.empty?
+
+        review(data) { { status: "rejected", rejection_reason: reason } }
       end
 
       # The author takes back their own Pending Suggestion. Anyone else
@@ -86,6 +116,55 @@ module Api
       end
 
       private
+
+      # Locks the Suggestion, 409s unless it is pending, applies the block's
+      # columns plus the reviewer and time, and enqueues the outcome job, all in
+      # one transaction. Renders `{ data: Suggestion, meta: { outcome_job_id } }`.
+      def review(data)
+        suggestion = RpgClubSuggestion.find(params[:id])
+        job = nil
+        suggestion.with_lock do
+          unless suggestion.status == "pending"
+            return render json: { error: "suggestion is #{suggestion.status}, not pending" }, status: :conflict
+          end
+
+          suggestion.update!(**yield(suggestion), reviewed_by: reviewer_id(data), reviewed_at: Time.current)
+          job = enqueue_outcome(suggestion)
+        end
+        render json: {
+          data: SuggestionResource.new(viewer_scope.find(suggestion.suggestion_id)).serializable_hash,
+          meta: { outcome_job_id: job.id }
+        }
+      end
+
+      # A member reviews as themselves; the bot names the Discord reviewer.
+      def reviewer_id(data)
+        current_principal.discord_user? ? current_principal.id : data["reviewed_by"].presence&.to_s
+      end
+
+      # The bot's issue body and labels (suggestion.command.ts approveSuggestion).
+      def issue_body(suggestion)
+        "#{suggestion.created_by_name.presence || 'Unknown'}: #{suggestion.details.presence || 'No details provided.'}"
+      end
+
+      def issue_labels(suggestion)
+        suggestion.labels.to_s.split(",").map(&:strip).compact_blank
+      end
+
+      # Payload (kind suggestion_outcome): { suggestion_id, outcome, created_by,
+      # title, github_issue_number, github_issue_url, rejection_reason }.
+      # Enqueued for the bot's own reviews too: the job is the announcement.
+      def enqueue_outcome(suggestion)
+        BotJob.enqueue!(
+          kind: "suggestion_outcome",
+          payload: {
+            suggestion_id: suggestion.suggestion_id, outcome: suggestion.status, created_by: suggestion.created_by,
+            title: suggestion.title, github_issue_number: suggestion.github_issue_number,
+            github_issue_url: suggestion.github_issue_url, rejection_reason: suggestion.rejection_reason
+          },
+          requested_by: current_principal.discord_user? ? current_principal.id : nil
+        )
+      end
 
       # Upvotes and withdraw act as a signed-in member; the service has no
       # member identity to act as.
