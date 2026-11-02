@@ -4,8 +4,10 @@ require "rails_helper"
 
 # Behavior specs for the public reminders endpoints: reads are open to any
 # authenticated caller, writes are admin-or-above (Admin, Superadmin, service),
-# and the `due` poll endpoint is service-only. A reminder's channel must be a
-# synced text channel (GuildChannel) on create and when the channel changes.
+# and the `due` poll endpoint is service-only. On the website (a member's
+# bearer token) a reminder's channel must be a synced text channel
+# (GuildChannel) on create and when the channel changes; the bot (service
+# token) may target any channel, threads included, as before.
 RSpec.describe "api/v1/public_reminders behavior", type: :request do
   describe "GET /api/v1/public_reminders" do
     it "lists reminders ordered by due_at with the documented fields" do
@@ -152,33 +154,46 @@ RSpec.describe "api/v1/public_reminders behavior", type: :request do
       expect(stored).to eq("2030-03-10 13:30")
     end
 
-    it "422s for a channel that is not synced" do
-      payload[:data][:channel_id] = "999000999"
+    context "from the website (member bearer token)" do
+      let(:admin_headers) { auth_headers_for(create(:user, :admin)) }
 
-      expect {
-        post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
-      }.not_to change(RpgClubPublicReminder, :count)
+      it "422s for a channel that is not synced" do
+        payload[:data][:channel_id] = "999000999"
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(json.fetch("error")).to include("synced text channel")
+        expect {
+          post "/api/v1/public_reminders", params: payload, headers: admin_headers, as: :json
+        }.not_to change(RpgClubPublicReminder, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to include("synced text channel")
+      end
+
+      it "422s for a synced channel that is not a text channel" do
+        create(:guild_channel, channel_id: "555", channel_type: 2)
+        payload[:data][:channel_id] = "555"
+
+        post "/api/v1/public_reminders", params: payload, headers: admin_headers, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it "accepts an announcement channel" do
+        create(:guild_channel, channel_id: "556", channel_type: 5)
+        payload[:data][:channel_id] = "556"
+
+        post "/api/v1/public_reminders", params: payload, headers: admin_headers, as: :json
+
+        expect(response).to have_http_status(:created)
+      end
     end
 
-    it "422s for a synced channel that is not a text channel" do
-      create(:guild_channel, channel_id: "555", channel_type: 2)
-      payload[:data][:channel_id] = "555"
-
-      post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
-
-      expect(response).to have_http_status(:unprocessable_content)
-    end
-
-    it "accepts an announcement channel" do
-      create(:guild_channel, channel_id: "556", channel_type: 5)
-      payload[:data][:channel_id] = "556"
+    it "lets the bot target a channel that is not synced, such as a thread" do
+      payload[:data][:channel_id] = "777000777"
 
       post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:created)
+      expect(json.dig("data", "channel_id")).to eq("777000777")
     end
 
     it "422s when the message exceeds the column limit" do
@@ -266,15 +281,25 @@ RSpec.describe "api/v1/public_reminders behavior", type: :request do
       expect(reminder.reload.channel_id).to eq(target.channel_id)
     end
 
-    it "422s when moving to a channel that is not synced" do
+    it "422s when the website moves it to a channel that is not synced" do
       reminder = create(:public_reminder)
       original = reminder.channel_id
 
       patch "/api/v1/public_reminders/#{reminder.reminder_id}",
-        params: { data: { channel_id: "999000999" } }, headers: service_headers, as: :json
+        params: { data: { channel_id: "999000999" } }, headers: auth_headers_for(create(:user, :admin)), as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(reminder.reload.channel_id).to eq(original)
+    end
+
+    it "lets the bot move it to a channel that is not synced" do
+      reminder = create(:public_reminder)
+
+      patch "/api/v1/public_reminders/#{reminder.reminder_id}",
+        params: { data: { channel_id: "777000777" } }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(reminder.reload.channel_id).to eq("777000777")
     end
 
     it "keeps editing a reminder whose stored channel is no longer synced" do

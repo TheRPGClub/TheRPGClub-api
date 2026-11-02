@@ -32,12 +32,15 @@ module Api
       end
 
       def create
-        record = RpgClubPublicReminder.create!(request_data)
+        record = RpgClubPublicReminder.new(request_data)
+        record.skip_channel_check = current_principal.service?
+        record.save!
         render json: { data: PublicReminderResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = RpgClubPublicReminder.find(params[:id])
+        record.skip_channel_check = current_principal.service?
         record.update!(request_data)
         render json: { data: PublicReminderResource.new(record).serializable_hash }
       end
