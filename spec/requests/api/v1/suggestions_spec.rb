@@ -50,7 +50,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
 
     post 'Create a suggestion' do
       tags 'Suggestions'
-      description 'Any signed-in member, or the service. `title` is required; everything else is optional. ' \
+      description 'Members role holders, Moderator and above, or the service. `title` is required; everything else is optional. ' \
                   'Always created Pending. A member is recorded as the author (body `created_by` and ' \
                   '`created_by_name` are ignored) and their submission enqueues a `suggestion_submitted` ' \
                   'bot job (payload `{ suggestion_id, created_by }`) so the bot pings the bot dev. ' \
@@ -69,6 +69,10 @@ RSpec.describe 'api/v1/suggestions', type: :request do
       end
 
       response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller lacks the Members role and is not staff' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -159,7 +163,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
 
     post 'Upvote a suggestion' do
       tags 'Suggestions'
-      description 'Members only (the service is refused). One upvote per member; repeating it is a no-op. ' \
+      description 'Members role holders or staff, signed in (the service is refused). One upvote per member; repeating it is a no-op. ' \
                   'Only Pending and Approved suggestions take upvotes.'
       produces 'application/json'
 
@@ -175,7 +179,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden: the service is not a member' do
+      response '403', 'forbidden: not a Members role holder or staff, or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -186,7 +190,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
 
     delete 'Remove an upvote' do
       tags 'Suggestions'
-      description "Members only. Removes the caller's upvote if any (a no-op otherwise), whatever the status."
+      description "Members role holders or staff, signed in (the service is refused). Removes the caller's upvote if any (a no-op otherwise), whatever the status."
       produces 'application/json'
 
       response '200', 'removed; returns the updated suggestion' do
@@ -197,7 +201,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden: the service is not a member' do
+      response '403', 'forbidden: not a Members role holder or staff, or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

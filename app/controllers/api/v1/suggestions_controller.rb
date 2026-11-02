@@ -8,6 +8,7 @@ module Api
       WRITABLE = %w[title details labels created_by created_by_name].freeze
 
       before_action :require_admin_or_service!, only: %i[destroy]
+      before_action :require_member_or_staff!, only: %i[create upvote remove_upvote]
       before_action :require_member!, only: %i[withdraw upvote remove_upvote]
 
       def index
@@ -23,7 +24,7 @@ module Api
         render_suggestion(params[:id])
       end
 
-      # Any signed-in member, or the bot. A member is always the author, and
+      # Members role holders, staff, or the bot. A member is always the author, and
       # their submission asks the bot to ping the bot dev; the bot pings
       # inline for its own /suggestion submissions, so a service create
       # enqueues nothing.
@@ -86,8 +87,8 @@ module Api
 
       private
 
-      # Upvotes and withdraw act as a member; the service has no member
-      # identity to act as.
+      # Upvotes and withdraw act as a signed-in member; the service has no
+      # member identity to act as.
       def require_member!
         return true if current_principal.discord_user?
 

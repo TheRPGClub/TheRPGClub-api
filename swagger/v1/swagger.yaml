@@ -19929,12 +19929,12 @@ paths:
       summary: Create a suggestion
       tags:
       - Suggestions
-      description: 'Any signed-in member, or the service. `title` is required; everything
-        else is optional. Always created Pending. A member is recorded as the author
-        (body `created_by` and `created_by_name` are ignored) and their submission
-        enqueues a `suggestion_submitted` bot job (payload `{ suggestion_id, created_by
-        }`) so the bot pings the bot dev. A service create enqueues nothing: the bot
-        pings inline for its own submissions.'
+      description: 'Members role holders, Moderator and above, or the service. `title`
+        is required; everything else is optional. Always created Pending. A member
+        is recorded as the author (body `created_by` and `created_by_name` are ignored)
+        and their submission enqueues a `suggestion_submitted` bot job (payload `{
+        suggestion_id, created_by }`) so the bot pings the bot dev. A service create
+        enqueues nothing: the bot pings inline for its own submissions.'
       parameters: []
       responses:
         '201':
@@ -19948,6 +19948,12 @@ paths:
                     "$ref": "#/components/schemas/Suggestion"
         '422':
           description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller lacks the Members role and is not staff'
           content:
             application/json:
               schema:
@@ -20121,8 +20127,9 @@ paths:
       summary: Upvote a suggestion
       tags:
       - Suggestions
-      description: Members only (the service is refused). One upvote per member; repeating
-        it is a no-op. Only Pending and Approved suggestions take upvotes.
+      description: Members role holders or staff, signed in (the service is refused).
+        One upvote per member; repeating it is a no-op. Only Pending and Approved
+        suggestions take upvotes.
       responses:
         '200':
           description: upvoted; returns the updated suggestion
@@ -20146,7 +20153,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: 'forbidden: the service is not a member'
+          description: 'forbidden: not a Members role holder or staff, or the service'
           content:
             application/json:
               schema:
@@ -20161,8 +20168,8 @@ paths:
       summary: Remove an upvote
       tags:
       - Suggestions
-      description: Members only. Removes the caller's upvote if any (a no-op otherwise),
-        whatever the status.
+      description: Members role holders or staff, signed in (the service is refused).
+        Removes the caller's upvote if any (a no-op otherwise), whatever the status.
       responses:
         '200':
           description: removed; returns the updated suggestion
@@ -20180,7 +20187,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: 'forbidden: the service is not a member'
+          description: 'forbidden: not a Members role holder or staff, or the service'
           content:
             application/json:
               schema:

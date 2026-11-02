@@ -149,8 +149,8 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       )
     end
 
-    it "lets any signed-in member create one as its author and asks the bot to ping the bot dev" do
-      member = create(:user, username: "suggester")
+    it "lets a Members role holder create one as its author and asks the bot to ping the bot dev" do
+      member = create(:user, username: "suggester", role_member: true)
       forged = { data: { title: "Dark mode", details: "Please", labels: "New Feature",
                          created_by: "999", created_by_name: "someone else" } }
 
@@ -168,6 +168,21 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       expect(job.requested_by_user_id).to eq(member.user_id)
     end
 
+    it "refuses a signed-in user without the Members role" do
+      post "/api/v1/suggestions", params: payload, headers: auth_headers_for(create(:user)), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "lets a Moderator without the Members role create one" do
+      moderator = create(:user, role_moderator: true)
+
+      post "/api/v1/suggestions", params: payload, headers: auth_headers_for(moderator), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "created_by")).to eq(moderator.user_id)
+    end
+
     it "does not enqueue a ping for the bot's own submissions (the bot pings inline)" do
       expect {
         post "/api/v1/suggestions", params: payload, headers: service_headers, as: :json
@@ -177,7 +192,7 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
     it "ignores status and review fields in the body" do
       body = { data: { title: "Sneaky", status: "approved", reviewed_by: "1", github_issue_number: 5 } }
 
-      post "/api/v1/suggestions", params: body, headers: auth_headers_for(create(:user)), as: :json
+      post "/api/v1/suggestions", params: body, headers: auth_headers_for(create(:user, role_member: true)), as: :json
 
       expect(response).to have_http_status(:created)
       expect(json.fetch("data")).to include("status" => "pending", "reviewed_by" => nil, "github_issue_number" => nil)
@@ -185,7 +200,7 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
 
     it "leaves no ping job when the create fails" do
       expect {
-        post "/api/v1/suggestions", params: { data: { title: "" } }, headers: auth_headers_for(create(:user)), as: :json
+        post "/api/v1/suggestions", params: { data: { title: "" } }, headers: auth_headers_for(create(:user, role_member: true)), as: :json
       }.not_to change(BotJob, :count)
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -280,7 +295,7 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
   end
 
   describe "POST /api/v1/suggestions/:id/upvote" do
-    let(:member) { create(:user) }
+    let(:member) { create(:user, role_member: true) }
     let(:suggestion) { create(:suggestion) }
 
     it "records one upvote per member and returns the updated count" do
@@ -311,6 +326,12 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       end
     end
 
+    it "refuses a signed-in user without the Members role" do
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: auth_headers_for(create(:user))
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
     it "refuses the service, which is not a member" do
       post "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: service_headers
 
@@ -331,7 +352,7 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
   end
 
   describe "DELETE /api/v1/suggestions/:id/upvote" do
-    let(:member) { create(:user) }
+    let(:member) { create(:user, role_member: true) }
     let(:suggestion) { create(:suggestion) }
 
     it "removes the member's upvote only" do
