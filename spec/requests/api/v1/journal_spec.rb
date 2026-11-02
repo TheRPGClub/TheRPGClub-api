@@ -41,7 +41,8 @@ RSpec.describe 'api/v1/journal', type: :request do
 
     post 'Write a journal entry' do
       tags 'Journal'
-      description 'Owner-only. Creates an entry for the given game.'
+      description 'Owner-only: the path user (user bearer) or the service; staff get 403 for another ' \
+                  'member. Creates an entry for the given game.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -197,7 +198,8 @@ RSpec.describe 'api/v1/journal', type: :request do
 
     patch 'Update a journal entry' do
       tags 'Journal'
-      description 'Owner-only.'
+      description 'Owner-only: the entry author (user bearer) or the service. Admins, Moderators and ' \
+                  'Superadmins get 403 on another member\'s entry. An unknown id is 404 for every caller.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -230,7 +232,7 @@ RSpec.describe 'api/v1/journal', type: :request do
 
     put 'Replace a journal entry (alias)' do
       tags 'Journal'
-      description 'Owner-only. Alias for PATCH (applied as a partial assign).'
+      description 'Owner-only (as PATCH). Alias for PATCH (applied as a partial assign).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -243,6 +245,14 @@ RSpec.describe 'api/v1/journal', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/JournalEntryGame' } }
       end
 
+      response '403', 'forbidden: caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
       response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
@@ -250,7 +260,8 @@ RSpec.describe 'api/v1/journal', type: :request do
 
     delete 'Delete a journal entry' do
       tags 'Journal'
-      description 'Owner-only.'
+      description 'Owner-only: the entry author (user bearer) or the service. Admins, Moderators and ' \
+                  'Superadmins get 403 on another member\'s entry. An unknown id is 404 for every caller.'
       produces 'application/json'
 
       response '200', 'deleted' do
