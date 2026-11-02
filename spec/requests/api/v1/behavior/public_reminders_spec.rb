@@ -2,8 +2,10 @@
 
 require "rails_helper"
 
-# Behavior specs for the public reminders endpoints: CRUD is open to any
-# authenticated caller; the `due` poll endpoint is service-only.
+# Behavior specs for the public reminders endpoints: reads are open to any
+# authenticated caller, writes are admin-or-above (Admin, Superadmin, service),
+# and the `due` poll endpoint is service-only. A reminder's channel must be a
+# synced text channel (GuildChannel) on create and when the channel changes.
 RSpec.describe "api/v1/public_reminders behavior", type: :request do
   describe "GET /api/v1/public_reminders" do
     it "lists reminders ordered by due_at with the documented fields" do
@@ -100,6 +102,7 @@ RSpec.describe "api/v1/public_reminders behavior", type: :request do
   end
 
   describe "POST /api/v1/public_reminders" do
+    let!(:channel) { create(:guild_channel, channel_id: "123456") }
     let(:payload) do
       { data: { channel_id: "123456", message: "Weekly vote!", due_at: 2.days.from_now.iso8601,
         recur_every: 7, recur_unit: "days", created_by: "42" } }
@@ -122,9 +125,65 @@ RSpec.describe "api/v1/public_reminders behavior", type: :request do
       expect(json.dig("data", "reminder_id")).to be_present
     end
 
+    it "lets an admin create one" do
+      post "/api/v1/public_reminders", params: payload, headers: auth_headers_for(create(:user, :admin)), as: :json
+
+      expect(response).to have_http_status(:created)
+    end
+
+    it "forbids a member" do
+      post "/api/v1/public_reminders", params: payload, headers: auth_headers_for(create(:user)), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "stores the due time in UTC" do
+      payload[:data][:due_at] = "2030-03-10T09:30:00-04:00"
+
+      post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "due_at")).to start_with("2030-03-10T13:30:00")
+      expect(json.dig("data", "due_at")).to end_with("Z")
+      stored = RpgClubPublicReminder.connection.select_value(
+        "SELECT to_char(due_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') FROM rpg_club_public_reminders " \
+        "WHERE reminder_id = #{json.dig("data", "reminder_id").to_i}"
+      )
+      expect(stored).to eq("2030-03-10 13:30")
+    end
+
+    it "422s for a channel that is not synced" do
+      payload[:data][:channel_id] = "999000999"
+
+      expect {
+        post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
+      }.not_to change(RpgClubPublicReminder, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to include("synced text channel")
+    end
+
+    it "422s for a synced channel that is not a text channel" do
+      create(:guild_channel, channel_id: "555", channel_type: 2)
+      payload[:data][:channel_id] = "555"
+
+      post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "accepts an announcement channel" do
+      create(:guild_channel, channel_id: "556", channel_type: 5)
+      payload[:data][:channel_id] = "556"
+
+      post "/api/v1/public_reminders", params: payload, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+    end
+
     it "422s when the message exceeds the column limit" do
       post "/api/v1/public_reminders",
-        params: { data: { channel_id: "1", message: "x" * 3000, due_at: 1.day.from_now.iso8601 } },
+        params: { data: { channel_id: "123456", message: "x" * 3000, due_at: 1.day.from_now.iso8601 } },
         headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -175,6 +234,59 @@ RSpec.describe "api/v1/public_reminders behavior", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(reminder.reload.message).to eq("via put")
+    end
+
+    it "lets an admin edit it" do
+      reminder = create(:public_reminder)
+
+      patch "/api/v1/public_reminders/#{reminder.reminder_id}",
+        params: { data: { message: "admin edit" } }, headers: auth_headers_for(create(:user, :admin)), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(reminder.reload.message).to eq("admin edit")
+    end
+
+    it "forbids a member" do
+      reminder = create(:public_reminder)
+
+      patch "/api/v1/public_reminders/#{reminder.reminder_id}",
+        params: { data: { message: "nope" } }, headers: auth_headers_for(create(:user)), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "moves the reminder to another synced text channel" do
+      reminder = create(:public_reminder)
+      target = create(:guild_channel, channel_type: 5)
+
+      patch "/api/v1/public_reminders/#{reminder.reminder_id}",
+        params: { data: { channel_id: target.channel_id } }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(reminder.reload.channel_id).to eq(target.channel_id)
+    end
+
+    it "422s when moving to a channel that is not synced" do
+      reminder = create(:public_reminder)
+      original = reminder.channel_id
+
+      patch "/api/v1/public_reminders/#{reminder.reminder_id}",
+        params: { data: { channel_id: "999000999" } }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(reminder.reload.channel_id).to eq(original)
+    end
+
+    it "keeps editing a reminder whose stored channel is no longer synced" do
+      reminder = create(:public_reminder)
+      GuildChannel.where(channel_id: reminder.channel_id).delete_all
+
+      patch "/api/v1/public_reminders/#{reminder.reminder_id}",
+        params: { data: { due_at: "2030-01-01T12:00:00Z", channel_id: reminder.channel_id } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(reminder.reload.due_at).to eq(Time.utc(2030, 1, 1, 12))
     end
 
     it "404s for an unknown id" do

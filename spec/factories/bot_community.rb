@@ -32,7 +32,7 @@ FactoryBot.define do
   end
 
   factory :public_reminder, class: "RpgClubPublicReminder" do
-    channel_id { SecureRandom.random_number(10**18).to_s }
+    channel_id { create(:guild_channel).channel_id }
     message { "Reminder #{SecureRandom.hex(4)}" }
     due_at { 1.day.from_now }
     enabled { true }
