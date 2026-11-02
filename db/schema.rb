@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_02_000100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -346,6 +346,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_000100) do
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_runoff_user_game", unique: true
+  end
+
+  create_table "guild_channels", primary_key: "channel_id", id: :string, force: :cascade do |t|
+    t.integer "channel_type", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.string "parent_id"
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["channel_type", "parent_id", "position"], name: "ix_guild_channels_type_parent_position"
   end
 
   create_table "help", primary_key: ["topic", "seq"], force: :cascade do |t|

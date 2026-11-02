@@ -824,6 +824,13 @@ module OpenapiSchemas
       # ---- presence / activity / member history (bot-written, read-only) ---
       # BotPresenceResource: the four logical columns; the surrogate `id` is
       # internal-only and never exposed.
+      # GuildChannelsController#index/#upsert (#313). `channel_type` is
+      # Discord's numeric ChannelType; `category_name` is the parent
+      # category's name (null when uncategorized, and on upsert responses).
+      GuildChannel: obj(
+        channel_id: str, name: str, channel_type: int, parent_id: str(nullable: true),
+        position: int, category_name: str(nullable: true)
+      ),
       BotPresence: obj(
         activity_name: str, set_at: ts,
         set_by_user_id: str(nullable: true), set_by_username: str(nullable: true)

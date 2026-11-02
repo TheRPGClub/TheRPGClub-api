@@ -67,4 +67,11 @@ FactoryBot.define do
     thread factory: :discord_thread
     game
   end
+
+  factory :guild_channel do
+    channel_id { SecureRandom.random_number(10**18).to_s }
+    name { "channel-#{SecureRandom.hex(4)}" }
+    channel_type { 0 }
+    position { 0 }
+  end
 end
