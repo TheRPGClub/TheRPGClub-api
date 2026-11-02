@@ -8,17 +8,19 @@ module Api
       WRITABLE = %w[title details labels created_by created_by_name].freeze
 
       before_action :require_admin_or_service!, only: %i[destroy]
+      before_action :require_member!, only: %i[withdraw upvote remove_upvote]
 
       def index
         statuses = status_filter
         return if performed?
 
-        scope = statuses ? RpgClubSuggestion.where(status: statuses) : RpgClubSuggestion.all
-        render_collection(scope, resource: SuggestionResource, default_order: { created_at: :desc })
+        scope = viewer_scope
+        scope = scope.where(status: statuses) if statuses
+        render_collection(scope, resource: SuggestionResource, default_order: RpgClubSuggestion::BOARD_ORDER)
       end
 
       def show
-        render json: { data: SuggestionResource.new(RpgClubSuggestion.find(params[:id])).serializable_hash }
+        render_suggestion(params[:id])
       end
 
       # Any signed-in member, or the bot. A member is always the author, and
@@ -35,7 +37,7 @@ module Api
           enqueue_submitted_ping(suggestion) if current_principal.discord_user?
           suggestion
         end
-        render json: { data: SuggestionResource.new(record).serializable_hash }, status: :created
+        render_suggestion(record.suggestion_id, status: :created)
       end
 
       def destroy
@@ -48,9 +50,7 @@ module Api
       # withdrawn Suggestion is a 409.
       def withdraw
         suggestion = RpgClubSuggestion.find(params[:id])
-        unless current_principal.discord_user? && suggestion.created_by == current_principal.id
-          return render json: { error: "forbidden" }, status: :forbidden
-        end
+        return render json: { error: "forbidden" }, status: :forbidden unless suggestion.created_by == current_principal.id
 
         suggestion.with_lock do
           unless suggestion.status == "pending"
@@ -59,10 +59,49 @@ module Api
 
           suggestion.update!(status: "withdrawn")
         end
-        render json: { data: SuggestionResource.new(suggestion).serializable_hash }
+        render_suggestion(suggestion.suggestion_id)
+      end
+
+      # A member's upvote, at most one each (repeating it is a no-op). Only
+      # Pending and Approved Suggestions take upvotes.
+      def upvote
+        suggestion = RpgClubSuggestion.find(params[:id])
+        unless RpgClubSuggestion::UPVOTABLE_STATUSES.include?(suggestion.status)
+          return render json: { error: "a #{suggestion.status} suggestion cannot be upvoted" }, status: :conflict
+        end
+
+        RpgClubSuggestionUpvote.insert(
+          { suggestion_id: suggestion.suggestion_id, user_id: current_principal.id },
+          unique_by: :ux_rpg_club_suggestion_upvotes_suggestion_user
+        )
+        render_suggestion(suggestion.suggestion_id)
+      end
+
+      # Removes the member's upvote, if any, whatever the status.
+      def remove_upvote
+        suggestion = RpgClubSuggestion.find(params[:id])
+        suggestion.upvotes.where(user_id: current_principal.id).delete_all
+        render_suggestion(suggestion.suggestion_id)
       end
 
       private
+
+      # Upvotes and withdraw act as a member; the service has no member
+      # identity to act as.
+      def require_member!
+        return true if current_principal.discord_user?
+
+        render json: { error: "forbidden" }, status: :forbidden
+        false
+      end
+
+      def viewer_scope
+        RpgClubSuggestion.with_upvotes(current_principal.discord_user? ? current_principal.id : nil)
+      end
+
+      def render_suggestion(id, status: :ok)
+        render json: { data: SuggestionResource.new(viewer_scope.find(id)).serializable_hash }, status: status
+      end
 
       def author_name
         RpgClubUser.where(user_id: current_principal.id).pick(:username) || current_principal.username

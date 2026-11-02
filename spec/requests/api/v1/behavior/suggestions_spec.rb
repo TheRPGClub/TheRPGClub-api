@@ -6,7 +6,7 @@ require "rails_helper"
 # create and destroy) is open to any authenticated principal.
 RSpec.describe "api/v1/suggestions behavior", type: :request do
   describe "GET /api/v1/suggestions" do
-    it "lists suggestions newest first with the documented fields" do
+    it "lists suggestions (newest first when none are upvoted) with the documented fields" do
       older = create(:suggestion, labels: "bug,ux")
       newer = create(:suggestion)
       older.update_column(:created_at, 2.hours.ago)
@@ -67,6 +67,39 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       expect(json.fetch("error")).to include("bogus")
     end
 
+    it "sorts by upvotes, then newest first, with the count and whether the viewer upvoted" do
+      viewer = create(:user)
+      quiet_old = create(:suggestion)
+      quiet_new = create(:suggestion)
+      popular = create(:suggestion)
+      liked = create(:suggestion)
+      quiet_old.update_column(:created_at, 3.days.ago)
+      quiet_new.update_column(:created_at, 1.day.ago)
+      2.times { create(:suggestion_upvote, suggestion: popular) }
+      create(:suggestion_upvote, suggestion: liked, user: viewer)
+
+      get "/api/v1/suggestions", params: { per: 500 }, headers: auth_headers_for(viewer)
+
+      rows = json.fetch("data")
+      expect(rows.map { |r| r.fetch("suggestion_id") }).to eq(
+        [ popular, liked, quiet_new, quiet_old ].map(&:suggestion_id)
+      )
+      expect(rows.map { |r| [ r.fetch("upvote_count"), r.fetch("viewer_upvoted") ] })
+        .to eq([ [ 2, false ], [ 1, true ], [ 0, false ], [ 0, false ] ])
+      expect(json.dig("meta", "count")).to eq(4)
+    end
+
+    it "pages the sorted list" do
+      top = create(:suggestion)
+      create(:suggestion_upvote, suggestion: top)
+      create(:suggestion)
+
+      get "/api/v1/suggestions", params: { per: 1, page: 1 }, headers: auth_headers_for(create(:user))
+
+      expect(json.fetch("data").map { |r| r.fetch("suggestion_id") }).to eq([ top.suggestion_id ])
+      expect(json.fetch("meta")).to include("count" => 2, "pages" => 2)
+    end
+
     it "requires authentication" do
       get "/api/v1/suggestions"
 
@@ -83,7 +116,9 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include(
         "suggestion_id" => suggestion.suggestion_id,
-        "title" => suggestion.title
+        "title" => suggestion.title,
+        "upvote_count" => 0,
+        "viewer_upvoted" => false
       )
     end
 
@@ -239,6 +274,93 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
 
     it "requires authentication" do
       post "/api/v1/suggestions/#{suggestion.suggestion_id}/withdraw"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "POST /api/v1/suggestions/:id/upvote" do
+    let(:member) { create(:user) }
+    let(:suggestion) { create(:suggestion) }
+
+    it "records one upvote per member and returns the updated count" do
+      create(:suggestion_upvote, suggestion: suggestion)
+
+      2.times { post "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: auth_headers_for(member) }
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("suggestion_id" => suggestion.suggestion_id,
+        "upvote_count" => 2, "viewer_upvoted" => true)
+    end
+
+    it "accepts upvotes on approved suggestions" do
+      suggestion.update!(status: "approved")
+
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    %w[rejected withdrawn].each do |status|
+      it "409s on a #{status} suggestion" do
+        suggestion.update!(status: status)
+
+        post "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: auth_headers_for(member)
+
+        expect(response).to have_http_status(:conflict)
+      end
+    end
+
+    it "refuses the service, which is not a member" do
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: service_headers
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "404s for an unknown id" do
+      post "/api/v1/suggestions/999999999/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "requires authentication" do
+      post "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "DELETE /api/v1/suggestions/:id/upvote" do
+    let(:member) { create(:user) }
+    let(:suggestion) { create(:suggestion) }
+
+    it "removes the member's upvote only" do
+      create(:suggestion_upvote, suggestion: suggestion, user: member)
+      create(:suggestion_upvote, suggestion: suggestion)
+
+      delete "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("upvote_count" => 1, "viewer_upvoted" => false)
+    end
+
+    it "is a no-op when the member had not upvoted, whatever the status" do
+      suggestion.update!(status: "withdrawn")
+
+      delete "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("upvote_count" => 0, "viewer_upvoted" => false)
+    end
+
+    it "refuses the service" do
+      delete "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote", headers: service_headers
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "requires authentication" do
+      delete "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote"
 
       expect(response).to have_http_status(:unauthorized)
     end
