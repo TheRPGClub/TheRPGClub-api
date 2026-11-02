@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_02_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_140100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -730,15 +730,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_130000) do
     t.index ["reviewer_id"], name: "ix_rpg_club_sug_rev_sess_reviewer"
   end
 
+  create_table "rpg_club_suggestion_upvotes", force: :cascade do |t|
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.bigint "suggestion_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.index ["suggestion_id", "user_id"], name: "ux_rpg_club_suggestion_upvotes_suggestion_user", unique: true
+    t.index ["user_id"], name: "ix_rpg_club_suggestion_upvotes_user"
+  end
+
   create_table "rpg_club_suggestions", primary_key: "suggestion_id", force: :cascade do |t|
     t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
     t.string "created_by_name", limit: 100
     t.string "details", limit: 2000
+    t.integer "github_issue_number"
+    t.string "github_issue_url", limit: 500
     t.string "labels", limit: 200
+    t.string "rejection_reason", limit: 2000
+    t.timestamptz "reviewed_at"
+    t.string "reviewed_by", limit: 30
+    t.string "status", limit: 16, default: "pending", null: false
+    t.string "target_repo", limit: 200
     t.string "title", limit: 200, null: false
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["created_at"], name: "ix_rpg_club_suggestions_created"
+    t.index ["status"], name: "ix_rpg_club_suggestions_status"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying]::text[])", name: "ck_rpg_club_suggestions_status"
   end
 
   create_table "rpg_club_user_avatar_history", primary_key: "event_id", force: :cascade do |t|
@@ -1150,6 +1167,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_130000) do
   add_foreign_key "rpg_club_gotm_audit_items", "rpg_club_gotm_audit_imports", column: "import_id", primary_key: "import_id", name: "fk_gotm_audit_items"
   add_foreign_key "rpg_club_rss_feed_items", "rpg_club_rss_feeds", column: "feed_id", primary_key: "feed_id", name: "fk_rss_feed_items_feed", on_delete: :cascade
   add_foreign_key "rpg_club_steam_collection_import_items", "rpg_club_steam_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_steam_coll_import_items"
+  add_foreign_key "rpg_club_suggestion_upvotes", "rpg_club_suggestions", column: "suggestion_id", primary_key: "suggestion_id", name: "fk_rpg_club_suggestion_upvotes_suggestion", on_delete: :cascade
+  add_foreign_key "rpg_club_suggestion_upvotes", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_rpg_club_suggestion_upvotes_user", on_delete: :cascade
   add_foreign_key "rpg_club_xbox_collection_import_items", "rpg_club_xbox_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_xbox_coll_import_items"
   add_foreign_key "threads", "gamedb_games", primary_key: "game_id", name: "fk_threads_gamedb_game"
   add_foreign_key "user_achievement_set_progress", "achievement_sets", name: "fk_user_achievement_set_progress_set", on_delete: :cascade

@@ -1559,11 +1559,48 @@ components:
         created_by_name:
           type: string
           nullable: true
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          - withdrawn
+        reviewed_by:
+          type: string
+          nullable: true
+          description: Discord user id of the reviewing Superadmin.
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        rejection_reason:
+          type: string
+          nullable: true
+          description: Set when rejected.
+        target_repo:
+          type: string
+          nullable: true
+          description: Repo the approval opened its GitHub issue in.
+        github_issue_number:
+          type: integer
+          nullable: true
+        github_issue_url:
+          type: string
+          nullable: true
+        upvote_count:
+          type: integer
+        viewer_upvoted:
+          type: boolean
+          description: Whether the signed-in member upvoted it; false for the service.
       required:
       - suggestion_id
       - title
       - created_at
       - updated_at
+      - status
+      - upvote_count
+      - viewer_upvoted
     SuggestionReviewSession:
       type: object
       properties:
@@ -19904,8 +19941,17 @@ paths:
       summary: List suggestions
       tags:
       - Suggestions
-      description: Open to any authenticated caller. Newest first.
+      description: Open to any authenticated caller. Most upvoted first, then newest.
+        Each row carries `upvote_count` and `viewer_upvoted` (always false for the
+        service).
       parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Comma-separated statuses to include (pending, approved, rejected,
+          withdrawn). Absent = every status. The Suggestion Board default is `pending,approved`.
       - name: page
         in: query
         schema:
@@ -19950,6 +19996,12 @@ paths:
                       "$ref": "#/components/schemas/Suggestion"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: unknown status
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -19960,8 +20012,12 @@ paths:
       summary: Create a suggestion
       tags:
       - Suggestions
-      description: Admin or service only. `title` is required; everything else is
-        optional.
+      description: 'Members role holders, Moderator and above, or the service. `title`
+        is required; everything else is optional. Always created Pending. A member
+        is recorded as the author (body `created_by` and `created_by_name` are ignored)
+        and their submission enqueues a `suggestion_submitted` bot job (payload `{
+        suggestion_id, created_by }`) so the bot pings the bot dev. A service create
+        enqueues nothing: the bot pings inline for its own submissions.'
       parameters: []
       responses:
         '201':
@@ -19980,7 +20036,13 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller lacks the Members role and is not staff'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
           content:
             application/json:
               schema:
@@ -20014,11 +20076,13 @@ paths:
                     created_by:
                       type: string
                       nullable: true
-                      description: Optional Discord user id of the author.
+                      description: Discord user id of the author. Service only; a
+                        member is always the author.
                     created_by_name:
                       type: string
                       nullable: true
-                      description: Optional display name of the author.
+                      description: Author's display name. Service only; a member's
+                        comes from their record.
                   required:
                   - title
               required:
@@ -20077,6 +20141,136 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '403':
           description: forbidden — caller is not an admin or the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/suggestions/{id}/withdraw":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Withdraw a suggestion
+      tags:
+      - Suggestions
+      description: The author only, while Pending. Staff and the service are refused.
+      responses:
+        '200':
+          description: withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the author'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/suggestions/{id}/upvote":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Upvote a suggestion
+      tags:
+      - Suggestions
+      description: Members role holders or staff, signed in (the service is refused).
+        One upvote per member; repeating it is a no-op. Only Pending and Approved
+        suggestions take upvotes.
+      responses:
+        '200':
+          description: upvoted; returns the updated suggestion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+        '409':
+          description: rejected or withdrawn
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not a Members role holder or staff, or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Remove an upvote
+      tags:
+      - Suggestions
+      description: Members role holders or staff, signed in (the service is refused).
+        Removes the caller's upvote if any (a no-op otherwise), whatever the status.
+      responses:
+        '200':
+          description: removed; returns the updated suggestion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not a Members role holder or staff, or the service'
           content:
             application/json:
               schema:

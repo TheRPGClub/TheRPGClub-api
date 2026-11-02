@@ -494,9 +494,19 @@ module OpenapiSchemas
       ),
 
       # ---- RPGClub features ------------------------------------------------
+      # SuggestionResource: every column plus the upvote count and whether
+      # the viewer upvoted (#318). The review columns are null until review.
       Suggestion: obj(
         suggestion_id: int, title: str, details: str(nullable: true), created_by: str(nullable: true),
-        created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true)
+        created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true),
+        status: str(enum: RpgClubSuggestion::STATUSES),
+        reviewed_by: str(nullable: true).merge(description: "Discord user id of the reviewing Superadmin."),
+        reviewed_at: ts(nullable: true),
+        rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
+        target_repo: str(nullable: true).merge(description: "Repo the approval opened its GitHub issue in."),
+        github_issue_number: int(nullable: true), github_issue_url: str(nullable: true),
+        upvote_count: int,
+        viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service.")
       ),
       # `suggestion_ids` is the stored JSON string, returned verbatim.
       SuggestionReviewSession: obj(
