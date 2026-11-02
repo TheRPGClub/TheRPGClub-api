@@ -50,11 +50,13 @@ module Github
       end
     end
 
-    # `http` (a Faraday connection) and `clock` (returns a Time) are seams for specs.
-    def initialize(app_id: nil, installation_id: nil, private_key: nil, http: nil, clock: nil)
+    # `timeout` is the per-request timeout in seconds. `http` (a Faraday
+    # connection) and `clock` (returns a Time) are seams for specs.
+    def initialize(app_id: nil, installation_id: nil, private_key: nil, timeout: TIMEOUT_SECONDS, http: nil, clock: nil)
       @app_id = (app_id.nil? ? ENV["GITHUB_APP_ID"] : app_id).to_s.strip
       @installation_id = (installation_id.nil? ? ENV["GITHUB_APP_INSTALLATION_ID"] : installation_id).to_s.strip
       @private_key = (private_key.nil? ? ENV["GITHUB_APP_PRIVATE_KEY"] : private_key).to_s
+      @timeout = timeout
       @http = http
       @clock = clock || -> { Time.current }
     end
@@ -67,6 +69,16 @@ module Github
     def create_issue(repo:, title:, body:, labels: [])
       raw = request(:post, "/repos/#{repo}/issues", { title:, body:, labels: })
       to_issue(raw)
+    end
+
+    # The most recently created issue in `repo`, among the 100 updated since
+    # `since`, whose body contains `marker`; nil when there is none. Lets a
+    # retried create find an issue an earlier, lost response already opened.
+    def find_issue_by_marker(repo:, marker:, since:)
+      query = { state: "all", since: since.utc.iso8601, sort: "created", direction: "desc", per_page: 100 }.to_query
+      raw = request(:get, "/repos/#{repo}/issues?#{query}")
+      match = Array(raw).find { |issue| !issue["pull_request"] && issue["body"].to_s.include?(marker) }
+      to_issue(match) if match
     end
 
     # "open" or "closed", or nil when the issue does not exist (or is a pull request).
@@ -93,7 +105,8 @@ module Github
       parsed = parse(response.body)
       return parsed if response.success?
 
-      message = "GitHub returned HTTP #{response.status} for #{method.upcase} #{path}: #{parsed['message'] || 'no message'}"
+      detail = parsed.is_a?(Hash) ? parsed["message"] : nil
+      message = "GitHub returned HTTP #{response.status} for #{method.upcase} #{path}: #{detail || 'no message'}"
       raise NotFound, message if response.status == 404
 
       raise RequestError, message
@@ -166,7 +179,7 @@ module Github
     end
 
     def http
-      @http ||= Faraday.new(url: API_BASE) { |connection| connection.options.timeout = TIMEOUT_SECONDS }
+      @http ||= Faraday.new(url: API_BASE) { |connection| connection.options.timeout = @timeout }
     end
   end
 end

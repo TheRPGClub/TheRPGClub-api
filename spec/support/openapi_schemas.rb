@@ -1160,9 +1160,11 @@ module OpenapiSchemas
       HltbLookup: obj(
         data: ref("Hltb"),
         meta: obj(
-          source: str(enum: %w[cache hltb], description: "cache: the saved times, no scrape. hltb: a fresh scrape."),
+          source: str(enum: %w[cache hltb],
+            description: "cache: the saved times, or an unsaved result kept for about a day; no scrape. " \
+                         "hltb: a fresh scrape."),
           saved: bool,
-          _description: "saved is false for a fresh scrape of a game released within six months, or undated."
+          _description: "saved is false for a result for a game released within six months, or undated."
         ),
         _required: %w[data meta]
       )

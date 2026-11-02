@@ -4047,14 +4047,15 @@ components:
               enum:
               - cache
               - hltb
-              description: 'cache: the saved times, no scrape. hltb: a fresh scrape.'
+              description: 'cache: the saved times, or an unsaved result kept for
+                about a day; no scrape. hltb: a fresh scrape.'
             saved:
               type: boolean
           required:
           - source
           - saved
-          description: saved is false for a fresh scrape of a game released within
-            six months, or undated.
+          description: saved is false for a result for a game released within six
+            months, or undated.
       required:
       - data
       - meta
@@ -8896,7 +8897,8 @@ paths:
         the game's HowLongToBeat page through Google Custom Search ("How long is <title>?")
         and scrapes it, as the bot's `/hltb` does. A fresh scrape is saved to the
         HLTB cache only when the game's initial release is more than six months ago
-        (`meta.saved`). Takes no body.
+        (`meta.saved`). An unsaved result (or no match) is kept for about a day, then
+        served with `meta.source` `cache`. Takes no body.
       responses:
         '200':
           description: HLTB times
@@ -15139,8 +15141,9 @@ paths:
       - Public Reminders
       description: Admin or above (Admin, Superadmin, service). `channel_id`, `message`
         and `due_at` are required; `recur_every`/`recur_unit` (recurrence), `enabled`
-        (defaults true) and `created_by` are optional. 422 when `channel_id` is not
-        a synced text channel.
+        (defaults true) and `created_by` are optional. For a member (the website),
+        422 when `channel_id` is not a synced text channel; the service may target
+        any channel, threads included.
       parameters: []
       responses:
         '201':
@@ -15183,8 +15186,9 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
-                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
-                        checked on create and whenever it changes.
+                        For a member (the website), must be a synced text or announcement
+                        channel (see GET /api/v1/guild_channels), checked on create
+                        and whenever it changes; the service may use any channel.
                     message:
                       type: string
                       description: Reminder text. Required on create.
@@ -15287,8 +15291,9 @@ paths:
       tags:
       - Public Reminders
       description: 'Admin or above (Admin, Superadmin, service). Partial update: send
-        any subset of the writable columns. 422 when `channel_id` changes to a channel
-        that is not a synced text channel.'
+        any subset of the writable columns. For a member (the website), 422 when `channel_id`
+        changes to a channel that is not a synced text channel; the service may move
+        it to any channel.'
       parameters: []
       responses:
         '200':
@@ -15337,8 +15342,9 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
-                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
-                        checked on create and whenever it changes.
+                        For a member (the website), must be a synced text or announcement
+                        channel (see GET /api/v1/guild_channels), checked on create
+                        and whenever it changes; the service may use any channel.
                     message:
                       type: string
                       description: Reminder text. Required on create.
@@ -15413,8 +15419,9 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
-                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
-                        checked on create and whenever it changes.
+                        For a member (the website), must be a synced text or announcement
+                        channel (see GET /api/v1/guild_channels), checked on create
+                        and whenever it changes; the service may use any channel.
                     message:
                       type: string
                       description: Reminder text. Required on create.
@@ -20152,9 +20159,11 @@ paths:
       tags:
       - Suggestions
       description: 'Superadmin or the service, while Pending. Opens a GitHub issue
-        in `target_repo` (title = the Suggestion title, body = "<author name>: <details>",
-        labels = the comma-separated `labels`) through the GitHub App, stores its
-        number and URL, and sets status approved. Enqueues a `suggestion_outcome`
+        in `target_repo` (title = the Suggestion title, body = "<author name>: <details>"
+        plus a hidden Suggestion marker, labels = the comma-separated `labels`) through
+        the GitHub App, stores its number and URL, and sets status approved. An issue
+        that already carries the marker (an earlier attempt whose response was lost)
+        is reused instead of opening a duplicate. Enqueues a `suggestion_outcome`
         bot job (payload `{ suggestion_id, outcome, created_by, title, github_issue_number,
         github_issue_url, rejection_reason }`), the bot''s own reviews included; `meta.outcome_job_id`
         is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
@@ -20191,7 +20200,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '409':
-          description: not pending
+          description: not pending, or `approval_in_progress` while another approval
+            is calling GitHub
           content:
             application/json:
               schema:

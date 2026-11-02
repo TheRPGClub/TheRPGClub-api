@@ -6,6 +6,9 @@ module Api
       # Columns a caller may set on create. Status and the review columns are
       # server-managed; a member's authorship comes from their session.
       WRITABLE = %w[title details labels created_by created_by_name].freeze
+      # How long an approval in progress blocks another; longer than its
+      # GitHub calls can take (three, each with Github::Client::TIMEOUT_SECONDS).
+      APPROVAL_WINDOW = 2.minutes
 
       before_action :require_superadmin!, only: %i[approve reject]
       before_action :require_member_or_staff!, only: %i[create upvote remove_upvote]
@@ -44,8 +47,14 @@ module Api
       # Superadmin (or the bot, for a Discord reviewer named in `reviewed_by`).
       # Opens a GitHub issue in `target_repo` (one of
       # RpgClubSuggestion::TARGET_REPOS) as the bot did, stores it and asks the
-      # bot to announce the outcome. The row stays locked across the GitHub call
-      # so two approvals cannot open two issues. A GitHub failure changes nothing.
+      # bot to announce the outcome. A GitHub failure changes nothing.
+      #
+      # No lock or transaction is held across the GitHub calls. A short lock
+      # marks the approval as in progress (a second approve meanwhile is a 409
+      # `approval_in_progress`), the issue is opened, then a second short lock
+      # re-checks Pending and stores it. The issue body carries a marker, and an
+      # issue already carrying it is reused, so a retry after a lost GitHub
+      # response does not open a duplicate.
       def approve
         data = request_data
         repo = data["target_repo"].to_s.strip
@@ -54,12 +63,19 @@ module Api
             status: :unprocessable_content
         end
 
-        review(data) do |suggestion|
-          issue = Github::Client.new.create_issue(
-            repo: repo, title: suggestion.title, body: issue_body(suggestion), labels: issue_labels(suggestion)
-          )
+        suggestion = RpgClubSuggestion.find(params[:id])
+        mark = claim_approval(suggestion)
+        return unless mark
+
+        begin
+          issue = find_or_open_issue(suggestion, repo)
           Github::IssueStateCache.store(repo, issue.number, issue.state)
-          { status: "approved", target_repo: repo, github_issue_number: issue.number, github_issue_url: issue.url }
+          review(data) do
+            { status: "approved", target_repo: repo, github_issue_number: issue.number, github_issue_url: issue.url,
+              approval_started_at: nil }
+          end
+        ensure
+          release_approval(suggestion, mark)
         end
       rescue Github::Client::ConfigurationError => error
         render json: { error: "github_not_configured", message: error.message }, status: :service_unavailable
@@ -119,7 +135,7 @@ module Api
 
       # Locks the Suggestion, 409s unless it is pending, applies the block's
       # columns plus the reviewer and time, and enqueues the outcome job, all in
-      # one transaction. Renders `{ data: Suggestion, meta: { outcome_job_id } }`.
+      # one short transaction (the block makes no external calls). Renders `{ data: Suggestion, meta: { outcome_job_id } }`.
       def review(data)
         suggestion = RpgClubSuggestion.find(params[:id])
         job = nil
@@ -128,13 +144,54 @@ module Api
             return render json: { error: "suggestion is #{suggestion.status}, not pending" }, status: :conflict
           end
 
-          suggestion.update!(**yield(suggestion), reviewed_by: reviewer_id(data), reviewed_at: Time.current)
+          suggestion.update!(**yield, reviewed_by: reviewer_id(data), reviewed_at: Time.current)
           job = enqueue_outcome(suggestion)
         end
         render json: {
           data: SuggestionResource.new(viewer_scope.find(suggestion.suggestion_id)).serializable_hash,
           meta: { outcome_job_id: job.id }
         }
+      end
+
+      # Marks a Pending Suggestion as being approved, under a short row lock,
+      # and returns the mark's time. Renders 409 and returns nil when it is not
+      # Pending or another approval started within APPROVAL_WINDOW (an older
+      # mark is from a request that died, and is taken over).
+      def claim_approval(suggestion)
+        suggestion.with_lock do
+          unless suggestion.status == "pending"
+            render json: { error: "suggestion is #{suggestion.status}, not pending" }, status: :conflict
+            return nil
+          end
+          if suggestion.approval_started_at&.after?(APPROVAL_WINDOW.ago)
+            render json: { error: "approval_in_progress", message: "this suggestion is already being approved" },
+              status: :conflict
+            return nil
+          end
+
+          suggestion.update_columns(approval_started_at: Time.current.floor(6))
+          suggestion.approval_started_at
+        end
+      end
+
+      # Clears this request's mark if it is still there (a finished approval
+      # already cleared it; a takeover replaced it).
+      def release_approval(suggestion, mark)
+        RpgClubSuggestion.where(suggestion_id: suggestion.suggestion_id, approval_started_at: mark)
+          .update_all(approval_started_at: nil)
+      end
+
+      def find_or_open_issue(suggestion, repo)
+        client = Github::Client.new
+        marker = issue_marker(suggestion)
+        client.find_issue_by_marker(repo: repo, marker: marker, since: suggestion.created_at) ||
+          client.create_issue(repo: repo, title: suggestion.title, body: "#{issue_body(suggestion)}\n\n#{marker}",
+            labels: issue_labels(suggestion))
+      end
+
+      # Hidden in the rendered issue; identifies the Suggestion an issue is for.
+      def issue_marker(suggestion)
+        "<!-- rpgclub-suggestion:#{suggestion.suggestion_id} -->"
       end
 
       # A member reviews as themselves; the bot names the Discord reviewer.
@@ -169,10 +226,7 @@ module Api
       # Upvotes and withdraw act as a signed-in member; the service has no
       # member identity to act as.
       def require_member!
-        return true if current_principal.discord_user?
-
-        render json: { error: "forbidden" }, status: :forbidden
-        false
+        gate_or_forbid(current_principal.discord_user?)
       end
 
       def viewer_scope

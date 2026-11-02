@@ -21,6 +21,11 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     allow(Github::Client).to receive(:new).and_return(client)
     allow(client).to receive(:create_issue)
       .and_return(Github::Client::Issue.new(number: 42, url: issue_url, state: "open"))
+    allow(client).to receive(:find_issue_by_marker).and_return(nil)
+  end
+
+  def marker_for(record)
+    "<!-- rpgclub-suggestion:#{record.suggestion_id} -->"
   end
 
   def approve(id = suggestion.suggestion_id, data: { target_repo: "TheRPGClub/TheRPGClub-www" }, headers: superadmin_headers)
@@ -38,7 +43,11 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
 
         expect(response).to have_http_status(:ok)
         expect(client).to have_received(:create_issue).with(
-          repo: "TheRPGClub/TheRPGClub-www", title: "Dark mode", body: "tester: Please", labels: [ "New Feature", "Bug" ]
+          repo: "TheRPGClub/TheRPGClub-www", title: "Dark mode", body: "tester: Please\n\n#{marker_for(suggestion)}",
+          labels: [ "New Feature", "Bug" ]
+        )
+        expect(client).to have_received(:find_issue_by_marker).with(
+          repo: "TheRPGClub/TheRPGClub-www", marker: marker_for(suggestion), since: suggestion.created_at
         )
         data = json.fetch("data")
         expect(data).to include(
@@ -65,7 +74,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       approve(bare.suggestion_id)
 
       expect(client).to have_received(:create_issue)
-        .with(hash_including(body: "Unknown: No details provided.", labels: []))
+        .with(hash_including(body: "Unknown: No details provided.\n\n#{marker_for(bare)}", labels: []))
     end
 
     it "lets the bot approve for a Discord reviewer, and still enqueues the announcement" do
@@ -118,6 +127,95 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       expect(response).to have_http_status(:bad_gateway)
       expect(json).to include("error" => "github_issue_failed", "message" => "GitHub returned HTTP 500")
       expect(suggestion.reload.status).to eq("pending")
+    end
+
+    it "reuses an issue an earlier approval opened but whose response was lost, instead of a duplicate" do
+      found = Github::Client::Issue.new(number: 41, url: "https://github.com/TheRPGClub/TheRPGClub-www/issues/41",
+        state: "open")
+      allow(client).to receive(:find_issue_by_marker).and_return(found)
+
+      approve
+
+      expect(response).to have_http_status(:ok)
+      expect(client).not_to have_received(:create_issue)
+      expect(json.fetch("data")).to include("status" => "approved", "github_issue_number" => 41,
+        "github_issue_url" => found.url)
+    end
+
+    it "does not hold a transaction (or the row lock) across the GitHub calls" do
+      baseline = ActiveRecord::Base.connection.open_transactions
+      during = []
+      allow(client).to receive(:find_issue_by_marker) { during << ActiveRecord::Base.connection.open_transactions; nil }
+      allow(client).to receive(:create_issue) do
+        during << ActiveRecord::Base.connection.open_transactions
+        Github::Client::Issue.new(number: 42, url: issue_url, state: "open")
+      end
+
+      approve
+
+      expect(response).to have_http_status(:ok)
+      expect(during).to eq([ baseline, baseline ])
+    end
+
+    it "409s while another approval of the same suggestion is in progress, without calling GitHub" do
+      suggestion.update_column(:approval_started_at, 10.seconds.ago)
+
+      expect { approve }.not_to change(BotJob, :count)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("approval_in_progress")
+      expect(client).not_to have_received(:create_issue)
+      expect(client).not_to have_received(:find_issue_by_marker)
+    end
+
+    it "takes over an approval mark left by a request that died" do
+      suggestion.update_column(:approval_started_at, 10.minutes.ago)
+
+      approve
+
+      expect(response).to have_http_status(:ok)
+      expect(suggestion.reload.status).to eq("approved")
+    end
+
+    it "can be retried at once after a GitHub failure" do
+      allow(client).to receive(:create_issue).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
+      approve
+      expect(response).to have_http_status(:bad_gateway)
+
+      allow(client).to receive(:create_issue)
+        .and_return(Github::Client::Issue.new(number: 42, url: issue_url, state: "open"))
+      approve
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "github_issue_number")).to eq(42)
+    end
+
+    it "409s, and announces nothing, when the suggestion stopped being pending during the GitHub call" do
+      allow(client).to receive(:create_issue) do
+        RpgClubSuggestion.where(suggestion_id: suggestion.suggestion_id).update_all(status: "withdrawn")
+        Github::Client::Issue.new(number: 42, url: issue_url, state: "open")
+      end
+
+      expect { approve }.not_to change(BotJob, :count)
+
+      expect(response).to have_http_status(:conflict)
+      expect(suggestion.reload).to have_attributes(status: "withdrawn", github_issue_number: nil)
+    end
+
+    it "502s when the lookup for an earlier issue fails" do
+      allow(client).to receive(:find_issue_by_marker).and_raise(Github::Client::RequestError, "GitHub returned HTTP 502")
+
+      approve
+
+      expect(response).to have_http_status(:bad_gateway)
+      expect(client).not_to have_received(:create_issue)
+      expect(suggestion.reload.status).to eq("pending")
+    end
+
+    it "does not show its approval bookkeeping" do
+      approve
+
+      expect(json.fetch("data")).not_to have_key("approval_started_at")
     end
 
     it "503s when the GitHub App is not configured" do
@@ -281,6 +379,65 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(row_for(approved).fetch("github_issue_state")).to be_nil
+    end
+
+    it "caches a failure for about ten minutes" do
+      allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
+
+      get "/api/v1/suggestions", headers: viewer_headers
+      travel 9.minutes do
+        get "/api/v1/suggestions", headers: viewer_headers
+      end
+      expect(client).to have_received(:issue_state).once
+
+      travel 11.minutes do
+        get "/api/v1/suggestions", headers: viewer_headers
+      end
+      expect(client).to have_received(:issue_state).twice
+    end
+
+    it "looks up issues with a short timeout" do
+      get "/api/v1/suggestions", headers: viewer_headers
+
+      expect(Github::Client).to have_received(:new).with(timeout: Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS)
+      expect(Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS).to be <= 3
+    end
+
+    context "with many uncached approved suggestions" do
+      let(:cap) { Github::IssueStateCache::MAX_LOOKUPS_PER_REQUEST }
+
+      before do
+        (cap + 6).times do |index|
+          create(:suggestion, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot",
+            github_issue_number: 100 + index)
+        end
+      end
+
+      def states
+        json.fetch("data").filter_map { |row| row["github_issue_state"] if row["status"] == "approved" }
+      end
+
+      it "makes at most the cap of GitHub calls per request, leaving the rest null for later views" do
+        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(client).to have_received(:issue_state).exactly(cap).times
+        expect(states.size).to eq(cap)
+
+        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+
+        expect(client).to have_received(:issue_state).exactly(cap * 2).times
+        expect(states.size).to eq(cap * 2)
+      end
+
+      it "stops looking up for the rest of the request after a GitHub failure" do
+        allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
+
+        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(client).to have_received(:issue_state).once
+      end
     end
 
     it "is null without calling GitHub when the GitHub App is not configured" do

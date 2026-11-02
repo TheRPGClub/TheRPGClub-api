@@ -17,6 +17,11 @@ class StaffGatesProbeController < ApplicationController
   %i[member member_or_staff regular moderator admin superadmin].each do |gate|
     define_method(gate) { render json: { ok: gate } }
   end
+
+  # Checks two gates in one request, as an endpoint combining them would.
+  def moderator_then_admin
+    render json: { moderator: moderator_or_above?, admin: admin_or_above?, admin_or_service: admin_or_service? }
+  end
 end
 
 RSpec.describe "staff gates behavior", type: :request do
@@ -26,6 +31,7 @@ RSpec.describe "staff gates behavior", type: :request do
         %w[member member_or_staff regular moderator admin superadmin].each do |gate|
           get "/staff_gates_probe/#{gate}", to: "staff_gates_probe##{gate}"
         end
+        get "/staff_gates_probe/moderator_then_admin", to: "staff_gates_probe#moderator_then_admin"
         # with_routing replaces the app's routes, so redraw the role report.
         put "/api/v1/users/:user_id/roles", to: "api/v1/user_roles#update"
       end
@@ -67,6 +73,22 @@ RSpec.describe "staff gates behavior", type: :request do
 
       expect(response).to have_http_status(:ok), "service refused by the #{gate} gate"
     end
+  end
+
+  it "reads the member's role flags once per request, however many gates it checks" do
+    headers = auth_headers_for(create(:user, role_admin: true))
+    user_queries = lambda do |path|
+      count = 0
+      counter = ->(*, payload) { count += 1 if payload[:sql].include?("rpg_club_users") }
+      ActiveSupport::Notifications.subscribed(counter, "sql.active_record") { get path, headers: headers }
+      count
+    end
+
+    single = user_queries.call("/staff_gates_probe/moderator")
+    combined = user_queries.call("/staff_gates_probe/moderator_then_admin")
+
+    expect(json).to eq("moderator" => true, "admin" => true, "admin_or_service" => true)
+    expect(combined).to eq(single)
   end
 
   it "requires authentication before any gate" do

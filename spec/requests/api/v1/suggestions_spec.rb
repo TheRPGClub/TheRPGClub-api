@@ -113,8 +113,10 @@ RSpec.describe 'api/v1/suggestions', type: :request do
     post 'Approve a suggestion into a GitHub issue' do
       tags 'Suggestions'
       description 'Superadmin or the service, while Pending. Opens a GitHub issue in `target_repo` (title = the ' \
-                  'Suggestion title, body = "<author name>: <details>", labels = the comma-separated `labels`) ' \
-                  'through the GitHub App, stores its number and URL, and sets status approved. ' \
+                  'Suggestion title, body = "<author name>: <details>" plus a hidden Suggestion marker, labels = ' \
+                  'the comma-separated `labels`) through the GitHub App, stores its number and URL, and sets ' \
+                  'status approved. An issue that already carries the marker (an earlier attempt whose response ' \
+                  'was lost) is reused instead of opening a duplicate. ' \
                   'Enqueues a `suggestion_outcome` bot job (payload `{ suggestion_id, outcome, created_by, title, ' \
                   'github_issue_number, github_issue_url, rejection_reason }`), the bot\'s own reviews included; ' \
                   '`meta.outcome_job_id` is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
@@ -155,7 +157,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '409', 'not pending' do
+      response '409', 'not pending, or `approval_in_progress` while another approval is calling GitHub' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

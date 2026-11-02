@@ -49,11 +49,8 @@ module Api
       end
 
       def require_requester_or_admin!(job)
-        return true if current_principal&.discord_user? && current_principal.id == job.requested_by_user_id
-        return true if admin_or_above?
-
-        render json: { error: "forbidden" }, status: :forbidden
-        false
+        requester = current_principal&.discord_user? && current_principal.id == job.requested_by_user_id
+        gate_or_forbid(requester || admin_or_above?)
       end
     end
   end

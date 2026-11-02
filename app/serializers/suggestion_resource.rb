@@ -7,7 +7,8 @@
 class SuggestionResource
   include BaseResource
 
-  columns_of RpgClubSuggestion
+  # approval_started_at is approve's internal bookkeeping.
+  columns_of RpgClubSuggestion, except: %w[approval_started_at]
 
   attribute :upvote_count do |suggestion|
     suggestion.attributes["upvote_count"].to_i
