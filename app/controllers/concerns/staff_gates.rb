@@ -7,6 +7,7 @@
 # `{ error: "forbidden" }` and returns false on refusal.
 #
 #   member_role?          Members role
+#   member_or_staff?      Members role, or Moderator and above
 #   regular_role?         Regulars role
 #   moderator_or_above?   Moderator, Admin or Superadmin
 #   admin_or_above?       Admin or Superadmin (same audience as admin_or_service?)
@@ -30,6 +31,12 @@ module StaffGates
     current_principal&.service? || staff_flag?(:role_member)
   end
 
+  # Bot commands open to "any member" (e.g. adding a game from IGDB): the
+  # Members role, plus staff who may not hold it.
+  def member_or_staff?
+    member_role? || moderator_or_above?
+  end
+
   def regular_role?
     current_principal&.service? || staff_flag?(:role_regular)
   end
@@ -50,6 +57,10 @@ module StaffGates
 
   def require_member_role!
     gate_or_forbid(member_role?)
+  end
+
+  def require_member_or_staff!
+    gate_or_forbid(member_or_staff?)
   end
 
   def require_regular_role!
