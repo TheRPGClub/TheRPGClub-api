@@ -48,11 +48,9 @@ module Api
         render json: { error: e.message }, status: :conflict
       end
 
-      # TODO(api#311): swap admin_or_service? for the named admin-or-above /
-      # superadmin gates once they land.
       def require_requester_or_admin!(job)
         return true if current_principal&.discord_user? && current_principal.id == job.requested_by_user_id
-        return true if admin_or_service?
+        return true if admin_or_above?
 
         render json: { error: "forbidden" }, status: :forbidden
         false
