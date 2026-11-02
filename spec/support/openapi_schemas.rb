@@ -155,6 +155,11 @@ module OpenapiSchemas
         format: str(nullable: true), release_date: ts(nullable: true), notes: str(nullable: true),
         platform_code: str, platform_name: str, region_code: str, region_name: str
       ),
+      # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.
+      ReleaseRefreshMeta: obj(
+        added: int, total: int,
+        _description: "How many releases the refresh added (never negative) and the new total."
+      ),
       # A GamedbGameCompany flattened to its company's columns plus the join `role`.
       GameCompany: obj(
         company_id: int, name: str, igdb_company_id: int(nullable: true), role: str
