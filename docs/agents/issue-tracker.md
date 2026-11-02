@@ -16,7 +16,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Cross-repo work
 
-The club's work spans three repos, each with its own tracker: TheRPGClub/TheRPGClub-api, TheRPGClub/TheRPGClub-www and mfagerstrom/RPGClub_GameDB (the bot). A ticket lives in the repo whose code it changes. When a ticket is blocked by one in another repo, write the blocker as `<owner>/<repo>#<n>` in a `Blocked by:` line at the top of the body, since native blocked-by links can't connect issues across repos owned by different accounts.
+The club's work spans three repos, each with its own tracker: TheRPGClub/TheRPGClub-api, TheRPGClub/TheRPGClub-www and TheRPGClub/TheRPGClub-bot. A ticket lives in the repo whose code it changes. When a ticket is blocked by one in another repo, write the blocker as `<owner>/<repo>#<n>` in a `Blocked by:` line at the top of the body, so the edge is readable from either repo.
 
 ## Pull requests as a triage surface
 
