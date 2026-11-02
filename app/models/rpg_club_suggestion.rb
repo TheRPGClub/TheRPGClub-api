@@ -8,6 +8,8 @@ class RpgClubSuggestion < ApplicationRecord
   self.primary_key = "suggestion_id"
 
   STATUSES = %w[pending approved rejected withdrawn].freeze
+  # Repos an approval may open its GitHub issue in (`target_repo`).
+  TARGET_REPOS = %w[TheRPGClub/TheRPGClub-bot TheRPGClub/TheRPGClub-api TheRPGClub/TheRPGClub-www].freeze
   # Statuses members can still upvote (the Suggestion Board's default view).
   UPVOTABLE_STATUSES = %w[pending approved].freeze
   # Most upvoted first, then newest.

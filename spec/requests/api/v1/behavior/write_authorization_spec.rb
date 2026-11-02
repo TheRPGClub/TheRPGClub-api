@@ -178,10 +178,8 @@ RSpec.describe "api/v1 write authorization", type: :request do
       expect_member_blocked_and_admin_allowed(:delete, "/api/v1/public_reminders/#{reminder.reminder_id}")
     end
 
-    # Create is open to members (web parity 2, #318); see the suggestions behaviour spec.
-    it "guards suggestion deletes" do
-      expect_member_blocked_and_admin_allowed(:delete, "/api/v1/suggestions/#{create(:suggestion).suggestion_id}")
-    end
+    # Suggestions: create is open to members (#318) and review is Superadmin
+    # only with no delete (#319); see the suggestion behaviour specs.
 
     it "guards legacy voting info writes" do
       info = create(:voting_info)

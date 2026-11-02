@@ -309,8 +309,11 @@ Rails.application.routes.draw do
         resources :review_sessions, only: %i[index show create update destroy],
           controller: "suggestion_review_sessions"
       end
-      resources :suggestions, only: %i[index show create destroy] do
+      # No destroy: Suggestions are kept and reviewed with approve/reject (#319).
+      resources :suggestions, only: %i[index show create] do
         member do
+          post :approve
+          post :reject
           post :withdraw
           post :upvote
           delete :upvote, action: :remove_upvote

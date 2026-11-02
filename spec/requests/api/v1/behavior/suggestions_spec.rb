@@ -2,8 +2,8 @@
 
 require "rails_helper"
 
-# Behavior specs for the suggestion-box endpoints: every action (including
-# create and destroy) is open to any authenticated principal.
+# Behavior specs for the suggestion-box endpoints. Review (approve, reject)
+# is in suggestion_reviews_spec.rb.
 RSpec.describe "api/v1/suggestions behavior", type: :request do
   describe "GET /api/v1/suggestions" do
     it "lists suggestions (newest first when none are upvoted) with the documented fields" do
@@ -384,24 +384,6 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       delete "/api/v1/suggestions/#{suggestion.suggestion_id}/upvote"
 
       expect(response).to have_http_status(:unauthorized)
-    end
-  end
-
-  describe "DELETE /api/v1/suggestions/:id" do
-    it "deletes a suggestion for an admin" do
-      suggestion = create(:suggestion)
-
-      delete "/api/v1/suggestions/#{suggestion.suggestion_id}", headers: auth_headers_for(create(:user, role_admin: true))
-
-      expect(response).to have_http_status(:ok)
-      expect(json).to eq("deleted" => true)
-      expect(RpgClubSuggestion.exists?(suggestion.suggestion_id)).to be(false)
-    end
-
-    it "404s for an unknown id" do
-      delete "/api/v1/suggestions/999999999", headers: service_headers
-
-      expect(response).to have_http_status(:not_found)
     end
   end
 end
