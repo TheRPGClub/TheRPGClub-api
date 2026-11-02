@@ -13,6 +13,12 @@ module Auth
     USER_GUILDS_URL = "https://discord.com/api/users/@me/guilds"
     USER_GUILD_MEMBER_URL = "https://discord.com/api/users/@me/guilds/%<guild_id>s/member"
 
+    # `http` is a seam for specs: a Faraday connection (the test adapter in
+    # specs). Every request uses an absolute URL, so it needs no base URL.
+    def initialize(http: nil)
+      @http = http
+    end
+
     def authorization_url(state:, redirect_uri:)
       query = {
         client_id: client_id,
@@ -27,7 +33,7 @@ module Auth
     end
 
     def exchange_code!(code:, redirect_uri:)
-      response = Faraday.post(TOKEN_URL) do |request|
+      response = http.post(TOKEN_URL) do |request|
         request.headers["Content-Type"] = "application/x-www-form-urlencoded"
         request.body = {
           client_id: client_id,
@@ -59,7 +65,7 @@ module Auth
     end
 
     def fetch_user!(access_token)
-      response = Faraday.get(USER_URL) do |request|
+      response = http.get(USER_URL) do |request|
         request.headers["Authorization"] = "Bearer #{access_token}"
       end
 
@@ -69,7 +75,7 @@ module Auth
     def fetch_rpgclub_member_roles!(access_token)
       ensure_guild_members_read_scope!
       url = format(USER_GUILD_MEMBER_URL, guild_id: rpgclub_guild_id)
-      response = Faraday.get(url) do |request|
+      response = http.get(url) do |request|
         request.headers["Authorization"] = "Bearer #{access_token}"
       end
       payload = parse_response!(response)
@@ -78,8 +84,12 @@ module Auth
 
     private
 
+    def http
+      @http ||= Faraday.new
+    end
+
     def fetch_current_user_guilds!(access_token)
-      response = Faraday.get(USER_GUILDS_URL) do |request|
+      response = http.get(USER_GUILDS_URL) do |request|
         request.headers["Authorization"] = "Bearer #{access_token}"
       end
 
