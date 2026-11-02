@@ -301,7 +301,8 @@ RSpec.describe 'api/v1/games', type: :request do
 
     post 'Upsert HowLongToBeat cache' do
       tags 'Games'
-      description 'Admin/service-only. Upserts the bot\'s scraped HowLongToBeat cache for the game, keyed on ' \
+      description 'Members role, Moderator, Admin, Superadmin or service. Upserts the bot\'s scraped ' \
+                  'HowLongToBeat cache for the game, keyed on ' \
                   'gamedb_game_id (mirrors the bot\'s `rpg_club_hltb_cache` `ON CONFLICT (gamedb_game_id) DO ' \
                   'UPDATE`). Fields are accepted under the same logical names returned by the `hltb` slice of ' \
                   'GET /api/v1/games/{id}/profile.'
@@ -335,7 +336,7 @@ RSpec.describe 'api/v1/games', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Hltb' } }
       end
 
-      response '403', 'forbidden — admin or service required' do
+      response '403', 'forbidden: Members role or staff required' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
