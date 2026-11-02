@@ -186,9 +186,12 @@ module OpenapiSchemas
         is_bot: bool, role_admin: bool, role_moderator: bool, role_regular: bool,
         server_left_at: ts(nullable: true)
       ),
-      # The computed membership summary (RpgClubUser#membership).
+      # The computed membership summary (RpgClubUser#membership). `admin`,
+      # `moderator`, `regular` and `member` follow the member's Discord roles.
       Membership: obj(
-        admin: bool, moderator: bool, regular: bool, member: bool, newcomer: bool, active: bool
+        admin: bool, moderator: bool, regular: bool, member: bool, newcomer: bool, active: bool,
+        _description: "Membership flags. admin, moderator, regular and member follow the member's " \
+                      "Discord roles (refreshed at sign-in and on each bot role report)."
       ),
       # UserSocial (all columns; note the FK alias `platform_id`, NOT
       # `social_platform_id`) plus the embedded social platform.
@@ -230,6 +233,12 @@ module OpenapiSchemas
         server_joined_at: ts(nullable: true),
         last_seen_at: ts(nullable: true),
         emoji_name: str(nullable: true)
+      ),
+      # The result of the service-only role report (PUT /users/:user_id/roles):
+      # the member's membership summary after the role flags were refreshed.
+      UserRoleReport: obj(
+        user_id: str, membership: ref("Membership"),
+        _required: %w[user_id membership]
       ),
       # The result of the bulk `users#mark_departed` reconciliation (#105): the
       # count of users newly stamped as departed.

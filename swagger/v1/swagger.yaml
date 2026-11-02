@@ -533,6 +533,8 @@ components:
       - member
       - newcomer
       - active
+      description: Membership flags. admin, moderator, regular and member follow the
+        member's Discord roles (refreshed at sign-in and on each bot role report).
     UserSocial:
       type: object
       properties:
@@ -645,6 +647,16 @@ components:
           emoji_name:
             type: string
             nullable: true
+    UserRoleReport:
+      type: object
+      properties:
+        user_id:
+          type: string
+        membership:
+          "$ref": "#/components/schemas/Membership"
+      required:
+      - user_id
+      - membership
     MarkDepartedResult:
       type: object
       properties:
@@ -17736,9 +17748,11 @@ paths:
                   membership:
                     type: object
                     nullable: true
-                    description: RPG Club membership flags (RpgClubUser#membership)
-                      merged with the caller's dev/longstanding flags. Null for a
-                      service principal or an unknown user.
+                    description: 'RPG Club membership flags (RpgClubUser#membership)
+                      merged with the caller''s dev/longstanding flags. `admin`, `moderator`,
+                      `regular` and `member` follow the member''s Discord roles: refreshed
+                      at sign-in and whenever the bot reports a role change. Null
+                      for a service principal or an unknown user.'
                     properties:
                       admin:
                         type: boolean
@@ -21082,7 +21096,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/UserService"
         '422':
-          description: missing `discord_id`
+          description: missing `discord_id`, or `role_ids` is not a list
           content:
             application/json:
               schema:
@@ -21135,6 +21149,13 @@ paths:
                       format: date-time
                       nullable: true
                       description: Set to null to clear a departure (rejoin).
+                    role_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Optional. The member's current Discord role IDs.
+                        When present, replaces the Admin, Moderator, Regulars and
+                        Members flags as `PUT /users/{user_id}/roles` does.
                   required:
                   - discord_id
               required:
@@ -21189,6 +21210,87 @@ paths:
                   description: The Discord ids of members still present in the guild.
               required:
               - active_ids
+        required: true
+  "/api/v1/users/{user_id}/roles":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubUser id (Discord user id).
+    put:
+      summary: Report a member's Discord roles
+      tags:
+      - Users
+      description: Service-only. The bot reports a member's current Discord role IDs
+        when Discord sends a guild member update. The Admin, Moderator, Regulars and
+        Members flags are replaced with the ones those roles grant (the same derivation
+        as sign-in), so `GET /session` membership and the staff gates follow the change
+        straight away. An empty list clears every flag. Superadmin (`dev`) and Longstanding
+        stay on the member's session token and are not changed here.
+      parameters: []
+      responses:
+        '200':
+          description: role flags refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/UserRoleReport"
+                required:
+                - data
+        '400':
+          description: missing `data` envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`role_ids` missing or not a list"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the service principal'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    role_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Every Discord role ID the member currently holds
+                        in the club guild.
+                  required:
+                  - role_ids
+              required:
+              - data
         required: true
   "/api/v1/users/{user_id}/avatar_history":
     parameters:

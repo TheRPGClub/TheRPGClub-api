@@ -136,7 +136,12 @@ RSpec.describe 'api/v1/users', type: :request do
               global_name: { type: :string, nullable: true },
               is_bot: { type: :boolean, description: 'Defaults to false on create.' },
               server_joined_at: { type: :string, format: 'date-time', nullable: true },
-              server_left_at: { type: :string, format: 'date-time', nullable: true, description: 'Set to null to clear a departure (rejoin).' }
+              server_left_at: { type: :string, format: 'date-time', nullable: true, description: 'Set to null to clear a departure (rejoin).' },
+              role_ids: {
+                type: :array, items: { type: :string },
+                description: "Optional. The member's current Discord role IDs. When present, replaces the " \
+                             'Admin, Moderator, Regulars and Members flags as `PUT /users/{user_id}/roles` does.'
+              }
             },
             required: %w[discord_id]
           }
@@ -152,7 +157,7 @@ RSpec.describe 'api/v1/users', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/UserService' } }
       end
 
-      response '422', 'missing `discord_id`' do
+      response '422', 'missing `discord_id`, or `role_ids` is not a list' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -199,6 +204,61 @@ RSpec.describe 'api/v1/users', type: :request do
       end
 
       response '403', 'forbidden — caller is not the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/users/{user_id}/roles' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubUser id (Discord user id).'
+
+    put "Report a member's Discord roles" do
+      tags 'Users'
+      description "Service-only. The bot reports a member's current Discord role IDs when Discord sends a guild " \
+                  'member update. The Admin, Moderator, Regulars and Members flags are replaced with the ones ' \
+                  'those roles grant (the same derivation as sign-in), so `GET /session` membership and the ' \
+                  "staff gates follow the change straight away. An empty list clears every flag. Superadmin " \
+                  "(`dev`) and Longstanding stay on the member's session token and are not changed here."
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              role_ids: {
+                type: :array, items: { type: :string },
+                description: "Every Discord role ID the member currently holds in the club guild."
+              }
+            },
+            required: %w[role_ids]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'role flags refreshed' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/UserRoleReport' } }, required: %w[data]
+      end
+
+      response '400', 'missing `data` envelope' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`role_ids` missing or not a list' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'unknown member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

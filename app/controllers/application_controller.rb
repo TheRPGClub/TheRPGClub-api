@@ -2,6 +2,7 @@
 
 class ApplicationController < ActionController::API
   include Pagy::Method
+  include StaffGates
 
   # Default and ceiling page sizes for paginated collections.
   DEFAULT_PER = 50
