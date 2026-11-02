@@ -2,12 +2,12 @@
 
 module Api
   module V1
-    # IGDB discovery proxy (#122). Admin/service-only — searching consumes the
-    # shared IGDB credential's rate budget and is part of the curator import
-    # flow, so it's gated like POST /api/v1/games rather than open to every
-    # authenticated caller.
+    # IGDB discovery proxy (#122). Gated like POST /api/v1/games: Members role
+    # holders, staff and the service (#314, as the bot's `/gamedb add`).
+    # Searching spends the shared IGDB credential's rate budget, so it is not
+    # open to every signed-in caller.
     class IgdbController < ApplicationController
-      before_action :require_admin_or_service!
+      before_action :require_member_or_staff!
 
       SEARCH_DEFAULT_LIMIT = 25
 
