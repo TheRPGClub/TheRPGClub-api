@@ -505,8 +505,17 @@ module OpenapiSchemas
         rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
         target_repo: str(nullable: true).merge(description: "Repo the approval opened its GitHub issue in."),
         github_issue_number: int(nullable: true), github_issue_url: str(nullable: true),
+        github_issue_state: str(nullable: true, enum: [ "open", "closed", nil ]).merge(
+          description: "Approved only: the GitHub issue's state, cached about ten minutes. " \
+                       "Null otherwise, or when GitHub cannot say."
+        ),
         upvote_count: int,
         viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service.")
+      ),
+      # SuggestionsController#approve / #reject meta: the queued outcome job,
+      # so the website can poll GET /api/v1/bot_jobs/{id}.
+      SuggestionReviewMeta: obj(
+        outcome_job_id: int.merge(description: "The suggestion_outcome bot job (the bot announces the outcome).")
       ),
       # `suggestion_ids` is the stored JSON string, returned verbatim.
       SuggestionReviewSession: obj(

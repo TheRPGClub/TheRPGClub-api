@@ -105,20 +105,129 @@ RSpec.describe 'api/v1/suggestions', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+  end
 
-    delete 'Delete a suggestion' do
+  path '/api/v1/suggestions/{id}/approve' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubSuggestion id.'
+
+    post 'Approve a suggestion into a GitHub issue' do
       tags 'Suggestions'
+      description 'Superadmin or the service, while Pending. Opens a GitHub issue in `target_repo` (title = the ' \
+                  'Suggestion title, body = "<author name>: <details>", labels = the comma-separated `labels`) ' \
+                  'through the GitHub App, stores its number and URL, and sets status approved. ' \
+                  'Enqueues a `suggestion_outcome` bot job (payload `{ suggestion_id, outcome, created_by, title, ' \
+                  'github_issue_number, github_issue_url, rejection_reason }`), the bot\'s own reviews included; ' \
+                  '`meta.outcome_job_id` is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
+      consumes 'application/json'
       produces 'application/json'
 
-      response '200', 'deleted' do
-        schema '$ref' => '#/components/schemas/DeletedResponse'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              target_repo: { type: :string, enum: RpgClubSuggestion::TARGET_REPOS },
+              reviewed_by: { type: :string, description: 'Service only: the Discord id of the reviewer. A signed-in Superadmin is always the reviewer.' }
+            },
+            required: %w[target_repo]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'approved' do
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/Suggestion' },
+          meta: { '$ref' => '#/components/schemas/SuggestionReviewMeta' }
+        }
+      end
+
+      response '422', 'target_repo missing or not in the allowlist' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '502', 'GitHub refused or failed (error github_issue_failed); nothing changed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '503', 'GitHub App not configured (error github_not_configured)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'not pending' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden — caller is not an admin or the service principal' do
+      response '403', 'forbidden: caller is not a Superadmin or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing data envelope' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/suggestions/{id}/reject' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubSuggestion id.'
+
+    post 'Reject a suggestion' do
+      tags 'Suggestions'
+      description 'Superadmin or the service, while Pending. Sets status rejected with the (trimmed) reason. ' \
+                  'Enqueues a `suggestion_outcome` bot job (payload `{ suggestion_id, outcome, created_by, title, ' \
+                  'github_issue_number, github_issue_url, rejection_reason }`), the bot\'s own reviews included; ' \
+                  '`meta.outcome_job_id` is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              rejection_reason: { type: :string, maxLength: 2000 },
+              reviewed_by: { type: :string, description: 'Service only: the Discord id of the reviewer. A signed-in Superadmin is always the reviewer.' }
+            },
+            required: %w[rejection_reason]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'rejected' do
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/Suggestion' },
+          meta: { '$ref' => '#/components/schemas/SuggestionReviewMeta' }
+        }
+      end
+
+      response '422', 'blank or too long rejection_reason' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'not pending' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not a Superadmin or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing data envelope' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
