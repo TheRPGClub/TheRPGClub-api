@@ -283,6 +283,65 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       expect(row_for(approved).fetch("github_issue_state")).to be_nil
     end
 
+    it "caches a failure for about ten minutes" do
+      allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
+
+      get "/api/v1/suggestions", headers: viewer_headers
+      travel 9.minutes do
+        get "/api/v1/suggestions", headers: viewer_headers
+      end
+      expect(client).to have_received(:issue_state).once
+
+      travel 11.minutes do
+        get "/api/v1/suggestions", headers: viewer_headers
+      end
+      expect(client).to have_received(:issue_state).twice
+    end
+
+    it "looks up issues with a short timeout" do
+      get "/api/v1/suggestions", headers: viewer_headers
+
+      expect(Github::Client).to have_received(:new).with(timeout: Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS)
+      expect(Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS).to be <= 3
+    end
+
+    context "with many uncached approved suggestions" do
+      let(:cap) { Github::IssueStateCache::MAX_LOOKUPS_PER_REQUEST }
+
+      before do
+        (cap + 6).times do |index|
+          create(:suggestion, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot",
+            github_issue_number: 100 + index)
+        end
+      end
+
+      def states
+        json.fetch("data").filter_map { |row| row["github_issue_state"] if row["status"] == "approved" }
+      end
+
+      it "makes at most the cap of GitHub calls per request, leaving the rest null for later views" do
+        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(client).to have_received(:issue_state).exactly(cap).times
+        expect(states.size).to eq(cap)
+
+        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+
+        expect(client).to have_received(:issue_state).exactly(cap * 2).times
+        expect(states.size).to eq(cap * 2)
+      end
+
+      it "stops looking up for the rest of the request after a GitHub failure" do
+        allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
+
+        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(client).to have_received(:issue_state).once
+      end
+    end
+
     it "is null without calling GitHub when the GitHub App is not configured" do
       allow(client).to receive(:configured?).and_return(false)
 

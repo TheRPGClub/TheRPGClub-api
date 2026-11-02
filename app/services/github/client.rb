@@ -50,11 +50,13 @@ module Github
       end
     end
 
-    # `http` (a Faraday connection) and `clock` (returns a Time) are seams for specs.
-    def initialize(app_id: nil, installation_id: nil, private_key: nil, http: nil, clock: nil)
+    # `timeout` is the per-request timeout in seconds. `http` (a Faraday
+    # connection) and `clock` (returns a Time) are seams for specs.
+    def initialize(app_id: nil, installation_id: nil, private_key: nil, timeout: TIMEOUT_SECONDS, http: nil, clock: nil)
       @app_id = (app_id.nil? ? ENV["GITHUB_APP_ID"] : app_id).to_s.strip
       @installation_id = (installation_id.nil? ? ENV["GITHUB_APP_INSTALLATION_ID"] : installation_id).to_s.strip
       @private_key = (private_key.nil? ? ENV["GITHUB_APP_PRIVATE_KEY"] : private_key).to_s
+      @timeout = timeout
       @http = http
       @clock = clock || -> { Time.current }
     end
@@ -166,7 +168,7 @@ module Github
     end
 
     def http
-      @http ||= Faraday.new(url: API_BASE) { |connection| connection.options.timeout = TIMEOUT_SECONDS }
+      @http ||= Faraday.new(url: API_BASE) { |connection| connection.options.timeout = @timeout }
     end
   end
 end
