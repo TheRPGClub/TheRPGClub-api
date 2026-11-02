@@ -533,6 +533,8 @@ components:
       - member
       - newcomer
       - active
+      description: Membership flags. admin, moderator, regular and member follow the
+        member's Discord roles (refreshed at sign-in and on each bot role report).
     UserSocial:
       type: object
       properties:
@@ -17181,9 +17183,11 @@ paths:
                   membership:
                     type: object
                     nullable: true
-                    description: RPG Club membership flags (RpgClubUser#membership)
-                      merged with the caller's dev/longstanding flags. Null for a
-                      service principal or an unknown user.
+                    description: 'RPG Club membership flags (RpgClubUser#membership)
+                      merged with the caller''s dev/longstanding flags. `admin`, `moderator`,
+                      `regular` and `member` follow the member''s Discord roles: refreshed
+                      at sign-in and whenever the bot reports a role change. Null
+                      for a service principal or an unknown user.'
                     properties:
                       admin:
                         type: boolean

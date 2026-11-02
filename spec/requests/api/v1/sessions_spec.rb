@@ -33,7 +33,9 @@ RSpec.describe 'api/v1/sessions', type: :request do
             type: :object,
             nullable: true,
             description: 'RPG Club membership flags (RpgClubUser#membership) merged with the ' \
-                         'caller\'s dev/longstanding flags. Null for a service principal or an ' \
+                         'caller\'s dev/longstanding flags. `admin`, `moderator`, `regular` and ' \
+                         '`member` follow the member\'s Discord roles: refreshed at sign-in and ' \
+                         'whenever the bot reports a role change. Null for a service principal or an ' \
                          'unknown user.',
             properties: {
               admin: { type: :boolean },
