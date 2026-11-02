@@ -403,6 +403,18 @@ components:
       - platform_name
       - region_code
       - region_name
+    ReleaseRefreshMeta:
+      type: object
+      properties:
+        added:
+          type: integer
+        total:
+          type: integer
+      required:
+      - added
+      - total
+      description: How many releases the refresh added (never negative) and the new
+        total.
     GameCompany:
       type: object
       properties:
@@ -2827,6 +2839,15 @@ components:
       - donor_notify_on_claim
       - created_at
       - updated_at
+    GameKeyClaimMeta:
+      type: object
+      properties:
+        claim_notice_job_id:
+          type: integer
+          nullable: true
+          description: The giveaway_claim_notice bot job (DM the key, log the claim,
+            notify the donor). Null when the bot service token claimed, since the
+            bot does that work itself.
     GiveawaySettings:
       type: object
       properties:
@@ -9133,7 +9154,9 @@ paths:
       - Game Keys
       description: 'Owner-only: a Discord caller may only donate as themselves (`donor_user_id`
         must be their own id); the bot service token may donate on anyone''s behalf.
-        The claim fields are read-only on donation.'
+        The claim fields are read-only on donation. A member''s donation queues a
+        `giveaway_hub_refresh` bot job (payload `{ reason: "donate", key_id }`); the
+        service token''s does not.'
       parameters: []
       responses:
         '201':
@@ -9272,8 +9295,10 @@ paths:
       summary: Revoke a game key
       tags:
       - Game Keys
-      description: Revokes (deletes) a key. Restricted to the original donor, an admin,
-        or the bot service token.
+      description: 'Revokes (deletes) a key. Restricted to the original donor, an
+        Admin, a Superadmin, or the bot service token. A member''s revoke queues a
+        `giveaway_hub_refresh` bot job (payload `{ reason: "revoke", key_id }`); the
+        service token''s does not.'
       responses:
         '200':
           description: key revoked
@@ -9287,8 +9312,8 @@ paths:
                 required:
                 - deleted
         '403':
-          description: forbidden — caller is not the donor, an admin, or the service
-            token
+          description: 'forbidden: caller is not the donor, an Admin, a Superadmin,
+            or the service token'
           content:
             application/json:
               schema:
@@ -9317,10 +9342,16 @@ paths:
       summary: Claim a game key
       tags:
       - Game Keys
-      description: Atomically claims an unclaimed key and returns it with the secret
-        `key_value` revealed to the claimer. A Discord caller claims as themselves;
-        the bot service token claims on behalf of the `claimed_by_user_id` supplied
-        in the body.
+      description: 'Claims an unclaimed key and returns it with the secret `key_value`
+        revealed to the claimer. Requires the Discord Members role (or the bot service
+        token). The key row is locked, so of two concurrent claims one wins and the
+        other gets 409. A Discord caller claims as themselves; the bot service token
+        claims on behalf of the `claimed_by_user_id` supplied in the body. A member''s
+        claim queues two bot jobs: `giveaway_claim_notice` (payload `{ key_id, claimed_by_user_id,
+        donor_user_id, game_title, platform }`; the bot DMs the key, logs the claim
+        and notifies the donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id
+        }`). `meta.claim_notice_job_id` is the notice job, for polling GET /api/v1/bot_jobs/{id}.
+        The service token''s claims queue nothing.'
       parameters: []
       responses:
         '200':
@@ -9332,6 +9363,14 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GameKey"
+                  meta:
+                    "$ref": "#/components/schemas/GameKeyClaimMeta"
+        '403':
+          description: 'forbidden: caller lacks the Members role'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '409':
           description: already claimed
           content:
@@ -9599,14 +9638,16 @@ paths:
       summary: Create a game from IGDB
       tags:
       - Games
-      description: 'Admin/service-only. Creates a game from IGDB by `igdb_id`: fetches
-        the full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
-        perspectives, modes, engines, franchises, platforms, developer/publisher companies,
-        collection) and releases (one per platform, earliest dated; Japan-only releases
-        are skipped; `format` is left null), then imports its cover/artwork/logo images
-        into Backblaze through the same importer the jobs use. Idempotent on `igdb_id`:
-        re-POSTing an existing game refreshes it and returns 200 instead of 201. Discover
-        ids via `GET /api/v1/igdb/search`.'
+      description: 'Members role holders, staff (Moderator and above) and the service.
+        Creates a game from IGDB by `igdb_id`: fetches the full IGDB payload, upserts
+        the game row plus its taxonomy (genres, themes, perspectives, modes, engines,
+        franchises, platforms, developer/publisher companies, collection) and releases
+        (one per platform, earliest dated; Japan-only releases are skipped; `format`
+        is left null), then imports its cover/artwork/logo images into Backblaze through
+        the same importer the jobs use. Idempotent on `igdb_id`, answering 200 instead
+        of 201 for a game already in the GameDB: an Admin, Superadmin or the service
+        re-POSTing refreshes it from IGDB; any other member gets the existing game
+        back unchanged (with empty `images`). Discover ids via `GET /api/v1/igdb/search`.'
       parameters: []
       responses:
         '201':
@@ -9624,7 +9665,8 @@ paths:
                     description: The image-import result (cover/artwork/logo diagnostics);
                       shape mirrors the importer's output.
         '200':
-          description: existing game refreshed (idempotent)
+          description: existing game returned, or refreshed for an Admin or the service
+            (idempotent)
           content:
             application/json:
               schema:
@@ -9643,7 +9685,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
@@ -10298,12 +10340,14 @@ paths:
       summary: Refresh releases from IGDB
       tags:
       - Games
-      description: 'Admin/service-only. Re-fetches the game''s release dates from
-        IGDB and replaces its release rows (the bot''s `refreshReleaseDates`): clears
-        the existing releases plus their scheduled announcements, then re-imports
-        one release per platform (earliest dated; Japan-only releases skipped, undated
-        rows dropped, `format` left null). Returns the rebuilt release list (same
-        shape as GET /api/v1/games/{id}/releases).'
+      description: 'Members role holders, staff (Moderator and above) and the service.
+        Re-fetches the game''s release dates from IGDB and replaces its release rows
+        (the bot''s `refreshReleaseDates`): clears the existing releases plus their
+        scheduled announcements, then re-imports one release per platform (earliest
+        dated; Japan-only releases skipped, undated rows dropped, `format` left null).
+        Returns the rebuilt release list (same shape as GET /api/v1/games/{id}/releases),
+        with `meta.added` (how many more releases the game has than before, never
+        negative) and `meta.total`.'
       responses:
         '200':
           description: releases refreshed
@@ -10316,8 +10360,13 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/Release"
+                  meta:
+                    "$ref": "#/components/schemas/ReleaseRefreshMeta"
+                required:
+                - data
+                - meta
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
@@ -11652,16 +11701,16 @@ paths:
       summary: Search IGDB for games
       tags:
       - IGDB
-      description: 'Admin/service-only. Returns IGDB game candidates so a caller can
-        pick the right `igdb_id` to import via `POST /api/v1/games`. Two modes, selected
-        by param: pass `igdb_id` to look games up directly by id (single or comma-separated),
-        or `q` for a fuzzy title search. Either accepts several values to seed a bulk
-        import — `igdb_id=1,2,3` or repeated `q[]=zelda&q[]=mario` (max 10, IGDB''s
-        multiquery cap). Multi-title results are deduped by `igdb_id` and each carries
-        `matched_query` (the searched title it matched). Every candidate carries `already_imported`
-        (whether a local game with that `igdb_id` already exists) so the UI can offer
-        "view" vs "import". An empty `igdb_id` and a blank `q` both return an empty
-        list.'
+      description: 'Members role holders, staff (Moderator and above) and the service.
+        Returns IGDB game candidates so a caller can pick the right `igdb_id` to import
+        via `POST /api/v1/games`. Two modes, selected by param: pass `igdb_id` to
+        look games up directly by id (single or comma-separated), or `q` for a fuzzy
+        title search. Either accepts several values to seed a bulk import — `igdb_id=1,2,3`
+        or repeated `q[]=zelda&q[]=mario` (max 10, IGDB''s multiquery cap). Multi-title
+        results are deduped by `igdb_id` and each carries `matched_query` (the searched
+        title it matched). Every candidate carries `already_imported` (whether a local
+        game with that `igdb_id` already exists) so the UI can offer "view" vs "import".
+        An empty `igdb_id` and a blank `q` both return an empty list.'
       parameters:
       - name: q
         in: query
@@ -11740,7 +11789,7 @@ paths:
                       - name
                       - already_imported
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
@@ -14988,9 +15037,10 @@ paths:
       summary: Create a public reminder
       tags:
       - Public Reminders
-      description: Admin or service only. `channel_id`, `message` and `due_at` are
-        required; `recur_every`/`recur_unit` (recurrence), `enabled` (defaults true)
-        and `created_by` are optional.
+      description: Admin or above (Admin, Superadmin, service). `channel_id`, `message`
+        and `due_at` are required; `recur_every`/`recur_unit` (recurrence), `enabled`
+        (defaults true) and `created_by` are optional. 422 when `channel_id` is not
+        a synced text channel.
       parameters: []
       responses:
         '201':
@@ -15009,7 +15059,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -15032,13 +15083,16 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
+                        checked on create and whenever it changes.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -15132,7 +15186,9 @@ paths:
       summary: Update a public reminder
       tags:
       - Public Reminders
-      description: 'Partial update: send any subset of the writable columns.'
+      description: 'Admin or above (Admin, Superadmin, service). Partial update: send
+        any subset of the writable columns. 422 when `channel_id` changes to a channel
+        that is not a synced text channel.'
       parameters: []
       responses:
         '200':
@@ -15157,7 +15213,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -15180,13 +15237,16 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
+                        checked on create and whenever it changes.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -15222,8 +15282,15 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/PublicReminder"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -15246,13 +15313,16 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        Must be a synced text or announcement channel (see GET /api/v1/guild_channels);
+                        checked on create and whenever it changes.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -15288,7 +15358,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:

@@ -48,16 +48,22 @@ module Api
 
       # POST /api/v1/games  { "igdb_id": 1234 }
       #
-      # Admin/service-only. Creates a game from IGDB: fetches the full payload,
+      # Members role holders, staff and the service (#314, as the bot's
+      # `/gamedb add`). Creates a game from IGDB: fetches the full payload,
       # upserts the gamedb_games row + taxonomy + releases, then imports its
       # cover/artwork/logo images into Backblaze through the same importer the
-      # jobs use (#122). Idempotent on `igdb_id` — re-POSTing refreshes the
-      # existing game and returns 200 instead of 201. Mirrors the IGDB/Backblaze
-      # rescue ladder from #refresh_images.
+      # jobs use (#122). Idempotent on `igdb_id`, answering 200 instead of 201:
+      # an Admin or the service re-POSTing refreshes the existing game, while
+      # any other member just gets the existing game back (no IGDB or Backblaze
+      # calls). Mirrors the IGDB/Backblaze rescue ladder from #refresh_images.
       def create
-        return unless require_admin_or_service!
+        return unless require_member_or_staff!
 
-        result = Gamedb::IgdbGameImporter.new.import!(igdb_id_param)
+        igdb_id = igdb_id_param
+        existing = GamedbGame.without_images.includes(:images).find_by(igdb_id: igdb_id) unless admin_or_above?
+        return render(json: { data: GameResource.new(existing).serializable_hash, images: [] }) if existing
+
+        result = Gamedb::IgdbGameImporter.new.import!(igdb_id)
         # Reload through `without_images` so GameResource's gotm_won / nr_gotm_won
         # SQL aliases and per-kind image URLs resolve (see GameFields), exactly as
         # #show does.
@@ -134,17 +140,22 @@ module Api
 
       # POST /api/v1/games/:id/refresh-releases
       #
-      # Admin/service-only. Re-fetches the game's release dates from IGDB and
-      # replaces its release rows (the bot's `refreshReleaseDates`): clears the
-      # existing releases plus their scheduled announcements, then re-imports one
-      # release per platform (earliest dated; Japan-only releases skipped, undated
-      # rows dropped, `format` left null). Returns the rebuilt release list,
-      # matching GET /api/v1/games/:id/releases.
+      # Members role holders, staff and the service (#314, as the bot's
+      # `/gamedb refresh-release-info`). Re-fetches the game's release dates
+      # from IGDB and replaces its release rows (the bot's `refreshReleaseDates`):
+      # clears the existing releases plus their scheduled announcements, then
+      # re-imports one release per platform (earliest dated; Japan-only releases
+      # skipped, undated rows dropped, `format` left null). Returns the rebuilt
+      # release list, matching GET /api/v1/games/:id/releases, with
+      # `meta.added` (how many more releases than before, never negative, as
+      # the bot reports it) and `meta.total`.
       def refresh_releases
-        return unless require_admin_or_service!
+        return unless require_member_or_staff!
 
+        before = GamedbRelease.where(game_id: params[:id]).count
         game = Gamedb::IgdbGameImporter.new.refresh_releases!(params[:id])
-        render json: { data: releases_for(game) }
+        data = releases_for(game)
+        render json: { data: data, meta: { added: [ data.size - before, 0 ].max, total: data.size } }
       rescue Gamedb::IgdbGameImporter::MissingIgdbIdError => error
         render json: { error: "missing_igdb_id", message: error.message }, status: :unprocessable_entity
       rescue Gamedb::IgdbGameImporter::MissingIgdbGameError => error
