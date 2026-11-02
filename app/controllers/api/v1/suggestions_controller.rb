@@ -3,24 +3,72 @@
 module Api
   module V1
     class SuggestionsController < ApplicationController
-      before_action :require_admin_or_service!, only: %i[create destroy]
+      # Columns a caller may set on create. Status and the review columns are
+      # server-managed; a member's authorship comes from their session.
+      WRITABLE = %w[title details labels created_by created_by_name].freeze
+
+      before_action :require_admin_or_service!, only: %i[destroy]
 
       def index
-        render_collection(RpgClubSuggestion.all, resource: SuggestionResource, default_order: { created_at: :desc })
+        statuses = status_filter
+        return if performed?
+
+        scope = statuses ? RpgClubSuggestion.where(status: statuses) : RpgClubSuggestion.all
+        render_collection(scope, resource: SuggestionResource, default_order: { created_at: :desc })
       end
 
       def show
         render json: { data: SuggestionResource.new(RpgClubSuggestion.find(params[:id])).serializable_hash }
       end
 
+      # Any signed-in member, or the bot. A member is always the author, and
+      # their submission asks the bot to ping the bot dev; the bot pings
+      # inline for its own /suggestion submissions, so a service create
+      # enqueues nothing.
       def create
-        record = RpgClubSuggestion.create!(request_data)
+        attrs = request_data.slice(*WRITABLE)
+        record = RpgClubSuggestion.transaction do
+          if current_principal.discord_user?
+            attrs.merge!("created_by" => current_principal.id, "created_by_name" => author_name)
+          end
+          suggestion = RpgClubSuggestion.create!(attrs)
+          enqueue_submitted_ping(suggestion) if current_principal.discord_user?
+          suggestion
+        end
         render json: { data: SuggestionResource.new(record).serializable_hash }, status: :created
       end
 
       def destroy
         RpgClubSuggestion.find(params[:id]).destroy!
         render json: { deleted: true }
+      end
+
+      private
+
+      def author_name
+        RpgClubUser.where(user_id: current_principal.id).pick(:username) || current_principal.username
+      end
+
+      # Payload (kind suggestion_submitted): { suggestion_id, created_by }.
+      def enqueue_submitted_ping(suggestion)
+        BotJob.enqueue!(
+          kind: "suggestion_submitted",
+          payload: { suggestion_id: suggestion.suggestion_id, created_by: suggestion.created_by },
+          requested_by: current_principal.id
+        )
+      end
+
+      # `?status=pending,approved`: nil (every status) when absent; 400 for a
+      # value outside RpgClubSuggestion::STATUSES.
+      def status_filter
+        return if params[:status].blank?
+
+        statuses = params[:status].to_s.split(",").map(&:strip).compact_blank.uniq
+        unknown = statuses - RpgClubSuggestion::STATUSES
+        return statuses if unknown.empty?
+
+        render json: { error: "unknown status: #{unknown.join(', ')}" }, status: :bad_request
+        nil
       end
     end
   end

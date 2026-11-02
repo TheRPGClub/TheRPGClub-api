@@ -28,6 +28,45 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       expect(json.fetch("meta")).to include("page" => 1)
     end
 
+    it "returns a new suggestion as pending with empty review fields" do
+      suggestion = create(:suggestion)
+
+      get "/api/v1/suggestions", headers: auth_headers_for(create(:user))
+
+      row = json.fetch("data").find { |s| s.fetch("suggestion_id") == suggestion.suggestion_id }
+      expect(row).to include(
+        "status" => "pending", "reviewed_by" => nil, "reviewed_at" => nil, "rejection_reason" => nil,
+        "target_repo" => nil, "github_issue_number" => nil, "github_issue_url" => nil
+      )
+    end
+
+    it "filters by one or more comma-separated statuses" do
+      pending_one = create(:suggestion)
+      approved = create(:suggestion, status: "approved")
+      rejected = create(:suggestion, status: "rejected", rejection_reason: "No")
+      withdrawn = create(:suggestion, status: "withdrawn")
+      headers = auth_headers_for(create(:user))
+
+      get "/api/v1/suggestions", params: { status: "pending,approved" }, headers: headers
+      ids = json.fetch("data").map { |s| s.fetch("suggestion_id") }
+      expect(ids).to contain_exactly(pending_one.suggestion_id, approved.suggestion_id)
+      expect(json.dig("meta", "count")).to eq(2)
+
+      get "/api/v1/suggestions", params: { status: "rejected" }, headers: headers
+      expect(json.fetch("data").map { |s| s.fetch("suggestion_id") }).to eq([ rejected.suggestion_id ])
+
+      get "/api/v1/suggestions", headers: headers
+      expect(json.fetch("data").map { |s| s.fetch("suggestion_id") })
+        .to include(pending_one.suggestion_id, withdrawn.suggestion_id)
+    end
+
+    it "400s for an unknown status" do
+      get "/api/v1/suggestions", params: { status: "pending,bogus" }, headers: auth_headers_for(create(:user))
+
+      expect(response).to have_http_status(:bad_request)
+      expect(json.fetch("error")).to include("bogus")
+    end
+
     it "requires authentication" do
       get "/api/v1/suggestions"
 
@@ -75,6 +114,48 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       )
     end
 
+    it "lets any signed-in member create one as its author and asks the bot to ping the bot dev" do
+      member = create(:user, username: "suggester")
+      forged = { data: { title: "Dark mode", details: "Please", labels: "New Feature",
+                         created_by: "999", created_by_name: "someone else" } }
+
+      expect {
+        post "/api/v1/suggestions", params: forged, headers: auth_headers_for(member), as: :json
+      }.to change(RpgClubSuggestion, :count).by(1).and change(BotJob, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      data = json.fetch("data")
+      expect(data).to include("title" => "Dark mode", "status" => "pending",
+        "created_by" => member.user_id, "created_by_name" => "suggester")
+      job = BotJob.last
+      expect(job.kind).to eq("suggestion_submitted")
+      expect(job.payload).to eq("suggestion_id" => data.fetch("suggestion_id"), "created_by" => member.user_id)
+      expect(job.requested_by_user_id).to eq(member.user_id)
+    end
+
+    it "does not enqueue a ping for the bot's own submissions (the bot pings inline)" do
+      expect {
+        post "/api/v1/suggestions", params: payload, headers: service_headers, as: :json
+      }.not_to change(BotJob, :count)
+    end
+
+    it "ignores status and review fields in the body" do
+      body = { data: { title: "Sneaky", status: "approved", reviewed_by: "1", github_issue_number: 5 } }
+
+      post "/api/v1/suggestions", params: body, headers: auth_headers_for(create(:user)), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.fetch("data")).to include("status" => "pending", "reviewed_by" => nil, "github_issue_number" => nil)
+    end
+
+    it "leaves no ping job when the create fails" do
+      expect {
+        post "/api/v1/suggestions", params: { data: { title: "" } }, headers: auth_headers_for(create(:user)), as: :json
+      }.not_to change(BotJob, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
     it "allows the service" do
       post "/api/v1/suggestions", params: payload, headers: service_headers, as: :json
 
@@ -82,9 +163,6 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
     end
 
     it "422s when title is missing" do
-      pending "possible bug: missing title raises ActiveRecord::NotNullViolation and renders 500, " \
-              "but the contract documents 422 (RpgClubSuggestion has no presence validation)"
-
       post "/api/v1/suggestions", params: { data: { details: "no title" } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)

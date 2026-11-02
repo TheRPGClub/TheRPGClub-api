@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_02_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -735,10 +735,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_130000) do
     t.string "created_by", limit: 30
     t.string "created_by_name", limit: 100
     t.string "details", limit: 2000
+    t.integer "github_issue_number"
+    t.string "github_issue_url", limit: 500
     t.string "labels", limit: 200
+    t.string "rejection_reason", limit: 2000
+    t.timestamptz "reviewed_at"
+    t.string "reviewed_by", limit: 30
+    t.string "status", limit: 16, default: "pending", null: false
+    t.string "target_repo", limit: 200
     t.string "title", limit: 200, null: false
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["created_at"], name: "ix_rpg_club_suggestions_created"
+    t.index ["status"], name: "ix_rpg_club_suggestions_status"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying]::text[])", name: "ck_rpg_club_suggestions_status"
   end
 
   create_table "rpg_club_user_avatar_history", primary_key: "event_id", force: :cascade do |t|
