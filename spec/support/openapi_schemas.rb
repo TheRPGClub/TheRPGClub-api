@@ -727,6 +727,24 @@ module OpenapiSchemas
         available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
         delivered_at: ts(nullable: true), attempts: int
       ),
+      # BotJobResource: a bot job's status as the website shows it (no payload).
+      BotJob: obj(
+        id: int, kind: str(enum: BotJob::KINDS), status: str(enum: BotJob::STATUSES),
+        requested_by_user_id: str(nullable: true).merge(
+          description: "The member whose action queued the job; null for system jobs."
+        ),
+        attempts: int.merge(description: "Claims so far. A claim not acked within the lease counts too."),
+        error_message: str(nullable: true).merge(description: "The bot's error, or the claim-timeout error."),
+        claimed_at: ts(nullable: true), finished_at: ts(nullable: true), created_at: ts, updated_at: ts
+      ),
+      # BotJobClaimResource: a claimed bot job as the bot receives it.
+      BotJobClaim: obj(
+        id: int, kind: str(enum: BotJob::KINDS),
+        payload: json(nullable: false).merge(description: "Per kind; a breaking change gets a new kind name."),
+        status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
+        error_message: str(nullable: true), claimed_at: ts(nullable: true), finished_at: ts(nullable: true),
+        created_at: ts, updated_at: ts
+      ),
       # AchievementHighlightResource: an announceable Unlock as the bot posts
       # it, with the www set page path.
       AchievementHighlight: obj(

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_000100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -65,6 +65,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
     t.string "tier", limit: 16
     t.datetime "updated_at", null: false
     t.index ["achievement_set_id", "external_id"], name: "ux_achievements_set_external", unique: true
+  end
+
+  create_table "bot_jobs", force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
+    t.text "error_message"
+    t.datetime "finished_at"
+    t.string "kind", limit: 64, null: false
+    t.jsonb "payload", default: {}, null: false
+    t.string "requested_by_user_id", limit: 30
+    t.string "status", limit: 16, default: "queued", null: false
+    t.datetime "updated_at", null: false
+    t.index ["claimed_at"], name: "ix_bot_jobs_claimed", where: "((status)::text = 'claimed'::text)"
+    t.index ["id"], name: "ix_bot_jobs_queued", where: "((status)::text = 'queued'::text)"
+    t.index ["requested_by_user_id"], name: "index_bot_jobs_on_requested_by_user_id"
+    t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'claimed'::character varying, 'done'::character varying, 'failed'::character varying]::text[])", name: "ck_bot_jobs_status"
   end
 
   create_table "bot_presence_history", force: :cascade do |t|
@@ -477,7 +494,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
     t.index ["claimed_by_user_id", "game_title"], name: "ix_game_keys_available"
     t.index ["game_title"], name: "ix_game_keys_title"
     t.index ["gamedb_game_id"], name: "ix_game_keys_game"
-    t.check_constraint "region::text = ANY (ARRAY['Global'::character varying, 'NA'::character varying, 'EU'::character varying, 'UK'::character varying, 'RU/CIS'::character varying, 'Asia'::character varying, 'Unknown'::character varying]::text[])", name: "ck_rpg_club_game_keys_region"
+    t.check_constraint "region::text = ANY (ARRAY['Global'::character varying::text, 'NA'::character varying::text, 'EU'::character varying::text, 'UK'::character varying::text, 'RU/CIS'::character varying::text, 'Asia'::character varying::text, 'Unknown'::character varying::text])", name: "ck_rpg_club_game_keys_region"
   end
 
   create_table "rpg_club_gamedb_import_items", primary_key: "item_id", force: :cascade do |t|
@@ -1093,6 +1110,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
 
   add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
+  add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"
