@@ -135,6 +135,36 @@ RSpec.describe Github::Client do
     end
   end
 
+  describe "#find_issue_by_marker" do
+    let(:since) { Time.utc(2026, 11, 1, 9, 0, 0) }
+    let(:marker) { "<!-- rpgclub-suggestion:12 -->" }
+
+    it "returns the newest issue updated since the time whose body holds the marker, skipping pull requests" do
+      stub_token
+      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues") do |env|
+        expect(env.params).to include("state" => "all", "since" => "2026-11-01T09:00:00Z", "per_page" => "100")
+        json_response(200, [
+          { number: 3, html_url: "u3", state: "open", body: "x\n\n#{marker}", pull_request: { url: "p" } },
+          { number: 2, html_url: "u2", state: "open", body: "other" },
+          { number: 1, html_url: "u1", state: "closed", body: "tester: Please\n\n#{marker}" }
+        ])
+      end
+
+      issue = client.find_issue_by_marker(repo: "TheRPGClub/TheRPGClub-bot", marker: marker, since: since)
+
+      expect(issue.to_h).to eq(number: 1, url: "u1", state: "closed")
+    end
+
+    it "returns nil when no issue holds the marker" do
+      stub_token
+      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues") do
+        json_response(200, [ { number: 2, html_url: "u2", state: "open", body: nil } ])
+      end
+
+      expect(client.find_issue_by_marker(repo: "TheRPGClub/TheRPGClub-bot", marker: marker, since: since)).to be_nil
+    end
+  end
+
   describe "#configured?" do
     it "is true only when the app id, installation id and private key are all set" do
       expect(described_class.new(app_id: "1", installation_id: "2", private_key: "k")).to be_configured

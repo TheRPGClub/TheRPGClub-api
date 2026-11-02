@@ -71,6 +71,16 @@ module Github
       to_issue(raw)
     end
 
+    # The most recently created issue in `repo`, among the 100 updated since
+    # `since`, whose body contains `marker`; nil when there is none. Lets a
+    # retried create find an issue an earlier, lost response already opened.
+    def find_issue_by_marker(repo:, marker:, since:)
+      query = { state: "all", since: since.utc.iso8601, sort: "created", direction: "desc", per_page: 100 }.to_query
+      raw = request(:get, "/repos/#{repo}/issues?#{query}")
+      match = Array(raw).find { |issue| !issue["pull_request"] && issue["body"].to_s.include?(marker) }
+      to_issue(match) if match
+    end
+
     # "open" or "closed", or nil when the issue does not exist (or is a pull request).
     def issue_state(repo:, number:)
       raw = request(:get, "/repos/#{repo}/issues/#{Integer(number)}")
@@ -95,7 +105,8 @@ module Github
       parsed = parse(response.body)
       return parsed if response.success?
 
-      message = "GitHub returned HTTP #{response.status} for #{method.upcase} #{path}: #{parsed['message'] || 'no message'}"
+      detail = parsed.is_a?(Hash) ? parsed["message"] : nil
+      message = "GitHub returned HTTP #{response.status} for #{method.upcase} #{path}: #{detail || 'no message'}"
       raise NotFound, message if response.status == 404
 
       raise RequestError, message
