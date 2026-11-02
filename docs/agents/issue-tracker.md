@@ -6,17 +6,17 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **List issues**: `gh issue list --limit 200 --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters (open is the default).
 - **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Older `gh`: `gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues -F sub_issue_id=<child-db-id>` (database id, as in **Blocking** below). Without sub-issues, put `Part of #<parent>` at the top of the child body.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
-Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+This repo is `TheRPGClub/TheRPGClub-api`. Use that name when writing `<owner>/<repo>`, even if `git remote -v` still shows an older name; `gh` resolves the repo automatically when run inside a clone.
 
 ## Cross-repo work
 
-The club's work spans three repos, each with its own tracker: TheRPGClub/TheRPGClub-api, TheRPGClub/TheRPGClub-www and TheRPGClub/TheRPGClub-bot. A ticket lives in the repo whose code it changes. When a ticket is blocked by one in another repo, write the blocker as `<owner>/<repo>#<n>` in a `Blocked by:` line at the top of the body, so the edge is readable from either repo.
+The club's work spans three repos, each with its own tracker: TheRPGClub/TheRPGClub-api, TheRPGClub/TheRPGClub-www and TheRPGClub/TheRPGClub-bot. A ticket lives in the repo whose code it changes. When a ticket is blocked by one in another repo, write the blocker as `<owner>/<repo>#<n>` in a `Blocked by:` line at the top of the body, and also add the native dependency (see **Blocking** below; it accepts a blocker from another repo by its database id), so both GitHub's blocked-by summary and a plain read of the body show the edge.
 
 ## Pull requests as a triage surface
 
