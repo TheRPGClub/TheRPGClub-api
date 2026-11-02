@@ -83,6 +83,9 @@ Rails.application.routes.draw do
           get "avatar_history_counts", to: "user_avatar_history#counts"
         end
         member do
+          # Service-only: the bot reports the member's current Discord role
+          # IDs on a guild member update; the API derives the role flags.
+          put "roles", to: "user_roles#update"
           get "avatar"
           get "profile-image"
           get "avatar_history", to: "user_avatar_history#index"

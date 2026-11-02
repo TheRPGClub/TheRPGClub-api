@@ -79,14 +79,21 @@ module Api
       # Creates or updates a user keyed by `discord_id`. Called on guild member
       # join/update events and by the `memberscan` admin command. Only the
       # listed columns are writable; passing `server_left_at: null` clears a
-      # prior departure (a rejoin). 201 when a new row was created, 200 on
+      # prior departure (a rejoin). An optional `role_ids` list replaces the
+      # role flags, as PUT /users/:user_id/roles does. 201 when a new row was created, 200 on
       # update. (#105)
       def upsert
         discord_id = request_data["discord_id"].presence
         return render(json: { error: "discord_id is required" }, status: :unprocessable_entity) if discord_id.blank?
 
+        role_ids = request_data["role_ids"]
+        if request_data.key?("role_ids") && !role_ids.is_a?(Array)
+          return render(json: { error: "role_ids must be an array" }, status: :unprocessable_entity)
+        end
+
         user = RpgClubUser.find_or_initialize_by(user_id: discord_id.to_s)
         user.assign_attributes(request_data.slice("username", "global_name", "is_bot", "server_joined_at", "server_left_at"))
+        user.assign_attributes(DiscordRoles.user_flags_for(role_ids)) if role_ids
         user.save!
 
         render json: { data: UserServiceResource.new(user).serializable_hash },

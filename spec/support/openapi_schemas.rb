@@ -231,6 +231,12 @@ module OpenapiSchemas
         last_seen_at: ts(nullable: true),
         emoji_name: str(nullable: true)
       ),
+      # The result of the service-only role report (PUT /users/:user_id/roles):
+      # the member's membership summary after the role flags were refreshed.
+      UserRoleReport: obj(
+        user_id: str, membership: ref("Membership"),
+        _required: %w[user_id membership]
+      ),
       # The result of the bulk `users#mark_departed` reconciliation (#105): the
       # count of users newly stamped as departed.
       MarkDepartedResult: obj(
