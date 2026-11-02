@@ -30,7 +30,10 @@ class BotJob
     # The current state: `{ up:, version: }`.
     def read(now: Time.current)
       with_db do |db|
-        due_at, version = db.get_first_row("SELECT due_at, version FROM signal WHERE id = 1")
+        row = db.get_first_row("SELECT due_at, version FROM signal WHERE id = 1")
+        next { up: true, version: nil } unless row
+
+        due_at, version = row
         { up: !due_at.nil? && due_at <= now.to_f, version: version }
       end
     end
@@ -47,15 +50,40 @@ class BotJob
       Rails.root.join("storage", "#{Rails.env}_bot_job_signal.sqlite3").to_s
     end
 
-    def with_db
+    # Creates the file, table and row if missing. Run once at boot by
+    # config/initializers/bot_job_work_signal.rb; with_db runs it again only
+    # when the table has gone (the file was deleted).
+    def setup!
       FileUtils.mkdir_p(File.dirname(path))
       db = SQLite3::Database.new(path)
       db.busy_timeout = 5000
-      db.execute("CREATE TABLE IF NOT EXISTS signal (id INTEGER PRIMARY KEY, due_at REAL, version INTEGER NOT NULL)")
-      db.execute("INSERT OR IGNORE INTO signal (id, due_at, version) VALUES (1, 0, 0)")
-      yield db
+      create_schema(db)
     ensure
       db&.close
+    end
+
+    def create_schema(db)
+      db.execute("CREATE TABLE IF NOT EXISTS signal (id INTEGER PRIMARY KEY, due_at REAL, version INTEGER NOT NULL)")
+      db.execute("INSERT OR IGNORE INTO signal (id, due_at, version) VALUES (1, 0, 0)")
+    end
+
+    def with_db
+      retried = false
+      begin
+        db = SQLite3::Database.new(path)
+        db.busy_timeout = 5000
+        yield db
+      rescue SQLite3::SQLException, SQLite3::CantOpenException => error
+        raise if retried || error.is_a?(SQLite3::SQLException) && !error.message.include?("no such table")
+
+        db&.close
+        db = nil
+        retried = true
+        setup!
+        retry
+      ensure
+        db&.close
+      end
     end
   end
 end
