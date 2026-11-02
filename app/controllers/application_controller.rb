@@ -109,22 +109,15 @@ class ApplicationController < ActionController::API
     params.require(:data).permit!.to_h
   end
 
+  # Older names for StaffGates#require_admin_or_above! and #admin_or_above?
+  # (the service token, a Superadmin, or a role_admin user), kept for the
+  # endpoints that use them.
   def require_admin_or_service!
-    return true if admin_or_service?
-
-    render json: { error: "forbidden" }, status: :forbidden
-    false
+    require_admin_or_above!
   end
 
-  # Non-rendering twin of require_admin_or_service!, for combining with other
-  # checks (e.g. the voting/nomination window gates). Same audience: the
-  # service token, a dev, or a role_admin user.
   def admin_or_service?
-    return true if current_principal&.service?
-    return false unless current_principal&.discord_user?
-    return true if current_principal.dev?
-
-    RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
+    admin_or_above?
   end
 
   def require_service!

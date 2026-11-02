@@ -226,10 +226,7 @@ module Api
       # Upvotes and withdraw act as a signed-in member; the service has no
       # member identity to act as.
       def require_member!
-        return true if current_principal.discord_user?
-
-        render json: { error: "forbidden" }, status: :forbidden
-        false
+        gate_or_forbid(current_principal.discord_user?)
       end
 
       def viewer_scope

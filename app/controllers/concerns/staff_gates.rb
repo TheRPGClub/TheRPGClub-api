@@ -10,7 +10,7 @@
 #   member_or_staff?      Members role, or Moderator and above
 #   regular_role?         Regulars role
 #   moderator_or_above?   Moderator, Admin or Superadmin
-#   admin_or_above?       Admin or Superadmin (same audience as admin_or_service?)
+#   admin_or_above?       Admin or Superadmin (admin_or_service? is an older name for it)
 #   superadmin?           Superadmin (the session token's `dev` flag)
 #
 # The service principal passes every gate: the bot runs its own role checks
@@ -46,7 +46,7 @@ module StaffGates
   end
 
   def admin_or_above?
-    admin_or_service?
+    superadmin? || staff_flag?(:role_admin)
   end
 
   def superadmin?
