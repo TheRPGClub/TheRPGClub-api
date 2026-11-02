@@ -9,7 +9,7 @@ module Api
     class GameHltbController < ApplicationController
       SAVE_AFTER = 6.months
 
-      before_action :require_member_or_above!
+      before_action :require_member_or_staff!
 
       # POST /api/v1/games/:id/hltb/lookup
       #

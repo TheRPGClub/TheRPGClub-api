@@ -180,7 +180,7 @@ module Api
       # `ON CONFLICT (gamedb_game_id) DO UPDATE`). Fields are accepted under the
       # same logical names HltbResource returns via #relations/#profile.
       def upsert_hltb
-        return unless require_member_or_above!
+        return unless require_member_or_staff!
 
         game = GamedbGame.find(params[:id])
         cache = RpgClubHltbCache.find_or_initialize_by(gamedb_game_id: game.game_id)
