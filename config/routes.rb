@@ -34,6 +34,7 @@ Rails.application.routes.draw do
           post "alternates", to: "game_alternates#create"
           get "relations", to: "games#relations"
           post "hltb", to: "games#upsert_hltb"
+          post "hltb/lookup", to: "game_hltb#lookup"
           get "profile", to: "games#profile"
           get "releases", to: "games#releases"
           post "releases", to: "releases#create"

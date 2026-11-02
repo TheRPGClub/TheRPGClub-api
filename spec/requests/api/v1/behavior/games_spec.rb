@@ -671,7 +671,24 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(RpgClubHltbCache.find_by!(gamedb_game_id: game.game_id).main).to eq("25 Hours")
     end
 
-    it "forbids a regular user" do
+    it "lets a Members role holder save times" do
+      member = auth_headers_for(create(:user, role_member: true))
+
+      expect {
+        post "/api/v1/games/#{game.game_id}/hltb", params: payload, headers: member, as: :json
+      }.to change(RpgClubHltbCache, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "lets a Moderator save times" do
+      post "/api/v1/games/#{game.game_id}/hltb", params: payload,
+        headers: auth_headers_for(create(:user, role_moderator: true)), as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "forbids a signed-in user without the Members role" do
       expect {
         post "/api/v1/games/#{game.game_id}/hltb", params: payload, headers: auth_headers_for(create(:user)), as: :json
       }.not_to change(RpgClubHltbCache, :count)

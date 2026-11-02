@@ -163,12 +163,13 @@ module Api
       # Body: { "data": { name, url, image_url, main, main_sides, completionist,
       #                    single_player, co_op, vs, source_query, scraped_at } }
       #
-      # Admin/service-only. Upserts the bot's scraped HowLongToBeat cache for the
+      # Members role, staff or service, as the bot lets any member save times.
+      # Upserts the bot's scraped HowLongToBeat cache for the
       # game, keyed on gamedb_game_id (mirrors the bot's `rpg_club_hltb_cache`
       # `ON CONFLICT (gamedb_game_id) DO UPDATE`). Fields are accepted under the
       # same logical names HltbResource returns via #relations/#profile.
       def upsert_hltb
-        return unless require_admin_or_service!
+        return unless require_member_or_above!
 
         game = GamedbGame.find(params[:id])
         cache = RpgClubHltbCache.find_or_initialize_by(gamedb_game_id: game.game_id)
