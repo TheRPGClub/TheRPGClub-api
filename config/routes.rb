@@ -332,6 +332,12 @@ Rails.application.routes.draw do
       end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
+      # The bot job queue (web parity 2): the bot polls, claims and acks
+      # (service-only); the requesting member and staff read a job's status.
+      post "bot_jobs/claim",       to: "bot_jobs#claim"
+      post "bot_jobs/:id/done",    to: "bot_jobs#done"
+      post "bot_jobs/:id/failed",  to: "bot_jobs#failed"
+      get  "bot_jobs/:id",         to: "bot_jobs#show"
       # The bot's Achievement Hub Highlights and alerts (service-only).
       get  "achievements/highlights/pending", to: "achievement_highlights#pending"
       post "achievements/highlights/ack",     to: "achievement_highlights#ack"
