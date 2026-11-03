@@ -19,6 +19,7 @@ class BotJob < ApplicationRecord
   KINDS = %w[
     giveaway_claim_notice
     giveaway_hub_refresh
+    nomination_deleted
     suggestion_submitted
     suggestion_outcome
     voting_poll_wakeup
