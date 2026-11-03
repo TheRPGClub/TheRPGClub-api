@@ -247,6 +247,145 @@ RSpec.describe "api/v1/completions behavior", type: :request do
 
       expect(response).to have_http_status(:unauthorized)
     end
+
+    describe "for another member" do
+      callers = {
+        "anonymous" => [ nil, :unauthorized ],
+        "a plain member" => [ -> { auth_headers_for(create(:user)) }, :forbidden ],
+        "a Members role holder" => [ -> { auth_headers_for(create(:user, role_member: true)) }, :forbidden ],
+        "a Regulars role holder" => [ -> { auth_headers_for(create(:user, role_regular: true)) }, :forbidden ],
+        "a Moderator" => [ -> { auth_headers_for(create(:user, role_moderator: true)) }, :forbidden ],
+        "an Admin" => [ -> { auth_headers_for(create(:user, :admin)) }, :forbidden ],
+        "a Superadmin" => [ -> { auth_headers_for(create(:user), is_dev: true) }, :created ],
+        "the service" => [ -> { service_headers }, :created ]
+      }
+
+      callers.each do |label, (headers_for, status)|
+        it "answers #{status} to #{label}" do
+          headers = headers_for ? instance_exec(&headers_for) : {}
+
+          post "/api/v1/users/#{owner.user_id}/completions", params: payload, headers: headers, as: :json
+
+          expect(response).to have_http_status(status)
+          expect(UserGameCompletion.where(user_id: owner.user_id).count).to eq(status == :created ? 1 : 0)
+        end
+      end
+
+      let(:superadmin) { create(:user, username: "boss") }
+
+      it "takes the game off the member's Now Playing when a Superadmin logs it" do
+        create(:now_playing_entry, user: owner, game: game)
+        other_game = create(:game)
+        create(:now_playing_entry, user: owner, game: other_game)
+        create(:now_playing_entry, user: superadmin, game: game)
+
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: payload, headers: auth_headers_for(superadmin, is_dev: true), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(UserNowPlaying.where(user_id: owner.user_id).pluck(:gamedb_game_id)).to eq([ other_game.game_id ])
+        expect(UserNowPlaying.where(user_id: superadmin.user_id).count).to eq(1)
+      end
+
+      it "404s when a Superadmin logs one for an unknown member" do
+        expect {
+          post "/api/v1/users/999999999999/completions",
+            params: payload, headers: auth_headers_for(superadmin, is_dev: true), as: :json
+        }.not_to change(UserGameCompletion, :count)
+
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it "leaves Now Playing alone when the owner logs their own" do
+        create(:now_playing_entry, user: owner, game: game)
+
+        post "/api/v1/users/#{owner.user_id}/completions", params: payload, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(UserNowPlaying.where(user_id: owner.user_id).count).to eq(1)
+      end
+
+      it "leaves Now Playing alone when the create fails" do
+        create(:now_playing_entry, user: owner, game: game)
+
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: { gamedb_game_id: game.game_id } },
+          headers: auth_headers_for(superadmin, is_dev: true), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(UserNowPlaying.where(user_id: owner.user_id).count).to eq(1)
+      end
+
+      it "queues completion_announce with the completion, member and actor when announce is set" do
+        owner.update!(global_name: "Alice")
+        game.update!(title: "Chrono Trigger")
+
+        expect {
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(announce: true) },
+            headers: auth_headers_for(superadmin, is_dev: true), as: :json
+        }.to change(BotJob, :count).by(1)
+
+        expect(response).to have_http_status(:created)
+        expect(json.fetch("data")).not_to have_key("announce")
+        job = BotJob.last
+        expect(job.kind).to eq("completion_announce")
+        expect(job.payload).to eq(
+          "completion_id" => json.dig("data", "completion_id"),
+          "user_id" => owner.user_id,
+          "game_id" => game.game_id,
+          "actor_user_id" => superadmin.user_id
+        )
+        expect(job.summary).to eq(%(Announce Alice's Game Completion of "Chrono Trigger"))
+        expect(job.requested_by_user_id).to eq(superadmin.user_id)
+      end
+
+      it "queues nothing without the announce flag, or with it false" do
+        expect {
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: payload, headers: auth_headers_for(superadmin, is_dev: true), as: :json
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(announce: false) },
+            headers: auth_headers_for(superadmin, is_dev: true), as: :json
+        }.not_to change(BotJob, :count)
+      end
+
+      it "queues nothing when the create fails" do
+        expect {
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: { gamedb_game_id: game.game_id, announce: true } },
+            headers: auth_headers_for(superadmin, is_dev: true), as: :json
+        }.not_to change(BotJob, :count)
+      end
+
+      it "422s for an announce flag that is not a boolean" do
+        expect {
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(announce: "loudly") },
+            headers: auth_headers_for(superadmin, is_dev: true), as: :json
+        }.not_to change(UserGameCompletion, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it "lets the owner announce their own, with themselves as the actor" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(announce: true) }, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(BotJob.last.payload).to include("user_id" => owner.user_id, "actor_user_id" => owner.user_id)
+        expect(BotJob.last.requested_by_user_id).to eq(owner.user_id)
+      end
+
+      it "queues the service's announce with no actor or requester" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(announce: true) }, headers: service_headers, as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(BotJob.last.payload).to include("actor_user_id" => nil)
+        expect(BotJob.last.requested_by_user_id).to be_nil
+      end
+    end
   end
 
   describe "GET /api/v1/completions/:id" do
