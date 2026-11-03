@@ -2531,6 +2531,8 @@ components:
           - voting_poll_wakeup
           - gotm_cache_reload
           - live_event_create
+          - say
+          - memberscan
           - presence_set
         summary:
           type: string
@@ -2703,6 +2705,46 @@ components:
       - status
       - created_at
       - updated_at
+    SayJobPayload:
+      type: object
+      properties:
+        channel_id:
+          type: string
+          description: A synced text channel.
+        content:
+          type: string
+          maxLength: 2000
+        reply_to:
+          type: object
+          properties:
+            channel_id:
+              type: string
+            message_id:
+              type: string
+          required:
+          - channel_id
+          - message_id
+          nullable: true
+          description: The message to reply to (always in `channel_id`); null for
+            a plain message.
+        allowed_mentions:
+          type: object
+          properties:
+            parse:
+              type: array
+              items:
+                type: string
+                enum:
+                - users
+          required:
+          - parse
+      required:
+      - channel_id
+      - content
+      - allowed_mentions
+      description: 'Post `content` in `channel_id`, or reply to `reply_to.message_id`
+        there. Send it with `allowed_mentions` as given: plain user mentions only,
+        never @everyone, @here or roles.'
     BotJobClaim:
       type: object
       properties:
@@ -2720,6 +2762,8 @@ components:
           - voting_poll_wakeup
           - gotm_cache_reload
           - live_event_create
+          - say
+          - memberscan
           - presence_set
         summary:
           type: string
@@ -5659,6 +5703,77 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_say":
+    post:
+      summary: Make the bot say a message
+      tags:
+      - Bot Jobs
+      description: 'Superadmin only (the service token passes too). Queues a `say`
+        bot job, as the bot''s `/superadmin say`: the bot posts `content` in `channel_id`,
+        or, with `reply_to_message_link`, replies to that message. The channel must
+        be a synced text channel (`GET /guild_channels`), and a linked message must
+        be in that channel (and in the club''s server). The job allows plain user
+        mentions only, never @everyone, @here or roles (payload: `SayJobPayload`).
+        Returns the queued job; poll `GET /bot_jobs/{id}`.'
+      parameters: []
+      responses:
+        '202':
+          description: say job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '422':
+          description: not a synced text channel, blank or too long content, or a
+            bad message link
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    channel_id:
+                      type: string
+                      description: A synced text channel id.
+                    content:
+                      type: string
+                      maxLength: 2000
+                      description: Trimmed; line breaks are kept.
+                    reply_to_message_link:
+                      type: string
+                      nullable: true
+                      description: Optional Discord message link (https://discord.com/channels/{guild}/{channel}/{message})
+                        to reply to. Blank means no reply.
+                  required:
+                  - channel_id
+                  - content
+              required:
+              - data
+        required: true
   "/api/v1/collection_csv_import_items/{id}":
     parameters:
     - name: id
@@ -13792,6 +13907,40 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/memberscan":
+    post:
+      summary: Start a memberscan
+      tags:
+      - Bot Jobs
+      description: 'Superadmin only (the service token passes too). Queues a `memberscan`
+        bot job, as the bot''s `/superadmin memberscan`: the bot fetches every server
+        member, updates them and marks the rest departed, then reports its counts
+        as the job''s `result_text`. The job has a 30 minute claim lease. Payload:
+        `{}`. Returns the queued job; poll `GET /bot_jobs/{id}`.'
+      responses:
+        '202':
+          description: memberscan job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/modes":
     get:
       summary: List modes
