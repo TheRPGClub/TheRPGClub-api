@@ -815,15 +815,15 @@ module OpenapiSchemas
         created_at: ts, updated_at: ts
       ),
       # GameKeyResource. `key_value` (the secret) is omitted from list responses;
-      # it is rendered only in the response to a successful claim and to the
-      # restricted single-key GET.
+      # it is rendered only in the response to a successful claim, to the
+      # restricted single-key GET, and to the claimer's own claimed-keys list.
       GameKey: obj(
         key_id: int, game_title: str, platform: str,
         region: str(enum: RpgClubGameKey::REGIONS, description: "Where the key redeems. Defaults to Global."),
         gamedb_game_id: int(nullable: true),
         donor_user_id: str, claimed_by_user_id: str(nullable: true), claimed_at: ts(nullable: true),
         donor_notify_on_claim: bool, created_at: ts, updated_at: ts,
-        key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim and to GET /api/v1/game_keys/{id}."),
+        key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim, to GET /api/v1/game_keys/{id}, and to the claimer reading their own GET /api/v1/users/{user_id}/claimed_game_keys."),
         game: ref("GameSummary", nullable: true)
       ),
       # GameKeysController#claim meta: the queued claim notice bot job, so the

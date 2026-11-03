@@ -86,6 +86,79 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
     end
   end
 
+  describe "GET /api/v1/users/:user_id/claimed_game_keys" do
+    def claim_key(at:, **attrs)
+      create(:game_key, donor_user_id: donor.user_id, claimed_by_user_id: claimant.user_id,
+        claimed_at: at, key_value: "SECRET-#{SecureRandom.hex(3)}", **attrs)
+    end
+
+    let!(:older) { claim_key(at: 2.days.ago) }
+    let!(:newer) { claim_key(at: 1.hour.ago) }
+
+    before do
+      create(:game_key, donor_user_id: donor.user_id)
+      create(:game_key, donor_user_id: donor.user_id, claimed_by_user_id: other_user.user_id,
+        claimed_at: Time.current)
+    end
+
+    def claimed_ids
+      json.fetch("data").map { |k| k.fetch("key_id") }
+    end
+
+    it "lists the claimer's own keys newest claim first, with the secret" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: auth_headers_for(claimant)
+
+      expect(response).to have_http_status(:ok)
+      expect(claimed_ids).to eq([ newer.key_id, older.key_id ])
+      expect(json.fetch("data").first).to include("key_value" => newer.key_value,
+        "claimed_by_user_id" => claimant.user_id, "donor_user_id" => donor.user_id)
+      expect(json.fetch("meta")).to include("page" => 1)
+    end
+
+    it "paginates like the donations list" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", params: { per: 1, page: 2 },
+        headers: auth_headers_for(claimant)
+
+      expect(claimed_ids).to eq([ older.key_id ])
+    end
+
+    it "lets an Admin read the list without the secret" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:ok)
+      expect(claimed_ids).to eq([ newer.key_id, older.key_id ])
+      expect(json.fetch("data").first).not_to have_key("key_value")
+    end
+
+    it "lets the service read the list without the secret" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").first).not_to have_key("key_value")
+    end
+
+    it "forbids other members and Moderators" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: auth_headers_for(other_user)
+      expect(response).to have_http_status(:forbidden)
+
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys",
+        headers: auth_headers_for(create(:user, role_moderator: true))
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "returns 404 for an unknown user" do
+      get "/api/v1/users/999999999999999999/claimed_game_keys", headers: service_headers
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "requires authentication" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "POST /api/v1/game_keys" do
     let(:payload) do
       { data: { game_title: "Chrono Cross", platform: "PSN", key_value: "ABCD-EFGH",

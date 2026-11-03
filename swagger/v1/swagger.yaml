@@ -2842,7 +2842,8 @@ components:
           type: string
           nullable: true
           description: The key secret. Present only in the response to a successful
-            claim and to GET /api/v1/game_keys/{id}.
+            claim, to GET /api/v1/game_keys/{id}, and to the claimer reading their
+            own GET /api/v1/users/{user_id}/claimed_game_keys.
         game:
           allOf:
           - "$ref": "#/components/schemas/GameSummary"
@@ -9556,6 +9557,71 @@ paths:
                     "$ref": "#/components/schemas/PaginationMeta"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/claimed_game_keys":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the claimer.
+    get:
+      summary: List a user's claimed game keys
+      tags:
+      - Game Keys
+      description: The keys the user claimed, newest claim first (`claimed_at` desc,
+        then `key_id` desc), each embedding its `game` (null when unlinked), so a
+        claimer can find their keys again. Readable by the claimer, Admins and above,
+        and the service token. The secret `key_value` is included only when the caller
+        is the claimer; it is omitted for staff and the service.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: claimed game keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameKey"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the claimer, an Admin, a Superadmin,
+            or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown user
           content:
             application/json:
               schema:
