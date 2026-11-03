@@ -74,7 +74,10 @@ module Api
       # post (and winner thread), once voting has ended. Repeatable, so a
       # Discord failure can be retried. Works whatever the automation flag
       # says. A round from before voting_rounds existed takes its month from
-      # its GOTM entries.
+      # its GOTM entries. Allowed during a runoff or a pending tie, as the bot's
+      # /admin voting-results publish is: the main vote's results are final
+      # once it closes, a tie in them is announced as going to the runoff (or
+      # the admins), and the runoff's results post on their own.
       def publish_results
         number = params[:id].to_i
         round = VotingRound.find_by(round_number: number)

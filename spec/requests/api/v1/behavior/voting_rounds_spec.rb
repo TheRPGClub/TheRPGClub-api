@@ -281,6 +281,34 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
       expect(json).to include("error" => "voting_not_ended")
     end
 
+    # As the bot's /admin voting-results publish: the main vote's results are
+    # final once it closes. A tie in them is announced as going to the runoff
+    # (or to the admins), and the runoff's own results post separately.
+    it "publishes the main vote's results while a runoff is open" do
+      ties = { "gotm" => create_list(:game, 2).map(&:game_id).sort }
+      closed_at = round.voting_closes_at
+      round.update!(closed_at: closed_at, pending_ties: ties, runoff_ties: ties, runoff_opens_at: closed_at,
+        runoff_closes_at: closed_at + 1.day)
+
+      travel_to(ended_at) do
+        expect(round.phase).to eq("runoff")
+        publish(auth_headers_for(admin))
+      end
+
+      expect(response).to have_http_status(:accepted)
+    end
+
+    it "publishes the main vote's results while a tie waits for the admins" do
+      round.update!(closed_at: round.voting_closes_at, pending_ties: { "gotm" => create_list(:game, 2).map(&:game_id) })
+
+      travel_to(ended_at) do
+        expect(round.phase).to eq("tie")
+        publish(auth_headers_for(admin))
+      end
+
+      expect(response).to have_http_status(:accepted)
+    end
+
     it "publishes a decided round" do
       round.update!(decided_at: ended_at)
 
