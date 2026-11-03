@@ -29,14 +29,13 @@ module Api
           return render json: { error: "Send an image URL or an image file, not both" }, status: :unprocessable_entity
         end
 
-        requester = current_principal.discord_user? ? current_principal.id.to_s : nil
-        event = LiveEvent.new(attrs.merge(created_by_user_id: requester))
+        event = LiveEvent.new(attrs.merge(created_by_user_id: requester_id))
         event.validate!
         event.image_url = LiveEvents::ImageStorage.new.upload!(upload) if upload.present?
 
         LiveEvent.transaction do
           event.save!
-          event.enqueue_creation!(requested_by: requester)
+          event.enqueue_creation!(requested_by: requester_id)
         end
         render_event(event, status: :created)
       rescue LiveEvents::ImageStorage::InvalidImageError => error

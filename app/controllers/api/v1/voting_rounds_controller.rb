@@ -12,7 +12,6 @@ module Api
       # Rescheduling fields. Moving the open without a close keeps the default
       # weekend window; "close voting now" is `voting_closes_at: <now>`.
       UPDATE_ATTRS = %w[voting_opens_at voting_closes_at month_year].freeze
-      CATEGORY_LABELS = { "gotm" => "GOTM", "nr_gotm" => "NR-GOTM" }.freeze
 
       def index
         render_collection(VotingRound.all, resource: VotingRoundResource, default_order: { round_number: :desc })
@@ -140,7 +139,7 @@ module Api
       # Tells Discord who won the tie (the bot's announceTieBreak), then wakes
       # the poller for the round_decided event a last tie leaves behind.
       def queue_tie_broken!(round, category, game_ids)
-        label = CATEGORY_LABELS.fetch(category)
+        label = Gotm::RoundCreate.label(category)
         games = GamedbGame.where(game_id: Array(game_ids).map(&:to_i)).order(:game_id)
           .map { |game| { game_id: game.game_id, title: game.title } }
         BotJob.enqueue!(kind: "voting_tie_broken",
@@ -149,12 +148,6 @@ module Api
           payload: { round_number: round.round_number, category: category, games: games },
           requested_by: requester_id)
         queue_poll_wakeup!(round, "the #{label} tie for round #{round.round_number} was broken")
-      end
-
-      # The acting member, so the job shows in their activity list; nil for
-      # the service.
-      def requester_id
-        current_principal.discord_user? ? current_principal.id : nil
       end
 
       def render_round(round)

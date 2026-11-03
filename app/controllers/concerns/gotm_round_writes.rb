@@ -38,7 +38,7 @@ module GotmRoundWrites
       summary: "Reload #{Gotm::RoundCreate.label(round_category)} round #{entry.round_number} " \
                "(#{entry.month_year}) in the bot: #{what}",
       payload: { category: round_category, round_number: entry.round_number },
-      requested_by: current_principal.discord_user? ? current_principal.id : nil
+      requested_by: requester_id
     )
   end
 

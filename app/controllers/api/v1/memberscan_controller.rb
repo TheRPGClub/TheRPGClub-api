@@ -16,12 +16,6 @@ module Api
         job = BotJob.enqueue!(kind: "memberscan", summary: SUMMARY, requested_by: requester_id)
         render json: { data: BotJobResource.new(job).serializable_hash }, status: :accepted
       end
-
-      private
-
-      def requester_id
-        current_principal.discord_user? ? current_principal.id : nil
-      end
     end
   end
 end

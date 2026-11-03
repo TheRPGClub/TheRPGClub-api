@@ -10,8 +10,7 @@ module Api
 
       # POST /api/v1/image_backfill_runs. 409 while a run is queued or running.
       def create
-        starter_id = current_principal.discord_user? ? current_principal.id.to_s : nil
-        run = ImageBackfillRun.start!(started_by_user_id: starter_id)
+        run = ImageBackfillRun.start!(started_by_user_id: requester_id)
         render json: { data: ImageBackfillRunResource.new(run).serializable_hash }, status: :created
       rescue ImageBackfillRun::InProgress
         render json: { error: "image_backfill_in_progress", message: "An image backfill is already running" },

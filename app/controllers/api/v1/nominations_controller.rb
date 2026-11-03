@@ -42,7 +42,6 @@ module Api
       # ballots.
       VOTE_MODELS = { GotmNomination => GotmVote, NrGotmNomination => NrGotmVote }.freeze
       CATEGORIES = { GotmNomination => "gotm", NrGotmNomination => "nr_gotm" }.freeze
-      CATEGORY_LABELS = { "gotm" => "GOTM", "nr_gotm" => "NR-GOTM" }.freeze
       # The bot's own limit on the deletion reason modal.
       REMOVAL_REASON_MAX = 250
 
@@ -182,7 +181,7 @@ module Api
         title = record.game&.title
         nominator = record.user&.username.presence || record.user_id
         game = title ? %( "#{title}") : ""
-        summary = "Announce that #{nominator}'s #{CATEGORY_LABELS.fetch(category)} round " \
+        summary = "Announce that #{nominator}'s #{Gotm::RoundCreate.label(category)} round " \
           "#{record.round_number} nomination#{game} was removed"
 
         BotJob.enqueue!(
