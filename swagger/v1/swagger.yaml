@@ -2525,6 +2525,7 @@ components:
           - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
+          - nomination_deleted
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
@@ -2656,6 +2657,7 @@ components:
           - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
+          - nomination_deleted
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
@@ -13744,7 +13746,21 @@ paths:
       description: 'Removes the given user''s nomination for the round, along with
         any votes cast on it. Owner-gated like the upsert: service/admin may remove
         any user''s at any time, a user session only their own and only while the
-        round''s nomination window is open.'
+        round''s nomination window is open. A signed-in Admin or Superadmin removing
+        someone else''s nomination must pass `reason` (1 to 250 characters); the game
+        title and nominator are captured first and a `nomination_deleted` bot job
+        announces the removal, with the refreshed list, in the nomination channel
+        (no DM to the nominator). Owners and the service keep the plain delete: no
+        reason needed, no job.'
+      parameters:
+      - name: reason
+        in: query
+        schema:
+          type: string
+          maxLength: 250
+        required: false
+        description: Why the nomination was removed. Required when an Admin removes
+          someone else's nomination; ignored otherwise.
       responses:
         '200':
           description: deleted
@@ -13759,8 +13775,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`nominations_closed` — outside the nomination window (non-admin
-            callers)"
+          description: "`nominations_closed` outside the window (non-admin callers),
+            or `reason_required` / `reason_too_long` for an Admin removing someone
+            else's"
           content:
             application/json:
               schema:
@@ -14000,7 +14017,21 @@ paths:
       description: 'Removes the given user''s nomination for the round, along with
         any votes cast on it. Owner-gated like the upsert: service/admin may remove
         any user''s at any time, a user session only their own and only while the
-        round''s nomination window is open.'
+        round''s nomination window is open. A signed-in Admin or Superadmin removing
+        someone else''s nomination must pass `reason` (1 to 250 characters); the game
+        title and nominator are captured first and a `nomination_deleted` bot job
+        announces the removal, with the refreshed list, in the nomination channel
+        (no DM to the nominator). Owners and the service keep the plain delete: no
+        reason needed, no job.'
+      parameters:
+      - name: reason
+        in: query
+        schema:
+          type: string
+          maxLength: 250
+        required: false
+        description: Why the nomination was removed. Required when an Admin removes
+          someone else's nomination; ignored otherwise.
       responses:
         '200':
           description: deleted
@@ -14015,8 +14046,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`nominations_closed` — outside the nomination window (non-admin
-            callers)"
+          description: "`nominations_closed` outside the window (non-admin callers),
+            or `reason_required` / `reason_too_long` for an Admin removing someone
+            else's"
           content:
             application/json:
               schema:
