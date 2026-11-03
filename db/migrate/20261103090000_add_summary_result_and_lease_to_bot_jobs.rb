@@ -5,12 +5,17 @@
 # so each kind can have its own lease length.
 class AddSummaryResultAndLeaseToBotJobs < ActiveRecord::Migration[8.1]
   def up
-    add_column :bot_jobs, :summary, :string, limit: 200
+    # The default lets the previous release, which still serves while this
+    # runs (fly release_command), insert jobs without a summary; the API
+    # shows the kind for a blank one.
+    add_column :bot_jobs, :summary, :string, limit: 200, default: ""
     add_column :bot_jobs, :result_text, :text
     add_column :bot_jobs, :lease_expires_at, :datetime
 
     # Jobs queued before summaries existed read as their kind ("Giveaway hub
-    # refresh"); open claims keep the old five minute lease.
+    # refresh"); open claims keep the old five minute lease. Claims the
+    # previous release makes after this runs have no lease expiry, which
+    # BotJob treats as the default lease.
     execute <<~SQL.squish
       UPDATE bot_jobs SET summary = initcap(replace(kind, '_', ' '))
     SQL

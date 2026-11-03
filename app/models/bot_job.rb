@@ -44,6 +44,9 @@ class BotJob < ApplicationRecord
   TEXT_MAX = 2000
   MAX_ATTEMPTS = 3
   TIMEOUT_ERROR = "Not acknowledged within the claim timeout"
+  # A claim's lease expiry. The previous release claims without one (only
+  # claimed_at), so during a deploy such a claim gets the default lease.
+  LEASE_EXPIRY_SQL = "COALESCE(lease_expires_at, claimed_at + interval '#{LEASE.to_i} seconds')".freeze
 
   # Acking a job that already finished the other way.
   class AckConflict < StandardError; end
@@ -99,14 +102,19 @@ class BotJob < ApplicationRecord
       where(id: picked.map(&:first)).order(:id).to_a
     end
 
-    WorkSignal.clear!(version: signal[:version], wake_at: claimed.minimum(:lease_expires_at)) unless queued.exists?
+    WorkSignal.clear!(version: signal[:version], wake_at: earliest_lease_expiry) unless queued.exists?
     jobs
+  end
+
+  # When the earliest open claim's lease runs out (nil without one).
+  def self.earliest_lease_expiry
+    claimed.pick(Arel.sql("MIN(#{LEASE_EXPIRY_SQL})"))
   end
 
   # Claims whose lease ran out: back to queued, or failed once they have
   # used every attempt.
   def self.release_expired!(now)
-    expired = claimed.where(lease_expires_at: ..now)
+    expired = claimed.where("#{LEASE_EXPIRY_SQL} <= ?", now)
     expired.where(attempts: MAX_ATTEMPTS..).update_all(
       status: "failed", error_message: TIMEOUT_ERROR, finished_at: now, updated_at: now
     )
@@ -114,14 +122,16 @@ class BotJob < ApplicationRecord
   end
 
   # Record the bot's outcome: its error on failure, an optional result text
-  # when done. Idempotent for a repeat of the same outcome (the first ack's
+  # when done (either cut to TEXT_MAX, so a long text never fails the ack and
+  # reruns the job). Idempotent for a repeat of the same outcome (the first ack's
   # text stays); a late ack of a job that went back to the queue still counts.
   def ack!(status:, error_message: nil, result_text: nil, now: Time.current)
     with_lock do
       next if self.status == status
       raise AckConflict, "bot job #{id} is already #{self.status}" if %w[done failed].include?(self.status)
 
-      update!(status: status, error_message: error_message, result_text: result_text, finished_at: now)
+      update!(status: status, error_message: error_message&.truncate(TEXT_MAX),
+        result_text: result_text&.truncate(TEXT_MAX), finished_at: now)
     end
     self
   end

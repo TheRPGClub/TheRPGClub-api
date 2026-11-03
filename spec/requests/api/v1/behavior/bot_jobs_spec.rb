@@ -122,6 +122,40 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       )
     end
 
+    # Deploy window: the old release claims without a lease expiry (claimed_at
+    # only). Such a claim expires at claimed_at plus the default lease.
+    context "with a claim made before per-claim leases" do
+      def claim_the_old_way(job, at: Time.current)
+        job.update_columns(status: "claimed", claimed_at: at, lease_expires_at: nil, attempts: job.attempts + 1)
+      end
+
+      it "returns it to the queue once the default lease runs out" do
+        job = enqueue
+        claim_the_old_way(job)
+
+        travel(BotJob::LEASE - 1.second) { expect(poll).to be_empty }
+        travel(BotJob::LEASE + 1.second) { expect(poll.sole).to include("id" => job.id, "attempts" => 2) }
+      end
+
+      it "fails it once it has used every attempt" do
+        job = enqueue
+        job.update_columns(attempts: BotJob::MAX_ATTEMPTS - 1)
+        claim_the_old_way(job)
+
+        travel(BotJob::LEASE + 1.second) { expect(poll).to be_empty }
+        expect(job.reload).to have_attributes(status: "failed", error_message: BotJob::TIMEOUT_ERROR)
+      end
+
+      it "wakes the lowered signal when that default lease runs out" do
+        job = enqueue
+        claim_the_old_way(job)
+        poll # nothing queued: lowers the signal
+
+        travel(BotJob::LEASE - 1.minute) { expect(postgres_queries { poll }).to be_empty }
+        travel(BotJob::LEASE + 1.second) { expect(poll.sole).to include("id" => job.id) }
+      end
+    end
+
     it "honors ?limit" do
       3.times { enqueue }
 
@@ -174,16 +208,17 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       expect(json.dig("data", "result_text")).to eq("first")
     end
 
-    it "rejects a result text over #{BotJob::TEXT_MAX} characters" do
+    it "cuts a result text over #{BotJob::TEXT_MAX} characters rather than failing the ack" do
       job = enqueue
       poll
 
       post "/api/v1/bot_jobs/#{job.id}/done", params: { data: { result_text: "x" * (BotJob::TEXT_MAX + 1) } },
         headers: service_headers, as: :json
 
-      expect(response).to have_http_status(:unprocessable_content)
-      get "/api/v1/bot_jobs/#{job.id}", headers: service_headers
-      expect(json.dig("data", "status")).to eq("claimed")
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "status")).to eq("done")
+      expect(json.dig("data", "result_text").length).to eq(BotJob::TEXT_MAX)
+      travel(BotJob::LEASE + 1.second) { expect(poll).to be_empty }
     end
 
     it "stops a timed-out claim from being handed out again" do
@@ -228,6 +263,18 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("status" => "failed", "error_message" => "DMs closed")
+    end
+
+    it "cuts an error message over #{BotJob::TEXT_MAX} characters rather than failing the ack" do
+      job = enqueue
+      poll
+
+      post "/api/v1/bot_jobs/#{job.id}/failed", params: { data: { error_message: "e" * (BotJob::TEXT_MAX + 1) } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "status")).to eq("failed")
+      expect(json.dig("data", "error_message").length).to eq(BotJob::TEXT_MAX)
     end
 
     it "requires an error message" do
@@ -384,6 +431,17 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     it "requires a summary" do
       expect { enqueue(summary: " ") }.to raise_error(ActiveRecord::RecordInvalid)
       expect { BotJob.enqueue!(kind: "giveaway_hub_refresh") }.to raise_error(ArgumentError)
+    end
+
+    # Deploy window: the old release inserts jobs with no summary.
+    it "accepts an insert without a summary and shows the kind in its place" do
+      BotJob.connection.execute(<<~SQL.squish)
+        INSERT INTO bot_jobs (kind, payload, created_at, updated_at)
+        VALUES ('giveaway_hub_refresh', '{}', now(), now())
+      SQL
+
+      get "/api/v1/bot_jobs", headers: service_headers
+      expect(json.fetch("data").sole).to include("kind" => "giveaway_hub_refresh", "summary" => "Giveaway hub refresh")
     end
 
     it "cuts a long summary to #{BotJob::SUMMARY_MAX} characters" do

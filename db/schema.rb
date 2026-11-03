@@ -79,7 +79,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_150000) do
     t.string "requested_by_user_id", limit: 30
     t.text "result_text"
     t.string "status", limit: 16, default: "queued", null: false
-    t.string "summary", limit: 200, null: false
+    t.string "summary", limit: 200, default: "", null: false
     t.datetime "updated_at", null: false
     t.index ["id"], name: "ix_bot_jobs_queued", where: "((status)::text = 'queued'::text)"
     t.index ["lease_expires_at"], name: "ix_bot_jobs_claimed", where: "((status)::text = 'claimed'::text)"
