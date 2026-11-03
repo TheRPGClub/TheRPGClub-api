@@ -115,10 +115,21 @@ class BotJob < ApplicationRecord
   # used every attempt.
   def self.release_expired!(now)
     expired = claimed.where("#{LEASE_EXPIRY_SQL} <= ?", now)
-    expired.where(attempts: MAX_ATTEMPTS..).update_all(
-      status: "failed", error_message: TIMEOUT_ERROR, finished_at: now, updated_at: now
-    )
+    exhausted = expired.where(attempts: MAX_ATTEMPTS..).pluck(:id, :kind)
+    if exhausted.any?
+      where(id: exhausted.map(&:first)).update_all(
+        status: "failed", error_message: TIMEOUT_ERROR, finished_at: now, updated_at: now
+      )
+      jobs_failed!(exhausted, now)
+    end
     expired.update_all(status: "queued", claimed_at: nil, lease_expires_at: nil, updated_at: now)
+  end
+
+  # What a kind's record does when its job ends failed (acked failed, or out
+  # of attempts). `rows` are [id, kind] pairs.
+  def self.jobs_failed!(rows, now)
+    live_event_jobs = rows.filter_map { |id, kind| id if kind == "live_event_create" }
+    LiveEvent.bot_jobs_failed!(live_event_jobs, now: now) if live_event_jobs.any?
   end
 
   # Record the bot's outcome: its error on failure, an optional result text
@@ -132,6 +143,7 @@ class BotJob < ApplicationRecord
 
       update!(status: status, error_message: error_message&.truncate(TEXT_MAX),
         result_text: result_text&.truncate(TEXT_MAX), finished_at: now)
+      self.class.jobs_failed!([ [ id, kind ] ], now) if status == "failed"
     end
     self
   end
