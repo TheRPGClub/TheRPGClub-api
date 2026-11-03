@@ -175,8 +175,7 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
                   'also queues the `gotm_cache_reload` bot job (`{ category, round_number }`); the ' \
                   'service\'s own edits do not, since the bot updates its cache itself. ' \
                   '`meta.reload_job_id` is that job (null when none was queued), for polling ' \
-                  '`GET /api/v1/bot_jobs/{id}`. A `gamedb_game_id` already used by another entry of ' \
-                  'the same round is refused (422).'
+                  '`GET /api/v1/bot_jobs/{id}`.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -201,7 +200,7 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed, or the game is already in another slot of the round' do
+      response '422', 'validation failed' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -212,8 +211,7 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
 
     put 'Replace a Non-Retro GOTM entry (alias)' do
       tags 'Non-Retro GOTM'
-      description 'Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id` and ' \
-                  'duplicate-game check.'
+      description 'Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`.'
       consumes 'application/json'
       produces 'application/json'
 
