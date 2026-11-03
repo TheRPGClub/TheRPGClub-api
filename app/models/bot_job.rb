@@ -77,25 +77,28 @@ class BotJob < ApplicationRecord
 
     jobs = transaction do
       release_expired!(now)
-      ids = queued.order(:id).limit(limit).lock("FOR UPDATE SKIP LOCKED").pluck(:id)
-      where(id: ids).update_all([ "status = 'claimed', claimed_at = ?, attempts = attempts + 1, updated_at = ?", now, now ])
-      where(id: ids).order(:id).to_a
+      picked = queued.order(:id).limit(limit).lock("FOR UPDATE SKIP LOCKED").pluck(:id, :kind)
+      picked.group_by { |_id, kind| lease_for(kind) }.each do |lease, rows|
+        where(id: rows.map(&:first)).update_all([
+          "status = 'claimed', claimed_at = ?, lease_expires_at = ?, attempts = attempts + 1, updated_at = ?",
+          now, now + lease, now
+        ])
+      end
+      where(id: picked.map(&:first)).order(:id).to_a
     end
 
-    unless queued.exists?
-      WorkSignal.clear!(version: signal[:version], wake_at: claimed.minimum(:claimed_at)&.+(LEASE))
-    end
+    WorkSignal.clear!(version: signal[:version], wake_at: claimed.minimum(:lease_expires_at)) unless queued.exists?
     jobs
   end
 
   # Claims whose lease ran out: back to queued, or failed once they have
   # used every attempt.
   def self.release_expired!(now)
-    expired = claimed.where(claimed_at: ..(now - LEASE))
+    expired = claimed.where(lease_expires_at: ..now)
     expired.where(attempts: MAX_ATTEMPTS..).update_all(
       status: "failed", error_message: TIMEOUT_ERROR, finished_at: now, updated_at: now
     )
-    expired.update_all(status: "queued", claimed_at: nil, updated_at: now)
+    expired.update_all(status: "queued", claimed_at: nil, lease_expires_at: nil, updated_at: now)
   end
 
   # Record the bot's outcome: its error on failure, an optional result text

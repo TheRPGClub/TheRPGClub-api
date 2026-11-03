@@ -85,6 +85,31 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       end
     end
 
+    it "gives a kind with its own lease that long before handing it out again" do
+      stub_const("BotJob::LEASES", { "suggestion_submitted" => 30.minutes })
+      long = enqueue(kind: "suggestion_submitted", payload: {})
+      short = enqueue
+      claimed = poll
+
+      expect(claimed.to_h { |job| [ job["id"], Time.zone.parse(job["lease_expires_at"]) - Time.zone.parse(job["claimed_at"]) ] })
+        .to eq(long.id => 30.minutes.to_f, short.id => 5.minutes.to_f)
+      travel(BotJob::LEASE + 1.second) do
+        expect(poll.map { |job| job["id"] }).to eq([ short.id ])
+        post "/api/v1/bot_jobs/#{short.id}/done", headers: service_headers
+      end
+      travel(30.minutes - 1.second) { expect(poll.map { |job| job["id"] }).to eq([]) }
+      travel(30.minutes + 1.second) { expect(poll.map { |job| job["id"] }).to eq([ long.id ]) }
+    end
+
+    it "wakes the lowered signal when the earliest lease runs out" do
+      stub_const("BotJob::LEASES", { "suggestion_submitted" => 30.minutes })
+      job = enqueue(kind: "suggestion_submitted", payload: {})
+      poll
+
+      travel(20.minutes) { expect(postgres_queries { poll }).to be_empty }
+      travel(30.minutes + 1.second) { expect(poll.sole).to include("id" => job.id, "attempts" => 2) }
+    end
+
     it "fails a job that times out on its last attempt" do
       job = enqueue
       BotJob::MAX_ATTEMPTS.times { |attempt| travel((BotJob::LEASE + 1.second) * attempt) { poll } }
