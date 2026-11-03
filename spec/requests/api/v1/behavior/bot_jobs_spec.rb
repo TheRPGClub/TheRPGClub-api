@@ -124,6 +124,43 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       end
     end
 
+    it "stores the bot's result text and returns it with the job" do
+      job = enqueue
+      poll
+
+      post "/api/v1/bot_jobs/#{job.id}/done", params: { data: { result_text: "Upserted 120, departed 3" } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("status" => "done", "result_text" => "Upserted 120, departed 3")
+      get "/api/v1/bot_jobs/#{job.id}", headers: auth_headers_for(requester)
+      expect(json.dig("data", "result_text")).to eq("Upserted 120, departed 3")
+    end
+
+    it "keeps the first result on a repeated ack" do
+      job = enqueue
+      poll
+      post "/api/v1/bot_jobs/#{job.id}/done", params: { data: { result_text: "first" } }, headers: service_headers,
+        as: :json
+
+      post "/api/v1/bot_jobs/#{job.id}/done", params: { data: { result_text: "second" } }, headers: service_headers,
+        as: :json
+
+      expect(json.dig("data", "result_text")).to eq("first")
+    end
+
+    it "rejects a result text over #{BotJob::TEXT_MAX} characters" do
+      job = enqueue
+      poll
+
+      post "/api/v1/bot_jobs/#{job.id}/done", params: { data: { result_text: "x" * (BotJob::TEXT_MAX + 1) } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      get "/api/v1/bot_jobs/#{job.id}", headers: service_headers
+      expect(json.dig("data", "status")).to eq("claimed")
+    end
+
     it "stops a timed-out claim from being handed out again" do
       job = enqueue
       poll

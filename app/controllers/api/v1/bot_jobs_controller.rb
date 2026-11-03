@@ -19,9 +19,10 @@ module Api
         render json: { data: BotJobClaimResource.new(jobs).serializable_hash }
       end
 
-      # POST /api/v1/bot_jobs/:id/done
+      # POST /api/v1/bot_jobs/:id/done with an optional data.result_text
+      # (what the bot did, e.g. a memberscan's counts).
       def done
-        acknowledge("done")
+        acknowledge("done", result_text: params.dig(:data, :result_text).presence&.to_s)
       end
 
       # POST /api/v1/bot_jobs/:id/failed with data.error_message
@@ -40,9 +41,9 @@ module Api
 
       private
 
-      def acknowledge(status, error_message: nil)
-        job = BotJob.find(params[:id])
-        job.ack!(status: status, error_message: error_message)
+      def acknowledge(status, error_message: nil, result_text: nil)
+        job = BotJob.includes(:requested_by).find(params[:id])
+        job.ack!(status: status, error_message: error_message, result_text: result_text)
         render json: { data: BotJobResource.new(job).serializable_hash }
       rescue BotJob::AckConflict => e
         render json: { error: e.message }, status: :conflict

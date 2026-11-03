@@ -98,14 +98,15 @@ class BotJob < ApplicationRecord
     expired.update_all(status: "queued", claimed_at: nil, updated_at: now)
   end
 
-  # Record the bot's outcome. Idempotent for a repeat of the same outcome; a
-  # late ack of a job that went back to the queue still counts.
-  def ack!(status:, error_message: nil, now: Time.current)
+  # Record the bot's outcome: its error on failure, an optional result text
+  # when done. Idempotent for a repeat of the same outcome (the first ack's
+  # text stays); a late ack of a job that went back to the queue still counts.
+  def ack!(status:, error_message: nil, result_text: nil, now: Time.current)
     with_lock do
       next if self.status == status
       raise AckConflict, "bot job #{id} is already #{self.status}" if %w[done failed].include?(self.status)
 
-      update!(status: status, error_message: error_message, finished_at: now)
+      update!(status: status, error_message: error_message, result_text: result_text, finished_at: now)
     end
     self
   end
