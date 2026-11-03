@@ -2,13 +2,60 @@
 
 require "rails_helper"
 
-# Behavior specs for the thread <-> game link endpoints (#45): all actions are
-# admin/service-gated, and every change recomputes the thread's derived
-# `gamedb_game_id` (the MIN of its remaining links).
+# Behavior specs for the thread <-> game link endpoints (#45): every action is
+# open to Regulars, or Moderator and up (as the bot's thread commands are), and
+# every change recomputes the thread's derived `gamedb_game_id` (the MIN of its
+# remaining links).
 RSpec.describe "api/v1/thread_game_links behavior", type: :request do
   let(:thread) { create(:discord_thread) }
   let(:game_a) { create(:game) }
   let(:game_b) { create(:game) }
+
+  # Every caller and the status each link action gives it.
+  callers = {
+    "anonymous" => [ nil, :unauthorized ],
+    "a plain member" => [ -> { auth_headers_for(create(:user)) }, :forbidden ],
+    "a Members role holder" => [ -> { auth_headers_for(create(:user, role_member: true)) }, :forbidden ],
+    "a Regulars role holder" => [ -> { auth_headers_for(create(:user, role_regular: true)) }, :allowed ],
+    "a Moderator" => [ -> { auth_headers_for(create(:user, role_moderator: true)) }, :allowed ],
+    "an Admin" => [ -> { auth_headers_for(create(:user, :admin)) }, :allowed ],
+    "a Superadmin" => [ -> { auth_headers_for(create(:user), is_dev: true) }, :allowed ],
+    "the service" => [ -> { service_headers }, :allowed ]
+  }
+
+  describe "access by role" do
+    callers.each do |label, (headers_for, outcome)|
+      context "as #{label}" do
+        let(:headers) { headers_for ? instance_exec(&headers_for) : {} }
+
+        it "#{outcome == :allowed ? 'links' : 'cannot link'} a thread to a game" do
+          post "/api/v1/threads/#{thread.thread_id}/links",
+            params: { data: { gamedb_game_id: game_a.game_id } }, headers: headers, as: :json
+
+          expect(response).to have_http_status(outcome == :allowed ? :created : outcome)
+          expect(ThreadGameLink.where(thread_id: thread.thread_id).count).to eq(outcome == :allowed ? 1 : 0)
+        end
+
+        it "#{outcome == :allowed ? 'unlinks' : 'cannot unlink'} one game" do
+          create(:thread_game_link, thread: thread, game: game_a)
+
+          delete "/api/v1/threads/#{thread.thread_id}/links/#{game_a.game_id}", headers: headers
+
+          expect(response).to have_http_status(outcome == :allowed ? :ok : outcome)
+          expect(ThreadGameLink.where(thread_id: thread.thread_id).count).to eq(outcome == :allowed ? 0 : 1)
+        end
+
+        it "#{outcome == :allowed ? 'unlinks' : 'cannot unlink'} every game" do
+          create(:thread_game_link, thread: thread, game: game_a)
+
+          delete "/api/v1/threads/#{thread.thread_id}/links", headers: headers
+
+          expect(response).to have_http_status(outcome == :allowed ? :ok : outcome)
+          expect(ThreadGameLink.where(thread_id: thread.thread_id).count).to eq(outcome == :allowed ? 0 : 1)
+        end
+      end
+    end
+  end
 
   describe "POST /api/v1/threads/:id/links" do
     it "links the thread to a game and recomputes the primary game" do
@@ -47,14 +94,6 @@ RSpec.describe "api/v1/thread_game_links behavior", type: :request do
       expect(json.fetch("data")).to include("gamedb_game_id" => game_a.game_id)
     end
 
-    it "allows an admin" do
-      post "/api/v1/threads/#{thread.thread_id}/links",
-        params: { data: { gamedb_game_id: game_a.game_id } },
-        headers: auth_headers_for(create(:user, :admin)), as: :json
-
-      expect(response).to have_http_status(:created)
-    end
-
     it "422s for an unknown game" do
       post "/api/v1/threads/#{thread.thread_id}/links",
         params: { data: { gamedb_game_id: 999_999_999 } }, headers: service_headers, as: :json
@@ -74,23 +113,6 @@ RSpec.describe "api/v1/thread_game_links behavior", type: :request do
         params: { data: { game: "not the right key" } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:bad_request)
-    end
-
-    it "forbids a regular user" do
-      expect {
-        post "/api/v1/threads/#{thread.thread_id}/links",
-          params: { data: { gamedb_game_id: game_a.game_id } },
-          headers: auth_headers_for(create(:user)), as: :json
-      }.not_to change(ThreadGameLink, :count)
-
-      expect(response).to have_http_status(:forbidden)
-    end
-
-    it "requires authentication" do
-      post "/api/v1/threads/#{thread.thread_id}/links",
-        params: { data: { gamedb_game_id: game_a.game_id } }, as: :json
-
-      expect(response).to have_http_status(:unauthorized)
     end
   end
 
@@ -121,16 +143,6 @@ RSpec.describe "api/v1/thread_game_links behavior", type: :request do
 
       expect(response).to have_http_status(:not_found)
     end
-
-    it "forbids a regular user" do
-      create(:thread_game_link, thread: thread, game: game_a)
-
-      delete "/api/v1/threads/#{thread.thread_id}/links/#{game_a.game_id}",
-        headers: auth_headers_for(create(:user))
-
-      expect(response).to have_http_status(:forbidden)
-      expect(ThreadGameLink.where(thread_id: thread.thread_id).count).to eq(1)
-    end
   end
 
   describe "DELETE /api/v1/threads/:id/links" do
@@ -145,21 +157,6 @@ RSpec.describe "api/v1/thread_game_links behavior", type: :request do
       expect(json).to eq("deleted" => true, "count" => 2)
       expect(ThreadGameLink.where(thread_id: thread.thread_id)).to be_empty
       expect(thread.reload.gamedb_game_id).to be_nil
-    end
-
-    it "forbids a regular user" do
-      create(:thread_game_link, thread: thread, game: game_a)
-
-      delete "/api/v1/threads/#{thread.thread_id}/links", headers: auth_headers_for(create(:user))
-
-      expect(response).to have_http_status(:forbidden)
-      expect(ThreadGameLink.where(thread_id: thread.thread_id).count).to eq(1)
-    end
-
-    it "requires authentication" do
-      delete "/api/v1/threads/#{thread.thread_id}/links"
-
-      expect(response).to have_http_status(:unauthorized)
     end
   end
 end
