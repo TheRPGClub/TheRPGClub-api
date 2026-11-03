@@ -65,6 +65,7 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         }.to change(BotJob, :count).by(1)
 
         job = BotJob.last
+        expect(json.fetch("meta")).to eq("reload_job_id" => job.id)
         expect(job.kind).to eq("gotm_cache_reload")
         expect(job.payload).to eq("category" => category, "round_number" => round)
         expect(job.summary).to eq("Reload #{cfg[:label]} round #{round} (November 2026) in the bot: round added")
@@ -75,6 +76,7 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         post "#{cfg[:path]}/rounds", params: payload, headers: service_headers, as: :json
 
         expect(BotJob.last).to have_attributes(kind: "gotm_cache_reload", requested_by_user_id: nil)
+        expect(json.fetch("meta")).to eq("reload_job_id" => BotJob.last.id)
       end
 
       it "rejects the whole round when one game is invalid" do
@@ -235,6 +237,7 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         expect(json.fetch("data")).to include("gamedb_game_id" => new_game.game_id,
           "reddit_url" => "https://reddit.example/r/new")
         job = BotJob.last
+        expect(json.fetch("meta")).to eq("reload_job_id" => job.id)
         expect(job.kind).to eq("gotm_cache_reload")
         expect(job.payload).to eq("category" => category, "round_number" => entry.round_number)
         expect(job.summary)
@@ -249,6 +252,16 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         }.not_to change(BotJob, :count)
 
         expect(response).to have_http_status(:ok)
+        expect(json.fetch("meta")).to eq("reload_job_id" => nil)
+      end
+
+      it "returns the reload job id for a PUT too" do
+        put "#{cfg[:path]}/#{entry.public_send(cfg[:id])}",
+          params: { data: { reddit_url: "https://reddit.example/r/put" } },
+          headers: auth_headers_for(create(:user, :admin)), as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("meta")).to eq("reload_job_id" => BotJob.sole.id)
       end
 
       it "queues nothing when the edit is invalid" do

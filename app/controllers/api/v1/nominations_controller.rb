@@ -139,19 +139,20 @@ module Api
       # A staff member removing someone else's nomination (#332) must give a
       # `reason`, and the bot announces the removal in the nomination channel
       # (no DM to the nominator). Owners and the service keep the plain
-      # delete: the bot announces its own deletes inline.
+      # delete: the bot announces its own deletes inline. `meta.announce_job_id`
+      # is that job, null when none was queued; the bot reads only `deleted`.
       def destroy_nomination(model)
         record = round_scope(model).preload(:user, :game).find_by!(user_id: params[:user_id])
         reason = params[:reason].to_s.strip
         announce = staff_removal?(record)
         return if announce && !valid_removal_reason?(reason)
 
-        model.transaction do
+        announce_job = model.transaction do
           VOTE_MODELS.fetch(model).where(nomination_id: record.nomination_id).delete_all
           record.destroy!
           enqueue_removal_notice(model, record, reason) if announce
         end
-        render json: { deleted: true }
+        render json: { deleted: true, meta: { announce_job_id: announce_job&.id } }
       end
 
       # A signed-in member (necessarily Admin and up, past the owner gate)

@@ -891,6 +891,24 @@ module OpenapiSchemas
           description: "The completion_announce bot job. Null when `announce` was not set."
         )
       ),
+      # GotmRoundWrites (round create, entry update) meta: the queued
+      # gotm_cache_reload bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
+      GotmReloadMeta: obj(
+        reload_job_id: int(nullable: true).merge(
+          description: "The gotm_cache_reload bot job. Null when none was queued (the service's own entry edits)."
+        )
+      ),
+      # NominationsController single-user delete: `deleted` plus the queued
+      # nomination_deleted bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
+      NominationDeletedResponse: obj(
+        deleted: { type: :boolean, example: true },
+        meta: obj(
+          announce_job_id: int(nullable: true).merge(
+            description: "The nomination_deleted bot job. Null when none was queued (owner and service deletes)."
+          )
+        ),
+        _required: %w[deleted meta]
+      ),
       # GameKeysController#claim meta: the queued claim notice bot job, so the
       # website can poll GET /api/v1/bot_jobs/{id}.
       GameKeyClaimMeta: obj(
