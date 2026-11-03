@@ -3075,6 +3075,31 @@ components:
           nullable: true
           description: The completion_announce bot job. Null when `announce` was not
             set.
+    GotmReloadMeta:
+      type: object
+      properties:
+        reload_job_id:
+          type: integer
+          nullable: true
+          description: The gotm_cache_reload bot job. Null when none was queued (the
+            service's own entry edits).
+    NominationDeletedResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+          example: true
+        meta:
+          type: object
+          properties:
+            announce_job_id:
+              type: integer
+              nullable: true
+              description: The nomination_deleted bot job. Null when none was queued
+                (owner and service deletes).
+      required:
+      - deleted
+      - meta
     GameKeyClaimMeta:
       type: object
       properties:
@@ -11776,7 +11801,8 @@ paths:
         saved) when the round number is not a positive integer, `month_year` is blank,
         `games` is empty, a game has no `gamedb_game_id` or names a game that does
         not exist, or the round already has entries. Queues the `gotm_cache_reload`
-        bot job (`{ category, round_number }`) so the bot reloads the round.
+        bot job (`{ category, round_number }`) so the bot reloads the round; `meta.reload_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
       parameters: []
       responses:
         '201':
@@ -11790,6 +11816,8 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/GotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '422':
           description: invalid round or game; nothing was saved
           content:
@@ -11903,7 +11931,9 @@ paths:
         `voting_results_message_id`). The round identity is fixed once created. A
         signed-in staff edit also queues the `gotm_cache_reload` bot job (`{ category,
         round_number }`); the service's own edits do not, since the bot updates its
-        cache itself.
+        cache itself. `meta.reload_job_id` is that job (null when none was queued),
+        for polling `GET /api/v1/bot_jobs/{id}`. A `gamedb_game_id` already used by
+        another entry of the same round is refused (422).
       parameters: []
       responses:
         '200':
@@ -11915,6 +11945,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '403':
           description: forbidden — caller is not an admin or service
           content:
@@ -11928,7 +11960,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or the game is already in another slot of
+            the round
           content:
             application/json:
               schema:
@@ -11966,7 +11999,8 @@ paths:
       summary: Replace a Game of the Month entry (alias)
       tags:
       - GOTM
-      description: Admin/service-only. Alias for PATCH.
+      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`
+        and duplicate-game check.
       parameters: []
       responses:
         '200':
@@ -11978,6 +12012,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '401':
           description: unauthenticated
           content:
@@ -14379,7 +14415,8 @@ paths:
         title and nominator are captured first and a `nomination_deleted` bot job
         announces the removal, with the refreshed list, in the nomination channel
         (no DM to the nominator). Owners and the service keep the plain delete: no
-        reason needed, no job.'
+        reason needed, no job. `meta.announce_job_id` is that job (null when none
+        was queued), for polling `GET /api/v1/bot_jobs/{id}`.'
       parameters:
       - name: reason
         in: query
@@ -14395,7 +14432,7 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/DeletedResponse"
+                "$ref": "#/components/schemas/NominationDeletedResponse"
         '403':
           description: forbidden — caller is neither the named user nor admin/service
           content:
@@ -14650,7 +14687,8 @@ paths:
         title and nominator are captured first and a `nomination_deleted` bot job
         announces the removal, with the refreshed list, in the nomination channel
         (no DM to the nominator). Owners and the service keep the plain delete: no
-        reason needed, no job.'
+        reason needed, no job. `meta.announce_job_id` is that job (null when none
+        was queued), for polling `GET /api/v1/bot_jobs/{id}`.'
       parameters:
       - name: reason
         in: query
@@ -14666,7 +14704,7 @@ paths:
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/DeletedResponse"
+                "$ref": "#/components/schemas/NominationDeletedResponse"
         '403':
           description: forbidden — caller is neither the named user nor admin/service
           content:
@@ -15248,7 +15286,8 @@ paths:
         saved) when the round number is not a positive integer, `month_year` is blank,
         `games` is empty, a game has no `gamedb_game_id` or names a game that does
         not exist, or the round already has entries. Queues the `gotm_cache_reload`
-        bot job (`{ category, round_number }`) so the bot reloads the round.
+        bot job (`{ category, round_number }`) so the bot reloads the round; `meta.reload_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
       parameters: []
       responses:
         '201':
@@ -15262,6 +15301,8 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/NrGotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '422':
           description: invalid round or game; nothing was saved
           content:
@@ -15375,7 +15416,9 @@ paths:
         `voting_results_message_id`). The round identity is fixed once created. A
         signed-in staff edit also queues the `gotm_cache_reload` bot job (`{ category,
         round_number }`); the service's own edits do not, since the bot updates its
-        cache itself.
+        cache itself. `meta.reload_job_id` is that job (null when none was queued),
+        for polling `GET /api/v1/bot_jobs/{id}`. A `gamedb_game_id` already used by
+        another entry of the same round is refused (422).
       parameters: []
       responses:
         '200':
@@ -15387,6 +15430,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/NrGotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '403':
           description: forbidden — caller is not an admin or service
           content:
@@ -15400,7 +15445,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or the game is already in another slot of
+            the round
           content:
             application/json:
               schema:
@@ -15438,7 +15484,8 @@ paths:
       summary: Replace a Non-Retro GOTM entry (alias)
       tags:
       - Non-Retro GOTM
-      description: Admin/service-only. Alias for PATCH.
+      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`
+        and duplicate-game check.
       parameters: []
       responses:
         '200':
@@ -15450,6 +15497,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/NrGotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '401':
           description: unauthenticated
           content:

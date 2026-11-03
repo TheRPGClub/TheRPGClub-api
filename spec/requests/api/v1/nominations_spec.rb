@@ -27,7 +27,9 @@ RSpec.describe 'api/v1/nominations', type: :request do
     'Admin or Superadmin removing someone else\'s nomination must pass `reason` (1 to 250 ' \
     'characters); the game title and nominator are captured first and a `nomination_deleted` bot ' \
     'job announces the removal, with the refreshed list, in the nomination channel (no DM to the ' \
-    'nominator). Owners and the service keep the plain delete: no reason needed, no job.'
+    'nominator). Owners and the service keep the plain delete: no reason needed, no job. ' \
+    '`meta.announce_job_id` is that job (null when none was queued), for polling ' \
+    '`GET /api/v1/bot_jobs/{id}`.'
 
   reason_param = {
     name: :reason, in: :query, schema: { type: :string, maxLength: 250 }, required: false,
@@ -157,7 +159,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
       parameter reason_param
 
       response '200', 'deleted' do
-        schema '$ref' => '#/components/schemas/DeletedResponse'
+        schema '$ref' => '#/components/schemas/NominationDeletedResponse'
       end
 
       response '403', owner_forbidden do
@@ -295,7 +297,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
       parameter reason_param
 
       response '200', 'deleted' do
-        schema '$ref' => '#/components/schemas/DeletedResponse'
+        schema '$ref' => '#/components/schemas/NominationDeletedResponse'
       end
 
       response '403', owner_forbidden do

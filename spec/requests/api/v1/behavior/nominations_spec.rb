@@ -247,7 +247,7 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
       delete "/api/v1/gotm_entries/#{round}/nominations/#{target.user_id}", headers: service_headers
 
       expect(response).to have_http_status(:ok)
-      expect(json).to eq("deleted" => true)
+      expect(json).to eq("deleted" => true, "meta" => { "announce_job_id" => nil })
       expect(GotmNomination.exists?(target.nomination_id)).to be(false)
       expect(GotmVote.exists?(target_vote.vote_id)).to be(false)
       expect(GotmVote.exists?(other_vote.vote_id)).to be(true)
@@ -340,8 +340,8 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
         params: { reason: "  Not an RPG  " }, headers: auth_headers_for(admin)
 
       expect(response).to have_http_status(:ok)
-      expect(json).to eq("deleted" => true)
       job = BotJob.last
+      expect(json).to eq("deleted" => true, "meta" => { "announce_job_id" => job.id })
       expect(job.kind).to eq("nomination_deleted")
       expect(job.payload).to eq(
         "category" => "gotm",
@@ -403,6 +403,7 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
       }.not_to change(BotJob, :count)
 
       expect(response).to have_http_status(:ok)
+      expect(json).to eq("deleted" => true, "meta" => { "announce_job_id" => nil })
       expect(GotmNomination.exists?(nomination.nomination_id)).to be(false)
     end
 

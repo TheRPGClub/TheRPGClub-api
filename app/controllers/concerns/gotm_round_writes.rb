@@ -2,7 +2,9 @@
 
 # The round-level create, the per-game writes and the bot cache reload
 # shared by the GOTM and NR-GOTM entry controllers (#331). Staff writes queue
-# gotm_cache_reload; the service's do not, since the bot made them. The including controller defines
+# gotm_cache_reload; the service's do not, since the bot made them. The round create and the
+# entry update render that job as `meta.reload_job_id` (null when none was queued), so the
+# website can poll GET /api/v1/bot_jobs/{id}. The including controller defines
 # `round_category` ("gotm" or "nr_gotm") and `entry_resource`.
 module GotmRoundWrites
   extend ActiveSupport::Concern
@@ -11,18 +13,18 @@ module GotmRoundWrites
   # { data: { round_number, month_year, games: [{ gamedb_game_id, reddit_url? }] } }
   def create_round
     data = request_data
-    entries = ActiveRecord::Base.transaction do
+    entries, reload_job = ActiveRecord::Base.transaction do
       created = Gotm::RoundCreate.new(
         category: round_category, round_number: data[:round_number], month_year: data[:month_year],
         games: data[:games]
       ).call!
-      enqueue_cache_reload(created.first, "round added")
-      created
+      [ created, enqueue_cache_reload(created.first, "round added") ]
     end
     # Same side effects as a per-game create (see #create).
     Voting::LegacySync.winner_recorded(entries.first.round_number)
     Gamedb::GameRelationsCacheVersion.bump!
-    render json: { data: entries.map { |e| entry_resource.new(e).serializable_hash } }, status: :created
+    render json: { data: entries.map { |e| entry_resource.new(e).serializable_hash },
+                   meta: { reload_job_id: reload_job.id } }, status: :created
   rescue Gotm::RoundCreate::Invalid => e
     render json: { error: e.message }, status: :unprocessable_content
   end
@@ -68,14 +70,33 @@ module GotmRoundWrites
     render json: { deleted: true }
   end
 
-  # A per-entry update by staff (not the bot's own service writes).
+  # A per-entry update. Staff edits (not the bot's own service writes) reload
+  # the bot's cache. A game already in another slot of the same round is 422,
+  # for every caller.
   def update_entry(entry)
-    entry.transaction do
-      entry.update!(request_data.slice(*self.class::UPDATE_ATTRS))
+    attrs = request_data.slice(*self.class::UPDATE_ATTRS)
+    return if attrs.key?("gamedb_game_id") && game_taken_in_round?(entry, attrs["gamedb_game_id"])
+
+    reload_job = entry.transaction do
+      entry.update!(attrs)
       enqueue_cache_reload(entry, "game #{entry.game_index + 1} edited") if current_principal.discord_user?
     end
     entry.reload
     Gamedb::GameRelationsCacheVersion.bump!
-    render json: { data: entry_resource.new(entry).serializable_hash }
+    render json: { data: entry_resource.new(entry).serializable_hash, meta: { reload_job_id: reload_job&.id } }
+  end
+
+  # Renders the 422 and answers true when another entry of the round has the game.
+  def game_taken_in_round?(entry, game_id)
+    model = entry.class
+    taken = model.where(round_number: entry.round_number, gamedb_game_id: game_id)
+      .where.not(model.primary_key => entry.id).exists?
+    return false unless taken
+
+    render json: {
+      error: "GameDB game #{game_id} is already in #{Gotm::RoundCreate.label(round_category)} " \
+             "round #{entry.round_number}"
+    }, status: :unprocessable_content
+    true
   end
 end

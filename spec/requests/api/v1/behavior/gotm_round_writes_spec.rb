@@ -65,6 +65,7 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         }.to change(BotJob, :count).by(1)
 
         job = BotJob.last
+        expect(json.fetch("meta")).to eq("reload_job_id" => job.id)
         expect(job.kind).to eq("gotm_cache_reload")
         expect(job.payload).to eq("category" => category, "round_number" => round)
         expect(job.summary).to eq("Reload #{cfg[:label]} round #{round} (November 2026) in the bot: round added")
@@ -75,6 +76,7 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         post "#{cfg[:path]}/rounds", params: payload, headers: service_headers, as: :json
 
         expect(BotJob.last).to have_attributes(kind: "gotm_cache_reload", requested_by_user_id: nil)
+        expect(json.fetch("meta")).to eq("reload_job_id" => BotJob.last.id)
       end
 
       it "rejects the whole round when one game is invalid" do
@@ -235,6 +237,7 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         expect(json.fetch("data")).to include("gamedb_game_id" => new_game.game_id,
           "reddit_url" => "https://reddit.example/r/new")
         job = BotJob.last
+        expect(json.fetch("meta")).to eq("reload_job_id" => job.id)
         expect(job.kind).to eq("gotm_cache_reload")
         expect(job.payload).to eq("category" => category, "round_number" => entry.round_number)
         expect(job.summary)
@@ -249,6 +252,47 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
         }.not_to change(BotJob, :count)
 
         expect(response).to have_http_status(:ok)
+        expect(json.fetch("meta")).to eq("reload_job_id" => nil)
+      end
+
+      it "returns the reload job id for a PUT too" do
+        put "#{cfg[:path]}/#{entry.public_send(cfg[:id])}",
+          params: { data: { reddit_url: "https://reddit.example/r/put" } },
+          headers: auth_headers_for(create(:user, :admin)), as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("meta")).to eq("reload_job_id" => BotJob.sole.id)
+      end
+
+      it "refuses a game another entry of the same round already uses" do
+        taken = create(cfg[:factory], round_number: entry.round_number, game_index: 0, month_year: "October 2026")
+
+        [ auth_headers_for(create(:user, :admin)), service_headers ].each do |headers|
+          expect {
+            patch "#{cfg[:path]}/#{entry.public_send(cfg[:id])}",
+              params: { data: { gamedb_game_id: taken.gamedb_game_id } }, headers: headers, as: :json
+          }.not_to change(BotJob, :count)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq(
+            "GameDB game #{taken.gamedb_game_id} is already in #{cfg[:label]} round #{entry.round_number}"
+          )
+        end
+        expect(entry.reload.gamedb_game_id).not_to eq(taken.gamedb_game_id)
+      end
+
+      it "accepts the entry's own game, or a game used in another round or the other category" do
+        other_round = create(cfg[:factory], round_number: entry.round_number + 1, game_index: 0)
+        other_factory = cfg[:factory] == :gotm_entry ? :nr_gotm_entry : :gotm_entry
+        other_category = create(other_factory, round_number: entry.round_number, game_index: 0)
+
+        [ entry.gamedb_game_id, other_round.gamedb_game_id, other_category.gamedb_game_id ].each do |game_id|
+          patch "#{cfg[:path]}/#{entry.public_send(cfg[:id])}",
+            params: { data: { gamedb_game_id: game_id } }, headers: service_headers, as: :json
+
+          expect(response).to have_http_status(:ok)
+          expect(entry.reload.gamedb_game_id).to eq(game_id)
+        end
       end
 
       it "queues nothing when the edit is invalid" do
