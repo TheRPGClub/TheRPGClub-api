@@ -266,8 +266,13 @@ Rails.application.routes.draw do
       resources :gotm_rounds, only: %i[index] do
         collection { get "current" }
       end
-      resources :gotm_entries, only: %i[index show create update destroy]
-      resources :nr_gotm_entries, only: %i[index show create update destroy]
+      # `POST .../rounds` adds a whole round in one transaction (#331).
+      resources :gotm_entries, only: %i[index show create update destroy] do
+        collection { post "rounds", action: :create_round }
+      end
+      resources :nr_gotm_entries, only: %i[index show create update destroy] do
+        collection { post "rounds", action: :create_round }
+      end
       # GOTM / NR-GOTM nominations: the round list (open read) plus single-user
       # read, upsert and round-scoped deletes for the bot's `/nominate`
       # migration (bot parity, #97). These hang off the round, not a nomination
