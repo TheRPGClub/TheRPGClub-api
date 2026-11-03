@@ -83,6 +83,70 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
     end
   end
 
+  path '/api/v1/nr_gotm_entries/rounds' do
+    post 'Create a whole Non-RPG Game of the Month round' do
+      tags 'Non-Retro GOTM'
+      description 'Admin/service-only. Inserts every game of a new round in one transaction, numbering ' \
+                  'the slots (`game_index`) from 0 in list order. Refused (422, nothing saved) when the ' \
+                  'round number is not a positive integer, `month_year` is blank, `games` is empty, a ' \
+                  'game has no `gamedb_game_id` or names a game that does not exist, or the round ' \
+                  'already has entries. Queues the `gotm_cache_reload` bot job ' \
+                  '(`{ category, round_number }`) so the bot reloads the round; `meta.reload_job_id` is ' \
+                  'that job, for polling `GET /api/v1/bot_jobs/{id}`.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              round_number: { type: :integer, minimum: 1, description: 'The new round\'s number; must have no entries yet.' },
+              month_year: { type: :string, example: 'November 2026', description: 'Human-readable month/year label for the round.' },
+              games: {
+                type: :array, minItems: 1, description: 'The round\'s games in slot order.',
+                items: {
+                  type: :object,
+                  properties: {
+                    gamedb_game_id: { type: :integer, description: 'An existing GameDB game (gamedb_games.game_id).' },
+                    reddit_url: { type: :string, nullable: true, description: 'Optional link to the game\'s Reddit thread.' }
+                  },
+                  required: %w[gamedb_game_id]
+                }
+              }
+            },
+            required: %w[round_number month_year games]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'round created' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/NrGotmEntry' } },
+          meta: { '$ref' => '#/components/schemas/GotmReloadMeta' }
+        }
+      end
+
+      response '422', 'invalid round or game; nothing was saved' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing `data` parameter' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — caller is not an admin or service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/nr_gotm_entries/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'NrGotmEntry id.'
 
@@ -107,7 +171,11 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
     patch 'Update a Non-Retro GOTM entry' do
       tags 'Non-Retro GOTM'
       description 'Admin/service-only. Updates the mutable fields (`reddit_url`, `gamedb_game_id`, ' \
-                  '`voting_results_message_id`). The round identity is fixed once created.'
+                  '`voting_results_message_id`). The round identity is fixed once created. A signed-in staff edit ' \
+                  'also queues the `gotm_cache_reload` bot job (`{ category, round_number }`); the ' \
+                  'service\'s own edits do not, since the bot updates its cache itself. ' \
+                  '`meta.reload_job_id` is that job (null when none was queued), for polling ' \
+                  '`GET /api/v1/bot_jobs/{id}`.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -118,7 +186,10 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/NrGotmEntry' } }
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/NrGotmEntry' },
+          meta: { '$ref' => '#/components/schemas/GotmReloadMeta' }
+        }
       end
 
       response '403', 'forbidden — caller is not an admin or service' do
@@ -140,7 +211,7 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
 
     put 'Replace a Non-Retro GOTM entry (alias)' do
       tags 'Non-Retro GOTM'
-      description 'Admin/service-only. Alias for PATCH.'
+      description 'Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -150,7 +221,10 @@ RSpec.describe 'api/v1/nr_gotm_entries', type: :request do
       }
 
       response '200', 'updated' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/NrGotmEntry' } }
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/NrGotmEntry' },
+          meta: { '$ref' => '#/components/schemas/GotmReloadMeta' }
+        }
       end
 
       response '401', 'unauthenticated' do

@@ -2522,11 +2522,26 @@ components:
         kind:
           type: string
           enum:
+          - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
+          - nomination_deleted
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+          - voting_results_publish
+          - voting_panels_repost
+          - voting_tie_broken
+          - gotm_cache_reload
+          - live_event_create
+          - say
+          - memberscan
+          - presence_set
+        summary:
+          type: string
+          maxLength: 200
+          description: What the job does, in plain words, set when it was queued.
+            Holds no secrets.
         status:
           type: string
           enum:
@@ -2538,6 +2553,10 @@ components:
           type: string
           nullable: true
           description: The member whose action queued the job; null for system jobs.
+        requested_by:
+          allOf:
+          - "$ref": "#/components/schemas/UserSummary"
+          nullable: true
         attempts:
           type: integer
           description: Claims so far. A claim not acked within the lease counts too.
@@ -2545,10 +2564,20 @@ components:
           type: string
           nullable: true
           description: The bot's error, or the claim-timeout error.
+        result_text:
+          type: string
+          nullable: true
+          description: What the bot reported when it acked the job done.
         claimed_at:
           type: string
           format: date-time
           nullable: true
+        lease_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'While claimed: when the claim goes back to the queue unless
+            acked.'
         finished_at:
           type: string
           format: date-time
@@ -2562,10 +2591,168 @@ components:
       required:
       - id
       - kind
+      - summary
       - status
       - attempts
       - created_at
       - updated_at
+    ImageBackfillRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          description: queued, then running, then completed; failed when the run stopped
+            (see last_error).
+        total:
+          type: integer
+          description: Games with no stored images when the run started.
+        done:
+          type: integer
+          description: Games whose images were imported.
+        skipped:
+          type: integer
+          description: Games with no IGDB id.
+        failed:
+          type: integer
+          description: Games whose import failed.
+        started_by_user_id:
+          type: string
+          nullable: true
+          description: The Superadmin who started it; null for the service.
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+          description: 'The latest failure, per game ("Game 12: ...") or for the run.'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - status
+      - total
+      - done
+      - skipped
+      - failed
+      - created_at
+      - updated_at
+    LiveEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        topic:
+          type: string
+          maxLength: 100
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        image_url:
+          type: string
+          nullable: true
+          description: The image given as a URL, or the public Backblaze URL of the
+            uploaded image; null for none.
+        status:
+          type: string
+          enum:
+          - queued
+          - thread_created
+          - created
+          - failed
+          description: queued, then thread_created once the forum thread exists, then
+            created once the Discord scheduled event exists too; failed when the bot
+            gave up (see its bot job).
+        discord_thread_id:
+          type: string
+          nullable: true
+          description: The forum thread, once made.
+        discord_event_id:
+          type: string
+          nullable: true
+          description: The Discord scheduled event, once made.
+        created_by_user_id:
+          type: string
+          nullable: true
+          description: The staff member who created it; null for the service.
+        bot_job_id:
+          type: integer
+          nullable: true
+          description: Its live_event_create bot job (GET /bot_jobs/:id for the bot's
+            error when failed).
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - topic
+      - starts_at
+      - ends_at
+      - status
+      - created_at
+      - updated_at
+    SayJobPayload:
+      type: object
+      properties:
+        channel_id:
+          type: string
+          description: A synced text channel.
+        content:
+          type: string
+          maxLength: 2000
+        reply_to:
+          type: object
+          properties:
+            channel_id:
+              type: string
+            message_id:
+              type: string
+          required:
+          - channel_id
+          - message_id
+          nullable: true
+          description: The message to reply to (always in `channel_id`); null for
+            a plain message.
+        allowed_mentions:
+          type: object
+          properties:
+            parse:
+              type: array
+              items:
+                type: string
+                enum:
+                - users
+          required:
+          - parse
+      required:
+      - channel_id
+      - content
+      - allowed_mentions
+      description: 'Post `content` in `channel_id`, or reply to `reply_to.message_id`
+        there. Send it with `allowed_mentions` as given: plain user mentions only,
+        never @everyone, @here or roles.'
     BotJobClaim:
       type: object
       properties:
@@ -2574,11 +2761,24 @@ components:
         kind:
           type: string
           enum:
+          - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
+          - nomination_deleted
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+          - voting_results_publish
+          - voting_panels_repost
+          - voting_tie_broken
+          - gotm_cache_reload
+          - live_event_create
+          - say
+          - memberscan
+          - presence_set
+        summary:
+          type: string
+          maxLength: 200
         payload:
           type: object
           description: Per kind; a breaking change gets a new kind name.
@@ -2597,10 +2797,19 @@ components:
         error_message:
           type: string
           nullable: true
+        result_text:
+          type: string
+          nullable: true
         claimed_at:
           type: string
           format: date-time
           nullable: true
+        lease_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Ack before this or the job is handed out again: five minutes
+            unless the kind has a longer lease.'
         finished_at:
           type: string
           format: date-time
@@ -2614,6 +2823,7 @@ components:
       required:
       - id
       - kind
+      - summary
       - payload
       - status
       - attempts
@@ -2857,6 +3067,39 @@ components:
       - donor_notify_on_claim
       - created_at
       - updated_at
+    CompletionCreateMeta:
+      type: object
+      properties:
+        announce_job_id:
+          type: integer
+          nullable: true
+          description: The completion_announce bot job. Null when `announce` was not
+            set.
+    GotmReloadMeta:
+      type: object
+      properties:
+        reload_job_id:
+          type: integer
+          nullable: true
+          description: The gotm_cache_reload bot job. Null when none was queued (the
+            service's own entry edits).
+    NominationDeletedResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+          example: true
+        meta:
+          type: object
+          properties:
+            announce_job_id:
+              type: integer
+              nullable: true
+              description: The nomination_deleted bot job. Null when none was queued
+                (owner and service deletes).
+      required:
+      - deleted
+      - meta
     GameKeyClaimMeta:
       type: object
       properties:
@@ -2931,9 +3174,24 @@ components:
         created_by:
           type: string
           nullable: true
+        terms:
+          type: array
+          items:
+            "$ref": "#/components/schemas/SearchSynonym"
       required:
       - group_id
       - created_at
+    SearchSynonymGroupWithTerms:
+      allOf:
+      - "$ref": "#/components/schemas/SearchSynonymGroup"
+      - type: object
+        properties:
+          terms:
+            type: array
+            items:
+              "$ref": "#/components/schemas/SearchSynonym"
+        required:
+        - terms
     JournalMessageContext:
       type: object
       properties:
@@ -3011,6 +3269,29 @@ components:
       - thread_id
       - gamedb_game_id
       - linked_at
+    ThreadSearchResult:
+      type: object
+      properties:
+        thread_id:
+          type: string
+        thread_name:
+          type: string
+        games:
+          type: array
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - game_id
+            - title
+      required:
+      - thread_id
+      - thread_name
+      - games
     GuildChannel:
       type: object
       properties:
@@ -3050,6 +3331,14 @@ components:
       required:
       - activity_name
       - set_at
+    BotPresenceCreateMeta:
+      type: object
+      properties:
+        presence_job_id:
+          type: integer
+          nullable: true
+          description: The presence_set bot job. Null for a service write, which queues
+            none.
     PresencePrompt:
       type: object
       properties:
@@ -3377,6 +3666,19 @@ components:
       - nomination_id
       - gamedb_game_id
       - vote_count
+    VoteTallyMeta:
+      type: object
+      properties:
+        cap:
+          type: integer
+        runoff:
+          type: boolean
+        counts_hidden:
+          type: boolean
+      required:
+      - cap
+      - runoff
+      - counts_hidden
     VoteCastResult:
       type: object
       properties:
@@ -5027,6 +5329,60 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs":
+    get:
+      summary: List bot jobs (activity list)
+      tags:
+      - Bot Jobs
+      description: Moderators and up, and the service. Newest first. Admins, Superadmins
+        and the service see every job; Moderators see only the jobs they requested.
+        Members, Regulars and other non-staff are refused. Each job has its plain
+        summary, status, requester, timestamps and the bot's error or result text;
+        the payload is never included.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: bot jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/BotJob"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not staff (Moderator and up)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/bot_jobs/claim":
     post:
       summary: Poll for and claim bot jobs
@@ -5035,9 +5391,10 @@ paths:
       description: Service only. Poll about every 10 seconds. While no work is waiting
         the API answers an empty list from a machine-local signal without touching
         Postgres. Otherwise it claims up to `limit` queued jobs, oldest first. Act
-        on each one in Discord, then ack it done or failed. A claim not acked within
-        five minutes goes back to the queue, and fails after 3 claims, so delivery
-        is at-least-once.
+        on each one in Discord, then ack it done or failed. A claim not acked by its
+        `lease_expires_at` goes back to the queue, and fails after 3 claims, so delivery
+        is at-least-once. The lease is five minutes unless the kind has a longer one
+        (long jobs such as a whole-guild scan).
       parameters:
       - name: limit
         in: query
@@ -5078,8 +5435,10 @@ paths:
       summary: Acknowledge a bot job done
       tags:
       - Bot Jobs
-      description: Service only. Records the job done; idempotent. A late ack of a
-        job whose claim timed out still counts.
+      description: 'Service only. Records the job done, with an optional result text
+        the website shows (e.g. counts). Idempotent: a repeat keeps the first result.
+        A late ack of a job whose claim timed out still counts.'
+      parameters: []
       responses:
         '200':
           description: job done
@@ -5110,6 +5469,25 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '422':
+          description: result text too long
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    result_text:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
   "/api/v1/bot_jobs/{id}/failed":
     parameters:
     - name: id
@@ -5190,8 +5568,9 @@ paths:
       tags:
       - Bot Jobs
       description: The member who queued the job, Admins, Superadmins and the service.
-        Shows whether the Discord action is queued, claimed, done or failed (with
-        the bot's error). The payload is not included.
+        Shows its summary and whether the Discord action is queued, claimed, done
+        (with the bot's result text) or failed (with the bot's error). The payload
+        is not included.
       responses:
         '200':
           description: job status
@@ -5227,8 +5606,8 @@ paths:
       summary: List bot presence history
       tags:
       - Bot Presence
-      description: Service-only. Returns presence history, newest first. `limit` (capped
-        at 50) sizes the page.
+      description: Moderator and up, or the service. Returns presence history, newest
+        first. `limit` (capped at 50) sizes the page.
       parameters:
       - name: page
         in: query
@@ -5274,7 +5653,7 @@ paths:
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
         '403':
-          description: forbidden — caller is not the service principal
+          description: 'forbidden: caller is not Moderator and up or the service'
           content:
             application/json:
               schema:
@@ -5289,8 +5668,13 @@ paths:
       summary: Save a bot presence entry
       tags:
       - Bot Presence
-      description: Service-only. Records a new presence entry. `set_at` is stamped
-        by the server (defaults to now()).
+      description: Moderator and up, or the service. Records a new presence entry.
+        `set_at` is stamped by the server (defaults to now()). On a staff create the
+        setter id and name come from the session, never the body, and a `presence_set`
+        bot job is queued so the bot applies the presence at once; `meta.presence_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`. The service (the bot
+        itself, which has already applied it) queues no job, so its `meta.presence_job_id`
+        is null.
       parameters: []
       responses:
         '201':
@@ -5302,8 +5686,16 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/BotPresence"
+                  meta:
+                    "$ref": "#/components/schemas/BotPresenceCreateMeta"
         '403':
-          description: forbidden — caller is not the service principal
+          description: 'forbidden: caller is not Moderator and up or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: activity name too long
           content:
             application/json:
               schema:
@@ -5335,11 +5727,15 @@ paths:
                     set_by_user_id:
                       type: string
                       nullable: true
-                      description: Discord user id that set the presence. Optional.
+                      description: Discord user id that set the presence. Service
+                        only; a staff caller is recorded from the session and this
+                        is ignored.
                     set_by_username:
                       type: string
                       nullable: true
-                      description: Discord username that set the presence. Optional.
+                      description: Discord username that set the presence. Service
+                        only; a staff caller is recorded from the session and this
+                        is ignored.
                   required:
                   - activity_name
               required:
@@ -5350,8 +5746,8 @@ paths:
       summary: Get the latest bot presence entry
       tags:
       - Bot Presence
-      description: 'Service-only. Returns the most recent presence entry, or `{ "data":
-        null }` when no entries exist.'
+      description: 'Moderator and up, or the service. Returns the most recent presence
+        entry (the current presence), or `{ "data": null }` when no entries exist.'
       responses:
         '200':
           description: latest presence entry (or null)
@@ -5365,7 +5761,7 @@ paths:
                     - "$ref": "#/components/schemas/BotPresence"
                     nullable: true
         '403':
-          description: forbidden — caller is not the service principal
+          description: 'forbidden: caller is not Moderator and up or the service'
           content:
             application/json:
               schema:
@@ -5376,6 +5772,77 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_say":
+    post:
+      summary: Make the bot say a message
+      tags:
+      - Bot Jobs
+      description: 'Superadmin only (the service token passes too). Queues a `say`
+        bot job, as the bot''s `/superadmin say`: the bot posts `content` in `channel_id`,
+        or, with `reply_to_message_link`, replies to that message. The channel must
+        be a synced text channel (`GET /guild_channels`), and a linked message must
+        be in that channel (and in the club''s server). The job allows plain user
+        mentions only, never @everyone, @here or roles (payload: `SayJobPayload`).
+        Returns the queued job; poll `GET /bot_jobs/{id}`.'
+      parameters: []
+      responses:
+        '202':
+          description: say job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '422':
+          description: not a synced text channel, blank or too long content, or a
+            bad message link
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    channel_id:
+                      type: string
+                      description: A synced text channel id.
+                    content:
+                      type: string
+                      maxLength: 2000
+                      description: Trimmed; line breaks are kept.
+                    reply_to_message_link:
+                      type: string
+                      nullable: true
+                      description: Optional Discord message link (https://discord.com/channels/{guild}/{channel}/{message})
+                        to reply to. Blank means no reply.
+                  required:
+                  - channel_id
+                  - content
+              required:
+              - data
+        required: true
   "/api/v1/collection_csv_import_items/{id}":
     parameters:
     - name: id
@@ -7707,8 +8174,14 @@ paths:
       summary: Record a completion
       tags:
       - Completions
-      description: Owner-only. `gamedb_game_id` and `completion_type` are required;
-        `completed_at`, `final_playtime_hrs`, `platform_id` and `note` are optional.
+      description: 'The owner, a Superadmin (for any member) or the service. `gamedb_game_id`
+        and `completion_type` are required; `completed_at`, `final_playtime_hrs`,
+        `platform_id` and `note` are optional. `announce: true` queues a `completion_announce`
+        bot job (payload `completion_id`, `user_id`, `game_id`, `actor_user_id`) so
+        the bot posts the completion; `meta.announce_job_id` is that job (null when
+        none was queued), for polling `GET /api/v1/bot_jobs/{id}`. When a Superadmin
+        logs one for another member, the game is also removed from that member''s
+        Now Playing.'
       parameters: []
       responses:
         '201':
@@ -7720,14 +8193,22 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/CompletionEntry"
+                  meta:
+                    "$ref": "#/components/schemas/CompletionCreateMeta"
         '403':
-          description: forbidden — caller is not the owner
+          description: 'forbidden: caller is not the owner, a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: a Superadmin named a member who does not exist
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `announce` is not a boolean
           content:
             application/json:
               schema:
@@ -7777,6 +8258,10 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    announce:
+                      type: boolean
+                      description: Queue a bot announcement of the completion. Defaults
+                        to false.
                   required:
                   - gamedb_game_id
                   - completion_type
@@ -11306,6 +11791,97 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/gotm_entries/rounds":
+    post:
+      summary: Create a whole Game of the Month round
+      tags:
+      - GOTM
+      description: Admin/service-only. Inserts every game of a new round in one transaction,
+        numbering the slots (`game_index`) from 0 in list order. Refused (422, nothing
+        saved) when the round number is not a positive integer, `month_year` is blank,
+        `games` is empty, a game has no `gamedb_game_id` or names a game that does
+        not exist, or the round already has entries. Queues the `gotm_cache_reload`
+        bot job (`{ category, round_number }`) so the bot reloads the round; `meta.reload_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
+      parameters: []
+      responses:
+        '201':
+          description: round created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
+        '422':
+          description: invalid round or game; nothing was saved
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    round_number:
+                      type: integer
+                      minimum: 1
+                      description: The new round's number; must have no entries yet.
+                    month_year:
+                      type: string
+                      example: November 2026
+                      description: Human-readable month/year label for the round.
+                    games:
+                      type: array
+                      minItems: 1
+                      description: The round's games in slot order.
+                      items:
+                        type: object
+                        properties:
+                          gamedb_game_id:
+                            type: integer
+                            description: An existing GameDB game (gamedb_games.game_id).
+                          reddit_url:
+                            type: string
+                            nullable: true
+                            description: Optional link to the game's Reddit thread.
+                        required:
+                        - gamedb_game_id
+                  required:
+                  - round_number
+                  - month_year
+                  - games
+              required:
+              - data
+        required: true
   "/api/v1/gotm_entries/{id}":
     parameters:
     - name: id
@@ -11352,7 +11928,11 @@ paths:
       tags:
       - GOTM
       description: Admin/service-only. Updates the mutable fields (`reddit_url`, `gamedb_game_id`,
-        `voting_results_message_id`). The round identity is fixed once created.
+        `voting_results_message_id`). The round identity is fixed once created. A
+        signed-in staff edit also queues the `gotm_cache_reload` bot job (`{ category,
+        round_number }`); the service's own edits do not, since the bot updates its
+        cache itself. `meta.reload_job_id` is that job (null when none was queued),
+        for polling `GET /api/v1/bot_jobs/{id}`.
       parameters: []
       responses:
         '200':
@@ -11364,6 +11944,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '403':
           description: forbidden — caller is not an admin or service
           content:
@@ -11415,7 +11997,7 @@ paths:
       summary: Replace a Game of the Month entry (alias)
       tags:
       - GOTM
-      description: Admin/service-only. Alias for PATCH.
+      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`.
       parameters: []
       responses:
         '200':
@@ -11427,6 +12009,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '401':
           description: unauthenticated
           content:
@@ -11970,6 +12554,129 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '502':
           description: IGDB request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/image_backfill_runs":
+    post:
+      summary: Start an image backfill
+      tags:
+      - Image Backfill
+      description: Superadmin only (the service token passes too). Queues a run that
+        imports IGDB images for every game with no stored images, as the bot's `/superadmin
+        download-missing-images` did. A game with no IGDB id counts as `skipped`,
+        an import error as `failed` (the latest in `last_error`); missing IGDB or
+        Backblaze configuration fails the run. Poll the run for progress. Refused
+        with 409 while a run is queued or running; a run that has not reported progress
+        for 30 minutes is marked failed and no longer blocks a new one.
+      responses:
+        '201':
+          description: run queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ImageBackfillRun"
+                required:
+                - data
+        '409':
+          description: a run is already queued or running (`image_backfill_in_progress`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/image_backfill_runs/latest":
+    get:
+      summary: Get the latest image backfill run
+      tags:
+      - Image Backfill
+      description: Superadmin only (the service token passes too). The newest run,
+        with its progress.
+      responses:
+        '200':
+          description: the newest run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ImageBackfillRun"
+                required:
+                - data
+        '404':
+          description: no run yet
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/image_backfill_runs/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: ImageBackfillRun id.
+    get:
+      summary: Get an image backfill run
+      tags:
+      - Image Backfill
+      description: Superadmin only (the service token passes too). One run, with its
+        progress.
+      responses:
+        '200':
+          description: the run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ImageBackfillRun"
+                required:
+                - data
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
           content:
             application/json:
               schema:
@@ -13000,6 +13707,321 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/SyncCooldownError"
+  "/api/v1/live_events":
+    get:
+      summary: List live events
+      tags:
+      - Live Events
+      description: Moderators and up, and the service. Newest first, with the Discord
+        thread and event ids once the bot has made them.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: live events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/LiveEvent"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Moderator and up or the service
+            token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a live event
+      tags:
+      - Live Events
+      description: 'Moderators and up, and the service. Saves the event as `queued`
+        and queues the `live_event_create` bot job (payload `{ live_event_id }`),
+        which makes the forum thread and the Discord scheduled event, as the bot''s
+        `/live-stream create` did. The topic is squished, at most 100 characters;
+        `starts_at` must be in the future and `ends_at` after it (send UTC or offset
+        instants). The image is optional: send `image_url` (http or https) as JSON,
+        or send `multipart/form-data` with the same `data[...]` fields and the file
+        as `data[image]` (JPEG, PNG, WebP or GIF, at most 10 MB), which is stored
+        in Backblaze and saved as its public URL. Sending both is refused with 422.'
+      parameters: []
+      responses:
+        '201':
+          description: live event saved and bot job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/LiveEvent"
+                required:
+                - data
+        '422':
+          description: invalid topic, times, image URL or image file; both an image
+            URL and a file; or Backblaze not configured (`backblaze_not_configured`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: the Backblaze upload failed (`backblaze_request_failed`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Moderator and up or the service
+            token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    topic:
+                      type: string
+                      maxLength: 100
+                    starts_at:
+                      type: string
+                      format: date-time
+                    ends_at:
+                      type: string
+                      format: date-time
+                    image_url:
+                      type: string
+                      nullable: true
+                      maxLength: 1000
+                    image:
+                      type: string
+                      format: binary
+                      description: 'multipart only: the image file.'
+                  required:
+                  - topic
+                  - starts_at
+                  - ends_at
+              required:
+              - data
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    topic:
+                      type: string
+                      maxLength: 100
+                    starts_at:
+                      type: string
+                      format: date-time
+                    ends_at:
+                      type: string
+                      format: date-time
+                    image_url:
+                      type: string
+                      nullable: true
+                      maxLength: 1000
+                    image:
+                      type: string
+                      format: binary
+                      description: 'multipart only: the image file.'
+                  required:
+                  - topic
+                  - starts_at
+                  - ends_at
+              required:
+              - data
+        required: true
+  "/api/v1/live_events/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: LiveEvent id.
+    get:
+      summary: Get a live event
+      tags:
+      - Live Events
+      description: Moderators and up, and the service.
+      responses:
+        '200':
+          description: the live event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/LiveEvent"
+                required:
+                - data
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Moderator and up or the service
+            token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Record a live event's Discord thread, event and status
+      tags:
+      - Live Events
+      description: 'Service only (the bot). Records each step of `live_event_create`
+        as it is done: the thread id with status `thread_created`, then the event
+        id with `created`, or `failed`. A retried job reads the event first and skips
+        the steps whose id is already set. Other fields are ignored.'
+      parameters: []
+      responses:
+        '200':
+          description: the updated live event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/LiveEvent"
+                required:
+                - data
+        '422':
+          description: unknown status or an id that is not a Discord snowflake
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    discord_thread_id:
+                      type: string
+                      pattern: "^\\d{1,30}$"
+                    discord_event_id:
+                      type: string
+                      pattern: "^\\d{1,30}$"
+                    status:
+                      type: string
+                      enum:
+                      - queued
+                      - thread_created
+                      - created
+                      - failed
+              required:
+              - data
+        required: true
+  "/api/v1/memberscan":
+    post:
+      summary: Start a memberscan
+      tags:
+      - Bot Jobs
+      description: 'Superadmin only (the service token passes too). Queues a `memberscan`
+        bot job, as the bot''s `/superadmin memberscan`: the bot fetches every server
+        member, updates them and marks the rest departed, then reports its counts
+        as the job''s `result_text`. The job has a 30 minute claim lease. Payload:
+        `{}`. Returns the queued job; poll `GET /bot_jobs/{id}`.'
+      responses:
+        '202':
+          description: memberscan job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/modes":
     get:
       summary: List modes
@@ -13385,14 +14407,29 @@ paths:
       description: 'Removes the given user''s nomination for the round, along with
         any votes cast on it. Owner-gated like the upsert: service/admin may remove
         any user''s at any time, a user session only their own and only while the
-        round''s nomination window is open.'
+        round''s nomination window is open. A signed-in Admin or Superadmin removing
+        someone else''s nomination must pass `reason` (1 to 250 characters); the game
+        title and nominator are captured first and a `nomination_deleted` bot job
+        announces the removal, with the refreshed list, in the nomination channel
+        (no DM to the nominator). Owners and the service keep the plain delete: no
+        reason needed, no job. `meta.announce_job_id` is that job (null when none
+        was queued), for polling `GET /api/v1/bot_jobs/{id}`.'
+      parameters:
+      - name: reason
+        in: query
+        schema:
+          type: string
+          maxLength: 250
+        required: false
+        description: Why the nomination was removed. Required when an Admin removes
+          someone else's nomination; ignored otherwise.
       responses:
         '200':
           description: deleted
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/DeletedResponse"
+                "$ref": "#/components/schemas/NominationDeletedResponse"
         '403':
           description: forbidden — caller is neither the named user nor admin/service
           content:
@@ -13400,8 +14437,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`nominations_closed` — outside the nomination window (non-admin
-            callers)"
+          description: "`nominations_closed` outside the window (non-admin callers),
+            or `reason_required` / `reason_too_long` for an Admin removing someone
+            else's"
           content:
             application/json:
               schema:
@@ -13641,14 +14679,29 @@ paths:
       description: 'Removes the given user''s nomination for the round, along with
         any votes cast on it. Owner-gated like the upsert: service/admin may remove
         any user''s at any time, a user session only their own and only while the
-        round''s nomination window is open.'
+        round''s nomination window is open. A signed-in Admin or Superadmin removing
+        someone else''s nomination must pass `reason` (1 to 250 characters); the game
+        title and nominator are captured first and a `nomination_deleted` bot job
+        announces the removal, with the refreshed list, in the nomination channel
+        (no DM to the nominator). Owners and the service keep the plain delete: no
+        reason needed, no job. `meta.announce_job_id` is that job (null when none
+        was queued), for polling `GET /api/v1/bot_jobs/{id}`.'
+      parameters:
+      - name: reason
+        in: query
+        schema:
+          type: string
+          maxLength: 250
+        required: false
+        description: Why the nomination was removed. Required when an Admin removes
+          someone else's nomination; ignored otherwise.
       responses:
         '200':
           description: deleted
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/DeletedResponse"
+                "$ref": "#/components/schemas/NominationDeletedResponse"
         '403':
           description: forbidden — caller is neither the named user nor admin/service
           content:
@@ -13656,8 +14709,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`nominations_closed` — outside the nomination window (non-admin
-            callers)"
+          description: "`nominations_closed` outside the window (non-admin callers),
+            or `reason_required` / `reason_too_long` for an Admin removing someone
+            else's"
           content:
             application/json:
               schema:
@@ -14219,6 +15273,97 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/nr_gotm_entries/rounds":
+    post:
+      summary: Create a whole Non-RPG Game of the Month round
+      tags:
+      - Non-Retro GOTM
+      description: Admin/service-only. Inserts every game of a new round in one transaction,
+        numbering the slots (`game_index`) from 0 in list order. Refused (422, nothing
+        saved) when the round number is not a positive integer, `month_year` is blank,
+        `games` is empty, a game has no `gamedb_game_id` or names a game that does
+        not exist, or the round already has entries. Queues the `gotm_cache_reload`
+        bot job (`{ category, round_number }`) so the bot reloads the round; `meta.reload_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
+      parameters: []
+      responses:
+        '201':
+          description: round created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NrGotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
+        '422':
+          description: invalid round or game; nothing was saved
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — caller is not an admin or service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    round_number:
+                      type: integer
+                      minimum: 1
+                      description: The new round's number; must have no entries yet.
+                    month_year:
+                      type: string
+                      example: November 2026
+                      description: Human-readable month/year label for the round.
+                    games:
+                      type: array
+                      minItems: 1
+                      description: The round's games in slot order.
+                      items:
+                        type: object
+                        properties:
+                          gamedb_game_id:
+                            type: integer
+                            description: An existing GameDB game (gamedb_games.game_id).
+                          reddit_url:
+                            type: string
+                            nullable: true
+                            description: Optional link to the game's Reddit thread.
+                        required:
+                        - gamedb_game_id
+                  required:
+                  - round_number
+                  - month_year
+                  - games
+              required:
+              - data
+        required: true
   "/api/v1/nr_gotm_entries/{id}":
     parameters:
     - name: id
@@ -14265,7 +15410,11 @@ paths:
       tags:
       - Non-Retro GOTM
       description: Admin/service-only. Updates the mutable fields (`reddit_url`, `gamedb_game_id`,
-        `voting_results_message_id`). The round identity is fixed once created.
+        `voting_results_message_id`). The round identity is fixed once created. A
+        signed-in staff edit also queues the `gotm_cache_reload` bot job (`{ category,
+        round_number }`); the service's own edits do not, since the bot updates its
+        cache itself. `meta.reload_job_id` is that job (null when none was queued),
+        for polling `GET /api/v1/bot_jobs/{id}`.
       parameters: []
       responses:
         '200':
@@ -14277,6 +15426,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/NrGotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '403':
           description: forbidden — caller is not an admin or service
           content:
@@ -14328,7 +15479,7 @@ paths:
       summary: Replace a Non-Retro GOTM entry (alias)
       tags:
       - Non-Retro GOTM
-      description: Admin/service-only. Alias for PATCH.
+      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`.
       parameters: []
       responses:
         '200':
@@ -14340,6 +15491,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/NrGotmEntry"
+                  meta:
+                    "$ref": "#/components/schemas/GotmReloadMeta"
         '401':
           description: unauthenticated
           content:
@@ -17332,7 +18485,8 @@ paths:
       tags:
       - Search Synonyms
       description: Synonym groups — each group is an equivalence class that its terms
-        belong to. Pass `q` to search for groups by one of their terms.
+        belong to. Pass `q` to search for groups by one of their terms, and `include=terms`
+        to get each group's terms in the same response.
       parameters:
       - name: q
         in: query
@@ -17341,6 +18495,15 @@ paths:
         required: false
         description: 'Free-text search: returns groups having a term that matches
           `q` by literal text (case-insensitive) or normalised key.'
+      - name: include
+        in: query
+        schema:
+          type: string
+          enum:
+          - terms
+        required: false
+        description: Pass `terms` to embed each group's terms (sorted by text) under
+          `terms`.
       - name: page
         in: query
         schema:
@@ -17453,6 +18616,16 @@ paths:
       summary: Show a synonym group
       tags:
       - Search Synonyms
+      parameters:
+      - name: include
+        in: query
+        schema:
+          type: string
+          enum:
+          - terms
+        required: false
+        description: Pass `terms` to embed each group's terms (sorted by text) under
+          `terms`.
       responses:
         '200':
           description: group detail
@@ -17645,6 +18818,87 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    put:
+      summary: Replace all terms in a synonym group
+      tags:
+      - Search Synonyms
+      description: Swaps every term in the group for the given list in one transaction,
+        so the group is never left half saved. Restricted to admins (Admin and up)
+        or the service account. Terms are trimmed and blanks dropped; a term that
+        normalises like an earlier one is skipped. Each term needs a letter or number
+        and the group needs at least two different terms, otherwise nothing changes
+        and 422 is returned. A signed-in caller is recorded as the terms' creator;
+        only the service account may pass `created_by`. Returns the group with its
+        new terms.
+      parameters: []
+      responses:
+        '200':
+          description: terms replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/SearchSynonymGroupWithTerms"
+                required:
+                - data
+        '400':
+          description: data envelope missing
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden, admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: group not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid terms (not a list, a term without letters or numbers,
+            or fewer than two)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    terms:
+                      type: array
+                      items:
+                        type: string
+                      minItems: 2
+                      description: The group's complete new term list.
+                    created_by:
+                      type: string
+                      nullable: true
+                      description: 'Service account only: the creator id to record.
+                        Ignored for signed-in callers.'
+                  required:
+                  - terms
+              required:
+              - data
+        required: true
   "/api/v1/search_synonyms":
     get:
       summary: List search synonym terms
@@ -20769,6 +22023,62 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
   "/api/v1/threads":
+    get:
+      summary: Search Discord threads by name
+      tags:
+      - Threads
+      description: The thread link picker. Regulars, or Moderator and up (and the
+        service). Threads whose `thread_name` contains `q` (case-insensitive; blank
+        lists every thread), newest first, each with its id, name and the games it
+        is linked to.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Text the thread name must contain.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: matching threads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ThreadSearchResult"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '403':
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
     post:
       summary: Upsert a Discord thread
       tags:
@@ -20974,9 +22284,10 @@ paths:
       summary: Link a thread to a game
       tags:
       - Threads
-      description: Admin/service-only. Idempotent merge — links the thread to the
-        game (or returns the existing link) and recomputes the thread's derived `gamedb_game_id`
-        (the MIN of its links). 201 when newly linked, 200 when it already was.
+      description: Regulars, or Moderator and up (and the service). Idempotent merge
+        — links the thread to the game (or returns the existing link) and recomputes
+        the thread's derived `gamedb_game_id` (the MIN of its links). 201 when newly
+        linked, 200 when it already was.
       parameters: []
       responses:
         '201':
@@ -20998,7 +22309,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/ThreadGameLink"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
           content:
             application/json:
               schema:
@@ -21042,8 +22354,8 @@ paths:
       summary: Remove all of a thread's game links
       tags:
       - Threads
-      description: Admin/service-only. Removes every game link from the thread and
-        resets the derived `gamedb_game_id` to null.
+      description: Regulars, or Moderator and up (and the service). Removes every
+        game link from the thread and resets the derived `gamedb_game_id` to null.
       responses:
         '200':
           description: links removed
@@ -21052,7 +22364,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/DeletedCountResponse"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
           content:
             application/json:
               schema:
@@ -21087,8 +22400,9 @@ paths:
       summary: Remove one game link from a thread
       tags:
       - Threads
-      description: Admin/service-only. Removes a single thread→game link and recomputes
-        the thread's derived `gamedb_game_id` (the MIN of the remaining links).
+      description: Regulars, or Moderator and up (and the service). Removes a single
+        thread→game link and recomputes the thread's derived `gamedb_game_id` (the
+        MIN of the remaining links).
       responses:
         '200':
           description: link removed
@@ -21097,7 +22411,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/DeletedCountResponse"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
           content:
             application/json:
               schema:
@@ -22138,7 +23453,7 @@ paths:
       description: 'The round''s votes with voter identities, oldest first. Votes
         are anonymous while the voting window is open: until voting has ended (for
         `runoff=true`, until the runoff has closed) this list is admin/service-only
-        (403 otherwise). Use the tally for anonymous counts.'
+        (403 otherwise). The tally has the anonymous counts.'
       parameters:
       - name: page
         in: query
@@ -22327,11 +23642,14 @@ paths:
       summary: Tally GOTM votes for a round (anonymous)
       tags:
       - GOTM
-      description: Anonymous vote counts per nomination, most-voted first. Open to
-        any authenticated caller at any time — no voter identities. Nominations with
-        zero votes have no row; merge against the round's nominations list. `meta.cap`
-        is the per-user vote cap for the round (half the distinct nominated games,
-        rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".
+      description: 'Anonymous vote counts per nomination, most-voted first, no voter
+        identities. Until the ballot''s voting has ended (for `runoff=true`, until
+        the runoff has closed) the counts are Admin/service only: any other caller
+        gets an empty `data` and `meta.counts_hidden: true`. Once it has ended they
+        open to any authenticated caller. Nominations with zero votes have no row;
+        merge against the round''s nominations list. `meta.cap` is the per-user vote
+        cap for the round (half the distinct nominated games, rounded down, min 1;
+        1 for the runoff), for rendering "vote for up to N".'
       parameters:
       - name: runoff
         in: query
@@ -22354,17 +23672,7 @@ paths:
                     items:
                       "$ref": "#/components/schemas/VoteTally"
                   meta:
-                    type: object
-                    properties:
-                      cap:
-                        type: integer
-                        description: Per-user vote cap for this round's ballot.
-                      runoff:
-                        type: boolean
-                        description: Whether this is the runoff ballot's tally.
-                    required:
-                    - cap
-                    - runoff
+                    "$ref": "#/components/schemas/VoteTallyMeta"
         '401':
           description: unauthenticated
           content:
@@ -22442,7 +23750,7 @@ paths:
       description: 'The round''s votes with voter identities, oldest first. Votes
         are anonymous while the voting window is open: until voting has ended (for
         `runoff=true`, until the runoff has closed) this list is admin/service-only
-        (403 otherwise). Use the tally for anonymous counts.'
+        (403 otherwise). The tally has the anonymous counts.'
       parameters:
       - name: page
         in: query
@@ -22631,11 +23939,14 @@ paths:
       summary: Tally Non-RPG GOTM votes for a round (anonymous)
       tags:
       - GOTM
-      description: Anonymous vote counts per nomination, most-voted first. Open to
-        any authenticated caller at any time — no voter identities. Nominations with
-        zero votes have no row; merge against the round's nominations list. `meta.cap`
-        is the per-user vote cap for the round (half the distinct nominated games,
-        rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".
+      description: 'Anonymous vote counts per nomination, most-voted first, no voter
+        identities. Until the ballot''s voting has ended (for `runoff=true`, until
+        the runoff has closed) the counts are Admin/service only: any other caller
+        gets an empty `data` and `meta.counts_hidden: true`. Once it has ended they
+        open to any authenticated caller. Nominations with zero votes have no row;
+        merge against the round''s nominations list. `meta.cap` is the per-user vote
+        cap for the round (half the distinct nominated games, rounded down, min 1;
+        1 for the runoff), for rendering "vote for up to N".'
       parameters:
       - name: runoff
         in: query
@@ -22658,17 +23969,7 @@ paths:
                     items:
                       "$ref": "#/components/schemas/VoteTally"
                   meta:
-                    type: object
-                    properties:
-                      cap:
-                        type: integer
-                        description: Per-user vote cap for this round's ballot.
-                      runoff:
-                        type: boolean
-                        description: Whether this is the runoff ballot's tally.
-                    required:
-                    - cap
-                    - runoff
+                    "$ref": "#/components/schemas/VoteTallyMeta"
         '401':
           description: unauthenticated
           content:
@@ -23286,8 +24587,10 @@ paths:
       - Voting Rounds
       description: Admin or service. Moving `voting_opens_at` without a `voting_closes_at`
         keeps the default window (through the end of that weekend's Sunday, US Eastern).
-        Setting `voting_closes_at` to now closes voting early. 422 `round_decided`
-        once the round is decided.
+        Setting `voting_closes_at` to now (or earlier) closes voting early, and is
+        refused with 422 `voting_not_open` unless voting is open. 422 `round_decided`
+        once the round is decided. Each change queues a `voting_poll_wakeup` bot job
+        so the bot acts on it within seconds.
       parameters: []
       responses:
         '200':
@@ -23300,7 +24603,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/VotingRound"
         '422':
-          description: round decided or invalid window
+          description: round decided, voting not open for a close, or invalid window
           content:
             application/json:
               schema:
@@ -23351,8 +24654,10 @@ paths:
         as its winners; once no category is tied the round is decided and the next
         one scheduled. A tied category normally goes to a member runoff first; this
         is the fallback when the runoff ties again, and also settles a category early
-        while its runoff is open. 422 `no_tie` when the category is not tied, `invalid_pick`
-        for a game outside the tie.
+        while its runoff is open. Queues a `voting_tie_broken` bot job (round, category
+        and winning games, for the Discord announcement) and a `voting_poll_wakeup`.
+        422 `no_tie` when the category is not tied, `invalid_pick` for a game outside
+        the tie.
       parameters: []
       responses:
         '200':
@@ -23401,6 +24706,107 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/voting_rounds/{id}/publish_results":
+    parameters:
+    - name: id
+      in: path
+      description: Round number
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Publish a round's results
+      tags:
+      - Voting Rounds
+      description: Admin or service. Queues a `voting_results_publish` bot job (`{
+        round_number, month_label }`) that posts the results and creates or renames
+        the winner thread in Discord. Refused with 422 `voting_not_ended` until voting
+        has ended. May be repeated (each call queues a new job), so a failed post
+        can be retried. Works whether or not voting automation is on. A round from
+        before voting rounds existed takes its month from its GOTM entries; 404 when
+        neither exists. Poll `GET /bot_jobs/{id}` for the outcome.
+      responses:
+        '202':
+          description: results post queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '422':
+          description: voting has not ended
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such round
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an admin or the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_rounds/current/repost_panels":
+    post:
+      summary: Repost the voting panels
+      tags:
+      - Voting Rounds
+      description: Admin or service. Queues a `voting_panels_repost` bot job (`{ round_number
+        }`) that posts the current round's voting panels to announcements again. Refused
+        with 422 `voting_not_open` unless voting is open; 404 when no round is scheduled.
+        Works whether or not voting automation is on. Poll `GET /bot_jobs/{id}` for
+        the outcome.
+      responses:
+        '202':
+          description: panel repost queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '422':
+          description: voting is not open
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no round scheduled
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an admin or the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/wizard_sessions":
     parameters:
     - name: user_id

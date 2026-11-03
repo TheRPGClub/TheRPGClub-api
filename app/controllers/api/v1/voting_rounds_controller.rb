@@ -7,7 +7,7 @@ module Api
     # admin/service. Nothing creates rounds by hand: deciding a round schedules
     # the next one.
     class VotingRoundsController < ApplicationController
-      before_action :require_admin_or_service!, only: %i[update resolve_tie]
+      before_action :require_admin_or_service!, only: %i[update resolve_tie publish_results repost_panels]
 
       # Rescheduling fields. Moving the open without a close keeps the default
       # weekend window; "close voting now" is `voting_closes_at: <now>`.
@@ -35,18 +35,35 @@ module Api
             status: :unprocessable_entity
         end
 
-        round.update!(request_data.slice(*UPDATE_ATTRS))
+        attrs = request_data.slice(*UPDATE_ATTRS)
+        closing = closes_now?(attrs["voting_closes_at"])
+        if closing && !round.voting_open?
+          return render json: { error: "voting_not_open", message: "voting for round #{round.round_number} is not open" },
+            status: :unprocessable_entity
+        end
+
+        VotingRound.transaction do
+          round.update!(attrs)
+          if current_principal.discord_user?
+            queue_poll_wakeup!(round, closing ? "voting on round #{round.round_number} was closed" :
+              "round #{round.round_number} was rescheduled")
+          end
+        end
         render_round(round)
       end
 
       # POST /api/v1/voting_rounds/:id/resolve_tie { data: { category, gamedb_game_ids } }
       def resolve_tie
         data = request_data
-        round = Voting::ResolveTie.new(
-          VotingRound.find(params[:id]),
-          category: data["category"],
-          gamedb_game_ids: data["gamedb_game_ids"]
-        ).call
+        round = VotingRound.transaction do
+          resolved = Voting::ResolveTie.new(
+            VotingRound.find(params[:id]),
+            category: data["category"],
+            gamedb_game_ids: data["gamedb_game_ids"]
+          ).call
+          queue_tie_broken!(resolved, data["category"].to_s, data["gamedb_game_ids"]) if current_principal.discord_user?
+          resolved
+        end
         render_round(round)
       rescue Voting::ResolveTie::NoTieError => error
         render json: { error: "no_tie", message: error.message }, status: :unprocessable_entity
@@ -54,7 +71,84 @@ module Api
         render json: { error: "invalid_pick", message: error.message }, status: :unprocessable_entity
       end
 
+      # POST /api/v1/voting_rounds/:id/publish_results: the manual results
+      # post (and winner thread), once voting has ended. Repeatable, so a
+      # Discord failure can be retried. Works whatever the automation flag
+      # says. A round from before voting_rounds existed takes its month from
+      # its GOTM entries. Allowed during a runoff or a pending tie, as the bot's
+      # /admin voting-results publish is: the main vote's results are final
+      # once it closes, a tie in them is announced as going to the runoff (or
+      # the admins), and the runoff's results post on their own.
+      def publish_results
+        number = params[:id].to_i
+        round = VotingRound.find_by(round_number: number)
+        month = round&.month_year || GotmEntry.where(round_number: number).pick(:month_year)
+        raise ActiveRecord::RecordNotFound, "no voting round or GOTM entry for round #{number}" if month.blank?
+
+        unless VotingRound.ended?(number)
+          return render json: { error: "voting_not_ended", message: "voting for round #{number} has not ended" },
+            status: :unprocessable_entity
+        end
+
+        render_job BotJob.enqueue!(kind: "voting_results_publish",
+          summary: "Publish the results of round #{number} (#{month})",
+          payload: { round_number: number, month_label: month }, requested_by: requester_id)
+      end
+
+      # POST /api/v1/voting_rounds/current/repost_panels: posts the voting
+      # panels again, while voting is open. Works whatever the automation
+      # flag says.
+      def repost_panels
+        round = VotingRound.current or raise ActiveRecord::RecordNotFound, "no voting round is scheduled"
+        unless round.voting_open?
+          return render json: { error: "voting_not_open", message: "voting for round #{round.round_number} is not open" },
+            status: :unprocessable_entity
+        end
+
+        render_job BotJob.enqueue!(kind: "voting_panels_repost",
+          summary: "Repost the voting panels for round #{round.round_number}",
+          payload: { round_number: round.round_number }, requested_by: requester_id)
+      end
+
       private
+
+      # 202: the bot carries the job out; poll GET /bot_jobs/:id for its outcome.
+      def render_job(job)
+        render json: { data: BotJobResource.new(job).serializable_hash }, status: :accepted
+      end
+
+      # "Close voting now" is a close moved to the present (or the past).
+      def closes_now?(value)
+        return false if value.blank?
+
+        at = Time.zone.parse(value.to_s)
+        at.present? && at <= Time.current
+      rescue ArgumentError
+        false
+      end
+
+      # The bot's voting poller sleeps until the API's next_poll_at (up to an
+      # hour); a staff change to a round wakes it so panels and results go out
+      # now. The bot's handler takes no payload. Not queued for the service:
+      # the bot made the change, and announces its own tie breaks inline.
+      def queue_poll_wakeup!(round, what)
+        BotJob.enqueue!(kind: "voting_poll_wakeup", summary: "Wake the voting poller: #{what}", payload: {},
+          requested_by: requester_id)
+      end
+
+      # Tells Discord who won the tie (the bot's announceTieBreak), then wakes
+      # the poller for the round_decided event a last tie leaves behind.
+      def queue_tie_broken!(round, category, game_ids)
+        label = Gotm::RoundCreate.label(category)
+        games = GamedbGame.where(game_id: Array(game_ids).map(&:to_i)).order(:game_id)
+          .map { |game| { game_id: game.game_id, title: game.title } }
+        BotJob.enqueue!(kind: "voting_tie_broken",
+          summary: "Announce the #{label} tie break for round #{round.round_number}: " \
+                   "#{games.map { |game| game[:title] }.join(', ')}",
+          payload: { round_number: round.round_number, category: category, games: games },
+          requested_by: requester_id)
+        queue_poll_wakeup!(round, "the #{label} tie for round #{round.round_number} was broken")
+      end
 
       def render_round(round)
         render json: { data: VotingRoundResource.new(round).serializable_hash }

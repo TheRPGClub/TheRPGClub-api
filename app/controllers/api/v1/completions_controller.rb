@@ -3,7 +3,10 @@
 module Api
   module V1
     class CompletionsController < ApplicationController
-      before_action :require_owner!, only: %i[export create update destroy]
+      before_action :require_owner!, only: %i[export update destroy]
+      # A Superadmin may also log a Game Completion for another member (the
+      # bot's Superadmin completion command).
+      before_action :require_owner_or_superadmin!, only: :create
 
       # Caller-settable columns. `user_id` comes from the path (or the existing
       # record) and the key is generated, so neither is accepted in the body.
@@ -94,10 +97,28 @@ module Api
         render json: { data: CompletionEntryResource.new(record).serializable_hash }
       end
 
+      # `data.announce` (optional boolean) queues `completion_announce` so the
+      # bot posts it to the completions channel; `meta.announce_job_id` is that
+      # job (null when none was queued). When a Superadmin logs one for another
+      # member the game also leaves that member's Now Playing, as the bot does.
       def create
-        record = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
+        announce = request_data["announce"]
+        unless [ nil, true, false ].include?(announce)
+          return render(json: { error: "announce must be a boolean" }, status: :unprocessable_content)
+        end
+
+        RpgClubUser.find(params[:user_id]) if logged_for_another_member?
+
+        record, announce_job = UserGameCompletion.transaction do
+          completion = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
+          if logged_for_another_member?
+            UserNowPlaying.where(user_id: completion.user_id, gamedb_game_id: completion.gamedb_game_id).delete_all
+          end
+          [ completion, (enqueue_announce(completion) if announce) ]
+        end
         record.reload
-        render json: { data: CompletionEntryResource.new(record).serializable_hash }, status: :created
+        render json: { data: CompletionEntryResource.new(record).serializable_hash,
+                       meta: { announce_job_id: announce_job&.id } }, status: :created
       end
 
       def update
@@ -113,6 +134,33 @@ module Api
       end
 
       private
+
+      def require_owner_or_superadmin!
+        return true if current_principal&.discord_user? && superadmin?
+
+        require_owner!
+      end
+
+      # A signed-in member logging a completion under someone else's id (only
+      # a Superadmin gets past the gate to do that).
+      def logged_for_another_member?
+        current_principal&.discord_user? && current_principal.id.to_s != params[:user_id].to_s
+      end
+
+      def enqueue_announce(completion)
+        actor_id = requester_id
+        member = completion.user
+        name = member&.global_name.presence || member&.username.presence || completion.user_id
+        BotJob.enqueue!(
+          kind: "completion_announce",
+          summary: %(Announce #{name}'s Game Completion of "#{completion.game&.title}"),
+          payload: {
+            completion_id: completion.completion_id, user_id: completion.user_id,
+            game_id: completion.gamedb_game_id, actor_user_id: actor_id
+          },
+          requested_by: actor_id
+        )
+      end
 
       def writable_data
         request_data.slice(*WRITABLE_ATTRS)

@@ -57,26 +57,47 @@ RSpec.describe 'api/v1/completions', type: :request do
 
     post 'Record a completion' do
       tags 'Completions'
-      description 'Owner-only. `gamedb_game_id` and `completion_type` are required; `completed_at`, ' \
-                  '`final_playtime_hrs`, `platform_id` and `note` are optional.'
+      description 'The owner, a Superadmin (for any member) or the service. `gamedb_game_id` and ' \
+                  '`completion_type` are required; `completed_at`, `final_playtime_hrs`, `platform_id` and ' \
+                  '`note` are optional. `announce: true` queues a `completion_announce` bot job (payload ' \
+                  '`completion_id`, `user_id`, `game_id`, `actor_user_id`) so the bot posts the completion; ' \
+                  '`meta.announce_job_id` is that job (null when none was queued), for polling ' \
+                  '`GET /api/v1/bot_jobs/{id}`. ' \
+                  'When a Superadmin logs one for another member, the game is also removed from that ' \
+                  "member's Now Playing."
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id completion_type] } },
+        properties: {
+          data: {
+            type: :object,
+            properties: writable.merge(
+              announce: { type: :boolean, description: 'Queue a bot announcement of the completion. Defaults to false.' }
+            ),
+            required: %w[gamedb_game_id completion_type]
+          }
+        },
         required: %w[data]
       }
 
       response '201', 'completion created' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionEntry' } }
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/CompletionEntry' },
+          meta: { '$ref' => '#/components/schemas/CompletionCreateMeta' }
+        }
       end
 
-      response '403', 'forbidden — caller is not the owner' do
+      response '403', 'forbidden: caller is not the owner, a Superadmin or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '404', 'a Superadmin named a member who does not exist' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'validation failed, or `announce` is not a boolean' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

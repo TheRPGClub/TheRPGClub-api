@@ -6,10 +6,27 @@ module Api
     # (upsertThread / setSkipLinking / link merge+remove) — this controller lets
     # it do so through the API as the service principal instead of via direct
     # SQL. Writes are service/admin-gated; reads are open to any authenticated
-    # caller, matching the rest of the bot-managed read endpoints. The link
-    # writes live in ThreadGameLinksController.
+    # caller, matching the rest of the bot-managed read endpoints, except the
+    # name search, which feeds the thread link picker and so shares its
+    # Regulars-or-staff gate. The link writes live in ThreadGameLinksController.
     class ThreadsController < ApplicationController
       before_action :require_admin_or_service!, only: %i[create update]
+      before_action :require_regular_or_staff!, only: :index
+
+      # GET /api/v1/threads?q=
+      #
+      # Thread search for the link picker: threads whose name contains `q`
+      # (any case; blank lists them all), newest first, each with the games it
+      # is linked to.
+      def index
+        scope = DiscordThread.includes(:games)
+        if params[:q].present?
+          term = "%#{ActiveRecord::Base.sanitize_sql_like(params[:q].to_s.strip)}%"
+          scope = scope.where("threads.thread_name ILIKE ?", term)
+        end
+        render_collection(scope, resource: ThreadSearchResultResource,
+          default_order: { created_at: :desc, thread_id: :desc })
+      end
 
       # GET /api/v1/games/:id/threads
       #

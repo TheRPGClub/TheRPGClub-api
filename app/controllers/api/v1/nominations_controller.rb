@@ -41,6 +41,9 @@ module Api
       # so the destroy paths below clear them by hand to avoid orphaned
       # ballots.
       VOTE_MODELS = { GotmNomination => GotmVote, NrGotmNomination => NrGotmVote }.freeze
+      CATEGORIES = { GotmNomination => "gotm", NrGotmNomination => "nr_gotm" }.freeze
+      # The bot's own limit on the deletion reason modal.
+      REMOVAL_REASON_MAX = 250
 
       # GET /api/v1/gotm_entries/:round/nominations
       def gotm
@@ -132,13 +135,65 @@ module Api
       # DELETE /.../:user_id — removes one user's nomination for the round,
       # along with any votes cast on it. Votes on a different nomination of
       # the same game are untouched — they reference their own nomination.
+      #
+      # A staff member removing someone else's nomination (#332) must give a
+      # `reason`, and the bot announces the removal in the nomination channel
+      # (no DM to the nominator). Owners and the service keep the plain
+      # delete: the bot announces its own deletes inline. `meta.announce_job_id`
+      # is that job, null when none was queued; the bot reads only `deleted`.
       def destroy_nomination(model)
-        record = round_scope(model).find_by!(user_id: params[:user_id])
-        model.transaction do
+        record = round_scope(model).preload(:user, :game).find_by!(user_id: params[:user_id])
+        reason = params[:reason].to_s.strip
+        announce = staff_removal?(record)
+        return if announce && !valid_removal_reason?(reason)
+
+        announce_job = model.transaction do
           VOTE_MODELS.fetch(model).where(nomination_id: record.nomination_id).delete_all
           record.destroy!
+          enqueue_removal_notice(model, record, reason) if announce
         end
-        render json: { deleted: true }
+        render json: { deleted: true, meta: { announce_job_id: announce_job&.id } }
+      end
+
+      # A signed-in member (necessarily Admin and up, past the owner gate)
+      # deleting a nomination that is not theirs.
+      def staff_removal?(record)
+        current_principal.discord_user? && current_principal.id.to_s != record.user_id.to_s
+      end
+
+      def valid_removal_reason?(reason)
+        error = if reason.blank? then "reason_required"
+        elsif reason.length > REMOVAL_REASON_MAX then "reason_too_long"
+        end
+        return true unless error
+
+        render json: {
+          error: error,
+          message: "removing someone else's nomination needs a reason of 1 to #{REMOVAL_REASON_MAX} characters"
+        }, status: :unprocessable_entity
+        false
+      end
+
+      # Payload (kind nomination_deleted): { category, round_number, user_id,
+      # game_title, deleted_by_user_id, reason }, captured before the delete.
+      # game_title is null for a GOTM nomination without a game.
+      def enqueue_removal_notice(model, record, reason)
+        category = CATEGORIES.fetch(model)
+        title = record.game&.title
+        nominator = record.user&.username.presence || record.user_id
+        game = title ? %( "#{title}") : ""
+        summary = "Announce that #{nominator}'s #{Gotm::RoundCreate.label(category)} round " \
+          "#{record.round_number} nomination#{game} was removed"
+
+        BotJob.enqueue!(
+          kind: "nomination_deleted",
+          summary: summary,
+          payload: {
+            category: category, round_number: record.round_number, user_id: record.user_id,
+            game_title: title, deleted_by_user_id: current_principal.id.to_s, reason: reason
+          },
+          requested_by: current_principal.id
+        )
       end
 
       # DELETE /.../nominations — clears every nomination for the round (the

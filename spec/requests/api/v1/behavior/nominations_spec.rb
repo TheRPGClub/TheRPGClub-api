@@ -247,7 +247,7 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
       delete "/api/v1/gotm_entries/#{round}/nominations/#{target.user_id}", headers: service_headers
 
       expect(response).to have_http_status(:ok)
-      expect(json).to eq("deleted" => true)
+      expect(json).to eq("deleted" => true, "meta" => { "announce_job_id" => nil })
       expect(GotmNomination.exists?(target.nomination_id)).to be(false)
       expect(GotmVote.exists?(target_vote.vote_id)).to be(false)
       expect(GotmVote.exists?(other_vote.vote_id)).to be(true)
@@ -292,6 +292,158 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
         headers: service_headers
 
       expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  # An Admin removing someone else's nomination (#332): a reason is required,
+  # and a nomination_deleted job tells the nomination channel. Owners and the
+  # service keep the plain delete with no job.
+  describe "DELETE /api/v1/gotm_entries/:round/nominations/:user_id with a reason" do
+    let(:nominator) { create(:user, username: "chrono_fan") }
+    let(:game) { create(:game, title: "Chrono Trigger") }
+
+    def nomination_in_open_round!
+      create(:gotm_nomination, round_number: open_nomination_round!, user: nominator, game: game)
+    end
+
+    callers = {
+      "anonymous" => [ nil, :unauthorized, false ],
+      "a plain member" => [ -> { auth_headers_for(create(:user)) }, :forbidden, false ],
+      "a Members role holder" => [ -> { auth_headers_for(create(:user, role_member: true)) }, :forbidden, false ],
+      "a Regulars role holder" => [ -> { auth_headers_for(create(:user, role_regular: true)) }, :forbidden, false ],
+      "a Moderator" => [ -> { auth_headers_for(create(:user, role_moderator: true)) }, :forbidden, false ],
+      "an Admin" => [ -> { auth_headers_for(create(:user, :admin)) }, :ok, true ],
+      "a Superadmin" => [ -> { auth_headers_for(create(:user), is_dev: true) }, :ok, true ],
+      "the service" => [ -> { service_headers }, :ok, false ]
+    }
+
+    callers.each do |label, (headers_for, status, queues_job)|
+      it "answers #{status} to #{label}#{queues_job ? ' and queues the announcement' : ''}" do
+        nomination = nomination_in_open_round!
+        headers = headers_for ? instance_exec(&headers_for) : {}
+
+        expect {
+          delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+            params: { reason: "Not an RPG" }, headers: headers
+        }.to change(BotJob.where(kind: "nomination_deleted"), :count).by(queues_job ? 1 : 0)
+
+        expect(response).to have_http_status(status)
+        expect(GotmNomination.exists?(nomination.nomination_id)).to be(status != :ok)
+      end
+    end
+
+    it "queues nomination_deleted with the details captured before the delete" do
+      nomination = nomination_in_open_round!
+      admin = create(:user, :admin)
+
+      delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+        params: { reason: "  Not an RPG  " }, headers: auth_headers_for(admin)
+
+      expect(response).to have_http_status(:ok)
+      job = BotJob.last
+      expect(json).to eq("deleted" => true, "meta" => { "announce_job_id" => job.id })
+      expect(job.kind).to eq("nomination_deleted")
+      expect(job.payload).to eq(
+        "category" => "gotm",
+        "round_number" => nomination.round_number,
+        "user_id" => nominator.user_id,
+        "game_title" => "Chrono Trigger",
+        "deleted_by_user_id" => admin.user_id,
+        "reason" => "Not an RPG"
+      )
+      expect(job.summary).to eq(
+        %(Announce that chrono_fan's GOTM round #{nomination.round_number} nomination "Chrono Trigger" was removed)
+      )
+      expect(job.requested_by_user_id).to eq(admin.user_id)
+    end
+
+    it "lets an Admin remove a nomination outside the window" do
+      nomination = create(:gotm_nomination, round_number: SecureRandom.random_number(1_000_000_000),
+        user: nominator, game: game)
+
+      delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+        params: { reason: "Late fix" }, headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:ok)
+      expect(BotJob.last.payload).to include("reason" => "Late fix")
+    end
+
+    it "requires a reason when an Admin removes someone else's nomination" do
+      nomination = nomination_in_open_round!
+
+      [ {}, { reason: "   " } ].each do |params|
+        expect {
+          delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+            params: params, headers: auth_headers_for(create(:user, :admin))
+        }.not_to change(BotJob, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json).to include("error" => "reason_required")
+      end
+      expect(GotmNomination.exists?(nomination.nomination_id)).to be(true)
+    end
+
+    it "refuses a reason over 250 characters" do
+      nomination = nomination_in_open_round!
+
+      delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+        params: { reason: "x" * 251 }, headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "reason_too_long")
+      expect(GotmNomination.exists?(nomination.nomination_id)).to be(true)
+    end
+
+    it "keeps the plain delete for an owner withdrawing in the window, with or without a reason" do
+      nomination = nomination_in_open_round!
+
+      expect {
+        delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+          params: { reason: "changed my mind" }, headers: auth_headers_for(nominator)
+      }.not_to change(BotJob, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(json).to eq("deleted" => true, "meta" => { "announce_job_id" => nil })
+      expect(GotmNomination.exists?(nomination.nomination_id)).to be(false)
+    end
+
+    it "keeps the plain delete for an Admin withdrawing their own nomination" do
+      admin = create(:user, :admin)
+      nomination = create(:gotm_nomination, round_number: open_nomination_round!, user: admin)
+
+      expect {
+        delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{admin.user_id}",
+          headers: auth_headers_for(admin)
+      }.not_to change(BotJob, :count)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "sends a null game title when the GOTM nomination has no game" do
+      nomination = create(:gotm_nomination, round_number: open_nomination_round!, user: nominator, game: nil)
+
+      delete "/api/v1/gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+        params: { reason: "Empty pick" }, headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:ok)
+      expect(BotJob.last.payload).to include("game_title" => nil)
+      expect(BotJob.last.summary).to eq(
+        "Announce that chrono_fan's GOTM round #{nomination.round_number} nomination was removed"
+      )
+    end
+
+    it "queues the NR-GOTM category from the NR-GOTM path" do
+      nomination = create(:nr_gotm_nomination, round_number: open_nomination_round!, user: nominator, game: game)
+
+      delete "/api/v1/nr_gotm_entries/#{nomination.round_number}/nominations/#{nominator.user_id}",
+        params: { reason: "Not a non-RPG" }, headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:ok)
+      expect(NrGotmNomination.exists?(nomination.nomination_id)).to be(false)
+      expect(BotJob.last.payload).to include("category" => "nr_gotm", "game_title" => "Chrono Trigger")
+      expect(BotJob.last.summary).to eq(
+        %(Announce that chrono_fan's NR-GOTM round #{nomination.round_number} nomination "Chrono Trigger" was removed)
+      )
     end
   end
 

@@ -7,7 +7,9 @@ module Api
     # manage rounds via the API instead of direct SQL (#98). Each row is one game
     # slot in a round — the bot POSTs once per game for multi-game months.
     class GotmEntriesController < ApplicationController
-      before_action :require_admin_or_service!, only: %i[create update destroy]
+      include GotmRoundWrites
+
+      before_action :require_admin_or_service!, only: %i[create create_round update destroy]
 
       # Settable on create: the round identity plus the game. `month_year`,
       # `game_index` and `gamedb_game_id` are required; `reddit_url` is optional.
@@ -36,34 +38,25 @@ module Api
         render json: { data: GotmEntryResource.new(entry, params: { include_game: include_game? }).serializable_hash }
       end
 
+      # Staff creates and deletes also queue gotm_cache_reload (GotmRoundWrites).
       def create
-        entry = GotmEntry.create!(request_data.slice(*CREATE_ATTRS))
-        entry.reload
-        # The bot's round-setup wizard recording winners decides the round.
-        Voting::LegacySync.winner_recorded(entry.round_number)
-        # GameResource's gotm_won is a live EXISTS(gotm_entries) subquery, but
-        # GamesController#relations_data caches it on an alternate game's
-        # behalf without touching that game -- bump the shared version so
-        # those caches invalidate.
-        Gamedb::GameRelationsCacheVersion.bump!
-        render json: { data: GotmEntryResource.new(entry).serializable_hash }, status: :created
+        create_entry(GotmEntry)
       end
 
+      # A staff edit also queues gotm_cache_reload (GotmRoundWrites).
       def update
-        entry = GotmEntry.find(params[:id])
-        entry.update!(request_data.slice(*UPDATE_ATTRS))
-        entry.reload
-        Gamedb::GameRelationsCacheVersion.bump!
-        render json: { data: GotmEntryResource.new(entry).serializable_hash }
+        update_entry(GotmEntry.find(params[:id]))
       end
 
       def destroy
-        GotmEntry.find(params[:id]).destroy!
-        Gamedb::GameRelationsCacheVersion.bump!
-        render json: { deleted: true }
+        destroy_entry(GotmEntry.find(params[:id]))
       end
 
       private
+
+      def round_category = "gotm"
+
+      def entry_resource = GotmEntryResource
 
       def include_game?
         params[:include].to_s.split(",").map(&:strip).include?("game")

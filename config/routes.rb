@@ -255,7 +255,7 @@ Rails.application.routes.draw do
       resources :release_announcements, only: %i[show create update destroy] do
         member { post "skip" }
       end
-      resources :threads, only: %i[show create update] do
+      resources :threads, only: %i[index show create update] do
         member do
           post "links", to: "thread_game_links#create"
           delete "links", to: "thread_game_links#destroy_all"
@@ -266,8 +266,13 @@ Rails.application.routes.draw do
       resources :gotm_rounds, only: %i[index] do
         collection { get "current" }
       end
-      resources :gotm_entries, only: %i[index show create update destroy]
-      resources :nr_gotm_entries, only: %i[index show create update destroy]
+      # `POST .../rounds` adds a whole round in one transaction (#331).
+      resources :gotm_entries, only: %i[index show create update destroy] do
+        collection { post "rounds", action: :create_round }
+      end
+      resources :nr_gotm_entries, only: %i[index show create update destroy] do
+        collection { post "rounds", action: :create_round }
+      end
       # GOTM / NR-GOTM nominations: the round list (open read) plus single-user
       # read, upsert and round-scoped deletes for the bot's `/nominate`
       # migration (bot parity, #97). These hang off the round, not a nomination
@@ -341,17 +346,34 @@ Rails.application.routes.draw do
       # The backend-owned round lifecycle and the bot's outbox of posts it
       # calls for (see VotingRound, VotingEvent).
       resources :voting_rounds, only: %i[index show update] do
-        collection { get "current" }
-        member { post "resolve_tie" }
+        collection do
+          get "current"
+          post "current/repost_panels", action: :repost_panels
+        end
+        member do
+          post "resolve_tie"
+          post "publish_results"
+        end
       end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
       # The bot job queue (web parity 2): the bot polls, claims and acks
       # (service-only); the requesting member and staff read a job's status.
+      get  "bot_jobs",             to: "bot_jobs#index"
       post "bot_jobs/claim",       to: "bot_jobs#claim"
       post "bot_jobs/:id/done",    to: "bot_jobs#done"
       post "bot_jobs/:id/failed",  to: "bot_jobs#failed"
       get  "bot_jobs/:id",         to: "bot_jobs#show"
+      # The image backfill (Superadmin, #338): start a run, read its progress.
+      get  "image_backfill_runs/latest", to: "image_backfill_runs#latest"
+      resources :image_backfill_runs, only: %i[create show]
+      # Live events (Moderator and up; the bot records its thread and event ids, #336).
+      resources :live_events, only: %i[index show create]
+      patch "live_events/:id", to: "live_events#update"
+      # Superadmin bot actions (#337): the bot says a message, or scans the
+      # guild's members, as a bot job.
+      post "bot_say",    to: "bot_say#create"
+      post "memberscan", to: "memberscan#create"
       # The bot's Achievement Hub Highlights and alerts (service-only).
       get  "achievements/highlights/pending", to: "achievement_highlights#pending"
       post "achievements/highlights/ack",     to: "achievement_highlights#ack"
@@ -377,6 +399,8 @@ Rails.application.routes.draw do
         # Bulk-delete a group's terms (#108) — service/admin only. The group is
         # kept; used for the bot's atomic replace-terms flow.
         member { delete "terms", to: "search_synonym_groups#destroy_terms" }
+        # Replace all of a group's terms in one transaction (#333), Admin and up.
+        member { put "terms", to: "search_synonym_groups#replace_terms" }
       end
       resources :search_synonym_drafts, only: %i[index show create update destroy]
     end

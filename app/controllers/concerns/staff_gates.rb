@@ -9,6 +9,7 @@
 #   member_role?          Members role
 #   member_or_staff?      Members role, or Moderator and above
 #   regular_role?         Regulars role
+#   regular_or_staff?     Regulars role, or Moderator and above
 #   moderator_or_above?   Moderator, Admin or Superadmin
 #   admin_or_above?       Admin or Superadmin (admin_or_service? is an older name for it)
 #   superadmin?           Superadmin (the session token's `dev` flag)
@@ -41,6 +42,12 @@ module StaffGates
     current_principal&.service? || staff_flag?(:role_regular)
   end
 
+  # Bot commands open to Regulars (e.g. linking a thread to a game), plus
+  # staff who may not hold the role.
+  def regular_or_staff?
+    regular_role? || moderator_or_above?
+  end
+
   def moderator_or_above?
     superadmin? || staff_flag?(:role_admin) || staff_flag?(:role_moderator)
   end
@@ -65,6 +72,10 @@ module StaffGates
 
   def require_regular_role!
     gate_or_forbid(regular_role?)
+  end
+
+  def require_regular_or_staff!
+    gate_or_forbid(regular_or_staff?)
   end
 
   def require_moderator_or_above!

@@ -10,11 +10,12 @@ class StaffGatesProbeController < ApplicationController
   before_action :require_member_role!, only: :member
   before_action :require_member_or_staff!, only: :member_or_staff
   before_action :require_regular_role!, only: :regular
+  before_action :require_regular_or_staff!, only: :regular_or_staff
   before_action :require_moderator_or_above!, only: :moderator
   before_action :require_admin_or_above!, only: :admin
   before_action :require_superadmin!, only: :superadmin
 
-  %i[member member_or_staff regular moderator admin superadmin].each do |gate|
+  %i[member member_or_staff regular regular_or_staff moderator admin superadmin].each do |gate|
     define_method(gate) { render json: { ok: gate } }
   end
 
@@ -28,7 +29,7 @@ RSpec.describe "staff gates behavior", type: :request do
   around do |example|
     with_routing do |routes|
       routes.draw do
-        %w[member member_or_staff regular moderator admin superadmin].each do |gate|
+        %w[member member_or_staff regular regular_or_staff moderator admin superadmin].each do |gate|
           get "/staff_gates_probe/#{gate}", to: "staff_gates_probe##{gate}"
         end
         get "/staff_gates_probe/moderator_then_admin", to: "staff_gates_probe#moderator_then_admin"
@@ -44,17 +45,17 @@ RSpec.describe "staff gates behavior", type: :request do
   callers = {
     "a plain member" => [ {}, {}, [] ],
     "a Members role holder" => [ { role_member: true }, {}, %w[member member_or_staff] ],
-    "a Regulars role holder" => [ { role_regular: true }, {}, %w[regular] ],
-    "a Moderator" => [ { role_moderator: true }, {}, %w[member_or_staff moderator] ],
-    "an Admin" => [ { role_admin: true }, {}, %w[member_or_staff moderator admin] ],
-    "a Superadmin" => [ {}, { is_dev: true }, %w[member_or_staff moderator admin superadmin] ]
+    "a Regulars role holder" => [ { role_regular: true }, {}, %w[regular regular_or_staff] ],
+    "a Moderator" => [ { role_moderator: true }, {}, %w[member_or_staff regular_or_staff moderator] ],
+    "an Admin" => [ { role_admin: true }, {}, %w[member_or_staff regular_or_staff moderator admin] ],
+    "a Superadmin" => [ {}, { is_dev: true }, %w[member_or_staff regular_or_staff moderator admin superadmin] ]
   }
 
   callers.each do |label, (flags, token_flags, allowed)|
     describe "for #{label}" do
       let(:headers) { auth_headers_for(create(:user, **flags), **token_flags) }
 
-      %w[member member_or_staff regular moderator admin superadmin].each do |gate|
+      %w[member member_or_staff regular regular_or_staff moderator admin superadmin].each do |gate|
         expected = allowed.include?(gate) ? :ok : :forbidden
 
         it "#{expected == :ok ? 'passes' : 'refuses'} the #{gate} gate" do
@@ -68,7 +69,7 @@ RSpec.describe "staff gates behavior", type: :request do
   end
 
   it "passes the service principal through every gate" do
-    %w[member member_or_staff regular moderator admin superadmin].each do |gate|
+    %w[member member_or_staff regular regular_or_staff moderator admin superadmin].each do |gate|
       get "/staff_gates_probe/#{gate}", headers: service_headers
 
       expect(response).to have_http_status(:ok), "service refused by the #{gate} gate"

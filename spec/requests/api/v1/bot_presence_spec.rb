@@ -7,15 +7,19 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
   # DB-stamped `set_at` are server-managed and stripped from writes.
   writable = {
     activity_name: { type: :string, description: 'The presence activity text. Required on create.' },
-    set_by_user_id: { type: :string, nullable: true, description: 'Discord user id that set the presence. Optional.' },
-    set_by_username: { type: :string, nullable: true, description: 'Discord username that set the presence. Optional.' }
+    set_by_user_id: { type: :string, nullable: true,
+                      description: 'Discord user id that set the presence. Service only; a staff ' \
+                                   'caller is recorded from the session and this is ignored.' },
+    set_by_username: { type: :string, nullable: true,
+                       description: 'Discord username that set the presence. Service only; a staff ' \
+                                    'caller is recorded from the session and this is ignored.' }
   }
 
   path '/api/v1/bot_presence' do
     get 'List bot presence history' do
       tags 'Bot Presence'
-      description 'Service-only. Returns presence history, newest first. `limit` (capped at 50) ' \
-                  'sizes the page.'
+      description 'Moderator and up, or the service. Returns presence history, newest first. ' \
+                  '`limit` (capped at 50) sizes the page.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 50 }, required: false
@@ -31,7 +35,7 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
         }
       end
 
-      response '403', 'forbidden — caller is not the service principal' do
+      response '403', 'forbidden: caller is not Moderator and up or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -42,8 +46,12 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
 
     post 'Save a bot presence entry' do
       tags 'Bot Presence'
-      description 'Service-only. Records a new presence entry. `set_at` is stamped by the server ' \
-                  '(defaults to now()).'
+      description 'Moderator and up, or the service. Records a new presence entry. `set_at` is ' \
+                  'stamped by the server (defaults to now()). On a staff create the setter id and ' \
+                  'name come from the session, never the body, and a `presence_set` bot job is ' \
+                  'queued so the bot applies the presence at once; `meta.presence_job_id` is that ' \
+                  'job, for polling `GET /api/v1/bot_jobs/{id}`. The service (the bot itself, which ' \
+                  'has already applied it) queues no job, so its `meta.presence_job_id` is null.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -54,10 +62,17 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
       }
 
       response '201', 'presence entry created' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/BotPresence' } }
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/BotPresence' },
+          meta: { '$ref' => '#/components/schemas/BotPresenceCreateMeta' }
+        }
       end
 
-      response '403', 'forbidden — caller is not the service principal' do
+      response '403', 'forbidden: caller is not Moderator and up or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'activity name too long' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -74,8 +89,8 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
   path '/api/v1/bot_presence/latest' do
     get 'Get the latest bot presence entry' do
       tags 'Bot Presence'
-      description 'Service-only. Returns the most recent presence entry, or `{ "data": null }` when ' \
-                  'no entries exist.'
+      description 'Moderator and up, or the service. Returns the most recent presence entry (the ' \
+                  'current presence), or `{ "data": null }` when no entries exist.'
       produces 'application/json'
 
       response '200', 'latest presence entry (or null)' do
@@ -84,7 +99,7 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
         }
       end
 
-      response '403', 'forbidden — caller is not the service principal' do
+      response '403', 'forbidden: caller is not Moderator and up or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

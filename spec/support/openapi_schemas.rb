@@ -762,21 +762,79 @@ module OpenapiSchemas
       ),
       # BotJobResource: a bot job's status as the website shows it (no payload).
       BotJob: obj(
-        id: int, kind: str(enum: BotJob::KINDS), status: str(enum: BotJob::STATUSES),
+        id: int, kind: str(enum: BotJob::KINDS),
+        summary: str(maxLength: BotJob::SUMMARY_MAX).merge(
+          description: "What the job does, in plain words, set when it was queued. Holds no secrets."
+        ),
+        status: str(enum: BotJob::STATUSES),
         requested_by_user_id: str(nullable: true).merge(
           description: "The member whose action queued the job; null for system jobs."
         ),
+        requested_by: ref("UserSummary", nullable: true),
         attempts: int.merge(description: "Claims so far. A claim not acked within the lease counts too."),
         error_message: str(nullable: true).merge(description: "The bot's error, or the claim-timeout error."),
-        claimed_at: ts(nullable: true), finished_at: ts(nullable: true), created_at: ts, updated_at: ts
+        result_text: str(nullable: true).merge(description: "What the bot reported when it acked the job done."),
+        claimed_at: ts(nullable: true),
+        lease_expires_at: ts(nullable: true).merge(
+          description: "While claimed: when the claim goes back to the queue unless acked."
+        ),
+        finished_at: ts(nullable: true), created_at: ts, updated_at: ts
+      ),
+      # ImageBackfillRunResource: the image backfill's progress (#338).
+      ImageBackfillRun: obj(
+        id: int,
+        status: str(enum: ImageBackfillRun::STATUSES).merge(
+          description: "queued, then running, then completed; failed when the run stopped (see last_error)."
+        ),
+        total: int.merge(description: "Games with no stored images when the run started."),
+        done: int.merge(description: "Games whose images were imported."),
+        skipped: int.merge(description: "Games with no IGDB id."),
+        failed: int.merge(description: "Games whose import failed."),
+        started_by_user_id: str(nullable: true).merge(description: "The Superadmin who started it; null for the service."),
+        started_at: ts(nullable: true), finished_at: ts(nullable: true),
+        last_error: str(nullable: true).merge(description: "The latest failure, per game (\"Game 12: ...\") or for the run."),
+        created_at: ts, updated_at: ts
+      ),
+      # LiveEventResource: a live event and the Discord ids the bot made (#336).
+      LiveEvent: obj(
+        id: int,
+        topic: str(maxLength: LiveEvent::TOPIC_MAX),
+        starts_at: ts, ends_at: ts,
+        image_url: str(nullable: true).merge(
+          description: "The image given as a URL, or the public Backblaze URL of the uploaded image; null for none."
+        ),
+        status: str(enum: LiveEvent::STATUSES).merge(
+          description: "queued, then thread_created once the forum thread exists, then created once the " \
+                       "Discord scheduled event exists too; failed when the bot gave up (see its bot job)."
+        ),
+        discord_thread_id: str(nullable: true).merge(description: "The forum thread, once made."),
+        discord_event_id: str(nullable: true).merge(description: "The Discord scheduled event, once made."),
+        created_by_user_id: str(nullable: true).merge(description: "The staff member who created it; null for the service."),
+        bot_job_id: int(nullable: true).merge(
+          description: "Its live_event_create bot job (GET /bot_jobs/:id for the bot's error when failed)."
+        ),
+        created_at: ts, updated_at: ts
+      ),
+      # The `say` bot job's payload (#337), as BotJobClaim.payload carries it.
+      SayJobPayload: obj(
+        _description: "Post `content` in `channel_id`, or reply to `reply_to.message_id` there. Send it with " \
+                      "`allowed_mentions` as given: plain user mentions only, never @everyone, @here or roles.",
+        channel_id: str.merge(description: "A synced text channel."),
+        content: str(maxLength: BotSay::CONTENT_MAX),
+        reply_to: obj(channel_id: str, message_id: str).merge(nullable: true,
+          description: "The message to reply to (always in `channel_id`); null for a plain message."),
+        allowed_mentions: obj(parse: { type: :array, items: str(enum: %w[users]) }, _required: %w[parse])
       ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
-        id: int, kind: str(enum: BotJob::KINDS),
+        id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
         payload: json(nullable: false).merge(description: "Per kind; a breaking change gets a new kind name."),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
-        error_message: str(nullable: true), claimed_at: ts(nullable: true), finished_at: ts(nullable: true),
-        created_at: ts, updated_at: ts
+        error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
+        lease_expires_at: ts(nullable: true).merge(
+          description: "Ack before this or the job is handed out again: five minutes unless the kind has a longer lease."
+        ),
+        finished_at: ts(nullable: true), created_at: ts, updated_at: ts
       ),
       # AchievementHighlightResource: an announceable Unlock as the bot posts
       # it, with the www set page path.
@@ -826,6 +884,31 @@ module OpenapiSchemas
         key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim, to GET /api/v1/game_keys/{id}, and to the claimer reading their own GET /api/v1/users/{user_id}/claimed_game_keys."),
         game: ref("GameSummary", nullable: true)
       ),
+      # CompletionsController#create meta: the queued announce bot job, so the
+      # website can poll GET /api/v1/bot_jobs/{id}.
+      CompletionCreateMeta: obj(
+        announce_job_id: int(nullable: true).merge(
+          description: "The completion_announce bot job. Null when `announce` was not set."
+        )
+      ),
+      # GotmRoundWrites (round create, entry update) meta: the queued
+      # gotm_cache_reload bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
+      GotmReloadMeta: obj(
+        reload_job_id: int(nullable: true).merge(
+          description: "The gotm_cache_reload bot job. Null when none was queued (the service's own entry edits)."
+        )
+      ),
+      # NominationsController single-user delete: `deleted` plus the queued
+      # nomination_deleted bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
+      NominationDeletedResponse: obj(
+        deleted: { type: :boolean, example: true },
+        meta: obj(
+          announce_job_id: int(nullable: true).merge(
+            description: "The nomination_deleted bot job. Null when none was queued (owner and service deletes)."
+          )
+        ),
+        _required: %w[deleted meta]
+      ),
       # GameKeysController#claim meta: the queued claim notice bot job, so the
       # website can poll GET /api/v1/bot_jobs/{id}.
       GameKeyClaimMeta: obj(
@@ -844,7 +927,13 @@ module OpenapiSchemas
       SearchSynonymDraft: obj(
         draft_id: int, user_id: str, pairs_json: str(nullable: true), created_at: ts, updated_at: ts
       ),
-      SearchSynonymGroup: obj(group_id: int, created_at: ts, created_by: str(nullable: true)),
+      # SearchSynonymGroupResource: all columns; `terms` (sorted by text) is
+      # embedded only when the caller asks for it (`?include=terms`, #333).
+      SearchSynonymGroup: obj(
+        group_id: int, created_at: ts, created_by: str(nullable: true), terms: array_of("SearchSynonym")
+      ),
+      # The replace-terms response (#333): the group with its new terms.
+      SearchSynonymGroupWithTerms: extends("SearchSynonymGroup", terms: array_of("SearchSynonym"), required: %w[terms]),
       JournalMessageContext: obj(
         channel_id: str, message_id: str, created_at_ms: int, owner_user_id: str, game_id: int
       ),
@@ -861,6 +950,13 @@ module OpenapiSchemas
       # threads#show adds the full game-link list under `links`.
       ThreadWithLinks: extends("Thread", links: array_of("ThreadGameLink"), required: %w[links]),
       ThreadGameLink: obj(thread_id: str, gamedb_game_id: int, linked_at: ts),
+      # threads#index (ThreadSearchResultResource): the thread link picker's
+      # row, the thread's id and name plus its linked games.
+      ThreadSearchResult: obj(
+        thread_id: str, thread_name: str,
+        games: { type: :array, items: obj(game_id: int, title: str) },
+        _required: %w[thread_id thread_name games]
+      ),
 
       # ---- presence / activity / member history (bot-written, read-only) ---
       # BotPresenceResource: the four logical columns; the surrogate `id` is
@@ -875,6 +971,13 @@ module OpenapiSchemas
       BotPresence: obj(
         activity_name: str, set_at: ts,
         set_by_user_id: str(nullable: true), set_by_username: str(nullable: true)
+      ),
+      # BotPresenceController#create meta: the queued presence_set bot job, so
+      # the website can poll GET /api/v1/bot_jobs/{id}.
+      BotPresenceCreateMeta: obj(
+        presence_job_id: int(nullable: true).merge(
+          description: "The presence_set bot job. Null for a service write, which queues none."
+        )
       ),
       PresencePrompt: obj(
         prompt_id: str, user_id: str, game_title: str, game_title_norm: str,
@@ -966,6 +1069,10 @@ module OpenapiSchemas
       # VoteTallyResource: one nomination's anonymous vote count. Nominations
       # with zero votes have no row — merge against the nominations list.
       VoteTally: obj(nomination_id: int, gamedb_game_id: int, vote_count: int),
+      # The tally's meta: the ballot's per-user vote cap, whether it is the
+      # runoff ballot, and whether the counts were withheld (voting still
+      # open and the caller not an Admin or the service).
+      VoteTallyMeta: obj(cap: int, runoff: bool, counts_hidden: bool),
       # The cast response (VotesController#create_*): what the cast did, the
       # vote it placed (null when it toggled one off), any votes removed to
       # make room (evicted oldest-first) or taken back by the toggle, the

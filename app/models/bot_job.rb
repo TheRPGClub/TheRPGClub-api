@@ -6,23 +6,47 @@
 # machine-local signal (BotJob::WorkSignal) lets that poll skip Postgres
 # while nothing is waiting.
 #
-# Delivery is at-least-once: a claim not acked within LEASE goes back to
-# queued, and after MAX_ATTEMPTS claims it fails instead.
+# Delivery is at-least-once: a claim not acked within its kind's lease
+# (LEASES, else LEASE) goes back to queued, and after MAX_ATTEMPTS claims it
+# fails instead.
 #
-# Enqueue with `BotJob.enqueue!(kind:, payload:, requested_by:)`. The
-# payload is per kind; a breaking payload change gets a new kind name.
+# Enqueue with `BotJob.enqueue!(kind:, summary:, payload:, requested_by:)`.
+# The summary is what the /admin activity list shows, so keep it plain and
+# free of secrets (no game keys, tokens or other payload-only values). The
+# payload is per kind and only the bot sees it; a breaking payload change
+# gets a new kind name.
 class BotJob < ApplicationRecord
   KINDS = %w[
+    completion_announce
     giveaway_claim_notice
     giveaway_hub_refresh
+    nomination_deleted
     suggestion_submitted
     suggestion_outcome
     voting_poll_wakeup
+    voting_results_publish
+    voting_panels_repost
+    voting_tie_broken
+    gotm_cache_reload
+    live_event_create
+    say
+    memberscan
+    presence_set
   ].freeze
   STATUSES = %w[queued claimed done failed].freeze
+  # Default claim lease, and per-kind overrides for jobs the bot needs
+  # longer to finish (e.g. a whole-guild scan).
   LEASE = 5.minutes
+  LEASES = {
+    "memberscan" => 30.minutes
+  }.freeze
+  SUMMARY_MAX = 200
+  TEXT_MAX = 2000
   MAX_ATTEMPTS = 3
   TIMEOUT_ERROR = "Not acknowledged within the claim timeout"
+  # A claim's lease expiry. The previous release claims without one (only
+  # claimed_at), so during a deploy such a claim gets the default lease.
+  LEASE_EXPIRY_SQL = "COALESCE(lease_expires_at, claimed_at + interval '#{LEASE.to_i} seconds')".freeze
 
   # Acking a job that already finished the other way.
   class AckConflict < StandardError; end
@@ -32,7 +56,8 @@ class BotJob < ApplicationRecord
 
   validates :kind, inclusion: { in: KINDS }
   validates :status, inclusion: { in: STATUSES }
-  validates :error_message, length: { maximum: 2000 }
+  validates :summary, presence: true, length: { maximum: SUMMARY_MAX }
+  validates :error_message, :result_text, length: { maximum: TEXT_MAX }
 
   # Raised after commit, so a rolled-back enqueue (test mode, a failed
   # feature write) leaves the signal alone.
@@ -43,10 +68,17 @@ class BotJob < ApplicationRecord
 
   # The interface feature code uses. `requested_by` is the member whose
   # action caused the job (an RpgClubUser, a user id, or nil for system
-  # jobs); they may read its status.
-  def self.enqueue!(kind:, payload: {}, requested_by: nil)
+  # jobs); they may read its status. A long summary (a long title) is cut to
+  # SUMMARY_MAX rather than failing the member's write.
+  def self.enqueue!(kind:, summary:, payload: {}, requested_by: nil)
     user_id = requested_by.is_a?(RpgClubUser) ? requested_by.user_id : requested_by&.to_s
-    create!(kind: kind, payload: payload, requested_by_user_id: user_id)
+    create!(kind: kind, summary: summary.to_s.squish.truncate(SUMMARY_MAX), payload: payload,
+      requested_by_user_id: user_id)
+  end
+
+  # How long a claim of `kind` may go unacked before it is handed out again.
+  def self.lease_for(kind)
+    LEASES.fetch(kind, LEASE)
   end
 
   # The bot's poll. While the signal is down this answers [] from SQLite
@@ -60,35 +92,58 @@ class BotJob < ApplicationRecord
 
     jobs = transaction do
       release_expired!(now)
-      ids = queued.order(:id).limit(limit).lock("FOR UPDATE SKIP LOCKED").pluck(:id)
-      where(id: ids).update_all([ "status = 'claimed', claimed_at = ?, attempts = attempts + 1, updated_at = ?", now, now ])
-      where(id: ids).order(:id).to_a
+      picked = queued.order(:id).limit(limit).lock("FOR UPDATE SKIP LOCKED").pluck(:id, :kind)
+      picked.group_by { |_id, kind| lease_for(kind) }.each do |lease, rows|
+        where(id: rows.map(&:first)).update_all([
+          "status = 'claimed', claimed_at = ?, lease_expires_at = ?, attempts = attempts + 1, updated_at = ?",
+          now, now + lease, now
+        ])
+      end
+      where(id: picked.map(&:first)).order(:id).to_a
     end
 
-    unless queued.exists?
-      WorkSignal.clear!(version: signal[:version], wake_at: claimed.minimum(:claimed_at)&.+(LEASE))
-    end
+    WorkSignal.clear!(version: signal[:version], wake_at: earliest_lease_expiry) unless queued.exists?
     jobs
+  end
+
+  # When the earliest open claim's lease runs out (nil without one).
+  def self.earliest_lease_expiry
+    claimed.pick(Arel.sql("MIN(#{LEASE_EXPIRY_SQL})"))
   end
 
   # Claims whose lease ran out: back to queued, or failed once they have
   # used every attempt.
   def self.release_expired!(now)
-    expired = claimed.where(claimed_at: ..(now - LEASE))
-    expired.where(attempts: MAX_ATTEMPTS..).update_all(
-      status: "failed", error_message: TIMEOUT_ERROR, finished_at: now, updated_at: now
-    )
-    expired.update_all(status: "queued", claimed_at: nil, updated_at: now)
+    expired = claimed.where("#{LEASE_EXPIRY_SQL} <= ?", now)
+    exhausted = expired.where(attempts: MAX_ATTEMPTS..).pluck(:id, :kind)
+    if exhausted.any?
+      where(id: exhausted.map(&:first)).update_all(
+        status: "failed", error_message: TIMEOUT_ERROR, finished_at: now, updated_at: now
+      )
+      jobs_failed!(exhausted, now)
+    end
+    expired.update_all(status: "queued", claimed_at: nil, lease_expires_at: nil, updated_at: now)
   end
 
-  # Record the bot's outcome. Idempotent for a repeat of the same outcome; a
-  # late ack of a job that went back to the queue still counts.
-  def ack!(status:, error_message: nil, now: Time.current)
+  # What a kind's record does when its job ends failed (acked failed, or out
+  # of attempts). `rows` are [id, kind] pairs.
+  def self.jobs_failed!(rows, now)
+    live_event_jobs = rows.filter_map { |id, kind| id if kind == "live_event_create" }
+    LiveEvent.bot_jobs_failed!(live_event_jobs, now: now) if live_event_jobs.any?
+  end
+
+  # Record the bot's outcome: its error on failure, an optional result text
+  # when done (either cut to TEXT_MAX, so a long text never fails the ack and
+  # reruns the job). Idempotent for a repeat of the same outcome (the first ack's
+  # text stays); a late ack of a job that went back to the queue still counts.
+  def ack!(status:, error_message: nil, result_text: nil, now: Time.current)
     with_lock do
       next if self.status == status
       raise AckConflict, "bot job #{id} is already #{self.status}" if %w[done failed].include?(self.status)
 
-      update!(status: status, error_message: error_message, finished_at: now)
+      update!(status: status, error_message: error_message&.truncate(TEXT_MAX),
+        result_text: result_text&.truncate(TEXT_MAX), finished_at: now)
+      self.class.jobs_failed!([ [ id, kind ] ], now) if status == "failed"
     end
     self
   end

@@ -6,11 +6,11 @@ module Api
     # rules (window, per-user cap, toggle/evict) live in Voting::CastVote;
     # this controller owns who may cast and who may see what, and when.
     #
-    # Votes are anonymous while a round's voting window is open: everyone may
-    # read the per-nomination tally (counts only), a voter may read their own
-    # votes, and only admin/service may read identified vote rows (the bot
-    # needs them to tally and announce results). Once voting has ended
-    # (VotingRound.ended?), identified rows open up to any
+    # Votes are anonymous while a round's voting window is open: only
+    # admin/service read the per-nomination tally (counts only) or the
+    # identified vote rows (the bot needs them to tally and announce
+    # results), and a voter may read their own votes. Once voting has ended
+    # (VotingRound.ended?), the tally and identified rows open up to any
     # authenticated caller.
     #
     # Casting is owner-gated: the service token may cast on behalf of any
@@ -127,20 +127,27 @@ module Api
           default_order: { voted_at: :asc, vote_id: :asc })
       end
 
-      # The anonymous tally: votes per nomination, no voter identities — safe
-      # for any authenticated caller at any time. Unpaginated: bounded by the
-      # round's nominations. Nominations with zero votes have no row. `meta`
-      # carries the ballot's per-user vote cap so clients can render "vote for
-      # up to N" before the user has cast anything.
+      # The anonymous tally: votes per nomination, no voter identities.
+      # Until the ballot's voting has ended the counts are Admin-only (the
+      # bot's rule, so a running tally cannot sway the vote): anyone else gets
+      # no rows and `meta.counts_hidden`. Unpaginated: bounded by the round's
+      # nominations. Nominations with zero votes have no row. `meta` carries
+      # the ballot's per-user vote cap so clients can render "vote for up to
+      # N" before the user has cast anything.
       def render_tally(vote_model, nomination_model)
-        rows = ballot(vote_model)
-          .group(:nomination_id, :gamedb_game_id)
-          .select(:nomination_id, :gamedb_game_id, "COUNT(*) AS vote_count")
-          .order(Arel.sql("COUNT(*) DESC"), :nomination_id)
+        hidden = !admin_or_service? && !voting_ended?
+        rows = if hidden
+          []
+        else
+          ballot(vote_model)
+            .group(:nomination_id, :gamedb_game_id)
+            .select(:nomination_id, :gamedb_game_id, "COUNT(*) AS vote_count")
+            .order(Arel.sql("COUNT(*) DESC"), :nomination_id)
+        end
 
         render json: {
           data: VoteTallyResource.new(rows).serializable_hash,
-          meta: { cap: tally_cap(nomination_model), runoff: runoff? }
+          meta: { cap: tally_cap(nomination_model), runoff: runoff?, counts_hidden: hidden }
         }
       end
 
