@@ -60,7 +60,9 @@ RSpec.describe 'api/v1/completions', type: :request do
       description 'The owner, a Superadmin (for any member) or the service. `gamedb_game_id` and ' \
                   '`completion_type` are required; `completed_at`, `final_playtime_hrs`, `platform_id` and ' \
                   '`note` are optional. `announce: true` queues a `completion_announce` bot job (payload ' \
-                  '`completion_id`, `user_id`, `game_id`, `actor_user_id`) so the bot posts the completion. ' \
+                  '`completion_id`, `user_id`, `game_id`, `actor_user_id`) so the bot posts the completion; ' \
+                  '`meta.announce_job_id` is that job (null when none was queued), for polling ' \
+                  '`GET /api/v1/bot_jobs/{id}`. ' \
                   'When a Superadmin logs one for another member, the game is also removed from that ' \
                   "member's Now Playing."
       consumes 'application/json'
@@ -81,7 +83,10 @@ RSpec.describe 'api/v1/completions', type: :request do
       }
 
       response '201', 'completion created' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/CompletionEntry' } }
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/CompletionEntry' },
+          meta: { '$ref' => '#/components/schemas/CompletionCreateMeta' }
+        }
       end
 
       response '403', 'forbidden: caller is not the owner, a Superadmin or the service' do
