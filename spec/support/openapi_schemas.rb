@@ -155,6 +155,11 @@ module OpenapiSchemas
         format: str(nullable: true), release_date: ts(nullable: true), notes: str(nullable: true),
         platform_code: str, platform_name: str, region_code: str, region_name: str
       ),
+      # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.
+      ReleaseRefreshMeta: obj(
+        added: int, total: int,
+        _description: "How many releases the refresh added (never negative) and the new total."
+      ),
       # A GamedbGameCompany flattened to its company's columns plus the join `role`.
       GameCompany: obj(
         company_id: int, name: str, igdb_company_id: int(nullable: true), role: str
@@ -186,9 +191,12 @@ module OpenapiSchemas
         is_bot: bool, role_admin: bool, role_moderator: bool, role_regular: bool,
         server_left_at: ts(nullable: true)
       ),
-      # The computed membership summary (RpgClubUser#membership).
+      # The computed membership summary (RpgClubUser#membership). `admin`,
+      # `moderator`, `regular` and `member` follow the member's Discord roles.
       Membership: obj(
-        admin: bool, moderator: bool, regular: bool, member: bool, newcomer: bool, active: bool
+        admin: bool, moderator: bool, regular: bool, member: bool, newcomer: bool, active: bool,
+        _description: "Membership flags. admin, moderator, regular and member follow the member's " \
+                      "Discord roles (refreshed at sign-in and on each bot role report)."
       ),
       # UserSocial (all columns; note the FK alias `platform_id`, NOT
       # `social_platform_id`) plus the embedded social platform.
@@ -230,6 +238,12 @@ module OpenapiSchemas
         server_joined_at: ts(nullable: true),
         last_seen_at: ts(nullable: true),
         emoji_name: str(nullable: true)
+      ),
+      # The result of the service-only role report (PUT /users/:user_id/roles):
+      # the member's membership summary after the role flags were refreshed.
+      UserRoleReport: obj(
+        user_id: str, membership: ref("Membership"),
+        _required: %w[user_id membership]
       ),
       # The result of the bulk `users#mark_departed` reconciliation (#105): the
       # count of users newly stamped as departed.
@@ -480,9 +494,28 @@ module OpenapiSchemas
       ),
 
       # ---- RPGClub features ------------------------------------------------
+      # SuggestionResource: every column plus the upvote count and whether
+      # the viewer upvoted (#318). The review columns are null until review.
       Suggestion: obj(
         suggestion_id: int, title: str, details: str(nullable: true), created_by: str(nullable: true),
-        created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true)
+        created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true),
+        status: str(enum: RpgClubSuggestion::STATUSES),
+        reviewed_by: str(nullable: true).merge(description: "Discord user id of the reviewing Superadmin."),
+        reviewed_at: ts(nullable: true),
+        rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
+        target_repo: str(nullable: true).merge(description: "Repo the approval opened its GitHub issue in."),
+        github_issue_number: int(nullable: true), github_issue_url: str(nullable: true),
+        github_issue_state: str(nullable: true, enum: [ "open", "closed", nil ]).merge(
+          description: "Approved only: the GitHub issue's state, cached about ten minutes. " \
+                       "Null otherwise, or when GitHub cannot say."
+        ),
+        upvote_count: int,
+        viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service.")
+      ),
+      # SuggestionsController#approve / #reject meta: the queued outcome job,
+      # so the website can poll GET /api/v1/bot_jobs/{id}.
+      SuggestionReviewMeta: obj(
+        outcome_job_id: int.merge(description: "The suggestion_outcome bot job (the bot announces the outcome).")
       ),
       # `suggestion_ids` is the stored JSON string, returned verbatim.
       SuggestionReviewSession: obj(
@@ -727,6 +760,24 @@ module OpenapiSchemas
         available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
         delivered_at: ts(nullable: true), attempts: int
       ),
+      # BotJobResource: a bot job's status as the website shows it (no payload).
+      BotJob: obj(
+        id: int, kind: str(enum: BotJob::KINDS), status: str(enum: BotJob::STATUSES),
+        requested_by_user_id: str(nullable: true).merge(
+          description: "The member whose action queued the job; null for system jobs."
+        ),
+        attempts: int.merge(description: "Claims so far. A claim not acked within the lease counts too."),
+        error_message: str(nullable: true).merge(description: "The bot's error, or the claim-timeout error."),
+        claimed_at: ts(nullable: true), finished_at: ts(nullable: true), created_at: ts, updated_at: ts
+      ),
+      # BotJobClaimResource: a claimed bot job as the bot receives it.
+      BotJobClaim: obj(
+        id: int, kind: str(enum: BotJob::KINDS),
+        payload: json(nullable: false).merge(description: "Per kind; a breaking change gets a new kind name."),
+        status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
+        error_message: str(nullable: true), claimed_at: ts(nullable: true), finished_at: ts(nullable: true),
+        created_at: ts, updated_at: ts
+      ),
       # AchievementHighlightResource: an announceable Unlock as the bot posts
       # it, with the www set page path.
       AchievementHighlight: obj(
@@ -764,16 +815,24 @@ module OpenapiSchemas
         created_at: ts, updated_at: ts
       ),
       # GameKeyResource. `key_value` (the secret) is omitted from list responses;
-      # it is rendered only in the response to a successful claim and to the
-      # restricted single-key GET.
+      # it is rendered only in the response to a successful claim, to the
+      # restricted single-key GET, and to the claimer's own claimed-keys list.
       GameKey: obj(
         key_id: int, game_title: str, platform: str,
         region: str(enum: RpgClubGameKey::REGIONS, description: "Where the key redeems. Defaults to Global."),
         gamedb_game_id: int(nullable: true),
         donor_user_id: str, claimed_by_user_id: str(nullable: true), claimed_at: ts(nullable: true),
         donor_notify_on_claim: bool, created_at: ts, updated_at: ts,
-        key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim and to GET /api/v1/game_keys/{id}."),
+        key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim, to GET /api/v1/game_keys/{id}, and to the claimer reading their own GET /api/v1/users/{user_id}/claimed_game_keys."),
         game: ref("GameSummary", nullable: true)
+      ),
+      # GameKeysController#claim meta: the queued claim notice bot job, so the
+      # website can poll GET /api/v1/bot_jobs/{id}.
+      GameKeyClaimMeta: obj(
+        claim_notice_job_id: int(nullable: true).merge(
+          description: "The giveaway_claim_notice bot job (DM the key, log the claim, notify the donor). " \
+                       "Null when the bot service token claimed, since the bot does that work itself."
+        )
       ),
       # GiveawaySettingsController. The donor's notify-on-claim preference,
       # derived from rpg_club_users.donor_notify_on_claim.
@@ -806,6 +865,13 @@ module OpenapiSchemas
       # ---- presence / activity / member history (bot-written, read-only) ---
       # BotPresenceResource: the four logical columns; the surrogate `id` is
       # internal-only and never exposed.
+      # GuildChannelsController#index/#upsert (#313). `channel_type` is
+      # Discord's numeric ChannelType; `category_name` is the parent
+      # category's name (null when uncategorized, and on upsert responses).
+      GuildChannel: obj(
+        channel_id: str, name: str, channel_type: int, parent_id: str(nullable: true),
+        position: int, category_name: str(nullable: true)
+      ),
       BotPresence: obj(
         activity_name: str, set_at: ts,
         set_by_user_id: str(nullable: true), set_by_username: str(nullable: true)
@@ -1088,6 +1154,19 @@ module OpenapiSchemas
         main: str(nullable: true), main_sides: str(nullable: true), completionist: str(nullable: true),
         single_player: str(nullable: true), co_op: str(nullable: true), vs: str(nullable: true),
         source_query: str(nullable: true), scraped_at: ts(nullable: true), updated_at: ts(nullable: true)
+      ),
+      # POST /games/{id}/hltb/lookup: where the times came from and whether
+      # they are now in the HLTB cache.
+      HltbLookup: obj(
+        data: ref("Hltb"),
+        meta: obj(
+          source: str(enum: %w[cache hltb],
+            description: "cache: the saved times, or an unsaved result kept for about a day; no scrape. " \
+                         "hltb: a fresh scrape."),
+          saved: bool,
+          _description: "saved is false for a result for a game released within six months, or undated."
+        ),
+        _required: %w[data meta]
       )
     }
   end

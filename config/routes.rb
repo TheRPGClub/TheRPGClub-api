@@ -34,6 +34,7 @@ Rails.application.routes.draw do
           post "alternates", to: "game_alternates#create"
           get "relations", to: "games#relations"
           post "hltb", to: "games#upsert_hltb"
+          post "hltb/lookup", to: "game_hltb#lookup"
           get "profile", to: "games#profile"
           get "releases", to: "games#releases"
           post "releases", to: "releases#create"
@@ -83,6 +84,9 @@ Rails.application.routes.draw do
           get "avatar_history_counts", to: "user_avatar_history#counts"
         end
         member do
+          # Service-only: the bot reports the member's current Discord role
+          # IDs on a guild member update; the API derives the role flags.
+          put "roles", to: "user_roles#update"
           get "avatar"
           get "profile-image"
           get "avatar_history", to: "user_avatar_history#index"
@@ -118,6 +122,7 @@ Rails.application.routes.draw do
           get "giveaway_settings", to: "giveaway_settings#show"
           patch "giveaway_settings", to: "giveaway_settings#update"
           get "game_keys", to: "game_keys#user_index"
+          get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"
           post "wizard_sessions", to: "wizard_sessions#upsert"
           delete "wizard_sessions", to: "wizard_sessions#destroy_historical"
@@ -305,7 +310,16 @@ Rails.application.routes.draw do
         resources :review_sessions, only: %i[index show create update destroy],
           controller: "suggestion_review_sessions"
       end
-      resources :suggestions, only: %i[index show create destroy]
+      # No destroy: Suggestions are kept and reviewed with approve/reject (#319).
+      resources :suggestions, only: %i[index show create] do
+        member do
+          post :approve
+          post :reject
+          post :withdraw
+          post :upvote
+          delete :upvote, action: :remove_upvote
+        end
+      end
       resources :rss_feeds, only: %i[index show create update destroy] do
         resources :items, only: %i[index create], controller: "rss_feed_items"
       end
@@ -332,6 +346,12 @@ Rails.application.routes.draw do
       end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
+      # The bot job queue (web parity 2): the bot polls, claims and acks
+      # (service-only); the requesting member and staff read a job's status.
+      post "bot_jobs/claim",       to: "bot_jobs#claim"
+      post "bot_jobs/:id/done",    to: "bot_jobs#done"
+      post "bot_jobs/:id/failed",  to: "bot_jobs#failed"
+      get  "bot_jobs/:id",         to: "bot_jobs#show"
       # The bot's Achievement Hub Highlights and alerts (service-only).
       get  "achievements/highlights/pending", to: "achievement_highlights#pending"
       post "achievements/highlights/ack",     to: "achievement_highlights#ack"
@@ -344,6 +364,14 @@ Rails.application.routes.draw do
       get  "bot_presence/latest", to: "bot_presence#latest"
       get  "bot_presence",        to: "bot_presence#index"
       post "bot_presence",        to: "bot_presence#create"
+      # The guild's Discord channels (web parity 2, #313): open text-channel
+      # list for pickers; the bot's full sync and per-channel upsert/delete are
+      # service-only. `sync` is declared before the `:channel_id` routes so it
+      # is never captured as a channel id.
+      get    "guild_channels",             to: "guild_channels#index"
+      post   "guild_channels/sync",        to: "guild_channels#sync"
+      put    "guild_channels/:channel_id", to: "guild_channels#upsert"
+      delete "guild_channels/:channel_id", to: "guild_channels#destroy"
       resources :search_synonyms, only: %i[index show create update destroy]
       resources :search_synonym_groups, only: %i[index show create update destroy] do
         # Bulk-delete a group's terms (#108) — service/admin only. The group is

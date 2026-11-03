@@ -89,3 +89,16 @@ fly secrets set STEAM_WEB_API_KEY=<key>
 
 Specs never call Steam: they stub HTTP through the client's injected Faraday
 connection.
+
+## Google Custom Search (HowLongToBeat)
+
+HLTB lookups (`POST /api/v1/games/:id/hltb/lookup`, `Hltb::Client`) find a
+game's HowLongToBeat page through Google Custom Search, as the Discord bot
+does. Set `GOOGLE_CUSTOM_SEARCH_API_KEY` (a Google API key with the Custom
+Search API enabled) and `GOOGLE_CUSTOM_SEARCH_ENGINE_ID` (the Programmable
+Search Engine id); the bot's `GOOGLE_API_KEY` and `SEARCH_ID` are accepted as
+fallbacks. Without them a lookup answers 503 `hltb_not_configured`.
+
+```sh
+fly secrets set GOOGLE_CUSTOM_SEARCH_API_KEY=<key> GOOGLE_CUSTOM_SEARCH_ENGINE_ID=<id>
+```

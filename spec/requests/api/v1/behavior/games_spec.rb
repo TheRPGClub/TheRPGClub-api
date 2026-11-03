@@ -321,6 +321,27 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(response).to have_http_status(:created)
     end
 
+    it "allows a Members role holder" do
+      post "/api/v1/games", params: { igdb_id: igdb_id }, headers: auth_headers_for(create(:user, role_member: true)), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.fetch("data")).to include("igdb_id" => igdb_id, "title" => igdb_payload[:name])
+    end
+
+    it "returns the existing game to a member without re-importing it" do
+      existing = create(:game, igdb_id: igdb_id, title: "Already Here #{SecureRandom.hex(3)}")
+
+      expect {
+        post "/api/v1/games", params: { igdb_id: igdb_id }, headers: auth_headers_for(create(:user, role_member: true)), as: :json
+      }.not_to change(GamedbGame, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("game_id" => existing.game_id, "title" => existing.title)
+      expect(json.fetch("images")).to eq([])
+      expect(igdb_client).not_to have_received(:game)
+      expect(image_importer).not_to have_received(:import!)
+    end
+
     it "400s when igdb_id is missing" do
       post "/api/v1/games", params: {}, headers: service_headers, as: :json
 
@@ -360,7 +381,7 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(json.fetch("error")).to eq("igdb_request_failed")
     end
 
-    it "forbids a regular user" do
+    it "forbids a user without the Members role" do
       expect {
         post "/api/v1/games", params: { igdb_id: igdb_id }, headers: auth_headers_for(create(:user)), as: :json
       }.not_to change(GamedbGame, :count)
@@ -550,6 +571,28 @@ RSpec.describe "api/v1/games behavior", type: :request do
       )
     end
 
+    it "reports how many releases the refresh added" do
+      post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("meta")).to eq("added" => 1, "total" => 1)
+    end
+
+    it "reports no additions when IGDB has nothing new" do
+      create(:release, game: game, release_date: Time.utc(2020, 1, 1))
+
+      post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
+
+      expect(json.fetch("meta")).to eq("added" => 0, "total" => 1)
+    end
+
+    it "allows a Members role holder" do
+      post "/api/v1/games/#{game.game_id}/refresh-releases", headers: auth_headers_for(create(:user, role_member: true))
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").length).to eq(1)
+    end
+
     it "422s when the game has no IGDB id" do
       no_igdb = create(:game)
 
@@ -574,7 +617,7 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
-    it "forbids a regular user" do
+    it "forbids a user without the Members role" do
       post "/api/v1/games/#{game.game_id}/refresh-releases", headers: auth_headers_for(create(:user))
 
       expect(response).to have_http_status(:forbidden)
@@ -671,7 +714,24 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(RpgClubHltbCache.find_by!(gamedb_game_id: game.game_id).main).to eq("25 Hours")
     end
 
-    it "forbids a regular user" do
+    it "lets a Members role holder save times" do
+      member = auth_headers_for(create(:user, role_member: true))
+
+      expect {
+        post "/api/v1/games/#{game.game_id}/hltb", params: payload, headers: member, as: :json
+      }.to change(RpgClubHltbCache, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "lets a Moderator save times" do
+      post "/api/v1/games/#{game.game_id}/hltb", params: payload,
+        headers: auth_headers_for(create(:user, role_moderator: true)), as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "forbids a signed-in user without the Members role" do
       expect {
         post "/api/v1/games/#{game.game_id}/hltb", params: payload, headers: auth_headers_for(create(:user)), as: :json
       }.not_to change(RpgClubHltbCache, :count)

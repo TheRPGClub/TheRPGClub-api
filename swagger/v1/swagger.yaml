@@ -403,6 +403,18 @@ components:
       - platform_name
       - region_code
       - region_name
+    ReleaseRefreshMeta:
+      type: object
+      properties:
+        added:
+          type: integer
+        total:
+          type: integer
+      required:
+      - added
+      - total
+      description: How many releases the refresh added (never negative) and the new
+        total.
     GameCompany:
       type: object
       properties:
@@ -533,6 +545,8 @@ components:
       - member
       - newcomer
       - active
+      description: Membership flags. admin, moderator, regular and member follow the
+        member's Discord roles (refreshed at sign-in and on each bot role report).
     UserSocial:
       type: object
       properties:
@@ -645,6 +659,16 @@ components:
           emoji_name:
             type: string
             nullable: true
+    UserRoleReport:
+      type: object
+      properties:
+        user_id:
+          type: string
+        membership:
+          "$ref": "#/components/schemas/Membership"
+      required:
+      - user_id
+      - membership
     MarkDepartedResult:
       type: object
       properties:
@@ -1535,11 +1559,65 @@ components:
         created_by_name:
           type: string
           nullable: true
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          - withdrawn
+        reviewed_by:
+          type: string
+          nullable: true
+          description: Discord user id of the reviewing Superadmin.
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        rejection_reason:
+          type: string
+          nullable: true
+          description: Set when rejected.
+        target_repo:
+          type: string
+          nullable: true
+          description: Repo the approval opened its GitHub issue in.
+        github_issue_number:
+          type: integer
+          nullable: true
+        github_issue_url:
+          type: string
+          nullable: true
+        github_issue_state:
+          type: string
+          nullable: true
+          enum:
+          - open
+          - closed
+          -
+          description: 'Approved only: the GitHub issue''s state, cached about ten
+            minutes. Null otherwise, or when GitHub cannot say.'
+        upvote_count:
+          type: integer
+        viewer_upvoted:
+          type: boolean
+          description: Whether the signed-in member upvoted it; false for the service.
       required:
       - suggestion_id
       - title
       - created_at
       - updated_at
+      - status
+      - upvote_count
+      - viewer_upvoted
+    SuggestionReviewMeta:
+      type: object
+      properties:
+        outcome_job_id:
+          type: integer
+          description: The suggestion_outcome bot job (the bot announces the outcome).
+      required:
+      - outcome_job_id
     SuggestionReviewSession:
       type: object
       properties:
@@ -2436,6 +2514,111 @@ components:
       - payload
       - available_at
       - attempts
+    BotJob:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum:
+          - giveaway_claim_notice
+          - giveaway_hub_refresh
+          - suggestion_submitted
+          - suggestion_outcome
+          - voting_poll_wakeup
+        status:
+          type: string
+          enum:
+          - queued
+          - claimed
+          - done
+          - failed
+        requested_by_user_id:
+          type: string
+          nullable: true
+          description: The member whose action queued the job; null for system jobs.
+        attempts:
+          type: integer
+          description: Claims so far. A claim not acked within the lease counts too.
+        error_message:
+          type: string
+          nullable: true
+          description: The bot's error, or the claim-timeout error.
+        claimed_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - kind
+      - status
+      - attempts
+      - created_at
+      - updated_at
+    BotJobClaim:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum:
+          - giveaway_claim_notice
+          - giveaway_hub_refresh
+          - suggestion_submitted
+          - suggestion_outcome
+          - voting_poll_wakeup
+        payload:
+          type: object
+          description: Per kind; a breaking change gets a new kind name.
+        status:
+          type: string
+          enum:
+          - queued
+          - claimed
+          - done
+          - failed
+        requested_by_user_id:
+          type: string
+          nullable: true
+        attempts:
+          type: integer
+        error_message:
+          type: string
+          nullable: true
+        claimed_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - kind
+      - payload
+      - status
+      - attempts
+      - created_at
+      - updated_at
     AchievementHighlight:
       type: object
       properties:
@@ -2659,7 +2842,8 @@ components:
           type: string
           nullable: true
           description: The key secret. Present only in the response to a successful
-            claim and to GET /api/v1/game_keys/{id}.
+            claim, to GET /api/v1/game_keys/{id}, and to the claimer reading their
+            own GET /api/v1/users/{user_id}/claimed_game_keys.
         game:
           allOf:
           - "$ref": "#/components/schemas/GameSummary"
@@ -2673,6 +2857,15 @@ components:
       - donor_notify_on_claim
       - created_at
       - updated_at
+    GameKeyClaimMeta:
+      type: object
+      properties:
+        claim_notice_job_id:
+          type: integer
+          nullable: true
+          description: The giveaway_claim_notice bot job (DM the key, log the claim,
+            notify the donor). Null when the bot service token claimed, since the
+            bot does that work itself.
     GiveawaySettings:
       type: object
       properties:
@@ -2818,6 +3011,28 @@ components:
       - thread_id
       - gamedb_game_id
       - linked_at
+    GuildChannel:
+      type: object
+      properties:
+        channel_id:
+          type: string
+        name:
+          type: string
+        channel_type:
+          type: integer
+        parent_id:
+          type: string
+          nullable: true
+        position:
+          type: integer
+        category_name:
+          type: string
+          nullable: true
+      required:
+      - channel_id
+      - name
+      - channel_type
+      - position
     BotPresence:
       type: object
       properties:
@@ -3820,6 +4035,31 @@ components:
           type: string
           format: date-time
           nullable: true
+    HltbLookup:
+      type: object
+      properties:
+        data:
+          "$ref": "#/components/schemas/Hltb"
+        meta:
+          type: object
+          properties:
+            source:
+              type: string
+              enum:
+              - cache
+              - hltb
+              description: 'cache: the saved times, or an unsaved result kept for
+                about a day; no scrape. hltb: a fresh scrape.'
+            saved:
+              type: boolean
+          required:
+          - source
+          - saved
+          description: saved is false for a result for a game released within six
+            months, or undated.
+      required:
+      - data
+      - meta
 security:
 - bearerAuth: []
 paths:
@@ -4783,6 +5023,201 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs/claim":
+    post:
+      summary: Poll for and claim bot jobs
+      tags:
+      - Bot Jobs
+      description: Service only. Poll about every 10 seconds. While no work is waiting
+        the API answers an empty list from a machine-local signal without touching
+        Postgres. Otherwise it claims up to `limit` queued jobs, oldest first. Act
+        on each one in Discord, then ack it done or failed. A claim not acked within
+        five minutes goes back to the queue, and fails after 3 claims, so delivery
+        is at-least-once.
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50
+        required: false
+      responses:
+        '200':
+          description: claimed jobs (empty when nothing is waiting)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/BotJobClaim"
+                required:
+                - data
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs/{id}/done":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Acknowledge a bot job done
+      tags:
+      - Bot Jobs
+      description: Service only. Records the job done; idempotent. A late ack of a
+        job whose claim timed out still counts.
+      responses:
+        '200':
+          description: job done
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: the job already failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs/{id}/failed":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Acknowledge a bot job failed
+      tags:
+      - Bot Jobs
+      description: 'Service only. Records the job failed with the bot''s error message;
+        idempotent. Failed is final: the job is not retried.'
+      parameters: []
+      responses:
+        '200':
+          description: job failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '400':
+          description: missing error message
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: the job is already done
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    error_message:
+                      type: string
+                      minLength: 1
+                      maxLength: 2000
+                  required:
+                  - error_message
+              required:
+              - data
+        required: true
+  "/api/v1/bot_jobs/{id}":
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Read a bot job's status
+      tags:
+      - Bot Jobs
+      description: The member who queued the job, Admins, Superadmins and the service.
+        Shows whether the Discord action is queued, claimed, done or failed (with
+        the bot's error). The payload is not included.
+      responses:
+        '200':
+          description: job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the requesting member or staff
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
           content:
             application/json:
               schema:
@@ -8446,6 +8881,65 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/hltb/lookup":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    post:
+      summary: Look up HowLongToBeat times
+      tags:
+      - Games
+      description: Members role, Moderator, Admin, Superadmin or service. Returns
+        the game's saved HLTB times when it has them (no scrape). Otherwise finds
+        the game's HowLongToBeat page through Google Custom Search ("How long is <title>?")
+        and scrapes it, as the bot's `/hltb` does. A fresh scrape is saved to the
+        HLTB cache only when the game's initial release is more than six months ago
+        (`meta.saved`). An unsaved result (or no match) is kept for about a day, then
+        served with `meta.source` `cache`. Takes no body.
+      responses:
+        '200':
+          description: HLTB times
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HltbLookup"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: Members role or staff required'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found, or `hltb_no_match` when HowLongToBeat has no
+            page for it
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`hltb_lookup_failed`: Google Custom Search or HowLongToBeat
+            failed"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: "`hltb_not_configured`: Google Custom Search credentials are
+            not set"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{game_id}/images":
     parameters:
     - name: game_id
@@ -8762,7 +9256,9 @@ paths:
       - Game Keys
       description: 'Owner-only: a Discord caller may only donate as themselves (`donor_user_id`
         must be their own id); the bot service token may donate on anyone''s behalf.
-        The claim fields are read-only on donation.'
+        The claim fields are read-only on donation. A member''s donation queues a
+        `giveaway_hub_refresh` bot job (payload `{ reason: "donate", key_id }`); the
+        service token''s does not.'
       parameters: []
       responses:
         '201':
@@ -8901,8 +9397,10 @@ paths:
       summary: Revoke a game key
       tags:
       - Game Keys
-      description: Revokes (deletes) a key. Restricted to the original donor, an admin,
-        or the bot service token.
+      description: 'Revokes (deletes) a key. Restricted to the original donor, an
+        Admin, a Superadmin, or the bot service token. A member''s revoke queues a
+        `giveaway_hub_refresh` bot job (payload `{ reason: "revoke", key_id }`); the
+        service token''s does not.'
       responses:
         '200':
           description: key revoked
@@ -8916,8 +9414,8 @@ paths:
                 required:
                 - deleted
         '403':
-          description: forbidden — caller is not the donor, an admin, or the service
-            token
+          description: 'forbidden: caller is not the donor, an Admin, a Superadmin,
+            or the service token'
           content:
             application/json:
               schema:
@@ -8946,10 +9444,16 @@ paths:
       summary: Claim a game key
       tags:
       - Game Keys
-      description: Atomically claims an unclaimed key and returns it with the secret
-        `key_value` revealed to the claimer. A Discord caller claims as themselves;
-        the bot service token claims on behalf of the `claimed_by_user_id` supplied
-        in the body.
+      description: 'Claims an unclaimed key and returns it with the secret `key_value`
+        revealed to the claimer. Requires the Discord Members role (or the bot service
+        token). The key row is locked, so of two concurrent claims one wins and the
+        other gets 409. A Discord caller claims as themselves; the bot service token
+        claims on behalf of the `claimed_by_user_id` supplied in the body. A member''s
+        claim queues two bot jobs: `giveaway_claim_notice` (payload `{ key_id, claimed_by_user_id,
+        donor_user_id, game_title, platform }`; the bot DMs the key, logs the claim
+        and notifies the donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id
+        }`). `meta.claim_notice_job_id` is the notice job, for polling GET /api/v1/bot_jobs/{id}.
+        The service token''s claims queue nothing.'
       parameters: []
       responses:
         '200':
@@ -8961,6 +9465,14 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/GameKey"
+                  meta:
+                    "$ref": "#/components/schemas/GameKeyClaimMeta"
+        '403':
+          description: 'forbidden: caller lacks the Members role'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '409':
           description: already claimed
           content:
@@ -9045,6 +9557,71 @@ paths:
                     "$ref": "#/components/schemas/PaginationMeta"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/claimed_game_keys":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the claimer.
+    get:
+      summary: List a user's claimed game keys
+      tags:
+      - Game Keys
+      description: The keys the user claimed, newest claim first (`claimed_at` desc,
+        then `key_id` desc), each embedding its `game` (null when unlinked), so a
+        claimer can find their keys again. Readable by the claimer, Admins and above,
+        and the service token. The secret `key_value` is included only when the caller
+        is the claimer; it is omitted for staff and the service.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: claimed game keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameKey"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the claimer, an Admin, a Superadmin,
+            or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown user
           content:
             application/json:
               schema:
@@ -9228,14 +9805,16 @@ paths:
       summary: Create a game from IGDB
       tags:
       - Games
-      description: 'Admin/service-only. Creates a game from IGDB by `igdb_id`: fetches
-        the full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
-        perspectives, modes, engines, franchises, platforms, developer/publisher companies,
-        collection) and releases (one per platform, earliest dated; Japan-only releases
-        are skipped; `format` is left null), then imports its cover/artwork/logo images
-        into Backblaze through the same importer the jobs use. Idempotent on `igdb_id`:
-        re-POSTing an existing game refreshes it and returns 200 instead of 201. Discover
-        ids via `GET /api/v1/igdb/search`.'
+      description: 'Members role holders, staff (Moderator and above) and the service.
+        Creates a game from IGDB by `igdb_id`: fetches the full IGDB payload, upserts
+        the game row plus its taxonomy (genres, themes, perspectives, modes, engines,
+        franchises, platforms, developer/publisher companies, collection) and releases
+        (one per platform, earliest dated; Japan-only releases are skipped; `format`
+        is left null), then imports its cover/artwork/logo images into Backblaze through
+        the same importer the jobs use. Idempotent on `igdb_id`, answering 200 instead
+        of 201 for a game already in the GameDB: an Admin, Superadmin or the service
+        re-POSTing refreshes it from IGDB; any other member gets the existing game
+        back unchanged (with empty `images`). Discover ids via `GET /api/v1/igdb/search`.'
       parameters: []
       responses:
         '201':
@@ -9253,7 +9832,8 @@ paths:
                     description: The image-import result (cover/artwork/logo diagnostics);
                       shape mirrors the importer's output.
         '200':
-          description: existing game refreshed (idempotent)
+          description: existing game returned, or refreshed for an Admin or the service
+            (idempotent)
           content:
             application/json:
               schema:
@@ -9272,7 +9852,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
@@ -9577,10 +10157,11 @@ paths:
       summary: Upsert HowLongToBeat cache
       tags:
       - Games
-      description: Admin/service-only. Upserts the bot's scraped HowLongToBeat cache
-        for the game, keyed on gamedb_game_id (mirrors the bot's `rpg_club_hltb_cache`
-        `ON CONFLICT (gamedb_game_id) DO UPDATE`). Fields are accepted under the same
-        logical names returned by the `hltb` slice of GET /api/v1/games/{id}/profile.
+      description: Members role, Moderator, Admin, Superadmin or service. Upserts
+        the bot's scraped HowLongToBeat cache for the game, keyed on gamedb_game_id
+        (mirrors the bot's `rpg_club_hltb_cache` `ON CONFLICT (gamedb_game_id) DO
+        UPDATE`). Fields are accepted under the same logical names returned by the
+        `hltb` slice of GET /api/v1/games/{id}/profile.
       parameters: []
       responses:
         '200':
@@ -9593,7 +10174,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Hltb"
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
@@ -9927,12 +10508,14 @@ paths:
       summary: Refresh releases from IGDB
       tags:
       - Games
-      description: 'Admin/service-only. Re-fetches the game''s release dates from
-        IGDB and replaces its release rows (the bot''s `refreshReleaseDates`): clears
-        the existing releases plus their scheduled announcements, then re-imports
-        one release per platform (earliest dated; Japan-only releases skipped, undated
-        rows dropped, `format` left null). Returns the rebuilt release list (same
-        shape as GET /api/v1/games/{id}/releases).'
+      description: 'Members role holders, staff (Moderator and above) and the service.
+        Re-fetches the game''s release dates from IGDB and replaces its release rows
+        (the bot''s `refreshReleaseDates`): clears the existing releases plus their
+        scheduled announcements, then re-imports one release per platform (earliest
+        dated; Japan-only releases skipped, undated rows dropped, `format` left null).
+        Returns the rebuilt release list (same shape as GET /api/v1/games/{id}/releases),
+        with `meta.added` (how many more releases the game has than before, never
+        negative) and `meta.total`.'
       responses:
         '200':
           description: releases refreshed
@@ -9945,8 +10528,13 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/Release"
+                  meta:
+                    "$ref": "#/components/schemas/ReleaseRefreshMeta"
+                required:
+                - data
+                - meta
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
@@ -11029,6 +11617,232 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/guild_channels":
+    get:
+      summary: List the guild text channels
+      tags:
+      - Guild Channels
+      description: 'Any authenticated caller. Text and announcement channels (types
+        0 and 5) as the bot last reported them, for channel pickers. Ordered as Discord
+        shows them: uncategorized first, then by category position, then channel position.
+        Each carries its `category_name`. Not paginated; `meta.count` is the row count.'
+      responses:
+        '200':
+          description: text channel list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GuildChannel"
+                  meta:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                    required:
+                    - count
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/guild_channels/sync":
+    post:
+      summary: Replace the guild channel list
+      tags:
+      - Guild Channels
+      description: 'Service-only. The bot''s full snapshot at startup: every channel
+        in `data` is upserted and every stored channel not in it is removed, in one
+        transaction. Send categories (type 4) too so text channels get their `category_name`.
+        One invalid entry rejects the whole sync (422) and leaves the old list in
+        place.'
+      parameters: []
+      responses:
+        '200':
+          description: list replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      synced:
+                        type: integer
+                        description: Channels upserted.
+                      removed:
+                        type: integer
+                        description: Stored channels removed because the snapshot
+                          lacked them.
+                    required:
+                    - synced
+                    - removed
+        '400':
+          description: missing `data` array
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: an entry failed validation
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      channel_id:
+                        type: string
+                        description: Discord channel snowflake. Required.
+                      name:
+                        type: string
+                        description: Channel name. Required.
+                      channel_type:
+                        type: integer
+                        description: Discord ChannelType number (0 text, 2 voice,
+                          4 category, 5 announcement, 15 forum). Required.
+                      parent_id:
+                        type: string
+                        nullable: true
+                        description: Parent category channel id, or null.
+                      position:
+                        type: integer
+                        description: Position within the category (defaults to 0).
+                    required:
+                    - channel_id
+                    - name
+                    - channel_type
+              required:
+              - data
+        required: true
+  "/api/v1/guild_channels/{channel_id}":
+    parameters:
+    - name: channel_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord channel snowflake.
+    put:
+      summary: Upsert one guild channel
+      tags:
+      - Guild Channels
+      description: 'Service-only. The bot''s channel create and update (rename, move):
+        inserts the channel (201) or refreshes it (200). The path id wins over any
+        `channel_id` in the body.'
+      parameters: []
+      responses:
+        '201':
+          description: channel created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GuildChannel"
+        '200':
+          description: channel updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GuildChannel"
+        '400':
+          description: missing `data`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Channel name. Required.
+                    channel_type:
+                      type: integer
+                      description: Discord ChannelType number (0 text, 2 voice, 4
+                        category, 5 announcement, 15 forum). Required.
+                    parent_id:
+                      type: string
+                      nullable: true
+                      description: Parent category channel id, or null.
+                    position:
+                      type: integer
+                      description: Position within the category (defaults to 0).
+                  required:
+                  - name
+                  - channel_type
+              required:
+              - data
+        required: true
+    delete:
+      summary: Remove one guild channel
+      tags:
+      - Guild Channels
+      description: 'Service-only. The bot''s channel delete. Idempotent: 204 whether
+        or not the channel was stored.'
+      responses:
+        '204':
+          description: channel removed (or was never stored)
+        '403':
+          description: forbidden - caller is not the service principal
+        '401':
+          description: unauthenticated
   "/api/v1/health":
     get:
       summary: Health check
@@ -11055,16 +11869,16 @@ paths:
       summary: Search IGDB for games
       tags:
       - IGDB
-      description: 'Admin/service-only. Returns IGDB game candidates so a caller can
-        pick the right `igdb_id` to import via `POST /api/v1/games`. Two modes, selected
-        by param: pass `igdb_id` to look games up directly by id (single or comma-separated),
-        or `q` for a fuzzy title search. Either accepts several values to seed a bulk
-        import — `igdb_id=1,2,3` or repeated `q[]=zelda&q[]=mario` (max 10, IGDB''s
-        multiquery cap). Multi-title results are deduped by `igdb_id` and each carries
-        `matched_query` (the searched title it matched). Every candidate carries `already_imported`
-        (whether a local game with that `igdb_id` already exists) so the UI can offer
-        "view" vs "import". An empty `igdb_id` and a blank `q` both return an empty
-        list.'
+      description: 'Members role holders, staff (Moderator and above) and the service.
+        Returns IGDB game candidates so a caller can pick the right `igdb_id` to import
+        via `POST /api/v1/games`. Two modes, selected by param: pass `igdb_id` to
+        look games up directly by id (single or comma-separated), or `q` for a fuzzy
+        title search. Either accepts several values to seed a bulk import — `igdb_id=1,2,3`
+        or repeated `q[]=zelda&q[]=mario` (max 10, IGDB''s multiquery cap). Multi-title
+        results are deduped by `igdb_id` and each carries `matched_query` (the searched
+        title it matched). Every candidate carries `already_imported` (whether a local
+        game with that `igdb_id` already exists) so the UI can offer "view" vs "import".
+        An empty `igdb_id` and a blank `q` both return an empty list.'
       parameters:
       - name: q
         in: query
@@ -11143,7 +11957,7 @@ paths:
                       - name
                       - already_imported
         '403':
-          description: forbidden — admin or service required
+          description: 'forbidden: Members role or staff required'
           content:
             application/json:
               schema:
@@ -11450,7 +12264,8 @@ paths:
       summary: Write a journal entry
       tags:
       - Journal
-      description: Owner-only. Creates an entry for the given game.
+      description: 'Owner-only: the path user (user bearer) or the service; staff
+        get 403 for another member. Creates an entry for the given game.'
       parameters: []
       responses:
         '201':
@@ -11754,7 +12569,9 @@ paths:
       summary: Update a journal entry
       tags:
       - Journal
-      description: Owner-only.
+      description: 'Owner-only: the entry author (user bearer) or the service. Admins,
+        Moderators and Superadmins get 403 on another member''s entry. An unknown
+        id is 404 for every caller.'
       parameters: []
       responses:
         '200':
@@ -11816,7 +12633,7 @@ paths:
       summary: Replace a journal entry (alias)
       tags:
       - Journal
-      description: Owner-only. Alias for PATCH (applied as a partial assign).
+      description: Owner-only (as PATCH). Alias for PATCH (applied as a partial assign).
       parameters: []
       responses:
         '200':
@@ -11828,6 +12645,18 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/JournalEntryGame"
+        '403':
+          description: 'forbidden: caller is not the owner'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -11858,7 +12687,9 @@ paths:
       summary: Delete a journal entry
       tags:
       - Journal
-      description: Owner-only.
+      description: 'Owner-only: the entry author (user bearer) or the service. Admins,
+        Moderators and Superadmins get 403 on another member''s entry. An unknown
+        id is 404 for every caller.'
       responses:
         '200':
           description: deleted
@@ -14374,9 +15205,11 @@ paths:
       summary: Create a public reminder
       tags:
       - Public Reminders
-      description: Admin or service only. `channel_id`, `message` and `due_at` are
-        required; `recur_every`/`recur_unit` (recurrence), `enabled` (defaults true)
-        and `created_by` are optional.
+      description: Admin or above (Admin, Superadmin, service). `channel_id`, `message`
+        and `due_at` are required; `recur_every`/`recur_unit` (recurrence), `enabled`
+        (defaults true) and `created_by` are optional. For a member (the website),
+        422 when `channel_id` is not a synced text channel; the service may target
+        any channel, threads included.
       parameters: []
       responses:
         '201':
@@ -14395,7 +15228,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -14418,13 +15252,17 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        For a member (the website), must be a synced text or announcement
+                        channel (see GET /api/v1/guild_channels), checked on create
+                        and whenever it changes; the service may use any channel.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -14518,7 +15356,10 @@ paths:
       summary: Update a public reminder
       tags:
       - Public Reminders
-      description: 'Partial update: send any subset of the writable columns.'
+      description: 'Admin or above (Admin, Superadmin, service). Partial update: send
+        any subset of the writable columns. For a member (the website), 422 when `channel_id`
+        changes to a channel that is not a synced text channel; the service may move
+        it to any channel.'
       parameters: []
       responses:
         '200':
@@ -14543,7 +15384,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -14566,13 +15408,17 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        For a member (the website), must be a synced text or announcement
+                        channel (see GET /api/v1/guild_channels), checked on create
+                        and whenever it changes; the service may use any channel.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -14608,8 +15454,15 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/PublicReminder"
+        '422':
+          description: validation failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -14632,13 +15485,17 @@ paths:
                     channel_id:
                       type: string
                       description: Channel to post the reminder in. Required on create.
+                        For a member (the website), must be a synced text or announcement
+                        channel (see GET /api/v1/guild_channels), checked on create
+                        and whenever it changes; the service may use any channel.
                     message:
                       type: string
                       description: Reminder text. Required on create.
                     due_at:
                       type: string
                       format: date-time
-                      description: When the reminder is due. Required on create.
+                      description: When the reminder is due. Required on create. Send
+                        any ISO 8601 offset; it is stored and returned in UTC.
                     recur_every:
                       type: integer
                       nullable: true
@@ -14674,7 +15531,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not an Admin, Superadmin or the service
+            principal'
           content:
             application/json:
               schema:
@@ -17171,9 +18029,11 @@ paths:
                   membership:
                     type: object
                     nullable: true
-                    description: RPG Club membership flags (RpgClubUser#membership)
-                      merged with the caller's dev/longstanding flags. Null for a
-                      service principal or an unknown user.
+                    description: 'RPG Club membership flags (RpgClubUser#membership)
+                      merged with the caller''s dev/longstanding flags. `admin`, `moderator`,
+                      `regular` and `member` follow the member''s Discord roles: refreshed
+                      at sign-in and whenever the bot reports a role change. Null
+                      for a service principal or an unknown user.'
                     properties:
                       admin:
                         type: boolean
@@ -19171,8 +20031,17 @@ paths:
       summary: List suggestions
       tags:
       - Suggestions
-      description: Open to any authenticated caller. Newest first.
+      description: Open to any authenticated caller. Most upvoted first, then newest.
+        Each row carries `upvote_count` and `viewer_upvoted` (always false for the
+        service).
       parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Comma-separated statuses to include (pending, approved, rejected,
+          withdrawn). Absent = every status. The Suggestion Board default is `pending,approved`.
       - name: page
         in: query
         schema:
@@ -19217,6 +20086,12 @@ paths:
                       "$ref": "#/components/schemas/Suggestion"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: unknown status
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -19227,8 +20102,12 @@ paths:
       summary: Create a suggestion
       tags:
       - Suggestions
-      description: Admin or service only. `title` is required; everything else is
-        optional.
+      description: 'Members role holders, Moderator and above, or the service. `title`
+        is required; everything else is optional. Always created Pending. A member
+        is recorded as the author (body `created_by` and `created_by_name` are ignored)
+        and their submission enqueues a `suggestion_submitted` bot job (payload `{
+        suggestion_id, created_by }`) so the bot pings the bot dev. A service create
+        enqueues nothing: the bot pings inline for its own submissions.'
       parameters: []
       responses:
         '201':
@@ -19247,7 +20126,13 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller lacks the Members role and is not staff'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
           content:
             application/json:
               schema:
@@ -19281,11 +20166,13 @@ paths:
                     created_by:
                       type: string
                       nullable: true
-                      description: Optional Discord user id of the author.
+                      description: Discord user id of the author. Service only; a
+                        member is always the author.
                     created_by_name:
                       type: string
                       nullable: true
-                      description: Optional display name of the author.
+                      description: Author's display name. Service only; a member's
+                        comes from their record.
                   required:
                   - title
               required:
@@ -19325,17 +20212,66 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
-    delete:
-      summary: Delete a suggestion
+  "/api/v1/suggestions/{id}/approve":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Approve a suggestion into a GitHub issue
       tags:
       - Suggestions
+      description: 'Superadmin or the service, while Pending. Opens a GitHub issue
+        in `target_repo` (title = the Suggestion title, body = "<author name>: <details>"
+        plus a hidden Suggestion marker, labels = the comma-separated `labels`) through
+        the GitHub App, stores its number and URL, and sets status approved. An issue
+        that already carries the marker (an earlier attempt whose response was lost)
+        is reused instead of opening a duplicate. Enqueues a `suggestion_outcome`
+        bot job (payload `{ suggestion_id, outcome, created_by, title, github_issue_number,
+        github_issue_url, rejection_reason }`), the bot''s own reviews included; `meta.outcome_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
+      parameters: []
       responses:
         '200':
-          description: deleted
+          description: approved
           content:
             application/json:
               schema:
-                "$ref": "#/components/schemas/DeletedResponse"
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+                  meta:
+                    "$ref": "#/components/schemas/SuggestionReviewMeta"
+        '422':
+          description: target_repo missing or not in the allowlist
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: GitHub refused or failed (error github_issue_failed); nothing
+            changed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: GitHub App not configured (error github_not_configured)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending, or `approval_in_progress` while another approval
+            is calling GitHub
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
@@ -19343,7 +20279,254 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or the service principal
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    target_repo:
+                      type: string
+                      enum:
+                      - TheRPGClub/TheRPGClub-bot
+                      - TheRPGClub/TheRPGClub-api
+                      - TheRPGClub/TheRPGClub-www
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - target_repo
+              required:
+              - data
+        required: true
+  "/api/v1/suggestions/{id}/reject":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Reject a suggestion
+      tags:
+      - Suggestions
+      description: Superadmin or the service, while Pending. Sets status rejected
+        with the (trimmed) reason. Enqueues a `suggestion_outcome` bot job (payload
+        `{ suggestion_id, outcome, created_by, title, github_issue_number, github_issue_url,
+        rejection_reason }`), the bot's own reviews included; `meta.outcome_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
+      parameters: []
+      responses:
+        '200':
+          description: rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+                  meta:
+                    "$ref": "#/components/schemas/SuggestionReviewMeta"
+        '422':
+          description: blank or too long rejection_reason
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    rejection_reason:
+                      type: string
+                      maxLength: 2000
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - rejection_reason
+              required:
+              - data
+        required: true
+  "/api/v1/suggestions/{id}/withdraw":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Withdraw a suggestion
+      tags:
+      - Suggestions
+      description: The author only, while Pending. Staff and the service are refused.
+      responses:
+        '200':
+          description: withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the author'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/suggestions/{id}/upvote":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubSuggestion id.
+    post:
+      summary: Upvote a suggestion
+      tags:
+      - Suggestions
+      description: Members role holders or staff, signed in (the service is refused).
+        One upvote per member; repeating it is a no-op. Only Pending and Approved
+        suggestions take upvotes.
+      responses:
+        '200':
+          description: upvoted; returns the updated suggestion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+        '409':
+          description: rejected or withdrawn
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not a Members role holder or staff, or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Remove an upvote
+      tags:
+      - Suggestions
+      description: Members role holders or staff, signed in (the service is refused).
+        Removes the caller's upvote if any (a no-op otherwise), whatever the status.
+      responses:
+        '200':
+          description: removed; returns the updated suggestion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Suggestion"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not a Members role holder or staff, or the service'
           content:
             application/json:
               schema:
@@ -20517,7 +21700,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/UserService"
         '422':
-          description: missing `discord_id`
+          description: missing `discord_id`, or `role_ids` is not a list
           content:
             application/json:
               schema:
@@ -20570,6 +21753,13 @@ paths:
                       format: date-time
                       nullable: true
                       description: Set to null to clear a departure (rejoin).
+                    role_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Optional. The member's current Discord role IDs.
+                        When present, replaces the Admin, Moderator, Regulars and
+                        Members flags as `PUT /users/{user_id}/roles` does.
                   required:
                   - discord_id
               required:
@@ -20624,6 +21814,87 @@ paths:
                   description: The Discord ids of members still present in the guild.
               required:
               - active_ids
+        required: true
+  "/api/v1/users/{user_id}/roles":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubUser id (Discord user id).
+    put:
+      summary: Report a member's Discord roles
+      tags:
+      - Users
+      description: Service-only. The bot reports a member's current Discord role IDs
+        when Discord sends a guild member update. The Admin, Moderator, Regulars and
+        Members flags are replaced with the ones those roles grant (the same derivation
+        as sign-in), so `GET /session` membership and the staff gates follow the change
+        straight away. An empty list clears every flag. Superadmin (`dev`) and Longstanding
+        stay on the member's session token and are not changed here.
+      parameters: []
+      responses:
+        '200':
+          description: role flags refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/UserRoleReport"
+                required:
+                - data
+        '400':
+          description: missing `data` envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`role_ids` missing or not a list"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the service principal'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    role_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Every Discord role ID the member currently holds
+                        in the club guild.
+                  required:
+                  - role_ids
+              required:
+              - data
         required: true
   "/api/v1/users/{user_id}/avatar_history":
     parameters:

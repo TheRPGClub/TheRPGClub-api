@@ -4,8 +4,8 @@
 #
 # The `key_value` secret is deliberately omitted from list responses: it is
 # rendered only when the resource is built with `params: { reveal_key: true }`,
-# which the controller passes solely in the response to a successful claim, so
-# the secret reaches only the claimer. Everything else — identity, the donor
+# which the controller passes in the response to a successful claim, the
+# restricted single-key GET, and the claimer's own claimed-keys list. Everything else — identity, the donor
 # and claim state, and the donor's notify-on-claim flag — is always exposed.
 #
 # `game` embeds the linked GamedbGame (title + cover/art/logo URLs, via the

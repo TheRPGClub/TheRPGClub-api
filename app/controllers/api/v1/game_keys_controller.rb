@@ -6,13 +6,21 @@ module Api
     #
     # The `key_value` secret is never returned by the list endpoints; it is
     # revealed only to the claimer in the response to a successful claim (see
-    # GameKeyResource's conditional `key_value`). Claiming is atomic — the
-    # UPDATE is guarded by `claimed_by_user_id IS NULL`, so two concurrent
-    # claims on the same key cannot both win.
+    # GameKeyResource's conditional `key_value`). Claiming locks the key row
+    # (SELECT ... FOR UPDATE), so two concurrent claims on the same key cannot
+    # both win: the second sees it claimed and gets 409.
+    #
+    # Web parity 2: claiming needs the Members role, as in the bot. A
+    # member's donate, claim and revoke queue a `giveaway_hub_refresh` bot
+    # job, and a claim also queues `giveaway_claim_notice` (DM the key, log
+    # the claim, notify the donor). The service token's own actions queue
+    # nothing: the bot already does that Discord work in-process.
     class GameKeysController < ApplicationController
       before_action :require_owner!, only: :create
+      before_action :require_member_role!, only: :claim
       before_action :require_key_reader!, only: :show
       before_action :require_donor_or_admin!, only: :destroy
+      before_action :require_claimer_or_admin!, only: :claimed_index
 
       # GET /api/v1/game_keys
       # The available (unclaimed) keys, ordered like the bot's listing
@@ -33,6 +41,16 @@ module Api
           default_order: { created_at: :desc, key_id: :desc })
       end
 
+      # GET /api/v1/users/:user_id/claimed_game_keys
+      # Keys the user claimed, newest claim first, so a claimer can find their
+      # keys again. Readable by the claimer, Admin and above, and the service;
+      # the secret `key_value` is included only for the claimer themselves.
+      def claimed_index
+        scope = RpgClubGameKey.where(claimed_by_user_id: @claimer.user_id).preload(game: :images)
+        render_collection(scope, resource: GameKeyResource, params: { reveal_key: viewer_is_claimer? },
+          default_order: { claimed_at: :desc, key_id: :desc })
+      end
+
       # POST /api/v1/game_keys
       # Donate a key. Owner-only: a Discord caller may only donate as themselves
       # (`donor_user_id` must be their own id); the bot's service token may
@@ -40,7 +58,9 @@ module Api
       # game (so the API can embed its cover/art); `game_title` is backfilled
       # from that game when omitted. `region` defaults to Global.
       def create
-        record = RpgClubGameKey.create!(donate_data)
+        record = RpgClubGameKey.transaction do
+          RpgClubGameKey.create!(donate_data).tap { |key| enqueue_hub_refresh("donate", key) }
+        end
         record.reload
         render json: { data: GameKeyResource.new(record).serializable_hash }, status: :created
       end
@@ -60,7 +80,10 @@ module Api
       # Revoke (delete) a key. Authorized for the original donor, an admin, or
       # the service token (see require_donor_or_admin!).
       def destroy
-        game_key.destroy!
+        RpgClubGameKey.transaction do
+          game_key.destroy!
+          enqueue_hub_refresh("revoke", game_key)
+        end
         render json: { deleted: true }
       end
 
@@ -72,19 +95,22 @@ module Api
         claimant_id = resolve_claimant_id
         return render json: { error: "claimant_required" }, status: :unprocessable_entity if claimant_id.blank?
 
-        claimed = RpgClubGameKey
-          .where(key_id: params[:id], claimed_by_user_id: nil)
-          .update_all(claimed_by_user_id: claimant_id, claimed_at: Time.current, updated_at: Time.current)
+        notice = nil
+        claimed = RpgClubGameKey.transaction do
+          key = RpgClubGameKey.lock.find(params[:id])
+          next false if key.claimed_by_user_id.present?
 
-        if claimed.zero?
-          # Nothing flipped: a missing key raises 404 here, while an existing
-          # one was already claimed by someone else.
-          RpgClubGameKey.find(params[:id])
-          return render json: { error: "already_claimed" }, status: :conflict
+          now = Time.current
+          key.update_columns(claimed_by_user_id: claimant_id, claimed_at: now, updated_at: now)
+          notice = enqueue_claim_notice(key)
+          enqueue_hub_refresh("claim", key)
+          true
         end
+        return render json: { error: "already_claimed" }, status: :conflict unless claimed
 
         record = RpgClubGameKey.includes(game: :images).find(params[:id])
-        render json: { data: GameKeyResource.new(record, params: { reveal_key: true }).serializable_hash }
+        render json: { data: GameKeyResource.new(record, params: { reveal_key: true }).serializable_hash,
+                       meta: { claim_notice_job_id: notice&.id } }
       end
 
       private
@@ -123,15 +149,25 @@ module Api
         forbidden!
       end
 
-      # Shared predicate for the member routes: the service token, the key's
-      # donor, or an admin/dev.
+      # Shared predicate for the member routes: the key's donor, or
+      # admin-or-above (Admin, Superadmin, the service token).
       def donor_admin_or_service?
-        return true if current_principal&.service?
-        return false unless current_principal&.discord_user?
-        return true if current_principal.id.to_s == game_key.donor_user_id.to_s
-        return true if current_principal.dev?
+        return true if current_principal&.discord_user? && current_principal.id.to_s == game_key.donor_user_id.to_s
 
-        RpgClubUser.where(user_id: current_principal.id, role_admin: true).exists?
+        admin_or_above?
+      end
+
+      # claimed_index: an unknown user is 404 (before the role check), then
+      # only the claimer, Admin and above, or the service may list.
+      def require_claimer_or_admin!
+        @claimer = RpgClubUser.find(params[:user_id])
+        return true if viewer_is_claimer? || admin_or_above?
+
+        forbidden!
+      end
+
+      def viewer_is_claimer?
+        current_principal&.discord_user? && current_principal.id.to_s == @claimer.user_id.to_s
       end
 
       def forbidden!
@@ -164,6 +200,33 @@ module Api
         return current_principal.id if current_principal&.discord_user?
 
         params.dig(:data, :claimed_by_user_id).presence
+      end
+
+      # Discord work for the bot when a member acted from a client other than
+      # the bot. Called inside the write's transaction, so a failed write
+      # queues nothing.
+      def member_action?
+        current_principal&.discord_user?
+      end
+
+      # Payload: `{ reason: "donate"|"claim"|"revoke", key_id }`.
+      def enqueue_hub_refresh(reason, key)
+        return unless member_action?
+
+        BotJob.enqueue!(kind: "giveaway_hub_refresh", payload: { reason: reason, key_id: key.key_id },
+          requested_by: current_principal.id)
+      end
+
+      # Payload: ids plus the labels the claim log needs. The secret
+      # `key_value` stays out of the job; the bot reads it with
+      # GET /game_keys/:id.
+      def enqueue_claim_notice(key)
+        return unless member_action?
+
+        BotJob.enqueue!(kind: "giveaway_claim_notice", requested_by: current_principal.id, payload: {
+          key_id: key.key_id, claimed_by_user_id: key.claimed_by_user_id, donor_user_id: key.donor_user_id,
+          game_title: key.game_title, platform: key.platform
+        })
       end
 
       # require_owner! for #create resolves the owner from the donor named in

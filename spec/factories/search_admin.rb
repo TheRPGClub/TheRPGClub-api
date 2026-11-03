@@ -28,6 +28,11 @@ FactoryBot.define do
     created_by_name { "suggester_#{SecureRandom.hex(3)}" }
   end
 
+  factory :suggestion_upvote, class: "RpgClubSuggestionUpvote" do
+    association :suggestion
+    association :user
+  end
+
   factory :suggestion_review_session, class: "RpgClubSuggestionReviewSession" do
     session_id { "sess-#{SecureRandom.hex(10)}" }
     reviewer_id { SecureRandom.random_number(10**18).to_s }

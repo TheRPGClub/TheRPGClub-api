@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_02_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -65,6 +65,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
     t.string "tier", limit: 16
     t.datetime "updated_at", null: false
     t.index ["achievement_set_id", "external_id"], name: "ux_achievements_set_external", unique: true
+  end
+
+  create_table "bot_jobs", force: :cascade do |t|
+    t.integer "attempts", default: 0, null: false
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
+    t.text "error_message"
+    t.datetime "finished_at"
+    t.string "kind", limit: 64, null: false
+    t.jsonb "payload", default: {}, null: false
+    t.string "requested_by_user_id", limit: 30
+    t.string "status", limit: 16, default: "queued", null: false
+    t.datetime "updated_at", null: false
+    t.index ["claimed_at"], name: "ix_bot_jobs_claimed", where: "((status)::text = 'claimed'::text)"
+    t.index ["id"], name: "ix_bot_jobs_queued", where: "((status)::text = 'queued'::text)"
+    t.index ["requested_by_user_id"], name: "index_bot_jobs_on_requested_by_user_id"
+    t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'claimed'::character varying, 'done'::character varying, 'failed'::character varying]::text[])", name: "ck_bot_jobs_status"
   end
 
   create_table "bot_presence_history", force: :cascade do |t|
@@ -331,6 +348,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_runoff_user_game", unique: true
   end
 
+  create_table "guild_channels", primary_key: "channel_id", id: :string, force: :cascade do |t|
+    t.integer "channel_type", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.string "parent_id"
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["channel_type", "parent_id", "position"], name: "ix_guild_channels_type_parent_position"
+  end
+
   create_table "help", primary_key: ["topic", "seq"], force: :cascade do |t|
     t.string "info", limit: 80
     t.bigint "seq", null: false
@@ -477,7 +504,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
     t.index ["claimed_by_user_id", "game_title"], name: "ix_game_keys_available"
     t.index ["game_title"], name: "ix_game_keys_title"
     t.index ["gamedb_game_id"], name: "ix_game_keys_game"
-    t.check_constraint "region::text = ANY (ARRAY['Global'::character varying, 'NA'::character varying, 'EU'::character varying, 'UK'::character varying, 'RU/CIS'::character varying, 'Asia'::character varying, 'Unknown'::character varying]::text[])", name: "ck_rpg_club_game_keys_region"
+    t.check_constraint "region::text = ANY (ARRAY['Global'::character varying::text, 'NA'::character varying::text, 'EU'::character varying::text, 'UK'::character varying::text, 'RU/CIS'::character varying::text, 'Asia'::character varying::text, 'Unknown'::character varying::text])", name: "ck_rpg_club_game_keys_region"
   end
 
   create_table "rpg_club_gamedb_import_items", primary_key: "item_id", force: :cascade do |t|
@@ -703,15 +730,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
     t.index ["reviewer_id"], name: "ix_rpg_club_sug_rev_sess_reviewer"
   end
 
+  create_table "rpg_club_suggestion_upvotes", force: :cascade do |t|
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.bigint "suggestion_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.index ["suggestion_id", "user_id"], name: "ux_rpg_club_suggestion_upvotes_suggestion_user", unique: true
+    t.index ["user_id"], name: "ix_rpg_club_suggestion_upvotes_user"
+  end
+
   create_table "rpg_club_suggestions", primary_key: "suggestion_id", force: :cascade do |t|
+    t.timestamptz "approval_started_at"
     t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
     t.string "created_by_name", limit: 100
     t.string "details", limit: 2000
+    t.integer "github_issue_number"
+    t.string "github_issue_url", limit: 500
     t.string "labels", limit: 200
+    t.string "rejection_reason", limit: 2000
+    t.timestamptz "reviewed_at"
+    t.string "reviewed_by", limit: 30
+    t.string "status", limit: 16, default: "pending", null: false
+    t.string "target_repo", limit: 200
     t.string "title", limit: 200, null: false
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["created_at"], name: "ix_rpg_club_suggestions_created"
+    t.index ["status"], name: "ix_rpg_club_suggestions_status"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying]::text[])", name: "ck_rpg_club_suggestions_status"
   end
 
   create_table "rpg_club_user_avatar_history", primary_key: "event_id", force: :cascade do |t|
@@ -1093,6 +1138,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
 
   add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
+  add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"
@@ -1122,6 +1168,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_01_000300) do
   add_foreign_key "rpg_club_gotm_audit_items", "rpg_club_gotm_audit_imports", column: "import_id", primary_key: "import_id", name: "fk_gotm_audit_items"
   add_foreign_key "rpg_club_rss_feed_items", "rpg_club_rss_feeds", column: "feed_id", primary_key: "feed_id", name: "fk_rss_feed_items_feed", on_delete: :cascade
   add_foreign_key "rpg_club_steam_collection_import_items", "rpg_club_steam_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_steam_coll_import_items"
+  add_foreign_key "rpg_club_suggestion_upvotes", "rpg_club_suggestions", column: "suggestion_id", primary_key: "suggestion_id", name: "fk_rpg_club_suggestion_upvotes_suggestion", on_delete: :cascade
+  add_foreign_key "rpg_club_suggestion_upvotes", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_rpg_club_suggestion_upvotes_user", on_delete: :cascade
   add_foreign_key "rpg_club_xbox_collection_import_items", "rpg_club_xbox_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_xbox_coll_import_items"
   add_foreign_key "threads", "gamedb_games", primary_key: "game_id", name: "fk_threads_gamedb_game"
   add_foreign_key "user_achievement_set_progress", "achievement_sets", name: "fk_user_achievement_set_progress_set", on_delete: :cascade

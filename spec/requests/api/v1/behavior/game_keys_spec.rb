@@ -8,8 +8,13 @@ require "rails_helper"
 # response. Donating is owner-only, revoking is donor/admin/service-only, and
 # claiming atomically flips the unclaimed row.
 RSpec.describe "api/v1/game_keys behavior", type: :request do
+  # The giveaway jobs the request queued for the bot, oldest first.
+  def giveaway_jobs(kind)
+    BotJob.where(kind: kind).order(:id).map { |job| [ job.payload, job.requested_by_user_id ] }
+  end
+
   let(:donor) { create(:user) }
-  let(:claimant) { create(:user) }
+  let(:claimant) { create(:user, role_member: true) }
   let(:other_user) { create(:user) }
 
   describe "GET /api/v1/game_keys" do
@@ -81,6 +86,79 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
     end
   end
 
+  describe "GET /api/v1/users/:user_id/claimed_game_keys" do
+    def claim_key(at:, **attrs)
+      create(:game_key, donor_user_id: donor.user_id, claimed_by_user_id: claimant.user_id,
+        claimed_at: at, key_value: "SECRET-#{SecureRandom.hex(3)}", **attrs)
+    end
+
+    let!(:older) { claim_key(at: 2.days.ago) }
+    let!(:newer) { claim_key(at: 1.hour.ago) }
+
+    before do
+      create(:game_key, donor_user_id: donor.user_id)
+      create(:game_key, donor_user_id: donor.user_id, claimed_by_user_id: other_user.user_id,
+        claimed_at: Time.current)
+    end
+
+    def claimed_ids
+      json.fetch("data").map { |k| k.fetch("key_id") }
+    end
+
+    it "lists the claimer's own keys newest claim first, with the secret" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: auth_headers_for(claimant)
+
+      expect(response).to have_http_status(:ok)
+      expect(claimed_ids).to eq([ newer.key_id, older.key_id ])
+      expect(json.fetch("data").first).to include("key_value" => newer.key_value,
+        "claimed_by_user_id" => claimant.user_id, "donor_user_id" => donor.user_id)
+      expect(json.fetch("meta")).to include("page" => 1)
+    end
+
+    it "paginates like the donations list" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", params: { per: 1, page: 2 },
+        headers: auth_headers_for(claimant)
+
+      expect(claimed_ids).to eq([ older.key_id ])
+    end
+
+    it "lets an Admin read the list without the secret" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:ok)
+      expect(claimed_ids).to eq([ newer.key_id, older.key_id ])
+      expect(json.fetch("data").first).not_to have_key("key_value")
+    end
+
+    it "lets the service read the list without the secret" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").first).not_to have_key("key_value")
+    end
+
+    it "forbids other members and Moderators" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys", headers: auth_headers_for(other_user)
+      expect(response).to have_http_status(:forbidden)
+
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys",
+        headers: auth_headers_for(create(:user, role_moderator: true))
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "returns 404 for an unknown user" do
+      get "/api/v1/users/999999999999999999/claimed_game_keys", headers: service_headers
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "requires authentication" do
+      get "/api/v1/users/#{claimant.user_id}/claimed_game_keys"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "POST /api/v1/game_keys" do
     let(:payload) do
       { data: { game_title: "Chrono Cross", platform: "PSN", key_value: "ABCD-EFGH",
@@ -102,6 +180,25 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       )
       expect(json.fetch("data")).not_to have_key("key_value")
       expect(RpgClubGameKey.find(json.dig("data", "key_id")).key_value).to eq("ABCD-EFGH")
+    end
+
+    it "queues a hub refresh for the bot" do
+      post "/api/v1/game_keys", params: payload, headers: auth_headers_for(donor), as: :json
+
+      expect(giveaway_jobs("giveaway_hub_refresh")).to eq([ [
+        { "reason" => "donate", "key_id" => json.dig("data", "key_id") }, donor.user_id
+      ] ])
+    end
+
+    it "queues nothing when the bot donates, or when the donation fails" do
+      post "/api/v1/game_keys", params: payload, headers: service_headers, as: :json
+      expect(response).to have_http_status(:created)
+
+      payload[:data].delete(:platform)
+      post "/api/v1/game_keys", params: payload, headers: auth_headers_for(donor), as: :json
+      expect(response).to have_http_status(:unprocessable_content)
+
+      expect(BotJob.count).to eq(0)
     end
 
     it "allows the service to donate on a user's behalf" do
@@ -303,6 +400,36 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       expect(RpgClubGameKey.exists?(key.key_id)).to be(false)
     end
 
+    it "lets a Superadmin revoke any key" do
+      key = create(:game_key, donor_user_id: donor.user_id)
+
+      delete "/api/v1/game_keys/#{key.key_id}", headers: auth_headers_for(other_user, is_dev: true)
+
+      expect(response).to have_http_status(:ok)
+      expect(RpgClubGameKey.exists?(key.key_id)).to be(false)
+    end
+
+    it "queues a hub refresh for the bot" do
+      key = create(:game_key, donor_user_id: donor.user_id)
+
+      delete "/api/v1/game_keys/#{key.key_id}", headers: auth_headers_for(donor)
+
+      expect(giveaway_jobs("giveaway_hub_refresh")).to eq([ [
+        { "reason" => "revoke", "key_id" => key.key_id }, donor.user_id
+      ] ])
+    end
+
+    it "queues nothing when the bot revokes, or when the revoke is refused" do
+      key = create(:game_key, donor_user_id: donor.user_id)
+      delete "/api/v1/game_keys/#{key.key_id}", headers: auth_headers_for(other_user)
+      expect(response).to have_http_status(:forbidden)
+
+      delete "/api/v1/game_keys/#{key.key_id}", headers: service_headers
+      expect(response).to have_http_status(:ok)
+
+      expect(BotJob.count).to eq(0)
+    end
+
     it "lets an admin revoke any key" do
       key = create(:game_key, donor_user_id: donor.user_id)
 
@@ -391,7 +518,8 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       key = create(:game_key, donor_user_id: donor.user_id,
         claimed_by_user_id: claimant.user_id, claimed_at: Time.current)
 
-      post "/api/v1/game_keys/#{key.key_id}/claim", headers: auth_headers_for(other_user), as: :json
+      post "/api/v1/game_keys/#{key.key_id}/claim",
+        headers: auth_headers_for(create(:user, role_member: true)), as: :json
 
       expect(response).to have_http_status(:conflict)
       expect(json).to eq("error" => "already_claimed")
@@ -402,6 +530,74 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       post "/api/v1/game_keys/999999999/claim", headers: auth_headers_for(claimant), as: :json
 
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "forbids a member without the Members role, and leaves the key unclaimed" do
+      key = create(:game_key, donor_user_id: donor.user_id)
+
+      post "/api/v1/game_keys/#{key.key_id}/claim", headers: auth_headers_for(other_user), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json).to eq("error" => "forbidden")
+      expect(key.reload.claimed_by_user_id).to be_nil
+      expect(BotJob.count).to eq(0)
+    end
+
+    it "forbids staff without the Members role (the bot checks only that role)" do
+      key = create(:game_key, donor_user_id: donor.user_id)
+
+      post "/api/v1/game_keys/#{key.key_id}/claim",
+        headers: auth_headers_for(create(:user, :admin), is_dev: true), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "queues the claim notice and a hub refresh for the bot" do
+      key = create(:game_key, donor_user_id: donor.user_id, game_title: "Chrono Cross", platform: "PSN")
+
+      post "/api/v1/game_keys/#{key.key_id}/claim", headers: auth_headers_for(claimant), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(giveaway_jobs("giveaway_claim_notice")).to eq([ [
+        { "key_id" => key.key_id, "claimed_by_user_id" => claimant.user_id, "donor_user_id" => donor.user_id,
+          "game_title" => "Chrono Cross", "platform" => "PSN" },
+        claimant.user_id
+      ] ])
+      expect(giveaway_jobs("giveaway_hub_refresh")).to eq([ [
+        { "reason" => "claim", "key_id" => key.key_id }, claimant.user_id
+      ] ])
+    end
+
+    it "returns the claim notice job id so the website can show its status" do
+      key = create(:game_key, donor_user_id: donor.user_id)
+
+      post "/api/v1/game_keys/#{key.key_id}/claim", headers: auth_headers_for(claimant), as: :json
+
+      job_id = json.fetch("meta").fetch("claim_notice_job_id")
+      expect(BotJob.find(job_id).kind).to eq("giveaway_claim_notice")
+      get "/api/v1/bot_jobs/#{job_id}", headers: auth_headers_for(claimant)
+      expect(json.dig("data", "status")).to eq("queued")
+    end
+
+    it "queues no jobs when the bot claims, since it does the Discord side itself" do
+      key = create(:game_key, donor_user_id: donor.user_id)
+
+      post "/api/v1/game_keys/#{key.key_id}/claim",
+        params: { data: { claimed_by_user_id: claimant.user_id } }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(BotJob.count).to eq(0)
+      expect(json.fetch("meta")).to eq("claim_notice_job_id" => nil)
+    end
+
+    it "queues nothing for a losing claim" do
+      key = create(:game_key, donor_user_id: donor.user_id,
+        claimed_by_user_id: other_user.user_id, claimed_at: Time.current)
+
+      post "/api/v1/game_keys/#{key.key_id}/claim", headers: auth_headers_for(claimant), as: :json
+
+      expect(response).to have_http_status(:conflict)
+      expect(BotJob.count).to eq(0)
     end
 
     it "requires authentication" do

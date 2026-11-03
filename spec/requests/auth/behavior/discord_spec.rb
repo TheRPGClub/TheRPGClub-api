@@ -178,6 +178,54 @@ RSpec.describe "auth/discord behavior", type: :request do
       expect(session_token.is_longstanding).to be(true)
     end
 
+    it "writes the staff and member role flags from the member's guild roles" do
+      stub_successful_oauth(roles: [ "461891227613265940", "267881447258325002", "267883288817958912",
+                                     "747520789003239530", "42" ])
+      state = begin_oauth
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+      token = token_from_redirect
+      reset!
+      get "/api/v1/session", headers: { "Authorization" => "Bearer #{token}" }
+
+      expect(json.fetch("membership")).to include(
+        "admin" => true, "moderator" => true, "regular" => true, "member" => true
+      )
+    end
+
+    it "clears role flags the member no longer holds at sign-in" do
+      create(:user, :admin, user_id: discord_id, role_moderator: true, role_regular: true, role_member: true)
+      stub_successful_oauth(roles: [ "747520789003239530" ])
+      state = begin_oauth
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+      token = token_from_redirect
+      reset!
+      get "/api/v1/session", headers: { "Authorization" => "Bearer #{token}" }
+
+      expect(json.fetch("membership")).to include(
+        "admin" => false, "moderator" => false, "regular" => false, "member" => true
+      )
+    end
+
+    it "keeps the stored role flags when the roles fetch fails" do
+      create(:user, :admin, user_id: discord_id, role_member: true)
+      allow(client).to receive_messages(
+        exchange_code!: { "access_token" => "discord-access-token" },
+        fetch_user!: discord_user_payload,
+        ensure_rpgclub_member!: true
+      )
+      allow(client).to receive(:fetch_rpgclub_member_roles!).and_raise(StandardError, "discord is down")
+      state = begin_oauth
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+      token = token_from_redirect
+      reset!
+      get "/api/v1/session", headers: { "Authorization" => "Bearer #{token}" }
+
+      expect(json.fetch("membership")).to include("admin" => true, "member" => true)
+    end
+
     it "updates the existing user record instead of creating a duplicate" do
       create(:user, user_id: discord_id, username: "stale_name")
       stub_successful_oauth

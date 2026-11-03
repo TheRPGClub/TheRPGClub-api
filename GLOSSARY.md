@@ -30,7 +30,7 @@ _Avoid_: Earn rate, percentage
 
 **Completion**:
 A member having unlocked every Achievement in an Achievement Set.
-_Avoid_: 100%, finish
+_Avoid_: 100%, finish, Game Completion (a different thing)
 
 **Mastery**:
 A RetroAchievements Completion where every Unlock is hardcore.
@@ -50,3 +50,33 @@ _Avoid_: Initial sync, full import
 **Sync Window**:
 A scheduled period in which every Linked Account is checked for new Unlocks, after which the hub stays idle.
 _Avoid_: Refresh, poll
+
+## Games
+
+**Game Completion**:
+A member's record that they finished a game, with how thoroughly (main story, main story plus side content, or completionist) and when. Distinct from an Achievement Hub Completion.
+_Avoid_: Completion (unqualified), beat, finish
+
+## Community
+
+**Suggestion**:
+A member's proposal for the club's bot or website. Pending until staff approve it (it becomes a GitHub issue) or reject it with a reason, or until its author withdraws it.
+_Avoid_: Request, idea, ticket
+
+**Suggestion Board**:
+The members-only list of Suggestions, ranked by member upvotes.
+_Avoid_: Roadmap, feedback board
+
+## Staff
+
+**Admin**:
+A member holding the club's admins role in Discord.
+_Avoid_: Administrator (the Discord permission), owner
+
+**Moderator**:
+A member holding the club's moderators role in Discord.
+_Avoid_: Mod (in written docs), staff (when meaning only moderators)
+
+**Superadmin**:
+A member holding the club's dev role, trusted with actions that speak for the bot or change other members' records.
+_Avoid_: Owner, root, dev (when meaning the permission level rather than the role)
