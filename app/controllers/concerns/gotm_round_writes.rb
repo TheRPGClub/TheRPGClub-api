@@ -71,9 +71,12 @@ module GotmRoundWrites
   end
 
   # A per-entry update. Staff edits (not the bot's own service writes) reload
-  # the bot's cache.
+  # the bot's cache. A game already in another slot of the same round is 422,
+  # for every caller.
   def update_entry(entry)
     attrs = request_data.slice(*self.class::UPDATE_ATTRS)
+    return if attrs.key?("gamedb_game_id") && game_taken_in_round?(entry, attrs["gamedb_game_id"])
+
     reload_job = entry.transaction do
       entry.update!(attrs)
       enqueue_cache_reload(entry, "game #{entry.game_index + 1} edited") if current_principal.discord_user?
@@ -81,5 +84,19 @@ module GotmRoundWrites
     entry.reload
     Gamedb::GameRelationsCacheVersion.bump!
     render json: { data: entry_resource.new(entry).serializable_hash, meta: { reload_job_id: reload_job&.id } }
+  end
+
+  # Renders the 422 and answers true when another entry of the round has the game.
+  def game_taken_in_round?(entry, game_id)
+    model = entry.class
+    taken = model.where(round_number: entry.round_number, gamedb_game_id: game_id)
+      .where.not(model.primary_key => entry.id).exists?
+    return false unless taken
+
+    render json: {
+      error: "GameDB game #{game_id} is already in #{Gotm::RoundCreate.label(round_category)} " \
+             "round #{entry.round_number}"
+    }, status: :unprocessable_content
+    true
   end
 end
