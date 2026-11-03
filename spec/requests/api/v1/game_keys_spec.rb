@@ -237,4 +237,40 @@ RSpec.describe 'api/v1/game_keys', type: :request do
       end
     end
   end
+
+  path '/api/v1/users/{user_id}/claimed_game_keys' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true,
+      description: 'Discord user id of the claimer.'
+
+    get 'List a user\'s claimed game keys' do
+      tags 'Game Keys'
+      description 'The keys the user claimed, newest claim first (`claimed_at` desc, then ' \
+                  '`key_id` desc), each embedding its `game` (null when unlinked), so a ' \
+                  'claimer can find their keys again. Readable by the claimer, Admins and ' \
+                  'above, and the service token. The secret `key_value` is included only ' \
+                  'when the caller is the claimer; it is omitted for staff and the service.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'claimed game keys' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/GameKey' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not the claimer, an Admin, a Superadmin, or the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'unknown user' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
 end

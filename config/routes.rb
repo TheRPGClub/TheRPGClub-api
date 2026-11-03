@@ -122,6 +122,7 @@ Rails.application.routes.draw do
           get "giveaway_settings", to: "giveaway_settings#show"
           patch "giveaway_settings", to: "giveaway_settings#update"
           get "game_keys", to: "game_keys#user_index"
+          get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"
           post "wizard_sessions", to: "wizard_sessions#upsert"
           delete "wizard_sessions", to: "wizard_sessions#destroy_historical"

@@ -20,6 +20,7 @@ module Api
       before_action :require_member_role!, only: :claim
       before_action :require_key_reader!, only: :show
       before_action :require_donor_or_admin!, only: :destroy
+      before_action :require_claimer_or_admin!, only: :claimed_index
 
       # GET /api/v1/game_keys
       # The available (unclaimed) keys, ordered like the bot's listing
@@ -38,6 +39,16 @@ module Api
         scope = RpgClubGameKey.where(donor_user_id: params[:user_id]).preload(game: :images)
         render_collection(scope, resource: GameKeyResource,
           default_order: { created_at: :desc, key_id: :desc })
+      end
+
+      # GET /api/v1/users/:user_id/claimed_game_keys
+      # Keys the user claimed, newest claim first, so a claimer can find their
+      # keys again. Readable by the claimer, Admin and above, and the service;
+      # the secret `key_value` is included only for the claimer themselves.
+      def claimed_index
+        scope = RpgClubGameKey.where(claimed_by_user_id: @claimer.user_id).preload(game: :images)
+        render_collection(scope, resource: GameKeyResource, params: { reveal_key: viewer_is_claimer? },
+          default_order: { claimed_at: :desc, key_id: :desc })
       end
 
       # POST /api/v1/game_keys
@@ -144,6 +155,19 @@ module Api
         return true if current_principal&.discord_user? && current_principal.id.to_s == game_key.donor_user_id.to_s
 
         admin_or_above?
+      end
+
+      # claimed_index: an unknown user is 404 (before the role check), then
+      # only the claimer, Admin and above, or the service may list.
+      def require_claimer_or_admin!
+        @claimer = RpgClubUser.find(params[:user_id])
+        return true if viewer_is_claimer? || admin_or_above?
+
+        forbidden!
+      end
+
+      def viewer_is_claimer?
+        current_principal&.discord_user? && current_principal.id.to_s == @claimer.user_id.to_s
       end
 
       def forbidden!
