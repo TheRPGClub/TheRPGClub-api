@@ -246,14 +246,15 @@ RSpec.describe "api/v1/votes behavior", type: :request do
   end
 
   describe "GET /api/v1/gotm_entries/:round/votes/tally" do
-    it "serves anonymous per-nomination counts to any member, most-voted first" do
+    it "serves anonymous per-nomination counts to any member once voting has ended, most-voted first" do
+      schedule_voting!(round)
       popular = create(:gotm_nomination, round_number: round)
       niche = create(:gotm_nomination, round_number: round)
       create(:gotm_nomination, round_number: round) # zero votes: no tally row
       create_list(:gotm_vote, 2, nomination: popular)
       create(:gotm_vote, nomination: niche)
 
-      get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
+      after_voting { get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member) }
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to eq([
@@ -262,7 +263,40 @@ RSpec.describe "api/v1/votes behavior", type: :request do
         { "nomination_id" => niche.nomination_id, "gamedb_game_id" => niche.gamedb_game_id,
           "vote_count" => 1 }
       ])
-      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => false)
+      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => false, "counts_hidden" => false)
+    end
+
+    {
+      "a plain member" => [ -> { auth_headers_for(create(:user)) }, true ],
+      "a Members role holder" => [ -> { auth_headers_for(create(:user, role_member: true)) }, true ],
+      "a Regulars role holder" => [ -> { auth_headers_for(create(:user, role_regular: true)) }, true ],
+      "a Moderator" => [ -> { auth_headers_for(create(:user, role_moderator: true)) }, true ],
+      "an Admin" => [ -> { auth_headers_for(create(:user, :admin)) }, false ],
+      "a Superadmin" => [ -> { auth_headers_for(create(:user), is_dev: true) }, false ],
+      "the service" => [ -> { service_headers }, false ]
+    }.each do |label, (headers_for, hidden)|
+      it "#{hidden ? 'hides the counts from' : 'shows the counts to'} #{label} while voting is open" do
+        schedule_voting!(round)
+        nomination = create(:gotm_nomination, round_number: round)
+        create(:gotm_vote, nomination: nomination)
+        headers = instance_exec(&headers_for)
+
+        during_voting { get "/api/v1/gotm_entries/#{round}/votes/tally", headers: headers }
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data").length).to eq(hidden ? 0 : 1)
+        expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => false, "counts_hidden" => hidden)
+      end
+    end
+
+    it "hides the counts while nominations are still open" do
+      schedule_voting!(round)
+      create(:gotm_vote, nomination: create(:gotm_nomination, round_number: round))
+
+      before_voting { get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member) }
+
+      expect(json.fetch("data")).to eq([])
+      expect(json.dig("meta", "counts_hidden")).to be(true)
     end
 
     it "reports half the round's distinct games as the cap" do
@@ -270,7 +304,7 @@ RSpec.describe "api/v1/votes behavior", type: :request do
 
       get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
 
-      expect(json.fetch("meta")).to eq("cap" => 5, "runoff" => false)
+      expect(json.fetch("meta")).to include("cap" => 5, "runoff" => false)
     end
 
     it "requires authentication" do
@@ -442,11 +476,29 @@ RSpec.describe "api/v1/votes behavior", type: :request do
       expect(json.fetch("data")).to eq([
         { "nomination_id" => tied[1].nomination_id, "gamedb_game_id" => tied[1].gamedb_game_id, "vote_count" => 1 }
       ])
-      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => true)
+      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => true, "counts_hidden" => false)
 
       get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
 
       expect(json.fetch("data").map { |row| row.fetch("nomination_id") }).to eq([ tied[0].nomination_id ])
+    end
+
+    it "hides runoff counts from members until the runoff closes, while the main tally is open" do
+      create(:gotm_vote, nomination: tied[1], runoff: true)
+
+      during_runoff do
+        get "/api/v1/gotm_entries/#{round}/votes/tally", params: { runoff: true }, headers: auth_headers_for(member)
+        expect(json.fetch("data")).to eq([])
+        expect(json.dig("meta", "counts_hidden")).to be(true)
+
+        get "/api/v1/gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
+        expect(json.dig("meta", "counts_hidden")).to be(false)
+        expect(json.fetch("data").length).to eq(1)
+
+        get "/api/v1/gotm_entries/#{round}/votes/tally", params: { runoff: true },
+          headers: auth_headers_for(create(:user, :admin))
+        expect(json.fetch("data").length).to eq(1)
+      end
     end
 
     it "keeps runoff votes anonymous until the runoff closes, while main votes are already open" do
@@ -520,15 +572,16 @@ RSpec.describe "api/v1/votes behavior", type: :request do
     it "serves the NR tally with the round's cap" do
       nomination = create(:nr_gotm_nomination, round_number: round)
       create(:nr_gotm_vote, nomination: nomination)
+      schedule_voting!(round)
 
-      get "/api/v1/nr_gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member)
+      after_voting { get "/api/v1/nr_gotm_entries/#{round}/votes/tally", headers: auth_headers_for(member) }
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to eq([
         { "nomination_id" => nomination.nomination_id,
           "gamedb_game_id" => nomination.gamedb_game_id, "vote_count" => 1 }
       ])
-      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => false)
+      expect(json.fetch("meta")).to eq("cap" => 1, "runoff" => false, "counts_hidden" => false)
     end
 
     it "gates the identified NR list and the reset like the GOTM ones" do

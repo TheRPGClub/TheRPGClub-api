@@ -24,6 +24,9 @@ class BotJob < ApplicationRecord
     suggestion_submitted
     suggestion_outcome
     voting_poll_wakeup
+    voting_results_publish
+    voting_panels_repost
+    voting_tie_broken
     gotm_cache_reload
     live_event_create
     say

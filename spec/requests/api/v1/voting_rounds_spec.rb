@@ -4,6 +4,8 @@ require 'swagger_helper'
 
 RSpec.describe 'api/v1/voting_rounds', type: :request do
   round_response = { type: :object, properties: { data: { '$ref' => '#/components/schemas/VotingRound' } } }
+  job_response = { type: :object, properties: { data: { '$ref' => '#/components/schemas/BotJob' } },
+                   required: %w[data] }
 
   path '/api/v1/voting_rounds' do
     get 'List voting rounds' do
@@ -69,7 +71,9 @@ RSpec.describe 'api/v1/voting_rounds', type: :request do
       tags 'Voting Rounds'
       description 'Admin or service. Moving `voting_opens_at` without a `voting_closes_at` keeps the default ' \
                   'window (through the end of that weekend\'s Sunday, US Eastern). Setting `voting_closes_at` to ' \
-                  'now closes voting early. 422 `round_decided` once the round is decided.'
+                  'now (or earlier) closes voting early, and is refused with 422 `voting_not_open` unless voting ' \
+                  'is open. 422 `round_decided` once the round is decided. Each change queues a ' \
+                  '`voting_poll_wakeup` bot job so the bot acts on it within seconds.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -91,7 +95,7 @@ RSpec.describe 'api/v1/voting_rounds', type: :request do
         schema round_response
       end
 
-      response '422', 'round decided or invalid window' do
+      response '422', 'round decided, voting not open for a close, or invalid window' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -109,8 +113,9 @@ RSpec.describe 'api/v1/voting_rounds', type: :request do
       description 'Admin or service. Records one or more of a category\'s tied games as its winners; once no ' \
                   'category is tied the round is decided and the next one scheduled. A tied category normally goes ' \
                   'to a member runoff first; this is the fallback when the runoff ties again, and also settles a ' \
-                  'category early while its runoff is open. 422 `no_tie` when the category is not tied, ' \
-                  '`invalid_pick` for a game outside the tie.'
+                  'category early while its runoff is open. Queues a `voting_tie_broken` bot job (round, ' \
+                  'category and winning games, for the Discord announcement) and a `voting_poll_wakeup`. ' \
+                  '422 `no_tie` when the category is not tied, `invalid_pick` for a game outside the tie.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -137,6 +142,72 @@ RSpec.describe 'api/v1/voting_rounds', type: :request do
       end
 
       response '403', 'not an admin or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/voting_rounds/{id}/publish_results' do
+    parameter name: :id, in: :path, type: :integer, description: 'Round number'
+
+    post 'Publish a round\'s results' do
+      tags 'Voting Rounds'
+      description 'Admin or service. Queues a `voting_results_publish` bot job (`{ round_number, month_label }`) ' \
+                  'that posts the results and creates or renames the winner thread in Discord. Refused with 422 ' \
+                  '`voting_not_ended` until voting has ended. May be repeated (each call queues a new job), so a ' \
+                  'failed post can be retried. Works whether or not voting automation is on. A round from before ' \
+                  'voting rounds existed takes its month from its GOTM entries; 404 when neither exists. Poll ' \
+                  '`GET /bot_jobs/{id}` for the outcome.'
+      produces 'application/json'
+
+      response '202', 'results post queued' do
+        schema job_response
+      end
+
+      response '422', 'voting has not ended' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no such round' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not an admin or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/voting_rounds/current/repost_panels' do
+    post 'Repost the voting panels' do
+      tags 'Voting Rounds'
+      description 'Admin or service. Queues a `voting_panels_repost` bot job (`{ round_number }`) that posts the ' \
+                  'current round\'s voting panels to announcements again. Refused with 422 `voting_not_open` ' \
+                  'unless voting is open; 404 when no round is scheduled. Works whether or not voting automation ' \
+                  'is on. Poll `GET /bot_jobs/{id}` for the outcome.'
+      produces 'application/json'
+
+      response '202', 'panel repost queued' do
+        schema job_response
+      end
+
+      response '422', 'voting is not open' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no round scheduled' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not an admin or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

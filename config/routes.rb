@@ -346,8 +346,14 @@ Rails.application.routes.draw do
       # The backend-owned round lifecycle and the bot's outbox of posts it
       # calls for (see VotingRound, VotingEvent).
       resources :voting_rounds, only: %i[index show update] do
-        collection { get "current" }
-        member { post "resolve_tie" }
+        collection do
+          get "current"
+          post "current/repost_panels", action: :repost_panels
+        end
+        member do
+          post "resolve_tie"
+          post "publish_results"
+        end
       end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
