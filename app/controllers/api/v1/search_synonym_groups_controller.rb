@@ -8,11 +8,18 @@ module Api
         # Text search across groups (#108): a group matches when any of its terms
         # matches `q` by literal text (case-insensitive) or normalised key.
         scope = scope.where(group_id: matching_group_ids(params[:q])) if params[:q].present?
-        render_collection(scope, resource: SearchSynonymGroupResource, default_order: { group_id: :asc })
+        scope = scope.preload(:synonyms) if include_terms?
+        render_collection(
+          scope,
+          resource: SearchSynonymGroupResource,
+          default_order: { group_id: :asc },
+          params: { include_terms: include_terms? }
+        )
       end
 
       def show
-        render json: { data: SearchSynonymGroupResource.new(GamedbSearchSynonymGroup.find(params[:id])).serializable_hash }
+        scope = include_terms? ? GamedbSearchSynonymGroup.preload(:synonyms) : GamedbSearchSynonymGroup
+        render_group(scope.find(params[:id]), include_terms: include_terms?)
       end
 
       def create
@@ -48,6 +55,18 @@ module Api
       end
 
       private
+
+      # `?include=terms` embeds each group's terms (#333), so the site can list
+      # groups with their terms in one request.
+      def include_terms?
+        params[:include].to_s.split(",").map(&:strip).include?("terms")
+      end
+
+      def render_group(group, include_terms: false, status: :ok)
+        render json: {
+          data: SearchSynonymGroupResource.new(group, params: { include_terms: include_terms }).serializable_hash
+        }, status: status
+      end
 
       def matching_group_ids(query)
         text = "%#{sanitize_like(query)}%"
