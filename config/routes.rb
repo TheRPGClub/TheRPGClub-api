@@ -356,6 +356,9 @@ Rails.application.routes.draw do
       # The image backfill (Superadmin, #338): start a run, read its progress.
       get  "image_backfill_runs/latest", to: "image_backfill_runs#latest"
       resources :image_backfill_runs, only: %i[create show]
+      # Live events (Moderator and up; the bot records its thread and event ids, #336).
+      resources :live_events, only: %i[index show create]
+      patch "live_events/:id", to: "live_events#update"
       # The bot's Achievement Hub Highlights and alerts (service-only).
       get  "achievements/highlights/pending", to: "achievement_highlights#pending"
       post "achievements/highlights/ack",     to: "achievement_highlights#ack"
