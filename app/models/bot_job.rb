@@ -23,6 +23,7 @@ class BotJob < ApplicationRecord
     suggestion_submitted
     suggestion_outcome
     voting_poll_wakeup
+    presence_set
   ].freeze
   STATUSES = %w[queued claimed done failed].freeze
   # Default claim lease, and per-kind overrides for jobs the bot needs
