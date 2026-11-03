@@ -2522,6 +2522,7 @@ components:
         kind:
           type: string
           enum:
+          - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
           - suggestion_submitted
@@ -2529,6 +2530,7 @@ components:
           - voting_poll_wakeup
           - say
           - memberscan
+          - presence_set
         summary:
           type: string
           maxLength: 200
@@ -2693,6 +2695,7 @@ components:
         kind:
           type: string
           enum:
+          - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
           - suggestion_submitted
@@ -2700,6 +2703,7 @@ components:
           - voting_poll_wakeup
           - say
           - memberscan
+          - presence_set
         summary:
           type: string
           maxLength: 200
@@ -5476,8 +5480,8 @@ paths:
       summary: List bot presence history
       tags:
       - Bot Presence
-      description: Service-only. Returns presence history, newest first. `limit` (capped
-        at 50) sizes the page.
+      description: Moderator and up, or the service. Returns presence history, newest
+        first. `limit` (capped at 50) sizes the page.
       parameters:
       - name: page
         in: query
@@ -5523,7 +5527,7 @@ paths:
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
         '403':
-          description: forbidden — caller is not the service principal
+          description: 'forbidden: caller is not Moderator and up or the service'
           content:
             application/json:
               schema:
@@ -5538,8 +5542,11 @@ paths:
       summary: Save a bot presence entry
       tags:
       - Bot Presence
-      description: Service-only. Records a new presence entry. `set_at` is stamped
-        by the server (defaults to now()).
+      description: Moderator and up, or the service. Records a new presence entry.
+        `set_at` is stamped by the server (defaults to now()). On a staff create the
+        setter id and name come from the session, never the body, and a `presence_set`
+        bot job is queued so the bot applies the presence at once. The service (the
+        bot itself, which has already applied it) queues no job.
       parameters: []
       responses:
         '201':
@@ -5552,7 +5559,13 @@ paths:
                   data:
                     "$ref": "#/components/schemas/BotPresence"
         '403':
-          description: forbidden — caller is not the service principal
+          description: 'forbidden: caller is not Moderator and up or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: activity name too long
           content:
             application/json:
               schema:
@@ -5584,11 +5597,15 @@ paths:
                     set_by_user_id:
                       type: string
                       nullable: true
-                      description: Discord user id that set the presence. Optional.
+                      description: Discord user id that set the presence. Service
+                        only; a staff caller is recorded from the session and this
+                        is ignored.
                     set_by_username:
                       type: string
                       nullable: true
-                      description: Discord username that set the presence. Optional.
+                      description: Discord username that set the presence. Service
+                        only; a staff caller is recorded from the session and this
+                        is ignored.
                   required:
                   - activity_name
               required:
@@ -5599,8 +5616,8 @@ paths:
       summary: Get the latest bot presence entry
       tags:
       - Bot Presence
-      description: 'Service-only. Returns the most recent presence entry, or `{ "data":
-        null }` when no entries exist.'
+      description: 'Moderator and up, or the service. Returns the most recent presence
+        entry (the current presence), or `{ "data": null }` when no entries exist.'
       responses:
         '200':
           description: latest presence entry (or null)
@@ -5614,7 +5631,7 @@ paths:
                     - "$ref": "#/components/schemas/BotPresence"
                     nullable: true
         '403':
-          description: forbidden — caller is not the service principal
+          description: 'forbidden: caller is not Moderator and up or the service'
           content:
             application/json:
               schema:
@@ -8027,8 +8044,12 @@ paths:
       summary: Record a completion
       tags:
       - Completions
-      description: Owner-only. `gamedb_game_id` and `completion_type` are required;
-        `completed_at`, `final_playtime_hrs`, `platform_id` and `note` are optional.
+      description: 'The owner, a Superadmin (for any member) or the service. `gamedb_game_id`
+        and `completion_type` are required; `completed_at`, `final_playtime_hrs`,
+        `platform_id` and `note` are optional. `announce: true` queues a `completion_announce`
+        bot job (payload `completion_id`, `user_id`, `game_id`, `actor_user_id`) so
+        the bot posts the completion. When a Superadmin logs one for another member,
+        the game is also removed from that member''s Now Playing.'
       parameters: []
       responses:
         '201':
@@ -8041,13 +8062,19 @@ paths:
                   data:
                     "$ref": "#/components/schemas/CompletionEntry"
         '403':
-          description: forbidden — caller is not the owner
+          description: 'forbidden: caller is not the owner, a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: a Superadmin named a member who does not exist
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `announce` is not a boolean
           content:
             application/json:
               schema:
@@ -8097,6 +8124,10 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    announce:
+                      type: boolean
+                      description: Queue a bot announcement of the completion. Defaults
+                        to false.
                   required:
                   - gamedb_game_id
                   - completion_type

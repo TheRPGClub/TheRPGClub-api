@@ -17,6 +17,7 @@
 # gets a new kind name.
 class BotJob < ApplicationRecord
   KINDS = %w[
+    completion_announce
     giveaway_claim_notice
     giveaway_hub_refresh
     suggestion_submitted
@@ -24,6 +25,7 @@ class BotJob < ApplicationRecord
     voting_poll_wakeup
     say
     memberscan
+    presence_set
   ].freeze
   STATUSES = %w[queued claimed done failed].freeze
   # Default claim lease, and per-kind overrides for jobs the bot needs
