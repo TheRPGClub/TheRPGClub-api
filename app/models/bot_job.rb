@@ -25,6 +25,7 @@ class BotJob < ApplicationRecord
     suggestion_outcome
     voting_poll_wakeup
     gotm_cache_reload
+    live_event_create
     presence_set
   ].freeze
   STATUSES = %w[queued claimed done failed].freeze
