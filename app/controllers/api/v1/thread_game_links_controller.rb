@@ -3,13 +3,14 @@
 module Api
   module V1
     # The thread ↔ game link table (#45), mirroring the bot's mergeThreadGameLink
-    # / removeThreadGameLinks / deleteThreadGameLink. All actions are
-    # service/admin-gated (the bot writes through the API). Every change
+    # / removeThreadGameLinks / deleteThreadGameLink. Every action is open to
+    # Regulars, or Moderator and up, as the bot's thread commands are (the bot
+    # itself writes as the service). Every change
     # recomputes the thread's derived `gamedb_game_id` so it stays the MIN of the
     # remaining links (the bot's updateThreadsGameId), folded in here so the bot
     # doesn't need a separate call.
     class ThreadGameLinksController < ApplicationController
-      before_action :require_admin_or_service!
+      before_action :require_regular_or_staff!
 
       # POST /api/v1/threads/:id/links   { data: { gamedb_game_id: } }
       #
