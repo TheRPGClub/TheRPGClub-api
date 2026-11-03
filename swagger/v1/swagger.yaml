@@ -2527,6 +2527,7 @@ components:
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+          - live_event_create
         summary:
           type: string
           maxLength: 200
@@ -2643,6 +2644,61 @@ components:
       - failed
       - created_at
       - updated_at
+    LiveEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        topic:
+          type: string
+          maxLength: 100
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        image_url:
+          type: string
+          nullable: true
+          description: The image given as a URL, or the public Backblaze URL of the
+            uploaded image; null for none.
+        status:
+          type: string
+          enum:
+          - queued
+          - thread_created
+          - created
+          - failed
+          description: queued, then thread_created once the forum thread exists, then
+            created once the Discord scheduled event exists too; failed when the bot
+            gave up (see its bot job).
+        discord_thread_id:
+          type: string
+          nullable: true
+          description: The forum thread, once made.
+        discord_event_id:
+          type: string
+          nullable: true
+          description: The Discord scheduled event, once made.
+        created_by_user_id:
+          type: string
+          nullable: true
+          description: The staff member who created it; null for the service.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - topic
+      - starts_at
+      - ends_at
+      - status
+      - created_at
+      - updated_at
     BotJobClaim:
       type: object
       properties:
@@ -2656,6 +2712,7 @@ components:
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+          - live_event_create
         summary:
           type: string
           maxLength: 200
@@ -13328,6 +13385,287 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/SyncCooldownError"
+  "/api/v1/live_events":
+    get:
+      summary: List live events
+      tags:
+      - Live Events
+      description: Moderators and up, and the service. Newest first, with the Discord
+        thread and event ids once the bot has made them.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: live events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/LiveEvent"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Moderator and up or the service
+            token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a live event
+      tags:
+      - Live Events
+      description: 'Moderators and up, and the service. Saves the event as `queued`
+        and queues the `live_event_create` bot job (payload `{ live_event_id }`),
+        which makes the forum thread and the Discord scheduled event, as the bot''s
+        `/live-stream create` did. The topic is squished, at most 100 characters;
+        `starts_at` must be in the future and `ends_at` after it (send UTC or offset
+        instants). The image is optional: send `image_url` (http or https) as JSON,
+        or send `multipart/form-data` with the same `data[...]` fields and the file
+        as `data[image]` (JPEG, PNG, WebP or GIF, at most 10 MB), which is stored
+        in Backblaze and saved as its public URL. Sending both is refused with 422.'
+      parameters: []
+      responses:
+        '201':
+          description: live event saved and bot job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/LiveEvent"
+                required:
+                - data
+        '422':
+          description: invalid topic, times, image URL or image file; both an image
+            URL and a file; or Backblaze not configured (`backblaze_not_configured`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: the Backblaze upload failed (`backblaze_request_failed`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Moderator and up or the service
+            token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    topic:
+                      type: string
+                      maxLength: 100
+                    starts_at:
+                      type: string
+                      format: date-time
+                    ends_at:
+                      type: string
+                      format: date-time
+                    image_url:
+                      type: string
+                      nullable: true
+                      maxLength: 1000
+                    image:
+                      type: string
+                      format: binary
+                      description: 'multipart only: the image file.'
+                  required:
+                  - topic
+                  - starts_at
+                  - ends_at
+              required:
+              - data
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    topic:
+                      type: string
+                      maxLength: 100
+                    starts_at:
+                      type: string
+                      format: date-time
+                    ends_at:
+                      type: string
+                      format: date-time
+                    image_url:
+                      type: string
+                      nullable: true
+                      maxLength: 1000
+                    image:
+                      type: string
+                      format: binary
+                      description: 'multipart only: the image file.'
+                  required:
+                  - topic
+                  - starts_at
+                  - ends_at
+              required:
+              - data
+        required: true
+  "/api/v1/live_events/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: LiveEvent id.
+    get:
+      summary: Get a live event
+      tags:
+      - Live Events
+      description: Moderators and up, and the service.
+      responses:
+        '200':
+          description: the live event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/LiveEvent"
+                required:
+                - data
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Moderator and up or the service
+            token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Record a live event's Discord thread, event and status
+      tags:
+      - Live Events
+      description: 'Service only (the bot). Records each step of `live_event_create`
+        as it is done: the thread id with status `thread_created`, then the event
+        id with `created`, or `failed`. A retried job reads the event first and skips
+        the steps whose id is already set. Other fields are ignored.'
+      parameters: []
+      responses:
+        '200':
+          description: the updated live event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/LiveEvent"
+                required:
+                - data
+        '422':
+          description: unknown status or an id that is not a Discord snowflake
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    discord_thread_id:
+                      type: string
+                      pattern: "^\\d{1,30}$"
+                    discord_event_id:
+                      type: string
+                      pattern: "^\\d{1,30}$"
+                    status:
+                      type: string
+                      enum:
+                      - queued
+                      - thread_created
+                      - created
+                      - failed
+              required:
+              - data
+        required: true
   "/api/v1/modes":
     get:
       summary: List modes

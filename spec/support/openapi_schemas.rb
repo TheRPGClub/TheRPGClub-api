@@ -795,6 +795,23 @@ module OpenapiSchemas
         last_error: str(nullable: true).merge(description: "The latest failure, per game (\"Game 12: ...\") or for the run."),
         created_at: ts, updated_at: ts
       ),
+      # LiveEventResource: a live event and the Discord ids the bot made (#336).
+      LiveEvent: obj(
+        id: int,
+        topic: str(maxLength: LiveEvent::TOPIC_MAX),
+        starts_at: ts, ends_at: ts,
+        image_url: str(nullable: true).merge(
+          description: "The image given as a URL, or the public Backblaze URL of the uploaded image; null for none."
+        ),
+        status: str(enum: LiveEvent::STATUSES).merge(
+          description: "queued, then thread_created once the forum thread exists, then created once the " \
+                       "Discord scheduled event exists too; failed when the bot gave up (see its bot job)."
+        ),
+        discord_thread_id: str(nullable: true).merge(description: "The forum thread, once made."),
+        discord_event_id: str(nullable: true).merge(description: "The Discord scheduled event, once made."),
+        created_by_user_id: str(nullable: true).merge(description: "The staff member who created it; null for the service."),
+        created_at: ts, updated_at: ts
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
