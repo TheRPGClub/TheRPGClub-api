@@ -40,6 +40,83 @@ RSpec.describe "api/v1/threads behavior", type: :request do
     end
   end
 
+  describe "GET /api/v1/threads" do
+    callers = {
+      "anonymous" => [ nil, :unauthorized ],
+      "a plain member" => [ -> { auth_headers_for(create(:user)) }, :forbidden ],
+      "a Members role holder" => [ -> { auth_headers_for(create(:user, role_member: true)) }, :forbidden ],
+      "a Regulars role holder" => [ -> { auth_headers_for(create(:user, role_regular: true)) }, :ok ],
+      "a Moderator" => [ -> { auth_headers_for(create(:user, role_moderator: true)) }, :ok ],
+      "an Admin" => [ -> { auth_headers_for(create(:user, :admin)) }, :ok ],
+      "a Superadmin" => [ -> { auth_headers_for(create(:user), is_dev: true) }, :ok ],
+      "the service" => [ -> { service_headers }, :ok ]
+    }
+
+    callers.each do |label, (headers_for, status)|
+      it "answers #{status} to #{label}" do
+        create(:discord_thread, thread_name: "Chrono Trigger replay")
+        headers = headers_for ? instance_exec(&headers_for) : {}
+
+        get "/api/v1/threads", params: { q: "chrono" }, headers: headers
+
+        expect(response).to have_http_status(status)
+        expect(json.fetch("data").map { |t| t.fetch("thread_name") }).to eq([ "Chrono Trigger replay" ]) if status == :ok
+      end
+    end
+
+    it "finds threads whose name contains the query, any case, with their linked games" do
+      linked = create(:discord_thread, thread_name: "Final Fantasy VII club", created_at: 2.days.ago)
+      create(:discord_thread, thread_name: "the FINAL fantasy tactics thread", created_at: 1.day.ago)
+      create(:discord_thread, thread_name: "Chrono Trigger")
+      ff7 = create(:game, title: "Final Fantasy VII")
+      remake = create(:game, title: "Final Fantasy VII Remake")
+      create(:thread_game_link, thread: linked, game: ff7)
+      create(:thread_game_link, thread: linked, game: remake)
+
+      get "/api/v1/threads", params: { q: "final fantasy" }, headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+      data = json.fetch("data")
+      expect(data.map { |t| t.fetch("thread_name") })
+        .to eq([ "the FINAL fantasy tactics thread", "Final Fantasy VII club" ])
+      expect(data.first.fetch("games")).to eq([])
+      expect(data.last).to include("thread_id" => linked.thread_id, "thread_name" => "Final Fantasy VII club")
+      expect(data.last.fetch("games")).to contain_exactly(
+        { "game_id" => ff7.game_id, "title" => "Final Fantasy VII" },
+        { "game_id" => remake.game_id, "title" => "Final Fantasy VII Remake" }
+      )
+      expect(json.fetch("meta")).to include("count" => 2)
+    end
+
+    it "treats LIKE wildcards in the query as plain text" do
+      create(:discord_thread, thread_name: "100% completion")
+      create(:discord_thread, thread_name: "1000 hours")
+
+      get "/api/v1/threads", params: { q: "100%" }, headers: service_headers
+
+      expect(json.fetch("data").map { |t| t.fetch("thread_name") }).to eq([ "100% completion" ])
+    end
+
+    it "lists every thread, newest first, without a query" do
+      older = create(:discord_thread, created_at: 2.days.ago)
+      newer = create(:discord_thread, created_at: 1.day.ago)
+
+      get "/api/v1/threads", headers: service_headers
+
+      ids = json.fetch("data").map { |t| t.fetch("thread_id") }
+      expect(ids.index(newer.thread_id)).to be < ids.index(older.thread_id)
+    end
+
+    it "pages the results" do
+      3.times { |i| create(:discord_thread, thread_name: "paged thread #{i}", created_at: i.days.ago) }
+
+      get "/api/v1/threads", params: { q: "paged thread", per: 2, page: 2 }, headers: service_headers
+
+      expect(json.fetch("data").map { |t| t.fetch("thread_name") }).to eq([ "paged thread 2" ])
+      expect(json.fetch("meta")).to include("count" => 3, "page" => 2)
+    end
+  end
+
   describe "GET /api/v1/threads/:id" do
     it "returns the thread with its full game-link list" do
       thread = create(:discord_thread)

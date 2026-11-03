@@ -255,7 +255,7 @@ Rails.application.routes.draw do
       resources :release_announcements, only: %i[show create update destroy] do
         member { post "skip" }
       end
-      resources :threads, only: %i[show create update] do
+      resources :threads, only: %i[index show create update] do
         member do
           post "links", to: "thread_game_links#create"
           delete "links", to: "thread_game_links#destroy_all"
