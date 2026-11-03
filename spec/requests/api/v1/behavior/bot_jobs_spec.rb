@@ -284,6 +284,98 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     end
   end
 
+  describe "GET /api/v1/bot_jobs" do
+    let(:moderator) { create(:user, role_moderator: true, username: "modname") }
+    let!(:member_job) { enqueue(payload: { "key" => "SECRET-KEY" }) }
+    let!(:system_job) { enqueue(kind: "voting_poll_wakeup", payload: {}, requested_by: nil, summary: "Wake the poller") }
+    let!(:moderator_job) { enqueue(requested_by: moderator, summary: "Set the presence") }
+
+    def list(headers, **params)
+      get "/api/v1/bot_jobs", params: params, headers: headers
+    end
+
+    def listed_ids = json.fetch("data").map { |job| job["id"] }
+
+    {
+      "an Admin" => [ { role_admin: true }, {} ],
+      "a Superadmin" => [ {}, { is_dev: true } ]
+    }.each do |label, (flags, token_flags)|
+      it "shows #{label} every job, newest first" do
+        list(auth_headers_for(create(:user, **flags), **token_flags))
+
+        expect(response).to have_http_status(:ok)
+        expect(listed_ids).to eq([ moderator_job.id, system_job.id, member_job.id ])
+      end
+    end
+
+    it "shows the service every job" do
+      list(service_headers)
+
+      expect(listed_ids).to eq([ moderator_job.id, system_job.id, member_job.id ])
+    end
+
+    it "shows a Moderator only the jobs they requested" do
+      list(auth_headers_for(moderator))
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").sole).to include(
+        "id" => moderator_job.id, "kind" => "giveaway_hub_refresh", "summary" => "Set the presence",
+        "status" => "queued", "requested_by_user_id" => moderator.user_id, "error_message" => nil,
+        "result_text" => nil
+      )
+      expect(json.dig("data", 0, "requested_by")).to include("user_id" => moderator.user_id, "username" => "modname")
+      expect(json.fetch("meta")).to include("count" => 1, "page" => 1)
+    end
+
+    it "shows the bot's error and result, never the payload" do
+      poll
+      post "/api/v1/bot_jobs/#{member_job.id}/failed", params: { data: { error_message: "DMs closed" } },
+        headers: service_headers
+      post "/api/v1/bot_jobs/#{moderator_job.id}/done", params: { data: { result_text: "Presence set" } },
+        headers: service_headers
+
+      list(auth_headers_for(create(:user, role_admin: true)))
+
+      rows = json.fetch("data").index_by { |job| job["id"] }
+      expect(rows.fetch(member_job.id)).to include("status" => "failed", "error_message" => "DMs closed")
+      expect(rows.fetch(moderator_job.id)).to include("status" => "done", "result_text" => "Presence set")
+      expect(rows.fetch(system_job.id)).to include("requested_by" => nil, "requested_by_user_id" => nil)
+      expect(json.fetch("data")).to all(satisfy { |job| !job.key?("payload") })
+      expect(response.body).not_to include("SECRET-KEY")
+    end
+
+    it "pages with ?page and ?per" do
+      list(service_headers, per: 2, page: 2)
+
+      expect(listed_ids).to eq([ member_job.id ])
+      expect(json.fetch("meta")).to include("page" => 2, "pages" => 2, "count" => 3, "per" => 2)
+    end
+
+    {
+      "a plain member" => {},
+      "a Members role holder" => { role_member: true },
+      "a Regulars role holder" => { role_regular: true }
+    }.each do |label, flags|
+      it "is forbidden to #{label}, even for their own jobs" do
+        list(auth_headers_for(create(:user, **flags)))
+
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    it "is forbidden to the member who requested a job" do
+      list(auth_headers_for(requester))
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "401s without a token" do
+      list({})
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "BotJob.enqueue!" do
     it "rejects an unknown kind" do
       expect { enqueue(kind: "nope") }.to raise_error(ActiveRecord::RecordInvalid)

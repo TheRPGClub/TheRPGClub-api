@@ -3,12 +3,22 @@
 module Api
   module V1
     # The bot job queue (see BotJob). The service polls, claims and acks; the
-    # member who caused a job, Admins and Superadmins read its status.
+    # member who caused a job, Admins and Superadmins read its status. The
+    # /admin activity list shows Admins every job and other staff their own.
     class BotJobsController < ApplicationController
-      before_action :require_service!, except: :show
+      before_action :require_service!, except: %i[index show]
+      before_action :require_moderator_or_above!, only: :index
 
       DEFAULT_CLAIM = 10
       MAX_CLAIM = 50
+
+      # GET /api/v1/bot_jobs?page=&per=, newest first. Admins, Superadmins and
+      # the service see every job; Moderators only the jobs they requested.
+      def index
+        scope = BotJob.includes(:requested_by)
+        scope = scope.where(requested_by_user_id: current_principal.id) unless admin_or_above?
+        render_collection(scope, resource: BotJobResource, default_order: { id: :desc })
+      end
 
       # POST /api/v1/bot_jobs/claim?limit=N. Answers from the machine-local
       # signal alone while no work is waiting, so the bot can poll every few
