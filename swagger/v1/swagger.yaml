@@ -2527,6 +2527,9 @@ components:
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+          - voting_results_publish
+          - voting_panels_repost
+          - voting_tie_broken
         summary:
           type: string
           maxLength: 200
@@ -2656,6 +2659,9 @@ components:
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+          - voting_results_publish
+          - voting_panels_repost
+          - voting_tie_broken
         summary:
           type: string
           maxLength: 200
@@ -3505,6 +3511,19 @@ components:
       - nomination_id
       - gamedb_game_id
       - vote_count
+    VoteTallyMeta:
+      type: object
+      properties:
+        cap:
+          type: integer
+        runoff:
+          type: boolean
+        counts_hidden:
+          type: boolean
+      required:
+      - cap
+      - runoff
+      - counts_hidden
     VoteCastResult:
       type: object
       properties:
@@ -22628,7 +22647,7 @@ paths:
       description: 'The round''s votes with voter identities, oldest first. Votes
         are anonymous while the voting window is open: until voting has ended (for
         `runoff=true`, until the runoff has closed) this list is admin/service-only
-        (403 otherwise). Use the tally for anonymous counts.'
+        (403 otherwise). The tally has the anonymous counts.'
       parameters:
       - name: page
         in: query
@@ -22817,11 +22836,14 @@ paths:
       summary: Tally GOTM votes for a round (anonymous)
       tags:
       - GOTM
-      description: Anonymous vote counts per nomination, most-voted first. Open to
-        any authenticated caller at any time — no voter identities. Nominations with
-        zero votes have no row; merge against the round's nominations list. `meta.cap`
-        is the per-user vote cap for the round (half the distinct nominated games,
-        rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".
+      description: 'Anonymous vote counts per nomination, most-voted first, no voter
+        identities. Until the ballot''s voting has ended (for `runoff=true`, until
+        the runoff has closed) the counts are Admin/service only: any other caller
+        gets an empty `data` and `meta.counts_hidden: true`. Once it has ended they
+        open to any authenticated caller. Nominations with zero votes have no row;
+        merge against the round''s nominations list. `meta.cap` is the per-user vote
+        cap for the round (half the distinct nominated games, rounded down, min 1;
+        1 for the runoff), for rendering "vote for up to N".'
       parameters:
       - name: runoff
         in: query
@@ -22844,17 +22866,7 @@ paths:
                     items:
                       "$ref": "#/components/schemas/VoteTally"
                   meta:
-                    type: object
-                    properties:
-                      cap:
-                        type: integer
-                        description: Per-user vote cap for this round's ballot.
-                      runoff:
-                        type: boolean
-                        description: Whether this is the runoff ballot's tally.
-                    required:
-                    - cap
-                    - runoff
+                    "$ref": "#/components/schemas/VoteTallyMeta"
         '401':
           description: unauthenticated
           content:
@@ -22932,7 +22944,7 @@ paths:
       description: 'The round''s votes with voter identities, oldest first. Votes
         are anonymous while the voting window is open: until voting has ended (for
         `runoff=true`, until the runoff has closed) this list is admin/service-only
-        (403 otherwise). Use the tally for anonymous counts.'
+        (403 otherwise). The tally has the anonymous counts.'
       parameters:
       - name: page
         in: query
@@ -23121,11 +23133,14 @@ paths:
       summary: Tally Non-RPG GOTM votes for a round (anonymous)
       tags:
       - GOTM
-      description: Anonymous vote counts per nomination, most-voted first. Open to
-        any authenticated caller at any time — no voter identities. Nominations with
-        zero votes have no row; merge against the round's nominations list. `meta.cap`
-        is the per-user vote cap for the round (half the distinct nominated games,
-        rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".
+      description: 'Anonymous vote counts per nomination, most-voted first, no voter
+        identities. Until the ballot''s voting has ended (for `runoff=true`, until
+        the runoff has closed) the counts are Admin/service only: any other caller
+        gets an empty `data` and `meta.counts_hidden: true`. Once it has ended they
+        open to any authenticated caller. Nominations with zero votes have no row;
+        merge against the round''s nominations list. `meta.cap` is the per-user vote
+        cap for the round (half the distinct nominated games, rounded down, min 1;
+        1 for the runoff), for rendering "vote for up to N".'
       parameters:
       - name: runoff
         in: query
@@ -23148,17 +23163,7 @@ paths:
                     items:
                       "$ref": "#/components/schemas/VoteTally"
                   meta:
-                    type: object
-                    properties:
-                      cap:
-                        type: integer
-                        description: Per-user vote cap for this round's ballot.
-                      runoff:
-                        type: boolean
-                        description: Whether this is the runoff ballot's tally.
-                    required:
-                    - cap
-                    - runoff
+                    "$ref": "#/components/schemas/VoteTallyMeta"
         '401':
           description: unauthenticated
           content:
@@ -23776,8 +23781,10 @@ paths:
       - Voting Rounds
       description: Admin or service. Moving `voting_opens_at` without a `voting_closes_at`
         keeps the default window (through the end of that weekend's Sunday, US Eastern).
-        Setting `voting_closes_at` to now closes voting early. 422 `round_decided`
-        once the round is decided.
+        Setting `voting_closes_at` to now (or earlier) closes voting early, and is
+        refused with 422 `voting_not_open` unless voting is open. 422 `round_decided`
+        once the round is decided. Each change queues a `voting_poll_wakeup` bot job
+        so the bot acts on it within seconds.
       parameters: []
       responses:
         '200':
@@ -23790,7 +23797,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/VotingRound"
         '422':
-          description: round decided or invalid window
+          description: round decided, voting not open for a close, or invalid window
           content:
             application/json:
               schema:
@@ -23841,8 +23848,10 @@ paths:
         as its winners; once no category is tied the round is decided and the next
         one scheduled. A tied category normally goes to a member runoff first; this
         is the fallback when the runoff ties again, and also settles a category early
-        while its runoff is open. 422 `no_tie` when the category is not tied, `invalid_pick`
-        for a game outside the tie.
+        while its runoff is open. Queues a `voting_tie_broken` bot job (round, category
+        and winning games, for the Discord announcement) and a `voting_poll_wakeup`.
+        422 `no_tie` when the category is not tied, `invalid_pick` for a game outside
+        the tie.
       parameters: []
       responses:
         '200':
@@ -23891,6 +23900,107 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/voting_rounds/{id}/publish_results":
+    parameters:
+    - name: id
+      in: path
+      description: Round number
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Publish a round's results
+      tags:
+      - Voting Rounds
+      description: Admin or service. Queues a `voting_results_publish` bot job (`{
+        round_number, month_label }`) that posts the results and creates or renames
+        the winner thread in Discord. Refused with 422 `voting_not_ended` until voting
+        has ended. May be repeated (each call queues a new job), so a failed post
+        can be retried. Works whether or not voting automation is on. A round from
+        before voting rounds existed takes its month from its GOTM entries; 404 when
+        neither exists. Poll `GET /bot_jobs/{id}` for the outcome.
+      responses:
+        '202':
+          description: results post queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '422':
+          description: voting has not ended
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such round
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an admin or the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/voting_rounds/current/repost_panels":
+    post:
+      summary: Repost the voting panels
+      tags:
+      - Voting Rounds
+      description: Admin or service. Queues a `voting_panels_repost` bot job (`{ round_number
+        }`) that posts the current round's voting panels to announcements again. Refused
+        with 422 `voting_not_open` unless voting is open; 404 when no round is scheduled.
+        Works whether or not voting automation is on. Poll `GET /bot_jobs/{id}` for
+        the outcome.
+      responses:
+        '202':
+          description: panel repost queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+                required:
+                - data
+        '422':
+          description: voting is not open
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no round scheduled
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an admin or the service
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/wizard_sessions":
     parameters:
     - name: user_id
