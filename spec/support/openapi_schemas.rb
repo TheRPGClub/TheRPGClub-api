@@ -770,6 +770,21 @@ module OpenapiSchemas
         error_message: str(nullable: true).merge(description: "The bot's error, or the claim-timeout error."),
         claimed_at: ts(nullable: true), finished_at: ts(nullable: true), created_at: ts, updated_at: ts
       ),
+      # ImageBackfillRunResource: the image backfill's progress (#338).
+      ImageBackfillRun: obj(
+        id: int,
+        status: str(enum: ImageBackfillRun::STATUSES).merge(
+          description: "queued, then running, then completed; failed when the run stopped (see last_error)."
+        ),
+        total: int.merge(description: "Games with no stored images when the run started."),
+        done: int.merge(description: "Games whose images were imported."),
+        skipped: int.merge(description: "Games with no IGDB id."),
+        failed: int.merge(description: "Games whose import failed."),
+        started_by_user_id: str(nullable: true).merge(description: "The Superadmin who started it; null for the service."),
+        started_at: ts(nullable: true), finished_at: ts(nullable: true),
+        last_error: str(nullable: true).merge(description: "The latest failure, per game (\"Game 12: ...\") or for the run."),
+        created_at: ts, updated_at: ts
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS),

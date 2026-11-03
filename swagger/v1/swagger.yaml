@@ -2566,6 +2566,63 @@ components:
       - attempts
       - created_at
       - updated_at
+    ImageBackfillRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          description: queued, then running, then completed; failed when the run stopped
+            (see last_error).
+        total:
+          type: integer
+          description: Games with no stored images when the run started.
+        done:
+          type: integer
+          description: Games whose images were imported.
+        skipped:
+          type: integer
+          description: Games with no IGDB id.
+        failed:
+          type: integer
+          description: Games whose import failed.
+        started_by_user_id:
+          type: string
+          nullable: true
+          description: The Superadmin who started it; null for the service.
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+          description: 'The latest failure, per game ("Game 12: ...") or for the run.'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - status
+      - total
+      - done
+      - skipped
+      - failed
+      - created_at
+      - updated_at
     BotJobClaim:
       type: object
       properties:
@@ -11970,6 +12027,129 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '502':
           description: IGDB request failed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/image_backfill_runs":
+    post:
+      summary: Start an image backfill
+      tags:
+      - Image Backfill
+      description: Superadmin only (the service token passes too). Queues a run that
+        imports IGDB images for every game with no stored images, as the bot's `/superadmin
+        download-missing-images` did. A game with no IGDB id counts as `skipped`,
+        an import error as `failed` (the latest in `last_error`); missing IGDB or
+        Backblaze configuration fails the run. Poll the run for progress. Refused
+        with 409 while a run is queued or running; a run that has not reported progress
+        for 30 minutes is marked failed and no longer blocks a new one.
+      responses:
+        '201':
+          description: run queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ImageBackfillRun"
+                required:
+                - data
+        '409':
+          description: a run is already queued or running (`image_backfill_in_progress`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/image_backfill_runs/latest":
+    get:
+      summary: Get the latest image backfill run
+      tags:
+      - Image Backfill
+      description: Superadmin only (the service token passes too). The newest run,
+        with its progress.
+      responses:
+        '200':
+          description: the newest run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ImageBackfillRun"
+                required:
+                - data
+        '404':
+          description: no run yet
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/image_backfill_runs/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: ImageBackfillRun id.
+    get:
+      summary: Get an image backfill run
+      tags:
+      - Image Backfill
+      description: Superadmin only (the service token passes too). One run, with its
+        progress.
+      responses:
+        '200':
+          description: the run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ImageBackfillRun"
+                required:
+                - data
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service token'
           content:
             application/json:
               schema:
