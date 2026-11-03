@@ -780,6 +780,21 @@ module OpenapiSchemas
         ),
         finished_at: ts(nullable: true), created_at: ts, updated_at: ts
       ),
+      # ImageBackfillRunResource: the image backfill's progress (#338).
+      ImageBackfillRun: obj(
+        id: int,
+        status: str(enum: ImageBackfillRun::STATUSES).merge(
+          description: "queued, then running, then completed; failed when the run stopped (see last_error)."
+        ),
+        total: int.merge(description: "Games with no stored images when the run started."),
+        done: int.merge(description: "Games whose images were imported."),
+        skipped: int.merge(description: "Games with no IGDB id."),
+        failed: int.merge(description: "Games whose import failed."),
+        started_by_user_id: str(nullable: true).merge(description: "The Superadmin who started it; null for the service."),
+        started_at: ts(nullable: true), finished_at: ts(nullable: true),
+        last_error: str(nullable: true).merge(description: "The latest failure, per game (\"Game 12: ...\") or for the run."),
+        created_at: ts, updated_at: ts
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
@@ -857,7 +872,13 @@ module OpenapiSchemas
       SearchSynonymDraft: obj(
         draft_id: int, user_id: str, pairs_json: str(nullable: true), created_at: ts, updated_at: ts
       ),
-      SearchSynonymGroup: obj(group_id: int, created_at: ts, created_by: str(nullable: true)),
+      # SearchSynonymGroupResource: all columns; `terms` (sorted by text) is
+      # embedded only when the caller asks for it (`?include=terms`, #333).
+      SearchSynonymGroup: obj(
+        group_id: int, created_at: ts, created_by: str(nullable: true), terms: array_of("SearchSynonym")
+      ),
+      # The replace-terms response (#333): the group with its new terms.
+      SearchSynonymGroupWithTerms: extends("SearchSynonymGroup", terms: array_of("SearchSynonym"), required: %w[terms]),
       JournalMessageContext: obj(
         channel_id: str, message_id: str, created_at_ms: int, owner_user_id: str, game_id: int
       ),

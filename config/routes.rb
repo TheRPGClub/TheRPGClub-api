@@ -353,6 +353,9 @@ Rails.application.routes.draw do
       post "bot_jobs/:id/done",    to: "bot_jobs#done"
       post "bot_jobs/:id/failed",  to: "bot_jobs#failed"
       get  "bot_jobs/:id",         to: "bot_jobs#show"
+      # The image backfill (Superadmin, #338): start a run, read its progress.
+      get  "image_backfill_runs/latest", to: "image_backfill_runs#latest"
+      resources :image_backfill_runs, only: %i[create show]
       # The bot's Achievement Hub Highlights and alerts (service-only).
       get  "achievements/highlights/pending", to: "achievement_highlights#pending"
       post "achievements/highlights/ack",     to: "achievement_highlights#ack"
@@ -378,6 +381,8 @@ Rails.application.routes.draw do
         # Bulk-delete a group's terms (#108) — service/admin only. The group is
         # kept; used for the bot's atomic replace-terms flow.
         member { delete "terms", to: "search_synonym_groups#destroy_terms" }
+        # Replace all of a group's terms in one transaction (#333), Admin and up.
+        member { put "terms", to: "search_synonym_groups#replace_terms" }
       end
       resources :search_synonym_drafts, only: %i[index show create update destroy]
     end
