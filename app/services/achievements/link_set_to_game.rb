@@ -9,9 +9,9 @@ module Achievements
   # - RetroAchievements and PSN: title matching through the import matcher
   #   (Imports::CandidateFinder + TitleNormalizer.exact_match?).
   #
-  # Title matching links only when exactly one GameDB candidate is an exact
-  # match. It tries the Provider title first, then the title without edition
-  # noise ("Remastered", "GOTY Edition"...). Ambiguous or missing matches leave
+  # Title matching (Imports::UniqueTitleMatch) links only when exactly one
+  # GameDB candidate is an exact match, trying the Provider title first, then
+  # the title without edition noise. Ambiguous or missing matches leave
   # `game_id` nil. A set that is already linked is never relinked here; manual
   # fixes go through the admin PATCH endpoint.
   class LinkSetToGame
@@ -47,23 +47,7 @@ module Achievements
     end
 
     def title_game_id
-      title_variants.each do |variant|
-        exact = finder.find(variant)
-          .select { |candidate| Imports::TitleNormalizer.exact_match?(variant, candidate.title) }
-          .uniq(&:game_id)
-        return exact.first.game_id if exact.one?
-        return if exact.many?
-      end
-      nil
-    end
-
-    def title_variants
-      title = @set.title.to_s.strip
-      [ title, Imports::TitleNormalizer.without_edition(title) ].compact_blank.uniq
-    end
-
-    def finder
-      @finder ||= Imports::CandidateFinder.new
+      Imports::UniqueTitleMatch.call(@set.title).game_id
     end
   end
 end
