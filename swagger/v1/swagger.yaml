@@ -2694,6 +2694,11 @@ components:
           type: string
           nullable: true
           description: The staff member who created it; null for the service.
+        bot_job_id:
+          type: integer
+          nullable: true
+          description: Its live_event_create bot job (GET /bot_jobs/:id for the bot's
+            error when failed).
         created_at:
           type: string
           format: date-time

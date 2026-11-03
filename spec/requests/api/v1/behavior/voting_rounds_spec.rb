@@ -126,12 +126,22 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
     it "closes voting early when the close is moved to now" do
       travel_to(opens_at + 1.hour) do
         patch "/api/v1/voting_rounds/#{base}", params: { data: { voting_closes_at: Time.current.iso8601 } },
+          headers: auth_headers_for(admin), as: :json
+      end
+
+      expect(json.dig("data", "phase")).to eq("closed")
+      expect(BotJob.sole).to have_attributes(kind: "voting_poll_wakeup", requested_by_user_id: admin.user_id,
+        summary: "Wake the voting poller: voting on round #{base} was closed")
+    end
+
+    it "queues nothing for the bot's own change through the service" do
+      travel_to(opens_at + 1.hour) do
+        patch "/api/v1/voting_rounds/#{base}", params: { data: { voting_closes_at: Time.current.iso8601 } },
           headers: service_headers, as: :json
       end
 
       expect(json.dig("data", "phase")).to eq("closed")
-      expect(BotJob.sole).to have_attributes(kind: "voting_poll_wakeup", requested_by_user_id: nil,
-        summary: "Wake the voting poller: voting on round #{base} was closed")
+      expect(BotJob.count).to eq(0)
     end
 
     it "refuses a decided round" do
@@ -183,6 +193,15 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
                    "games" => [ { "game_id" => winner.game_id, "title" => winner.title } ] })
       expect(wakeup).to have_attributes(kind: "voting_poll_wakeup",
         summary: "Wake the voting poller: the GOTM tie for round #{base} was broken")
+    end
+
+    it "queues nothing for the bot's own tie break through the service, which it announced itself" do
+      post "/api/v1/voting_rounds/#{base}/resolve_tie",
+        params: { data: { category: "gotm", gamedb_game_ids: [ games.first.game_id ] } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(BotJob.count).to eq(0)
     end
 
     it "queues nothing for a refused pick" do
@@ -279,6 +298,34 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
       travel_to(opens_at - 1.day) { publish(auth_headers_for(admin)) }
 
       expect(json).to include("error" => "voting_not_ended")
+    end
+
+    # As the bot's /admin voting-results publish: the main vote's results are
+    # final once it closes. A tie in them is announced as going to the runoff
+    # (or to the admins), and the runoff's own results post separately.
+    it "publishes the main vote's results while a runoff is open" do
+      ties = { "gotm" => create_list(:game, 2).map(&:game_id).sort }
+      closed_at = round.voting_closes_at
+      round.update!(closed_at: closed_at, pending_ties: ties, runoff_ties: ties, runoff_opens_at: closed_at,
+        runoff_closes_at: closed_at + 1.day)
+
+      travel_to(ended_at) do
+        expect(round.phase).to eq("runoff")
+        publish(auth_headers_for(admin))
+      end
+
+      expect(response).to have_http_status(:accepted)
+    end
+
+    it "publishes the main vote's results while a tie waits for the admins" do
+      round.update!(closed_at: round.voting_closes_at, pending_ties: { "gotm" => create_list(:game, 2).map(&:game_id) })
+
+      travel_to(ended_at) do
+        expect(round.phase).to eq("tie")
+        publish(auth_headers_for(admin))
+      end
+
+      expect(response).to have_http_status(:accepted)
     end
 
     it "publishes a decided round" do

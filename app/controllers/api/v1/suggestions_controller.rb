@@ -220,7 +220,7 @@ module Api
             title: suggestion.title, github_issue_number: suggestion.github_issue_number,
             github_issue_url: suggestion.github_issue_url, rejection_reason: suggestion.rejection_reason
           },
-          requested_by: current_principal.discord_user? ? current_principal.id : nil
+          requested_by: requester_id
         )
       end
 

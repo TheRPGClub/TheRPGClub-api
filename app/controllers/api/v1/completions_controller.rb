@@ -148,7 +148,7 @@ module Api
       end
 
       def enqueue_announce(completion)
-        actor_id = current_principal.discord_user? ? current_principal.id.to_s : nil
+        actor_id = requester_id
         member = completion.user
         name = member&.global_name.presence || member&.username.presence || completion.user_id
         BotJob.enqueue!(

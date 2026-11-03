@@ -810,6 +810,9 @@ module OpenapiSchemas
         discord_thread_id: str(nullable: true).merge(description: "The forum thread, once made."),
         discord_event_id: str(nullable: true).merge(description: "The Discord scheduled event, once made."),
         created_by_user_id: str(nullable: true).merge(description: "The staff member who created it; null for the service."),
+        bot_job_id: int(nullable: true).merge(
+          description: "Its live_event_create bot job (GET /bot_jobs/:id for the bot's error when failed)."
+        ),
         created_at: ts, updated_at: ts
       ),
       # The `say` bot job's payload (#337), as BotJobClaim.payload carries it.

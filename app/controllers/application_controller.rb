@@ -105,6 +105,12 @@ class ApplicationController < ActionController::API
     render json: payload
   end
 
+  # The acting member's id, for "requested by" and "created by" columns; nil
+  # for the service (the bot) or no session.
+  def requester_id
+    current_principal&.discord_user? ? current_principal.id.to_s : nil
+  end
+
   def request_data
     params.require(:data).permit!.to_h
   end

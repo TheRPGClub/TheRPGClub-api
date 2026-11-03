@@ -12,7 +12,6 @@ module Api
       # Rescheduling fields. Moving the open without a close keeps the default
       # weekend window; "close voting now" is `voting_closes_at: <now>`.
       UPDATE_ATTRS = %w[voting_opens_at voting_closes_at month_year].freeze
-      CATEGORY_LABELS = { "gotm" => "GOTM", "nr_gotm" => "NR-GOTM" }.freeze
 
       def index
         render_collection(VotingRound.all, resource: VotingRoundResource, default_order: { round_number: :desc })
@@ -45,8 +44,10 @@ module Api
 
         VotingRound.transaction do
           round.update!(attrs)
-          queue_poll_wakeup!(round, closing ? "voting on round #{round.round_number} was closed" :
-            "round #{round.round_number} was rescheduled")
+          if current_principal.discord_user?
+            queue_poll_wakeup!(round, closing ? "voting on round #{round.round_number} was closed" :
+              "round #{round.round_number} was rescheduled")
+          end
         end
         render_round(round)
       end
@@ -60,7 +61,7 @@ module Api
             category: data["category"],
             gamedb_game_ids: data["gamedb_game_ids"]
           ).call
-          queue_tie_broken!(resolved, data["category"].to_s, data["gamedb_game_ids"])
+          queue_tie_broken!(resolved, data["category"].to_s, data["gamedb_game_ids"]) if current_principal.discord_user?
           resolved
         end
         render_round(round)
@@ -74,7 +75,10 @@ module Api
       # post (and winner thread), once voting has ended. Repeatable, so a
       # Discord failure can be retried. Works whatever the automation flag
       # says. A round from before voting_rounds existed takes its month from
-      # its GOTM entries.
+      # its GOTM entries. Allowed during a runoff or a pending tie, as the bot's
+      # /admin voting-results publish is: the main vote's results are final
+      # once it closes, a tie in them is announced as going to the runoff (or
+      # the admins), and the runoff's results post on their own.
       def publish_results
         number = params[:id].to_i
         round = VotingRound.find_by(round_number: number)
@@ -125,7 +129,8 @@ module Api
 
       # The bot's voting poller sleeps until the API's next_poll_at (up to an
       # hour); a staff change to a round wakes it so panels and results go out
-      # now. The bot's handler takes no payload.
+      # now. The bot's handler takes no payload. Not queued for the service:
+      # the bot made the change, and announces its own tie breaks inline.
       def queue_poll_wakeup!(round, what)
         BotJob.enqueue!(kind: "voting_poll_wakeup", summary: "Wake the voting poller: #{what}", payload: {},
           requested_by: requester_id)
@@ -134,7 +139,7 @@ module Api
       # Tells Discord who won the tie (the bot's announceTieBreak), then wakes
       # the poller for the round_decided event a last tie leaves behind.
       def queue_tie_broken!(round, category, game_ids)
-        label = CATEGORY_LABELS.fetch(category)
+        label = Gotm::RoundCreate.label(category)
         games = GamedbGame.where(game_id: Array(game_ids).map(&:to_i)).order(:game_id)
           .map { |game| { game_id: game.game_id, title: game.title } }
         BotJob.enqueue!(kind: "voting_tie_broken",
@@ -143,12 +148,6 @@ module Api
           payload: { round_number: round.round_number, category: category, games: games },
           requested_by: requester_id)
         queue_poll_wakeup!(round, "the #{label} tie for round #{round.round_number} was broken")
-      end
-
-      # The acting member, so the job shows in their activity list; nil for
-      # the service.
-      def requester_id
-        current_principal.discord_user? ? current_principal.id : nil
       end
 
       def render_round(round)

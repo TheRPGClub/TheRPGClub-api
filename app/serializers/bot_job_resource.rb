@@ -6,7 +6,10 @@
 class BotJobResource
   include BaseResource
 
-  attributes :id, :kind, :summary, :status, :requested_by_user_id
+  attributes :id, :kind
+  # Jobs the previous release queued during a deploy have a blank summary.
+  attribute(:summary) { |job| job.summary.presence || job.kind.humanize }
+  attributes :status, :requested_by_user_id
   one :requested_by, resource: UserSummaryResource
   attributes :attempts, :error_message, :result_text, :claimed_at, :lease_expires_at, :finished_at,
              :created_at, :updated_at

@@ -34,7 +34,7 @@ RSpec.describe "api/v1/live_events behavior", type: :request do
           "starts_at" => starts_at.utc.iso8601(3), "ends_at" => ends_at.utc.iso8601(3),
           "image_url" => "https://example.com/banner.png", "status" => "queued",
           "discord_thread_id" => nil, "discord_event_id" => nil,
-          "created_by_user_id" => moderator.user_id,
+          "created_by_user_id" => moderator.user_id, "bot_job_id" => BotJob.sole.id,
           "created_at" => Time.current.utc.iso8601(3), "updated_at" => Time.current.utc.iso8601(3)
         )
         job = BotJob.sole
@@ -393,6 +393,58 @@ RSpec.describe "api/v1/live_events behavior", type: :request do
         expect(response).to have_http_status(:forbidden)
         expect(event.reload.status).to eq("queued")
       end
+    end
+  end
+
+  # The site shows a failed event with its bot job's error (bot_job_id).
+  describe "when the bot job fails" do
+    include ActiveSupport::Testing::TimeHelpers
+
+    before { FileUtils.rm_f(BotJob::WorkSignal.path) }
+
+    let!(:event) do
+      create_event
+      LiveEvent.sole
+    end
+    let(:job) { BotJob.find(event.bot_job_id) }
+
+    def claim
+      post "/api/v1/bot_jobs/claim", headers: service_headers
+    end
+
+    it "marks the event failed when the bot acks the job failed" do
+      claim
+      post "/api/v1/bot_jobs/#{job.id}/failed", params: { data: { error_message: "Forum channel missing" } },
+        headers: service_headers, as: :json
+
+      get "/api/v1/live_events/#{event.id}", headers: moderator_headers
+      expect(json.fetch("data")).to include("status" => "failed", "bot_job_id" => job.id)
+      get "/api/v1/bot_jobs/#{job.id}", headers: moderator_headers
+      expect(json.dig("data", "error_message")).to eq("Forum channel missing")
+    end
+
+    it "marks the event failed when the job's last lease runs out" do
+      BotJob::MAX_ATTEMPTS.times { |attempt| travel((BotJob::LEASE + 1.second) * attempt) { claim } }
+      travel((BotJob::LEASE + 1.second) * BotJob::MAX_ATTEMPTS) { claim }
+
+      expect(job.reload.status).to eq("failed")
+      expect(event.reload.status).to eq("failed")
+    end
+
+    it "leaves the event alone while the job is only retried" do
+      claim
+      travel(BotJob::LEASE + 1.second) { claim }
+
+      expect(event.reload.status).to eq("queued")
+    end
+
+    it "leaves another kind's failure alone" do
+      other = BotJob.enqueue!(kind: "say", summary: "Say hi", payload: { live_event_id: event.id })
+      claim
+      post "/api/v1/bot_jobs/#{other.id}/failed", params: { data: { error_message: "nope" } },
+        headers: service_headers, as: :json
+
+      expect(event.reload.status).to eq("queued")
     end
   end
 end

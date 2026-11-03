@@ -16,7 +16,7 @@ module Api
         job = BotSay.enqueue!(
           channel_id: data[:channel_id], content: data[:content],
           reply_to_message_link: data[:reply_to_message_link],
-          requested_by: current_principal.discord_user? ? current_principal.id : nil
+          requested_by: requester_id
         )
         render json: { data: BotJobResource.new(job).serializable_hash }, status: :accepted
       rescue BotSay::Invalid => e

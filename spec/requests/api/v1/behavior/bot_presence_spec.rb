@@ -82,6 +82,32 @@ RSpec.describe "api/v1/bot_presence behavior", type: :request do
       expect(job.requested_by_user_id).to eq(moderator.user_id)
     end
 
+    {
+      "a blank activity_name" => { activity_name: "   " },
+      "no activity_name" => { set_by_username: "spoof" },
+      "an activity_name over Discord's #{BotPresenceHistory::STAFF_NAME_MAX} characters" =>
+        { activity_name: "x" * (BotPresenceHistory::STAFF_NAME_MAX + 1) }
+    }.each do |label, data|
+      it "422s for #{label}, queueing nothing" do
+        expect {
+          post "/api/v1/bot_presence", params: { data: data }, headers: auth_headers_for(moderator), as: :json
+        }.not_to change(BotPresenceHistory, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(BotJob.count).to eq(0)
+      end
+    end
+
+    it "accepts a #{BotPresenceHistory::STAFF_NAME_MAX} character name, trimmed" do
+      name = "x" * BotPresenceHistory::STAFF_NAME_MAX
+      post "/api/v1/bot_presence", params: { data: { activity_name: "  #{name}  " } },
+        headers: auth_headers_for(moderator), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "activity_name")).to eq(name)
+      expect(BotJob.sole.payload).to eq("activity_name" => name)
+    end
+
     it "queues nothing when the write fails" do
       expect {
         post "/api/v1/bot_presence", params: { data: { activity_name: "x" * 2000 } },
@@ -217,6 +243,12 @@ RSpec.describe "api/v1/bot_presence behavior", type: :request do
     it "422s when activity_name exceeds the column limit" do
       post "/api/v1/bot_presence",
         params: { data: { activity_name: "x" * 2000 } }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "422s without an activity_name" do
+      post "/api/v1/bot_presence", params: { data: { set_by_user_id: "42" } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
     end

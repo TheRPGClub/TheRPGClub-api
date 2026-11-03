@@ -9,13 +9,15 @@
 #   queued          saved, waiting for the bot
 #   thread_created  the forum thread exists (discord_thread_id set)
 #   created         the scheduled event exists too (discord_event_id set)
-#   failed          the bot gave up (its error is on the bot job)
+#   failed          the bot gave up: it said so, or its bot job failed (acked
+#                   failed, or out of attempts); the error is on bot_job_id
 class LiveEvent < ApplicationRecord
   STATUSES = %w[queued thread_created created failed].freeze
   TOPIC_MAX = 100
   IMAGE_URL_MAX = 1000
   SNOWFLAKE = /\A\d{1,30}\z/
 
+  belongs_to :bot_job, optional: true
   belongs_to :created_by, class_name: "RpgClubUser", foreign_key: :created_by_user_id,
     primary_key: :user_id, optional: true, inverse_of: false
 
@@ -34,12 +36,20 @@ class LiveEvent < ApplicationRecord
   # Queues the bot job that makes the thread and event. Call inside the
   # transaction that saves the event.
   def enqueue_creation!(requested_by:)
-    BotJob.enqueue!(
+    job = BotJob.enqueue!(
       kind: "live_event_create",
       summary: %(Create the live event "#{topic}" (forum thread and Discord event)),
       payload: { live_event_id: id },
       requested_by: requested_by
     )
+    update!(bot_job: job)
+  end
+
+  # Called by BotJob when jobs end failed: their events will not be made, so
+  # they read as failed (an event the bot finished is left alone).
+  def self.bot_jobs_failed!(job_ids, now: Time.current)
+    where(bot_job_id: job_ids).where.not(status: %w[created failed])
+      .update_all(status: "failed", updated_at: now)
   end
 
   private

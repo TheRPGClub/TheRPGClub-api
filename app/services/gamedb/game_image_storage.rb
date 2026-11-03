@@ -14,14 +14,37 @@ module Gamedb
       "image/gif" => "gif"
     }.freeze
 
+    # Checks an uploaded image file (JPEG, PNG, WebP or GIF, at most
+    # MAX_UPLOAD_SIZE, not empty) and returns [bytes, content_type]. Shared
+    # with LiveEvents::ImageStorage so both keep the same limits.
+    def self.read_upload!(uploaded_file)
+      raise InvalidImageError, "image file is required" unless uploaded_file.respond_to?(:read)
+
+      content_type = normalized_content_type(uploaded_file.content_type)
+      raise InvalidImageError, "image file is too large" if uploaded_file.size.to_i > MAX_UPLOAD_SIZE
+
+      bytes = uploaded_file.read.to_s.b
+      raise InvalidImageError, "image file is empty" if bytes.empty?
+
+      [ bytes, content_type ]
+    ensure
+      uploaded_file.rewind if uploaded_file.respond_to?(:rewind)
+    end
+
+    def self.normalized_content_type(content_type)
+      value = content_type.to_s.split(";").first.to_s.downcase
+      return value if CONTENT_TYPE_EXTENSIONS.key?(value)
+
+      raise InvalidImageError, "image must be JPEG, PNG, WebP, or GIF"
+    end
+
     def initialize(client: Backblaze::Client.new)
       @client = client
     end
 
     def upload_manual!(game:, uploaded_file:, kind:, uploaded_by_user_id:, primary: true)
       normalized_kind = normalize_kind(kind)
-      bytes = read_uploaded_file(uploaded_file)
-      content_type = normalized_content_type(uploaded_file.content_type)
+      bytes, content_type = self.class.read_upload!(uploaded_file)
       extension = extension_for(uploaded_file.original_filename, content_type)
       object_key = manual_object_key(game, normalized_kind, extension)
 
@@ -42,7 +65,7 @@ module Gamedb
       response = Faraday.get(image_url) { |request| request.options.timeout = 30 }
       raise InvalidImageError, "IGDB image download failed with HTTP #{response.status}" unless response.success?
 
-      content_type = normalized_content_type(response.headers["content-type"])
+      content_type = self.class.normalized_content_type(response.headers["content-type"])
       extension = CONTENT_TYPE_EXTENSIONS.fetch(content_type, "jpg")
       object_key = igdb_object_key(game, normalized_kind, position, extension)
 
@@ -100,25 +123,6 @@ module Gamedb
       return value if GamedbGameImage::KINDS.include?(value)
 
       raise InvalidImageError, "kind must be one of: #{GamedbGameImage::KINDS.join(', ')}"
-    end
-
-    def read_uploaded_file(uploaded_file)
-      raise InvalidImageError, "image file is required" if uploaded_file.blank?
-      raise InvalidImageError, "image file is too large" if uploaded_file.size.to_i > MAX_UPLOAD_SIZE
-
-      bytes = uploaded_file.read.to_s.b
-      raise InvalidImageError, "image file is empty" if bytes.empty?
-
-      bytes
-    ensure
-      uploaded_file&.rewind if uploaded_file.respond_to?(:rewind)
-    end
-
-    def normalized_content_type(content_type)
-      value = content_type.to_s.split(";").first.to_s.downcase
-      return value if CONTENT_TYPE_EXTENSIONS.key?(value)
-
-      raise InvalidImageError, "image must be JPEG, PNG, WebP, or GIF"
     end
 
     def extension_for(original_filename, content_type)

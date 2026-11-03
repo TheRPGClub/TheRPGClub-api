@@ -148,6 +148,55 @@ RSpec.describe "GOTM and NR-GOTM round writes", type: :request do
       end
     end
 
+    describe "POST #{cfg[:path]} (one game)" do
+      let(:round_number) { SecureRandom.random_number(1_000_000) + 1 }
+      let(:body) do
+        { data: { round_number: round_number, month_year: "October 2026", game_index: 1,
+                  gamedb_game_id: create(:game).game_id } }
+      end
+
+      it "queues the reload for a staff create" do
+        admin = create(:user, :admin)
+
+        post cfg[:path], params: body, headers: auth_headers_for(admin), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(BotJob.sole).to have_attributes(kind: "gotm_cache_reload", requested_by_user_id: admin.user_id,
+          payload: { "category" => category, "round_number" => round_number },
+          summary: "Reload #{cfg[:label]} round #{round_number} (October 2026) in the bot: game 2 added")
+      end
+
+      it "queues nothing for the bot's own create through the service" do
+        expect { post cfg[:path], params: body, headers: service_headers, as: :json }.not_to change(BotJob, :count)
+
+        expect(response).to have_http_status(:created)
+      end
+    end
+
+    describe "DELETE #{cfg[:path]}/:id" do
+      let!(:entry) { create(cfg[:factory], game_index: 0, month_year: "October 2026") }
+
+      it "queues the reload for a staff delete" do
+        admin = create(:user, :admin)
+
+        delete "#{cfg[:path]}/#{entry.public_send(cfg[:id])}", headers: auth_headers_for(admin)
+
+        expect(response).to have_http_status(:ok)
+        expect(cfg[:model].exists?(entry.public_send(cfg[:id]))).to be(false)
+        expect(BotJob.sole).to have_attributes(kind: "gotm_cache_reload", requested_by_user_id: admin.user_id,
+          payload: { "category" => category, "round_number" => entry.round_number },
+          summary: "Reload #{cfg[:label]} round #{entry.round_number} (October 2026) in the bot: game 1 removed")
+      end
+
+      it "queues nothing for the bot's own delete through the service" do
+        expect {
+          delete "#{cfg[:path]}/#{entry.public_send(cfg[:id])}", headers: service_headers
+        }.not_to change(BotJob, :count)
+
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
     describe "PATCH #{cfg[:path]}/:id" do
       let(:entry) { create(cfg[:factory], game_index: 1, month_year: "October 2026") }
       let(:new_game) { create(:game) }

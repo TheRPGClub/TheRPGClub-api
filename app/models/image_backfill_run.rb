@@ -11,7 +11,7 @@
 #
 # At most one run is queued or running (a partial unique index). A run whose
 # row has not moved for STALE_AFTER is taken to have died with its process,
-# and starting a new run marks it failed.
+# and starting or reading a run marks it failed (fail_stale!).
 class ImageBackfillRun < ApplicationRecord
   STATUSES = %w[queued running completed failed].freeze
   IN_PROGRESS = %w[queued running].freeze
@@ -31,8 +31,7 @@ class ImageBackfillRun < ApplicationRecord
   # Queues a new run and its job. Raises InProgress while a live run exists.
   def self.start!(started_by_user_id:, now: Time.current)
     run = transaction do
-      in_progress.where(updated_at: ..(now - STALE_AFTER))
-        .update_all(status: "failed", last_error: STALE_ERROR, finished_at: now, updated_at: now)
+      fail_stale!(now)
       raise InProgress if in_progress.exists?
 
       create!(started_by_user_id: started_by_user_id)
@@ -41,6 +40,14 @@ class ImageBackfillRun < ApplicationRecord
     run
   rescue ActiveRecord::RecordNotUnique
     raise InProgress
+  end
+
+  # Marks failed every queued or running run whose row has not moved for
+  # STALE_AFTER (its process died: a deploy or restart). Run before starting
+  # and before reading, so the site never shows a dead run as live.
+  def self.fail_stale!(now = Time.current)
+    in_progress.where(updated_at: ..(now - STALE_AFTER))
+      .update_all(status: "failed", last_error: STALE_ERROR, finished_at: now, updated_at: now)
   end
 
   def in_progress?
