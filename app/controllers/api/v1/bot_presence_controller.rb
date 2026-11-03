@@ -46,18 +46,19 @@ module Api
       #
       # Records a new presence entry. `set_at` defaults to now() in the DB, so
       # we reload to return the stamped value. The bot has already applied its
-      # own writes; a staff write queues `presence_set` in the same transaction.
+      # own writes; a staff write queues `presence_set` in the same transaction,
+      # returned as `meta.presence_job_id` (null when none was queued).
       def create
-        record = BotPresenceHistory.transaction do
-          next BotPresenceHistory.create!(writable_data) if current_principal.service?
+        record, presence_job = BotPresenceHistory.transaction do
+          next [ BotPresenceHistory.create!(writable_data), nil ] if current_principal.service?
 
-          BotPresenceHistory.new(staff_data).tap do |entry|
-            entry.save!(context: :staff)
-            enqueue_presence_set(entry)
-          end
+          entry = BotPresenceHistory.new(staff_data)
+          entry.save!(context: :staff)
+          [ entry, enqueue_presence_set(entry) ]
         end
         record.reload
-        render json: { data: BotPresenceResource.new(record).serializable_hash }, status: :created
+        render json: { data: BotPresenceResource.new(record).serializable_hash,
+                       meta: { presence_job_id: presence_job&.id } }, status: :created
       end
 
       private

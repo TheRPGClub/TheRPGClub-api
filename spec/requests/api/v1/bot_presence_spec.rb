@@ -49,8 +49,9 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
       description 'Moderator and up, or the service. Records a new presence entry. `set_at` is ' \
                   'stamped by the server (defaults to now()). On a staff create the setter id and ' \
                   'name come from the session, never the body, and a `presence_set` bot job is ' \
-                  'queued so the bot applies the presence at once. The service (the bot itself, ' \
-                  'which has already applied it) queues no job.'
+                  'queued so the bot applies the presence at once; `meta.presence_job_id` is that ' \
+                  'job, for polling `GET /api/v1/bot_jobs/{id}`. The service (the bot itself, which ' \
+                  'has already applied it) queues no job, so its `meta.presence_job_id` is null.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -61,7 +62,10 @@ RSpec.describe 'api/v1/bot_presence', type: :request do
       }
 
       response '201', 'presence entry created' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/BotPresence' } }
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/BotPresence' },
+          meta: { '$ref' => '#/components/schemas/BotPresenceCreateMeta' }
+        }
       end
 
       response '403', 'forbidden: caller is not Moderator and up or the service' do
