@@ -7,7 +7,9 @@ module Api
     # manage rounds via the API instead of direct SQL (#98). Each row is one game
     # slot in a round — the bot POSTs once per game for multi-game months.
     class GotmEntriesController < ApplicationController
-      before_action :require_admin_or_service!, only: %i[create update destroy]
+      include GotmRoundWrites
+
+      before_action :require_admin_or_service!, only: %i[create create_round update destroy]
 
       # Settable on create: the round identity plus the game. `month_year`,
       # `game_index` and `gamedb_game_id` are required; `reddit_url` is optional.
@@ -49,12 +51,9 @@ module Api
         render json: { data: GotmEntryResource.new(entry).serializable_hash }, status: :created
       end
 
+      # A staff edit also queues gotm_cache_reload (GotmRoundWrites).
       def update
-        entry = GotmEntry.find(params[:id])
-        entry.update!(request_data.slice(*UPDATE_ATTRS))
-        entry.reload
-        Gamedb::GameRelationsCacheVersion.bump!
-        render json: { data: GotmEntryResource.new(entry).serializable_hash }
+        update_entry(GotmEntry.find(params[:id]))
       end
 
       def destroy
@@ -64,6 +63,10 @@ module Api
       end
 
       private
+
+      def round_category = "gotm"
+
+      def entry_resource = GotmEntryResource
 
       def include_game?
         params[:include].to_s.split(",").map(&:strip).include?("game")
