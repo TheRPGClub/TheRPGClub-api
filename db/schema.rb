@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_03_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_03_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -389,6 +389,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_120000) do
     t.bigint "game_id", null: false
     t.string "message_id", limit: 30, null: false
     t.string "owner_user_id", limit: 30, null: false
+  end
+
+  create_table "live_events", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "created_by_user_id", limit: 30
+    t.string "discord_event_id", limit: 30
+    t.string "discord_thread_id", limit: 30
+    t.datetime "ends_at", null: false
+    t.text "image_url"
+    t.datetime "starts_at", null: false
+    t.string "status", limit: 16, default: "queued", null: false
+    t.string "topic", limit: 100, null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_live_events_on_created_at"
+    t.check_constraint "ends_at > starts_at", name: "ck_live_events_ends_after_start"
+    t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'thread_created'::character varying, 'created'::character varying, 'failed'::character varying]::text[])", name: "ck_live_events_status"
   end
 
   create_table "nr_gotm_entries", primary_key: "nr_gotm_id", force: :cascade do |t|
@@ -1181,6 +1197,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_03_120000) do
   add_foreign_key "gamedb_releases", "gamedb_regions", column: "region_id", primary_key: "region_id", name: "fk_gamedb_releases_region"
   add_foreign_key "gamedb_search_synonyms", "gamedb_search_synonym_groups", column: "group_id", primary_key: "group_id", name: "fk_gamedb_search_synonyms_group", on_delete: :cascade
   add_foreign_key "image_backfill_runs", "rpg_club_users", column: "started_by_user_id", primary_key: "user_id", on_delete: :nullify
+  add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify
