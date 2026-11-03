@@ -2522,6 +2522,7 @@ components:
         kind:
           type: string
           enum:
+          - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
           - suggestion_submitted
@@ -2651,6 +2652,7 @@ components:
         kind:
           type: string
           enum:
+          - completion_announce
           - giveaway_claim_notice
           - giveaway_hub_refresh
           - suggestion_submitted
@@ -7912,8 +7914,12 @@ paths:
       summary: Record a completion
       tags:
       - Completions
-      description: Owner-only. `gamedb_game_id` and `completion_type` are required;
-        `completed_at`, `final_playtime_hrs`, `platform_id` and `note` are optional.
+      description: 'The owner, a Superadmin (for any member) or the service. `gamedb_game_id`
+        and `completion_type` are required; `completed_at`, `final_playtime_hrs`,
+        `platform_id` and `note` are optional. `announce: true` queues a `completion_announce`
+        bot job (payload `completion_id`, `user_id`, `game_id`, `actor_user_id`) so
+        the bot posts the completion. When a Superadmin logs one for another member,
+        the game is also removed from that member''s Now Playing.'
       parameters: []
       responses:
         '201':
@@ -7926,13 +7932,19 @@ paths:
                   data:
                     "$ref": "#/components/schemas/CompletionEntry"
         '403':
-          description: forbidden — caller is not the owner
+          description: 'forbidden: caller is not the owner, a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: a Superadmin named a member who does not exist
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `announce` is not a boolean
           content:
             application/json:
               schema:
@@ -7982,6 +7994,10 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    announce:
+                      type: boolean
+                      description: Queue a bot announcement of the completion. Defaults
+                        to false.
                   required:
                   - gamedb_game_id
                   - completion_type
