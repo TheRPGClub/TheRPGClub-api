@@ -812,6 +812,16 @@ module OpenapiSchemas
         created_by_user_id: str(nullable: true).merge(description: "The staff member who created it; null for the service."),
         created_at: ts, updated_at: ts
       ),
+      # The `say` bot job's payload (#337), as BotJobClaim.payload carries it.
+      SayJobPayload: obj(
+        _description: "Post `content` in `channel_id`, or reply to `reply_to.message_id` there. Send it with " \
+                      "`allowed_mentions` as given: plain user mentions only, never @everyone, @here or roles.",
+        channel_id: str.merge(description: "A synced text channel."),
+        content: str(maxLength: BotSay::CONTENT_MAX),
+        reply_to: obj(channel_id: str, message_id: str).merge(nullable: true,
+          description: "The message to reply to (always in `channel_id`); null for a plain message."),
+        allowed_mentions: obj(parse: { type: :array, items: str(enum: %w[users]) }, _required: %w[parse])
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),

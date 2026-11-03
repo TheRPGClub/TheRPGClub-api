@@ -26,13 +26,17 @@ class BotJob < ApplicationRecord
     voting_poll_wakeup
     gotm_cache_reload
     live_event_create
+    say
+    memberscan
     presence_set
   ].freeze
   STATUSES = %w[queued claimed done failed].freeze
   # Default claim lease, and per-kind overrides for jobs the bot needs
   # longer to finish (e.g. a whole-guild scan).
   LEASE = 5.minutes
-  LEASES = {}.freeze
+  LEASES = {
+    "memberscan" => 30.minutes
+  }.freeze
   SUMMARY_MAX = 200
   TEXT_MAX = 2000
   MAX_ATTEMPTS = 3

@@ -364,6 +364,10 @@ Rails.application.routes.draw do
       # Live events (Moderator and up; the bot records its thread and event ids, #336).
       resources :live_events, only: %i[index show create]
       patch "live_events/:id", to: "live_events#update"
+      # Superadmin bot actions (#337): the bot says a message, or scans the
+      # guild's members, as a bot job.
+      post "bot_say",    to: "bot_say#create"
+      post "memberscan", to: "memberscan#create"
       # The bot's Achievement Hub Highlights and alerts (service-only).
       get  "achievements/highlights/pending", to: "achievement_highlights#pending"
       post "achievements/highlights/ack",     to: "achievement_highlights#ack"
