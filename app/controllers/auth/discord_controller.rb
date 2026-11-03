@@ -23,6 +23,7 @@ module Auth
       user = RpgClubUser.upsert_from_discord!(discord_user)
 
       role_ids = fetch_member_role_ids(access_token)
+      user.apply_discord_roles!(role_ids) unless role_ids.nil?
       is_dev = role_assigned?(role_ids, DiscordRoles::DEV)
       is_longstanding = role_assigned?(role_ids, DiscordRoles::LONGSTANDING)
 
@@ -73,12 +74,14 @@ module Auth
     def fetch_member_role_ids(access_token)
       oauth_client.fetch_rpgclub_member_roles!(access_token)
     rescue StandardError => e
+      # nil (not []) so a failed fetch keeps the stored role flags instead of
+      # stripping a member's staff roles because Discord hiccuped.
       Rails.logger.warn({ event: "discord_oauth.member_roles_fetch_failed", error: e.message }.to_json)
-      []
+      nil
     end
 
     def role_assigned?(role_ids, role_id)
-      return false if role_id.to_s.empty?
+      return false if role_id.to_s.empty? || role_ids.nil?
 
       role_ids.include?(role_id.to_s)
     end

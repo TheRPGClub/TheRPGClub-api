@@ -37,7 +37,9 @@ RSpec.describe 'api/v1/game_keys', type: :request do
       description 'Owner-only: a Discord caller may only donate as themselves ' \
                   '(`donor_user_id` must be their own id); the bot service token ' \
                   'may donate on anyone\'s behalf. The claim fields are read-only ' \
-                  'on donation.'
+                  'on donation. A member\'s donation queues a `giveaway_hub_refresh` ' \
+                  'bot job (payload `{ reason: "donate", key_id }`); the service ' \
+                  'token\'s does not.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -123,14 +125,16 @@ RSpec.describe 'api/v1/game_keys', type: :request do
     delete 'Revoke a game key' do
       tags 'Game Keys'
       description 'Revokes (deletes) a key. Restricted to the original donor, an ' \
-                  'admin, or the bot service token.'
+                  'Admin, a Superadmin, or the bot service token. A member\'s revoke ' \
+                  'queues a `giveaway_hub_refresh` bot job (payload ' \
+                  '`{ reason: "revoke", key_id }`); the service token\'s does not.'
       produces 'application/json'
 
       response '200', 'key revoked' do
         schema type: :object, properties: { deleted: { type: :boolean } }, required: %w[deleted]
       end
 
-      response '403', 'forbidden — caller is not the donor, an admin, or the service token' do
+      response '403', 'forbidden: caller is not the donor, an Admin, a Superadmin, or the service token' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -149,10 +153,18 @@ RSpec.describe 'api/v1/game_keys', type: :request do
 
     post 'Claim a game key' do
       tags 'Game Keys'
-      description 'Atomically claims an unclaimed key and returns it with the ' \
-                  'secret `key_value` revealed to the claimer. A Discord caller ' \
-                  'claims as themselves; the bot service token claims on behalf ' \
-                  'of the `claimed_by_user_id` supplied in the body.'
+      description 'Claims an unclaimed key and returns it with the secret ' \
+                  '`key_value` revealed to the claimer. Requires the Discord ' \
+                  'Members role (or the bot service token). The key row is locked, ' \
+                  'so of two concurrent claims one wins and the other gets 409. ' \
+                  'A Discord caller claims as themselves; the bot service token ' \
+                  'claims on behalf of the `claimed_by_user_id` supplied in the body. ' \
+                  'A member\'s claim queues two bot jobs: `giveaway_claim_notice` ' \
+                  '(payload `{ key_id, claimed_by_user_id, donor_user_id, game_title, ' \
+                  'platform }`; the bot DMs the key, logs the claim and notifies the ' \
+                  'donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id }`). ' \
+                  '`meta.claim_notice_job_id` is the notice job, for polling ' \
+                  'GET /api/v1/bot_jobs/{id}. The service token\'s claims queue nothing.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -172,7 +184,14 @@ RSpec.describe 'api/v1/game_keys', type: :request do
       response '200', 'claimed — includes the revealed `key_value`' do
         # GameKey, with the otherwise-omitted `key_value` secret populated (the
         # claim response is the only place the secret is returned).
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GameKey' } }
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/GameKey' },
+          meta: { '$ref' => '#/components/schemas/GameKeyClaimMeta' }
+        }
+      end
+
+      response '403', 'forbidden: caller lacks the Members role' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '409', 'already claimed' do
@@ -214,6 +233,42 @@ RSpec.describe 'api/v1/game_keys', type: :request do
       end
 
       response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/users/{user_id}/claimed_game_keys' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true,
+      description: 'Discord user id of the claimer.'
+
+    get 'List a user\'s claimed game keys' do
+      tags 'Game Keys'
+      description 'The keys the user claimed, newest claim first (`claimed_at` desc, then ' \
+                  '`key_id` desc), each embedding its `game` (null when unlinked), so a ' \
+                  'claimer can find their keys again. Readable by the claimer, Admins and ' \
+                  'above, and the service token. The secret `key_value` is included only ' \
+                  'when the caller is the claimer; it is omitted for staff and the service.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'claimed game keys' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/GameKey' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not the claimer, an Admin, a Superadmin, or the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'unknown user' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

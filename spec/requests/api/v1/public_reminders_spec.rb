@@ -6,9 +6,13 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
   # The client-writable RpgClubPublicReminder columns. `reminder_id` and the
   # timestamps are server-managed.
   writable = {
-    channel_id: { type: :string, description: 'Channel to post the reminder in. Required on create.' },
+    channel_id: { type: :string, description: 'Channel to post the reminder in. Required on create. For a member (the ' \
+                                              'website), must be a synced text or announcement channel (see GET ' \
+                                              '/api/v1/guild_channels), checked on create and whenever it changes; ' \
+                                              'the service may use any channel.' },
     message: { type: :string, description: 'Reminder text. Required on create.' },
-    due_at: { type: :string, format: 'date-time', description: 'When the reminder is due. Required on create.' },
+    due_at: { type: :string, format: 'date-time', description: 'When the reminder is due. Required on create. Send any ' \
+                                                                 'ISO 8601 offset; it is stored and returned in UTC.' },
     recur_every: { type: :integer, nullable: true, description: 'Optional recurrence interval (paired with `recur_unit`).' },
     recur_unit: { type: :string, nullable: true, description: 'Optional recurrence unit (e.g. "days").' },
     enabled: { type: :boolean, description: 'Whether the reminder is active. Optional; defaults to true.' },
@@ -43,9 +47,10 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
 
     post 'Create a public reminder' do
       tags 'Public Reminders'
-      description 'Admin or service only. `channel_id`, `message` and `due_at` are required; ' \
+      description 'Admin or above (Admin, Superadmin, service). `channel_id`, `message` and `due_at` are required; ' \
                   '`recur_every`/`recur_unit` (recurrence), `enabled` (defaults true) and `created_by` ' \
-                  'are optional.'
+                  'are optional. For a member (the website), 422 when `channel_id` is not a synced text channel; ' \
+                  'the service may target any channel, threads included.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -63,7 +68,7 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden — caller is not an admin or the service principal' do
+      response '403', 'forbidden: caller is not an Admin, Superadmin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -119,7 +124,9 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
 
     patch 'Update a public reminder' do
       tags 'Public Reminders'
-      description 'Partial update: send any subset of the writable columns.'
+      description 'Admin or above (Admin, Superadmin, service). Partial update: send any subset of the writable ' \
+                  'columns. For a member (the website), 422 when `channel_id` changes to a channel that is not a ' \
+                  'synced text channel; the service may move it to any channel.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -141,7 +148,7 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden — caller is not an admin or the service principal' do
+      response '403', 'forbidden: caller is not an Admin, Superadmin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -165,7 +172,11 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/PublicReminder' } }
       end
 
-      response '403', 'forbidden — caller is not an admin or the service principal' do
+      response '422', 'validation failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not an Admin, Superadmin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -186,7 +197,7 @@ RSpec.describe 'api/v1/public_reminders', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden — caller is not an admin or the service principal' do
+      response '403', 'forbidden: caller is not an Admin, Superadmin or the service principal' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

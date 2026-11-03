@@ -2,7 +2,7 @@
 
 require "rails_helper"
 
-# Behavior specs for the admin/service-only IGDB discovery proxy
+# Behavior specs for the member-or-staff IGDB discovery proxy
 # (GET /api/v1/igdb/search, #122). The Igdb::Client is stubbed at its
 # constructor so no spec ever reaches the real IGDB API.
 RSpec.describe "api/v1/igdb behavior", type: :request do
@@ -127,7 +127,23 @@ RSpec.describe "api/v1/igdb behavior", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it "forbids a regular user" do
+    it "allows a Members role holder, as the bot does" do
+      allow(client).to receive(:search).with("memberq", limit: 25).and_return([])
+
+      get "/api/v1/igdb/search", params: { q: "memberq" }, headers: auth_headers_for(create(:user, role_member: true))
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "allows a Moderator" do
+      allow(client).to receive(:search).with("modq", limit: 25).and_return([])
+
+      get "/api/v1/igdb/search", params: { q: "modq" }, headers: auth_headers_for(create(:user, role_moderator: true))
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "forbids a user without the Members role" do
       get "/api/v1/igdb/search", params: { q: "zeldaq" }, headers: auth_headers_for(create(:user))
 
       expect(response).to have_http_status(:forbidden)

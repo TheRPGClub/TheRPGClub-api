@@ -4,7 +4,7 @@ module Api
   module V1
     class PublicRemindersController < ApplicationController
       before_action :require_service!, only: %i[due]
-      before_action :require_admin_or_service!, only: %i[create update destroy]
+      before_action :require_admin_or_above!, only: %i[create update destroy]
 
       def index
         scope = RpgClubPublicReminder.all
@@ -32,12 +32,15 @@ module Api
       end
 
       def create
-        record = RpgClubPublicReminder.create!(request_data)
+        record = RpgClubPublicReminder.new(request_data)
+        record.skip_channel_check = current_principal.service?
+        record.save!
         render json: { data: PublicReminderResource.new(record).serializable_hash }, status: :created
       end
 
       def update
         record = RpgClubPublicReminder.find(params[:id])
+        record.skip_channel_check = current_principal.service?
         record.update!(request_data)
         render json: { data: PublicReminderResource.new(record).serializable_hash }
       end

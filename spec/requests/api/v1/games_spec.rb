@@ -97,13 +97,16 @@ RSpec.describe 'api/v1/games', type: :request do
 
     post 'Create a game from IGDB' do
       tags 'Games'
-      description 'Admin/service-only. Creates a game from IGDB by `igdb_id`: fetches the full IGDB ' \
+      description 'Members role holders, staff (Moderator and above) and the service. Creates a game ' \
+                  'from IGDB by `igdb_id`: fetches the full IGDB ' \
                   'payload, upserts the game row plus its taxonomy (genres, themes, perspectives, modes, ' \
                   'engines, franchises, platforms, developer/publisher companies, collection) and releases ' \
                   '(one per platform, earliest dated; Japan-only releases are skipped; `format` is left ' \
                   'null), then imports its cover/artwork/logo images into Backblaze through the same ' \
-                  'importer the jobs use. Idempotent on `igdb_id`: re-POSTing an existing game refreshes ' \
-                  'it and returns 200 instead of 201. Discover ids via `GET /api/v1/igdb/search`.'
+                  'importer the jobs use. Idempotent on `igdb_id`, answering 200 instead of 201 for a game ' \
+                  'already in the GameDB: an Admin, Superadmin or the service re-POSTing refreshes it from ' \
+                  'IGDB; any other member gets the existing game back unchanged (with empty `images`). ' \
+                  'Discover ids via `GET /api/v1/igdb/search`.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -122,7 +125,7 @@ RSpec.describe 'api/v1/games', type: :request do
         }
       end
 
-      response '200', 'existing game refreshed (idempotent)' do
+      response '200', 'existing game returned, or refreshed for an Admin or the service (idempotent)' do
         schema type: :object, properties: {
           data: { '$ref' => '#/components/schemas/Game' },
           images: { type: :object, additionalProperties: true, description: 'The image-import result (cover/artwork/logo diagnostics).' }
@@ -133,7 +136,7 @@ RSpec.describe 'api/v1/games', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden — admin or service required' do
+      response '403', 'forbidden: Members role or staff required' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -298,7 +301,8 @@ RSpec.describe 'api/v1/games', type: :request do
 
     post 'Upsert HowLongToBeat cache' do
       tags 'Games'
-      description 'Admin/service-only. Upserts the bot\'s scraped HowLongToBeat cache for the game, keyed on ' \
+      description 'Members role, Moderator, Admin, Superadmin or service. Upserts the bot\'s scraped ' \
+                  'HowLongToBeat cache for the game, keyed on ' \
                   'gamedb_game_id (mirrors the bot\'s `rpg_club_hltb_cache` `ON CONFLICT (gamedb_game_id) DO ' \
                   'UPDATE`). Fields are accepted under the same logical names returned by the `hltb` slice of ' \
                   'GET /api/v1/games/{id}/profile.'
@@ -332,7 +336,7 @@ RSpec.describe 'api/v1/games', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Hltb' } }
       end
 
-      response '403', 'forbidden — admin or service required' do
+      response '403', 'forbidden: Members role or staff required' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -474,20 +478,23 @@ RSpec.describe 'api/v1/games', type: :request do
 
     post 'Refresh releases from IGDB' do
       tags 'Games'
-      description 'Admin/service-only. Re-fetches the game\'s release dates from IGDB and replaces its ' \
+      description 'Members role holders, staff (Moderator and above) and the service. Re-fetches the ' \
+                  'game\'s release dates from IGDB and replaces its ' \
                   'release rows (the bot\'s `refreshReleaseDates`): clears the existing releases plus their ' \
                   'scheduled announcements, then re-imports one release per platform (earliest dated; ' \
                   'Japan-only releases skipped, undated rows dropped, `format` left null). Returns the ' \
-                  'rebuilt release list (same shape as GET /api/v1/games/{id}/releases).'
+                  'rebuilt release list (same shape as GET /api/v1/games/{id}/releases), with `meta.added` ' \
+                  '(how many more releases the game has than before, never negative) and `meta.total`.'
       produces 'application/json'
 
       response '200', 'releases refreshed' do
         schema type: :object, properties: {
-          data: { type: :array, items: { '$ref' => '#/components/schemas/Release' } }
-        }
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Release' } },
+          meta: { '$ref' => '#/components/schemas/ReleaseRefreshMeta' }
+        }, required: %w[data meta]
       end
 
-      response '403', 'forbidden — admin or service required' do
+      response '403', 'forbidden: Members role or staff required' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -174,6 +174,12 @@ class RpgClubUser < ApplicationRecord
     user
   end
 
+  # Replaces the Admin, Moderator, Regulars and Members flags with the ones
+  # the member's current Discord role IDs grant (DiscordRoles::USER_FLAG_ROLES).
+  def apply_discord_roles!(role_ids)
+    update!(DiscordRoles.user_flags_for(role_ids))
+  end
+
   def membership
     {
       admin: role_admin?,
