@@ -3011,6 +3011,29 @@ components:
       - thread_id
       - gamedb_game_id
       - linked_at
+    ThreadSearchResult:
+      type: object
+      properties:
+        thread_id:
+          type: string
+        thread_name:
+          type: string
+        games:
+          type: array
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - game_id
+            - title
+      required:
+      - thread_id
+      - thread_name
+      - games
     GuildChannel:
       type: object
       properties:
@@ -20769,6 +20792,62 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
   "/api/v1/threads":
+    get:
+      summary: Search Discord threads by name
+      tags:
+      - Threads
+      description: The thread link picker. Regulars, or Moderator and up (and the
+        service). Threads whose `thread_name` contains `q` (case-insensitive; blank
+        lists every thread), newest first, each with its id, name and the games it
+        is linked to.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Text the thread name must contain.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: matching threads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ThreadSearchResult"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '403':
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
     post:
       summary: Upsert a Discord thread
       tags:
@@ -20974,9 +21053,10 @@ paths:
       summary: Link a thread to a game
       tags:
       - Threads
-      description: Admin/service-only. Idempotent merge — links the thread to the
-        game (or returns the existing link) and recomputes the thread's derived `gamedb_game_id`
-        (the MIN of its links). 201 when newly linked, 200 when it already was.
+      description: Regulars, or Moderator and up (and the service). Idempotent merge
+        — links the thread to the game (or returns the existing link) and recomputes
+        the thread's derived `gamedb_game_id` (the MIN of its links). 201 when newly
+        linked, 200 when it already was.
       parameters: []
       responses:
         '201':
@@ -20998,7 +21078,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/ThreadGameLink"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
           content:
             application/json:
               schema:
@@ -21042,8 +21123,8 @@ paths:
       summary: Remove all of a thread's game links
       tags:
       - Threads
-      description: Admin/service-only. Removes every game link from the thread and
-        resets the derived `gamedb_game_id` to null.
+      description: Regulars, or Moderator and up (and the service). Removes every
+        game link from the thread and resets the derived `gamedb_game_id` to null.
       responses:
         '200':
           description: links removed
@@ -21052,7 +21133,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/DeletedCountResponse"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
           content:
             application/json:
               schema:
@@ -21087,8 +21169,9 @@ paths:
       summary: Remove one game link from a thread
       tags:
       - Threads
-      description: Admin/service-only. Removes a single thread→game link and recomputes
-        the thread's derived `gamedb_game_id` (the MIN of the remaining links).
+      description: Regulars, or Moderator and up (and the service). Removes a single
+        thread→game link and recomputes the thread's derived `gamedb_game_id` (the
+        MIN of the remaining links).
       responses:
         '200':
           description: link removed
@@ -21097,7 +21180,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/DeletedCountResponse"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: caller is not a Regular, Moderator and up, or the
+            service'
           content:
             application/json:
               schema:

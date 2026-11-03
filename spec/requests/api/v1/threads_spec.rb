@@ -47,6 +47,34 @@ RSpec.describe 'api/v1/threads', type: :request do
   end
 
   path '/api/v1/threads' do
+    get 'Search Discord threads by name' do
+      tags 'Threads'
+      description 'The thread link picker. Regulars, or Moderator and up (and the service). ' \
+                  'Threads whose `thread_name` contains `q` (case-insensitive; blank lists ' \
+                  'every thread), newest first, each with its id, name and the games it is ' \
+                  'linked to.'
+      produces 'application/json'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Text the thread name must contain.'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'matching threads' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/ThreadSearchResult' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '403', 'forbidden: caller is not a Regular, Moderator and up, or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
     post 'Upsert a Discord thread' do
       tags 'Threads'
       description 'Admin/service-only. Upserts a thread by `thread_id` (a Discord snowflake): ' \
@@ -155,7 +183,7 @@ RSpec.describe 'api/v1/threads', type: :request do
 
     post 'Link a thread to a game' do
       tags 'Threads'
-      description 'Admin/service-only. Idempotent merge — links the thread to the game (or ' \
+      description 'Regulars, or Moderator and up (and the service). Idempotent merge — links the thread to the game (or ' \
                   'returns the existing link) and recomputes the thread\'s derived ' \
                   '`gamedb_game_id` (the MIN of its links). 201 when newly linked, 200 when it ' \
                   'already was.'
@@ -182,7 +210,7 @@ RSpec.describe 'api/v1/threads', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/ThreadGameLink' } }
       end
 
-      response '403', 'forbidden — caller is not an admin or service' do
+      response '403', 'forbidden: caller is not a Regular, Moderator and up, or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -201,7 +229,7 @@ RSpec.describe 'api/v1/threads', type: :request do
 
     delete 'Remove all of a thread\'s game links' do
       tags 'Threads'
-      description 'Admin/service-only. Removes every game link from the thread and resets the ' \
+      description 'Regulars, or Moderator and up (and the service). Removes every game link from the thread and resets the ' \
                   'derived `gamedb_game_id` to null.'
       produces 'application/json'
 
@@ -209,7 +237,7 @@ RSpec.describe 'api/v1/threads', type: :request do
         schema '$ref' => '#/components/schemas/DeletedCountResponse'
       end
 
-      response '403', 'forbidden — caller is not an admin or service' do
+      response '403', 'forbidden: caller is not a Regular, Moderator and up, or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -229,7 +257,7 @@ RSpec.describe 'api/v1/threads', type: :request do
 
     delete 'Remove one game link from a thread' do
       tags 'Threads'
-      description 'Admin/service-only. Removes a single thread→game link and recomputes the ' \
+      description 'Regulars, or Moderator and up (and the service). Removes a single thread→game link and recomputes the ' \
                   'thread\'s derived `gamedb_game_id` (the MIN of the remaining links).'
       produces 'application/json'
 
@@ -237,7 +265,7 @@ RSpec.describe 'api/v1/threads', type: :request do
         schema '$ref' => '#/components/schemas/DeletedCountResponse'
       end
 
-      response '403', 'forbidden — caller is not an admin or service' do
+      response '403', 'forbidden: caller is not a Regular, Moderator and up, or the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -861,6 +861,13 @@ module OpenapiSchemas
       # threads#show adds the full game-link list under `links`.
       ThreadWithLinks: extends("Thread", links: array_of("ThreadGameLink"), required: %w[links]),
       ThreadGameLink: obj(thread_id: str, gamedb_game_id: int, linked_at: ts),
+      # threads#index (ThreadSearchResultResource): the thread link picker's
+      # row, the thread's id and name plus its linked games.
+      ThreadSearchResult: obj(
+        thread_id: str, thread_name: str,
+        games: { type: :array, items: obj(game_id: int, title: str) },
+        _required: %w[thread_id thread_name games]
+      ),
 
       # ---- presence / activity / member history (bot-written, read-only) ---
       # BotPresenceResource: the four logical columns; the surrogate `id` is
