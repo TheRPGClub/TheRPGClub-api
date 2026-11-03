@@ -39,17 +39,9 @@ module Api
         render json: { data: NrGotmEntryResource.new(entry, params: { include_game: include_game? }).serializable_hash }
       end
 
+      # Staff creates and deletes also queue gotm_cache_reload (GotmRoundWrites).
       def create
-        entry = NrGotmEntry.create!(request_data.slice(*CREATE_ATTRS))
-        entry.reload
-        # The bot's round-setup wizard recording winners decides the round.
-        Voting::LegacySync.winner_recorded(entry.round_number)
-        # GameResource's nr_gotm_won is a live EXISTS(nr_gotm_entries) subquery,
-        # but GamesController#relations_data caches it on an alternate game's
-        # behalf without touching that game -- bump the shared version so
-        # those caches invalidate.
-        Gamedb::GameRelationsCacheVersion.bump!
-        render json: { data: NrGotmEntryResource.new(entry).serializable_hash }, status: :created
+        create_entry(NrGotmEntry)
       end
 
       # A staff edit also queues gotm_cache_reload (GotmRoundWrites).
@@ -58,9 +50,7 @@ module Api
       end
 
       def destroy
-        NrGotmEntry.find(params[:id]).destroy!
-        Gamedb::GameRelationsCacheVersion.bump!
-        render json: { deleted: true }
+        destroy_entry(NrGotmEntry.find(params[:id]))
       end
 
       private
