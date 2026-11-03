@@ -54,6 +54,21 @@ module Api
         render json: { deleted: true, count: count }
       end
 
+      # Replace all of the group's terms in one transaction (#333). Admin and
+      # up, or the bot. A signed-in member is recorded as the terms' creator;
+      # only the bot may name one in the body.
+      def replace_terms
+        return unless require_admin_or_service!
+
+        group = GamedbSearchSynonymGroup.find(params[:id])
+        data = params.require(:data)
+        created_by = current_principal.service? ? data[:created_by]&.to_s : current_principal.id.to_s
+        group.replace_terms!(data.to_unsafe_h["terms"], created_by: created_by)
+        render_group(GamedbSearchSynonymGroup.preload(:synonyms).find(group.group_id), include_terms: true)
+      rescue GamedbSearchSynonymGroup::InvalidTerms => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
       private
 
       # `?include=terms` embeds each group's terms (#333), so the site can list
