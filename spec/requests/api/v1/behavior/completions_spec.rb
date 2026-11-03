@@ -338,15 +338,18 @@ RSpec.describe "api/v1/completions behavior", type: :request do
         )
         expect(job.summary).to eq(%(Announce Alice's Game Completion of "Chrono Trigger"))
         expect(job.requested_by_user_id).to eq(superadmin.user_id)
+        expect(json.fetch("meta")).to eq("announce_job_id" => job.id)
       end
 
       it "queues nothing without the announce flag, or with it false" do
         expect {
           post "/api/v1/users/#{owner.user_id}/completions",
             params: payload, headers: auth_headers_for(superadmin, is_dev: true), as: :json
+          expect(json.fetch("meta")).to eq("announce_job_id" => nil)
           post "/api/v1/users/#{owner.user_id}/completions",
             params: { data: payload[:data].merge(announce: false) },
             headers: auth_headers_for(superadmin, is_dev: true), as: :json
+          expect(json.fetch("meta")).to eq("announce_job_id" => nil)
         }.not_to change(BotJob, :count)
       end
 

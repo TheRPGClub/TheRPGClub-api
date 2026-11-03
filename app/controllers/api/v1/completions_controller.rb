@@ -98,9 +98,9 @@ module Api
       end
 
       # `data.announce` (optional boolean) queues `completion_announce` so the
-      # bot posts it to the completions channel. When a Superadmin logs one for
-      # another member the game also leaves that member's Now Playing, as the
-      # bot does.
+      # bot posts it to the completions channel; `meta.announce_job_id` is that
+      # job (null when none was queued). When a Superadmin logs one for another
+      # member the game also leaves that member's Now Playing, as the bot does.
       def create
         announce = request_data["announce"]
         unless [ nil, true, false ].include?(announce)
@@ -109,16 +109,16 @@ module Api
 
         RpgClubUser.find(params[:user_id]) if logged_for_another_member?
 
-        record = UserGameCompletion.transaction do
+        record, announce_job = UserGameCompletion.transaction do
           completion = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
           if logged_for_another_member?
             UserNowPlaying.where(user_id: completion.user_id, gamedb_game_id: completion.gamedb_game_id).delete_all
           end
-          enqueue_announce(completion) if announce
-          completion
+          [ completion, (enqueue_announce(completion) if announce) ]
         end
         record.reload
-        render json: { data: CompletionEntryResource.new(record).serializable_hash }, status: :created
+        render json: { data: CompletionEntryResource.new(record).serializable_hash,
+                       meta: { announce_job_id: announce_job&.id } }, status: :created
       end
 
       def update

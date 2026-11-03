@@ -884,6 +884,13 @@ module OpenapiSchemas
         key_value: str(nullable: true).merge(description: "The key secret. Present only in the response to a successful claim, to GET /api/v1/game_keys/{id}, and to the claimer reading their own GET /api/v1/users/{user_id}/claimed_game_keys."),
         game: ref("GameSummary", nullable: true)
       ),
+      # CompletionsController#create meta: the queued announce bot job, so the
+      # website can poll GET /api/v1/bot_jobs/{id}.
+      CompletionCreateMeta: obj(
+        announce_job_id: int(nullable: true).merge(
+          description: "The completion_announce bot job. Null when `announce` was not set."
+        )
+      ),
       # GameKeysController#claim meta: the queued claim notice bot job, so the
       # website can poll GET /api/v1/bot_jobs/{id}.
       GameKeyClaimMeta: obj(
