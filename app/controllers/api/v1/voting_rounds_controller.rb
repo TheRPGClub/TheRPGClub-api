@@ -45,8 +45,10 @@ module Api
 
         VotingRound.transaction do
           round.update!(attrs)
-          queue_poll_wakeup!(round, closing ? "voting on round #{round.round_number} was closed" :
-            "round #{round.round_number} was rescheduled")
+          if current_principal.discord_user?
+            queue_poll_wakeup!(round, closing ? "voting on round #{round.round_number} was closed" :
+              "round #{round.round_number} was rescheduled")
+          end
         end
         render_round(round)
       end
@@ -60,7 +62,7 @@ module Api
             category: data["category"],
             gamedb_game_ids: data["gamedb_game_ids"]
           ).call
-          queue_tie_broken!(resolved, data["category"].to_s, data["gamedb_game_ids"])
+          queue_tie_broken!(resolved, data["category"].to_s, data["gamedb_game_ids"]) if current_principal.discord_user?
           resolved
         end
         render_round(round)
@@ -128,7 +130,8 @@ module Api
 
       # The bot's voting poller sleeps until the API's next_poll_at (up to an
       # hour); a staff change to a round wakes it so panels and results go out
-      # now. The bot's handler takes no payload.
+      # now. The bot's handler takes no payload. Not queued for the service:
+      # the bot made the change, and announces its own tie breaks inline.
       def queue_poll_wakeup!(round, what)
         BotJob.enqueue!(kind: "voting_poll_wakeup", summary: "Wake the voting poller: #{what}", payload: {},
           requested_by: requester_id)

@@ -126,12 +126,22 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
     it "closes voting early when the close is moved to now" do
       travel_to(opens_at + 1.hour) do
         patch "/api/v1/voting_rounds/#{base}", params: { data: { voting_closes_at: Time.current.iso8601 } },
+          headers: auth_headers_for(admin), as: :json
+      end
+
+      expect(json.dig("data", "phase")).to eq("closed")
+      expect(BotJob.sole).to have_attributes(kind: "voting_poll_wakeup", requested_by_user_id: admin.user_id,
+        summary: "Wake the voting poller: voting on round #{base} was closed")
+    end
+
+    it "queues nothing for the bot's own change through the service" do
+      travel_to(opens_at + 1.hour) do
+        patch "/api/v1/voting_rounds/#{base}", params: { data: { voting_closes_at: Time.current.iso8601 } },
           headers: service_headers, as: :json
       end
 
       expect(json.dig("data", "phase")).to eq("closed")
-      expect(BotJob.sole).to have_attributes(kind: "voting_poll_wakeup", requested_by_user_id: nil,
-        summary: "Wake the voting poller: voting on round #{base} was closed")
+      expect(BotJob.count).to eq(0)
     end
 
     it "refuses a decided round" do
@@ -183,6 +193,15 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
                    "games" => [ { "game_id" => winner.game_id, "title" => winner.title } ] })
       expect(wakeup).to have_attributes(kind: "voting_poll_wakeup",
         summary: "Wake the voting poller: the GOTM tie for round #{base} was broken")
+    end
+
+    it "queues nothing for the bot's own tie break through the service, which it announced itself" do
+      post "/api/v1/voting_rounds/#{base}/resolve_tie",
+        params: { data: { category: "gotm", gamedb_game_ids: [ games.first.game_id ] } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(BotJob.count).to eq(0)
     end
 
     it "queues nothing for a refused pick" do
