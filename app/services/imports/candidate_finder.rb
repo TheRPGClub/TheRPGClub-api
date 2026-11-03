@@ -67,6 +67,17 @@ module Imports
       []
     end
 
+    # Like #find, but every hit of the first variant with any, unranked and
+    # not capped at MAX_CANDIDATES (still at most SEARCH_LIMIT), so a caller
+    # checking that only one game matches exactly sees every exact match.
+    def find_all(title)
+      TitleNormalizer.progressive_variants(sanitize(title)).each do |variant|
+        hits = search(variant)
+        return to_candidates(hits) if hits.any?
+      end
+      []
+    end
+
     def find_with_fallback(title)
       raw = title.to_s.strip
       return [] if raw.empty?

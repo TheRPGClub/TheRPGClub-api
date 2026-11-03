@@ -33,6 +33,15 @@ RSpec.describe Imports::UniqueTitleMatch do
       expect(result.game_id).to be_nil
     end
 
+    it "sees a second exact match that ranks below the finder's candidate cap" do
+      title = "Witcher #{SecureRandom.hex(3)}"
+      create(:game, title: title)
+      %w[2 3 Adventure Tales Saga].each { |suffix| create(:game, title: "#{title} #{suffix}") }
+      create(:game, title: "The #{title}")
+
+      expect(described_class.call(title)).to be_ambiguous
+    end
+
     it "does not fall back to the edition-free title when the full title is ambiguous" do
       title = "Okami #{SecureRandom.hex(3)}"
       create(:game, title: "#{title} HD")

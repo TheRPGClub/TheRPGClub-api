@@ -2,7 +2,8 @@
 
 module Imports
   # Links a free-text title to a GameDB game only when the match is certain:
-  # exactly one GameDB candidate (Imports::CandidateFinder#find) is an exact
+  # exactly one GameDB candidate (Imports::CandidateFinder#find_all, uncapped
+  # so a lower-ranked second exact match is not missed) is an exact
   # match after Imports::TitleNormalizer.exact_match? (case, punctuation and
   # similar noise ignored).
   #
@@ -16,18 +17,18 @@ module Imports
       def ambiguous? = status == :ambiguous
     end
 
-    def self.call(title, finder: CandidateFinder.new)
-      new(finder).call(title)
+    def self.call(title, **)
+      new(**).call(title)
     end
 
-    def initialize(finder = CandidateFinder.new)
+    def initialize(finder: CandidateFinder.new)
       @finder = finder
     end
 
     # Result with status :matched (and the game_id), :ambiguous or :none.
     def call(title)
       title_variants(title).each do |variant|
-        exact = @finder.find(variant)
+        exact = @finder.find_all(variant)
           .select { |candidate| TitleNormalizer.exact_match?(variant, candidate.title) }
           .uniq(&:game_id)
         return Result.new(status: :matched, game_id: exact.first.game_id) if exact.one?
