@@ -51,7 +51,10 @@ module Api
         record = BotPresenceHistory.transaction do
           next BotPresenceHistory.create!(writable_data) if current_principal.service?
 
-          BotPresenceHistory.create!(staff_data).tap { |entry| enqueue_presence_set(entry) }
+          BotPresenceHistory.new(staff_data).tap do |entry|
+            entry.save!(context: :staff)
+            enqueue_presence_set(entry)
+          end
         end
         record.reload
         render json: { data: BotPresenceResource.new(record).serializable_hash }, status: :created
