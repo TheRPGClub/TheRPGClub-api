@@ -23,7 +23,19 @@ RSpec.describe 'api/v1/nominations', type: :request do
   destroy_one_description =
     'Removes the given user\'s nomination for the round, along with any votes cast on it. ' \
     'Owner-gated like the upsert: service/admin may remove any user\'s at any time, a user ' \
-    'session only their own and only while the round\'s nomination window is open.'
+    'session only their own and only while the round\'s nomination window is open. A signed-in ' \
+    'Admin or Superadmin removing someone else\'s nomination must pass `reason` (1 to 250 ' \
+    'characters); the game title and nominator are captured first and a `nomination_deleted` bot ' \
+    'job announces the removal, with the refreshed list, in the nomination channel (no DM to the ' \
+    'nominator). Owners and the service keep the plain delete: no reason needed, no job.'
+
+  reason_param = {
+    name: :reason, in: :query, schema: { type: :string, maxLength: 250 }, required: false,
+    description: 'Why the nomination was removed. Required when an Admin removes someone ' \
+                 'else\'s nomination; ignored otherwise.'
+  }
+  destroy_unprocessable = '`nominations_closed` outside the window (non-admin callers), or ' \
+    '`reason_required` / `reason_too_long` for an Admin removing someone else\'s'
 
   owner_forbidden = 'forbidden — caller is neither the named user nor admin/service'
   window_closed = '`nominations_closed` — outside the nomination window (non-admin callers)'
@@ -142,6 +154,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
       tags 'GOTM'
       description destroy_one_description
       produces 'application/json'
+      parameter reason_param
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
@@ -151,7 +164,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', window_closed do
+      response '422', destroy_unprocessable do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -279,6 +292,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
       tags 'GOTM'
       description destroy_one_description
       produces 'application/json'
+      parameter reason_param
 
       response '200', 'deleted' do
         schema '$ref' => '#/components/schemas/DeletedResponse'
@@ -288,7 +302,7 @@ RSpec.describe 'api/v1/nominations', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', window_closed do
+      response '422', destroy_unprocessable do
         schema '$ref' => '#/components/schemas/Error'
       end
 
