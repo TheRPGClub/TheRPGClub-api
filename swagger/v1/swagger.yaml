@@ -11932,8 +11932,7 @@ paths:
         signed-in staff edit also queues the `gotm_cache_reload` bot job (`{ category,
         round_number }`); the service's own edits do not, since the bot updates its
         cache itself. `meta.reload_job_id` is that job (null when none was queued),
-        for polling `GET /api/v1/bot_jobs/{id}`. A `gamedb_game_id` already used by
-        another entry of the same round is refused (422).
+        for polling `GET /api/v1/bot_jobs/{id}`.
       parameters: []
       responses:
         '200':
@@ -11960,8 +11959,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed, or the game is already in another slot of
-            the round
+          description: validation failed
           content:
             application/json:
               schema:
@@ -11999,8 +11997,7 @@ paths:
       summary: Replace a Game of the Month entry (alias)
       tags:
       - GOTM
-      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`
-        and duplicate-game check.
+      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`.
       parameters: []
       responses:
         '200':
@@ -15417,8 +15414,7 @@ paths:
         signed-in staff edit also queues the `gotm_cache_reload` bot job (`{ category,
         round_number }`); the service's own edits do not, since the bot updates its
         cache itself. `meta.reload_job_id` is that job (null when none was queued),
-        for polling `GET /api/v1/bot_jobs/{id}`. A `gamedb_game_id` already used by
-        another entry of the same round is refused (422).
+        for polling `GET /api/v1/bot_jobs/{id}`.
       parameters: []
       responses:
         '200':
@@ -15445,8 +15441,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed, or the game is already in another slot of
-            the round
+          description: validation failed
           content:
             application/json:
               schema:
@@ -15484,8 +15479,7 @@ paths:
       summary: Replace a Non-Retro GOTM entry (alias)
       tags:
       - Non-Retro GOTM
-      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`
-        and duplicate-game check.
+      description: Admin/service-only. Alias for PATCH, with the same `meta.reload_job_id`.
       parameters: []
       responses:
         '200':
