@@ -25,11 +25,13 @@ RSpec.describe 'api/v1/votes', type: :request do
   list_description =
     'The round\'s votes with voter identities, oldest first. Votes are anonymous while the voting ' \
     'window is open: until voting has ended (for `runoff=true`, until the runoff has closed) this list ' \
-    'is admin/service-only (403 otherwise). Use the tally for anonymous counts.'
+    'is admin/service-only (403 otherwise). The tally has the anonymous counts.'
 
   tally_description =
-    'Anonymous vote counts per nomination, most-voted first. Open to any authenticated caller at ' \
-    'any time — no voter identities. Nominations with zero votes have no row; merge against the ' \
+    'Anonymous vote counts per nomination, most-voted first, no voter identities. Until the ballot\'s ' \
+    'voting has ended (for `runoff=true`, until the runoff has closed) the counts are Admin/service only: ' \
+    'any other caller gets an empty `data` and `meta.counts_hidden: true`. Once it has ended they open to ' \
+    'any authenticated caller. Nominations with zero votes have no row; merge against the ' \
     'round\'s nominations list. `meta.cap` is the per-user vote cap for the round (half the distinct ' \
     'nominated games, rounded down, min 1; 1 for the runoff), for rendering "vote for up to N".'
 
@@ -160,14 +162,7 @@ RSpec.describe 'api/v1/votes', type: :request do
         response '200', 'vote counts per nomination' do
           schema type: :object, properties: {
             data: { type: :array, items: { '$ref' => '#/components/schemas/VoteTally' } },
-            meta: {
-              type: :object,
-              properties: {
-                cap: { type: :integer, description: 'Per-user vote cap for this round\'s ballot.' },
-                runoff: { type: :boolean, description: 'Whether this is the runoff ballot\'s tally.' }
-              },
-              required: %w[cap runoff]
-            }
+            meta: { '$ref' => '#/components/schemas/VoteTallyMeta' }
           }
         end
 

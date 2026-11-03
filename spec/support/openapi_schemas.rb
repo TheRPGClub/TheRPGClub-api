@@ -1007,6 +1007,10 @@ module OpenapiSchemas
       # VoteTallyResource: one nomination's anonymous vote count. Nominations
       # with zero votes have no row — merge against the nominations list.
       VoteTally: obj(nomination_id: int, gamedb_game_id: int, vote_count: int),
+      # The tally's meta: the ballot's per-user vote cap, whether it is the
+      # runoff ballot, and whether the counts were withheld (voting still
+      # open and the caller not an Admin or the service).
+      VoteTallyMeta: obj(cap: int, runoff: bool, counts_hidden: bool),
       # The cast response (VotesController#create_*): what the cast did, the
       # vote it placed (null when it toggled one off), any votes removed to
       # make room (evicted oldest-first) or taken back by the toggle, the
