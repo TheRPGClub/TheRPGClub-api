@@ -348,6 +348,7 @@ Rails.application.routes.draw do
       post "voting_events/:id/ack", to: "voting_events#ack"
       # The bot job queue (web parity 2): the bot polls, claims and acks
       # (service-only); the requesting member and staff read a job's status.
+      get  "bot_jobs",             to: "bot_jobs#index"
       post "bot_jobs/claim",       to: "bot_jobs#claim"
       post "bot_jobs/:id/done",    to: "bot_jobs#done"
       post "bot_jobs/:id/failed",  to: "bot_jobs#failed"

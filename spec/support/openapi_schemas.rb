@@ -762,13 +762,23 @@ module OpenapiSchemas
       ),
       # BotJobResource: a bot job's status as the website shows it (no payload).
       BotJob: obj(
-        id: int, kind: str(enum: BotJob::KINDS), status: str(enum: BotJob::STATUSES),
+        id: int, kind: str(enum: BotJob::KINDS),
+        summary: str(maxLength: BotJob::SUMMARY_MAX).merge(
+          description: "What the job does, in plain words, set when it was queued. Holds no secrets."
+        ),
+        status: str(enum: BotJob::STATUSES),
         requested_by_user_id: str(nullable: true).merge(
           description: "The member whose action queued the job; null for system jobs."
         ),
+        requested_by: ref("UserSummary", nullable: true),
         attempts: int.merge(description: "Claims so far. A claim not acked within the lease counts too."),
         error_message: str(nullable: true).merge(description: "The bot's error, or the claim-timeout error."),
-        claimed_at: ts(nullable: true), finished_at: ts(nullable: true), created_at: ts, updated_at: ts
+        result_text: str(nullable: true).merge(description: "What the bot reported when it acked the job done."),
+        claimed_at: ts(nullable: true),
+        lease_expires_at: ts(nullable: true).merge(
+          description: "While claimed: when the claim goes back to the queue unless acked."
+        ),
+        finished_at: ts(nullable: true), created_at: ts, updated_at: ts
       ),
       # ImageBackfillRunResource: the image backfill's progress (#338).
       ImageBackfillRun: obj(
@@ -787,11 +797,14 @@ module OpenapiSchemas
       ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
-        id: int, kind: str(enum: BotJob::KINDS),
+        id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
         payload: json(nullable: false).merge(description: "Per kind; a breaking change gets a new kind name."),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
-        error_message: str(nullable: true), claimed_at: ts(nullable: true), finished_at: ts(nullable: true),
-        created_at: ts, updated_at: ts
+        error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
+        lease_expires_at: ts(nullable: true).merge(
+          description: "Ack before this or the job is handed out again: five minutes unless the kind has a longer lease."
+        ),
+        finished_at: ts(nullable: true), created_at: ts, updated_at: ts
       ),
       # AchievementHighlightResource: an announceable Unlock as the bot posts
       # it, with the www set page path.

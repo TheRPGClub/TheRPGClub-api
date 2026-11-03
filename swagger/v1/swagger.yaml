@@ -2527,6 +2527,11 @@ components:
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+        summary:
+          type: string
+          maxLength: 200
+          description: What the job does, in plain words, set when it was queued.
+            Holds no secrets.
         status:
           type: string
           enum:
@@ -2538,6 +2543,10 @@ components:
           type: string
           nullable: true
           description: The member whose action queued the job; null for system jobs.
+        requested_by:
+          allOf:
+          - "$ref": "#/components/schemas/UserSummary"
+          nullable: true
         attempts:
           type: integer
           description: Claims so far. A claim not acked within the lease counts too.
@@ -2545,10 +2554,20 @@ components:
           type: string
           nullable: true
           description: The bot's error, or the claim-timeout error.
+        result_text:
+          type: string
+          nullable: true
+          description: What the bot reported when it acked the job done.
         claimed_at:
           type: string
           format: date-time
           nullable: true
+        lease_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'While claimed: when the claim goes back to the queue unless
+            acked.'
         finished_at:
           type: string
           format: date-time
@@ -2562,6 +2581,7 @@ components:
       required:
       - id
       - kind
+      - summary
       - status
       - attempts
       - created_at
@@ -2636,6 +2656,9 @@ components:
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
+        summary:
+          type: string
+          maxLength: 200
         payload:
           type: object
           description: Per kind; a breaking change gets a new kind name.
@@ -2654,10 +2677,19 @@ components:
         error_message:
           type: string
           nullable: true
+        result_text:
+          type: string
+          nullable: true
         claimed_at:
           type: string
           format: date-time
           nullable: true
+        lease_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Ack before this or the job is handed out again: five minutes
+            unless the kind has a longer lease.'
         finished_at:
           type: string
           format: date-time
@@ -2671,6 +2703,7 @@ components:
       required:
       - id
       - kind
+      - summary
       - payload
       - status
       - attempts
@@ -5122,6 +5155,60 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/bot_jobs":
+    get:
+      summary: List bot jobs (activity list)
+      tags:
+      - Bot Jobs
+      description: Moderators and up, and the service. Newest first. Admins, Superadmins
+        and the service see every job; Moderators see only the jobs they requested.
+        Members, Regulars and other non-staff are refused. Each job has its plain
+        summary, status, requester, timestamps and the bot's error or result text;
+        the payload is never included.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: bot jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/BotJob"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not staff (Moderator and up)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/bot_jobs/claim":
     post:
       summary: Poll for and claim bot jobs
@@ -5130,9 +5217,10 @@ paths:
       description: Service only. Poll about every 10 seconds. While no work is waiting
         the API answers an empty list from a machine-local signal without touching
         Postgres. Otherwise it claims up to `limit` queued jobs, oldest first. Act
-        on each one in Discord, then ack it done or failed. A claim not acked within
-        five minutes goes back to the queue, and fails after 3 claims, so delivery
-        is at-least-once.
+        on each one in Discord, then ack it done or failed. A claim not acked by its
+        `lease_expires_at` goes back to the queue, and fails after 3 claims, so delivery
+        is at-least-once. The lease is five minutes unless the kind has a longer one
+        (long jobs such as a whole-guild scan).
       parameters:
       - name: limit
         in: query
@@ -5173,8 +5261,10 @@ paths:
       summary: Acknowledge a bot job done
       tags:
       - Bot Jobs
-      description: Service only. Records the job done; idempotent. A late ack of a
-        job whose claim timed out still counts.
+      description: 'Service only. Records the job done, with an optional result text
+        the website shows (e.g. counts). Idempotent: a repeat keeps the first result.
+        A late ack of a job whose claim timed out still counts.'
+      parameters: []
       responses:
         '200':
           description: job done
@@ -5205,6 +5295,25 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '422':
+          description: result text too long
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    result_text:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
   "/api/v1/bot_jobs/{id}/failed":
     parameters:
     - name: id
@@ -5285,8 +5394,9 @@ paths:
       tags:
       - Bot Jobs
       description: The member who queued the job, Admins, Superadmins and the service.
-        Shows whether the Discord action is queued, claimed, done or failed (with
-        the bot's error). The payload is not included.
+        Shows its summary and whether the Discord action is queued, claimed, done
+        (with the bot's result text) or failed (with the bot's error). The payload
+        is not included.
       responses:
         '200':
           description: job status

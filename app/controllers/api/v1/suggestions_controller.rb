@@ -214,6 +214,7 @@ module Api
       def enqueue_outcome(suggestion)
         BotJob.enqueue!(
           kind: "suggestion_outcome",
+          summary: %(Announce that the Suggestion "#{suggestion.title}" was #{suggestion.status}),
           payload: {
             suggestion_id: suggestion.suggestion_id, outcome: suggestion.status, created_by: suggestion.created_by,
             title: suggestion.title, github_issue_number: suggestion.github_issue_number,
@@ -245,6 +246,7 @@ module Api
       def enqueue_submitted_ping(suggestion)
         BotJob.enqueue!(
           kind: "suggestion_submitted",
+          summary: %(Announce the new Suggestion "#{suggestion.title}"),
           payload: { suggestion_id: suggestion.suggestion_id, created_by: suggestion.created_by },
           requested_by: current_principal.id
         )

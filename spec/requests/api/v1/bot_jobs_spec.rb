@@ -3,14 +3,43 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/bot_jobs', type: :request do
+  path '/api/v1/bot_jobs' do
+    get 'List bot jobs (activity list)' do
+      tags 'Bot Jobs'
+      description 'Moderators and up, and the service. Newest first. Admins, Superadmins and the service see ' \
+                  'every job; Moderators see only the jobs they requested. Members, Regulars and other ' \
+                  'non-staff are refused. Each job has its plain summary, status, requester, timestamps and ' \
+                  "the bot's error or result text; the payload is never included."
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'bot jobs' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/BotJob' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }, required: %w[data meta]
+      end
+
+      response '401', 'not signed in' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not staff (Moderator and up)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/bot_jobs/claim' do
     post 'Poll for and claim bot jobs' do
       tags 'Bot Jobs'
       description 'Service only. Poll about every 10 seconds. While no work is waiting the API answers an ' \
                   'empty list from a machine-local signal without touching Postgres. Otherwise it claims up to ' \
                   '`limit` queued jobs, oldest first. Act on each one in Discord, then ack it done or failed. ' \
-                  'A claim not acked within five minutes goes back to the queue, and fails after ' \
-                  "#{BotJob::MAX_ATTEMPTS} claims, so delivery is at-least-once."
+                  'A claim not acked by its `lease_expires_at` goes back to the queue, and fails after ' \
+                  "#{BotJob::MAX_ATTEMPTS} claims, so delivery is at-least-once. The lease is five minutes " \
+                  'unless the kind has a longer one (long jobs such as a whole-guild scan).'
       produces 'application/json'
       parameter name: :limit, in: :query, schema: { type: :integer, default: 10, minimum: 1, maximum: 50 },
         required: false
@@ -32,9 +61,20 @@ RSpec.describe 'api/v1/bot_jobs', type: :request do
 
     post 'Acknowledge a bot job done' do
       tags 'Bot Jobs'
-      description 'Service only. Records the job done; idempotent. A late ack of a job whose claim timed out ' \
-                  'still counts.'
+      description 'Service only. Records the job done, with an optional result text the website shows ' \
+                  '(e.g. counts). Idempotent: a repeat keeps the first result. A late ack of a job whose ' \
+                  'claim timed out still counts.'
+      consumes 'application/json'
       produces 'application/json'
+      parameter name: :body, in: :body, required: false, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: { result_text: { type: :string, nullable: true, maxLength: BotJob::TEXT_MAX } }
+          }
+        }
+      }
 
       response '200', 'job done' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/BotJob' } }, required: %w[data]
@@ -49,6 +89,10 @@ RSpec.describe 'api/v1/bot_jobs', type: :request do
       end
 
       response '409', 'the job already failed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'result text too long' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
@@ -102,9 +146,9 @@ RSpec.describe 'api/v1/bot_jobs', type: :request do
 
     get "Read a bot job's status" do
       tags 'Bot Jobs'
-      description 'The member who queued the job, Admins, Superadmins and the service. Shows whether the ' \
-                  "Discord action is queued, claimed, done or failed (with the bot's error). The payload is " \
-                  'not included.'
+      description 'The member who queued the job, Admins, Superadmins and the service. Shows its summary ' \
+                  "and whether the Discord action is queued, claimed, done (with the bot's result text) or " \
+                  "failed (with the bot's error). The payload is not included."
       produces 'application/json'
 
       response '200', 'job status' do

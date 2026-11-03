@@ -59,6 +59,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
         job = BotJob.last
         expect(json.dig("meta", "outcome_job_id")).to eq(job.id)
         expect(job.kind).to eq("suggestion_outcome")
+        expect(job.summary).to eq('Announce that the Suggestion "Dark mode" was approved')
         expect(job.requested_by_user_id).to eq(superadmin.user_id)
         expect(job.payload).to eq(
           "suggestion_id" => suggestion.suggestion_id, "outcome" => "approved",
@@ -273,6 +274,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
         job = BotJob.last
         expect(json.dig("meta", "outcome_job_id")).to eq(job.id)
         expect(job.kind).to eq("suggestion_outcome")
+        expect(job.summary).to eq('Announce that the Suggestion "Dark mode" was rejected')
         expect(job.payload).to eq(
           "suggestion_id" => suggestion.suggestion_id, "outcome" => "rejected",
           "created_by" => suggestion.created_by, "title" => "Dark mode",
