@@ -80,6 +80,7 @@ RSpec.describe "api/v1/bot_presence behavior", type: :request do
       expect(job.payload).to eq("activity_name" => "Golden Sun")
       expect(job.summary).to eq('Set the bot\'s presence to "Golden Sun"')
       expect(job.requested_by_user_id).to eq(moderator.user_id)
+      expect(json.fetch("meta")).to eq("presence_job_id" => job.id)
     end
 
     {
@@ -124,6 +125,8 @@ RSpec.describe "api/v1/bot_presence behavior", type: :request do
         post "/api/v1/bot_presence", params: { data: { activity_name: "Bot side" } },
           headers: service_headers, as: :json
       }.not_to change(BotJob, :count)
+
+      expect(json.fetch("meta")).to eq("presence_job_id" => nil)
     end
   end
   describe "GET /api/v1/bot_presence" do

@@ -3306,6 +3306,14 @@ components:
       required:
       - activity_name
       - set_at
+    BotPresenceCreateMeta:
+      type: object
+      properties:
+        presence_job_id:
+          type: integer
+          nullable: true
+          description: The presence_set bot job. Null for a service write, which queues
+            none.
     PresencePrompt:
       type: object
       properties:
@@ -5638,8 +5646,10 @@ paths:
       description: Moderator and up, or the service. Records a new presence entry.
         `set_at` is stamped by the server (defaults to now()). On a staff create the
         setter id and name come from the session, never the body, and a `presence_set`
-        bot job is queued so the bot applies the presence at once. The service (the
-        bot itself, which has already applied it) queues no job.
+        bot job is queued so the bot applies the presence at once; `meta.presence_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`. The service (the bot
+        itself, which has already applied it) queues no job, so its `meta.presence_job_id`
+        is null.
       parameters: []
       responses:
         '201':
@@ -5651,6 +5661,8 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/BotPresence"
+                  meta:
+                    "$ref": "#/components/schemas/BotPresenceCreateMeta"
         '403':
           description: 'forbidden: caller is not Moderator and up or the service'
           content:

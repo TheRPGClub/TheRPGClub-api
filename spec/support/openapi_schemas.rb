@@ -954,6 +954,13 @@ module OpenapiSchemas
         activity_name: str, set_at: ts,
         set_by_user_id: str(nullable: true), set_by_username: str(nullable: true)
       ),
+      # BotPresenceController#create meta: the queued presence_set bot job, so
+      # the website can poll GET /api/v1/bot_jobs/{id}.
+      BotPresenceCreateMeta: obj(
+        presence_job_id: int(nullable: true).merge(
+          description: "The presence_set bot job. Null for a service write, which queues none."
+        )
+      ),
       PresencePrompt: obj(
         prompt_id: str, user_id: str, game_title: str, game_title_norm: str,
         status: str, created_at: ts, resolved_at: ts(nullable: true)
