@@ -28,14 +28,15 @@ module Giveaways
       unmatched = Hash.new(0)
 
       RpgClubGameKey.where(gamedb_game_id: nil).find_each do |key|
-        result = match(key.game_title)
+        title = key.game_title.to_s.strip
+        result = match(title)
         if result.matched?
           link(key, result.game_id)
           linked += 1
         elsif result.ambiguous?
-          ambiguous[key.game_title] += 1
+          ambiguous[title] += 1
         else
-          unmatched[key.game_title] += 1
+          unmatched[title] += 1
         end
       end
 
@@ -46,7 +47,7 @@ module Giveaways
 
     def match(title)
       @matches ||= {}
-      @matches[title.to_s.strip] ||= @matcher.call(title)
+      @matches[title] ||= @matcher.call(title)
     end
 
     # update_columns: legacy bot rows are linked as they are, without

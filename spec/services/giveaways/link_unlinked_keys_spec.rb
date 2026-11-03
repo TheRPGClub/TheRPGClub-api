@@ -8,6 +8,7 @@ RSpec.describe Giveaways::LinkUnlinkedKeys do
   let(:unmatched_title) { "No Such Game #{SecureRandom.hex(6)}" }
   let!(:unique_keys) { create_list(:game_key, 2, game_title: unique_game.title.downcase) }
   let!(:ambiguous_key) { create(:game_key, game_title: ambiguous_title) }
+  let!(:padded_ambiguous_key) { create(:game_key, game_title: " #{ambiguous_title} ") }
   let!(:unmatched_keys) { create_list(:game_key, 2, game_title: unmatched_title) }
 
   before do
@@ -19,7 +20,7 @@ RSpec.describe Giveaways::LinkUnlinkedKeys do
     report = described_class.call
 
     expect(report.linked).to eq(2)
-    expect(report.ambiguous).to eq(ambiguous_title => 1)
+    expect(report.ambiguous).to eq(ambiguous_title => 2)
     expect(report.unmatched).to eq(unmatched_title => 2)
     expect(unique_keys.map { |key| key.reload.gamedb_game_id }).to all(eq(unique_game.game_id))
     expect(ambiguous_key.reload.gamedb_game_id).to be_nil

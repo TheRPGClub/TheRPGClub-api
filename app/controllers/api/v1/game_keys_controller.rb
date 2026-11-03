@@ -73,8 +73,9 @@ module Api
       # backfilled from it when omitted), or a lone `game_title` is linked
       # when exactly one game matches it. `region` defaults to Global.
       def create
+        data = donate_data
         record = RpgClubGameKey.transaction do
-          RpgClubGameKey.create!(donate_data).tap { |key| enqueue_hub_refresh("donate", key) }
+          RpgClubGameKey.create!(data).tap { |key| enqueue_hub_refresh("donate", key) }
         end
         record.reload
         render json: { data: GameKeyResource.new(record).serializable_hash }, status: :created
@@ -209,26 +210,28 @@ module Api
       # set. A lone `game_title` is linked only when exactly one GameDB game
       # matches it (Imports::UniqueTitleMatch); otherwise the donor has to pick
       # the game from GameDB, importing it from IGDB first if it is missing.
+      # The donor's title is kept as the label, stripped of surrounding space.
       def link_game(attrs)
+        title = attrs["game_title"].to_s.strip
         if attrs["gamedb_game_id"].present?
           game = GamedbGame.find_by(game_id: attrs["gamedb_game_id"])
           raise GameRequired.new("game_not_found", "No GameDB game has that gamedb_game_id.") unless game
 
-          return attrs.merge("gamedb_game_id" => game.game_id, "game_title" => attrs["game_title"].presence || game.title)
+          return attrs.merge("gamedb_game_id" => game.game_id, "game_title" => title.presence || game.title)
         end
 
-        if attrs["game_title"].blank?
+        if title.blank?
           raise GameRequired.new("game_required", "Pick the game from GameDB (gamedb_game_id).")
         end
 
-        game_id = Imports::UniqueTitleMatch.call(attrs["game_title"]).game_id
+        game_id = Imports::UniqueTitleMatch.call(title).game_id
         unless game_id
           raise GameRequired.new("game_not_in_gamedb",
             "That title does not match exactly one GameDB game. Search GameDB for the game, " \
             "or import it from IGDB if it is missing, and donate with its gamedb_game_id.")
         end
 
-        attrs.merge("gamedb_game_id" => game_id)
+        attrs.merge("gamedb_game_id" => game_id, "game_title" => title)
       end
 
       def render_game_required(error)

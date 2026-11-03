@@ -4,7 +4,9 @@ namespace :giveaways do
   desc "Link unlinked giveaway keys to GameDB games by unique title match (Giveaways::LinkUnlinkedKeys). " \
        "DRY_RUN=1 reports without writing."
   task link_keys: :environment do
-    dry_run = %w[1 true].include?(ENV.fetch("DRY_RUN", "").downcase)
+    # Any value but a false one (0, false, off...) is a dry run, so a typo
+    # previews rather than writes.
+    dry_run = ActiveModel::Type::Boolean.new.cast(ENV["DRY_RUN"].presence) || false
     report = Giveaways::LinkUnlinkedKeys.call(dry_run:)
 
     puts "#{dry_run ? 'Would link' : 'Linked'} #{report.linked} key(s); " \

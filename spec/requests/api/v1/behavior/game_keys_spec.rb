@@ -218,6 +218,7 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
             donate(game_title: "  chrono-cross ")
 
             expect(response).to have_http_status(:created)
+            expect(json.dig("data", "game_title")).to eq("chrono-cross")
             expect(json.dig("data", "game")).to include("game_id" => chrono_cross.game_id)
             expect(RpgClubGameKey.find(json.dig("data", "key_id")).gamedb_game_id).to eq(chrono_cross.game_id)
           end
