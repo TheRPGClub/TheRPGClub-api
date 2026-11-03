@@ -160,6 +160,8 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
   end
 
   describe "POST /api/v1/game_keys" do
+    # The payload's title matches this game exactly, so it links (#341).
+    let!(:chrono_cross) { create(:game, title: "Chrono Cross") }
     let(:payload) do
       { data: { game_title: "Chrono Cross", platform: "PSN", key_value: "ABCD-EFGH",
                 donor_user_id: donor.user_id, donor_notify_on_claim: true } }
@@ -180,6 +182,82 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       )
       expect(json.fetch("data")).not_to have_key("key_value")
       expect(RpgClubGameKey.find(json.dig("data", "key_id")).key_value).to eq("ABCD-EFGH")
+    end
+
+    describe "linking the key to a GameDB game (#341)" do
+      # Each case runs for a member donating as themselves and for the bot.
+      { "a member" => :member, "the service token" => :service }.each do |caller_name, caller|
+        context "as #{caller_name}" do
+          let(:headers) { caller == :member ? auth_headers_for(donor) : service_headers }
+
+          def donate(data)
+            post "/api/v1/game_keys", params: { data: data.merge(platform: "Steam", key_value: "K-1",
+              donor_user_id: donor.user_id) }, headers: headers, as: :json
+          end
+
+          it "links the named gamedb_game_id and keeps the given title" do
+            game = create(:game, title: "Linked By Id #{SecureRandom.hex(3)}")
+
+            donate(gamedb_game_id: game.game_id, game_title: "My label")
+
+            expect(response).to have_http_status(:created)
+            expect(json.dig("data", "game_title")).to eq("My label")
+            expect(RpgClubGameKey.find(json.dig("data", "key_id")).gamedb_game_id).to eq(game.game_id)
+          end
+
+          it "422s with game_not_found on an unknown gamedb_game_id, saving nothing" do
+            expect {
+              donate(gamedb_game_id: GamedbGame.maximum(:game_id).to_i + 1000, game_title: "Chrono Cross")
+            }.not_to change(RpgClubGameKey, :count)
+
+            expect(response).to have_http_status(:unprocessable_content)
+            expect(json.fetch("error")).to eq("game_not_found")
+          end
+
+          it "links a title that matches exactly one game, ignoring case and punctuation" do
+            donate(game_title: "  chrono-cross ")
+
+            expect(response).to have_http_status(:created)
+            expect(json.dig("data", "game")).to include("game_id" => chrono_cross.game_id)
+            expect(RpgClubGameKey.find(json.dig("data", "key_id")).gamedb_game_id).to eq(chrono_cross.game_id)
+          end
+
+          it "422s with game_not_in_gamedb on an ambiguous title" do
+            title = "Doom #{SecureRandom.hex(3)}"
+            create(:game, title: title)
+            create(:game, title: "#{title}!")
+
+            expect { donate(game_title: title) }.not_to change(RpgClubGameKey, :count)
+
+            expect(response).to have_http_status(:unprocessable_content)
+            expect(json.fetch("error")).to eq("game_not_in_gamedb")
+            expect(json.fetch("message")).to include("IGDB")
+          end
+
+          it "422s with game_not_in_gamedb on a title GameDB does not have" do
+            expect { donate(game_title: "No Such Game #{SecureRandom.hex(6)}") }.not_to change(RpgClubGameKey, :count)
+
+            expect(response).to have_http_status(:unprocessable_content)
+            expect(json.fetch("error")).to eq("game_not_in_gamedb")
+          end
+
+          it "422s with game_required when neither a title nor a game id is given" do
+            expect { donate(game_title: "", gamedb_game_id: nil) }.not_to change(RpgClubGameKey, :count)
+
+            expect(response).to have_http_status(:unprocessable_content)
+            expect(json.fetch("error")).to eq("game_required")
+          end
+        end
+      end
+
+      it "queues no hub refresh when the game cannot be linked" do
+        payload[:data][:game_title] = "No Such Game #{SecureRandom.hex(6)}"
+
+        post "/api/v1/game_keys", params: payload, headers: auth_headers_for(donor), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(BotJob.count).to eq(0)
+      end
     end
 
     it "queues a hub refresh for the bot" do
@@ -312,6 +390,7 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
         headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("game_required")
     end
 
     it "400s when the data envelope is missing" do

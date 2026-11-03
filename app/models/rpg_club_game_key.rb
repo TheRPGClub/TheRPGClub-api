@@ -8,11 +8,13 @@
 # (bot-sourced data), so both user associations are optional and may resolve to
 # nil.
 #
-# `gamedb_game_id` (#42) optionally links the key to a GamedbGame so the API can
-# embed its cover/art and metadata. It is nullable: the bot inserts keys with
-# only the free-text `game_title` and never sets the id, and not every donated
-# game exists in `gamedb_games` — so `game_title` is kept as the always-present
-# label/fallback and `game` resolves to nil when the key is unlinked.
+# `gamedb_game_id` (#42) links the key to a GamedbGame so the API can embed its
+# cover/art and metadata. New donations must be linked (#341, enforced by
+# GameKeysController#create, not here), but the column stays nullable: older
+# keys were donated with only the free-text `game_title`, and the
+# `giveaways:link_keys` backfill links only the ones whose title matches a
+# single game. So `game_title` is kept as the always-present label/fallback
+# and `game` resolves to nil when the key is unlinked.
 #
 # `region` (#262) is where the key redeems. It is never null: a key donated
 # without one is `Global` (the column default), and legacy rows were backfilled

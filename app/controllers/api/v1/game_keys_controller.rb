@@ -18,6 +18,18 @@ module Api
     class GameKeysController < ApplicationController
       HUB_REFRESH_VERBS = { "donate" => "donated", "claim" => "claimed", "revoke" => "revoked" }.freeze
 
+      # A donation that names no GameDB game it can be linked to (422).
+      class GameRequired < StandardError
+        attr_reader :code
+
+        def initialize(code, message)
+          @code = code
+          super(message)
+        end
+      end
+
+      rescue_from GameRequired, with: :render_game_required
+
       before_action :require_owner!, only: :create
       before_action :require_member_role!, only: :claim
       before_action :require_key_reader!, only: :show
@@ -56,9 +68,10 @@ module Api
       # POST /api/v1/game_keys
       # Donate a key. Owner-only: a Discord caller may only donate as themselves
       # (`donor_user_id` must be their own id); the bot's service token may
-      # donate on anyone's behalf. Pass `gamedb_game_id` to link the key to a
-      # game (so the API can embed its cover/art); `game_title` is backfilled
-      # from that game when omitted. `region` defaults to Global.
+      # donate on anyone's behalf. Every new key is linked to a GameDB game
+      # (see link_game): `gamedb_game_id` names it (and `game_title` is
+      # backfilled from it when omitted), or a lone `game_title` is linked
+      # when exactly one game matches it. `region` defaults to Global.
       def create
         record = RpgClubGameKey.transaction do
           RpgClubGameKey.create!(donate_data).tap { |key| enqueue_hub_refresh("donate", key) }
@@ -179,21 +192,47 @@ module Api
 
       # Donations set only the offer fields; the claim columns, identity and
       # timestamps are not client-writable (so a key can't be donated
-      # pre-claimed or with a spoofed id/timestamp). When the donor links a game
-      # but omits the title, fall back to the game's title so `game_title`
-      # (the listing's sort key and the unlinked-display label) is always set.
-      # A blank `region` (omitted or null) falls back to the default rather than
-      # being stored as null — every key has a region.
+      # pre-claimed or with a spoofed id/timestamp). A blank `region` (omitted
+      # or null) falls back to the default rather than being stored as null:
+      # every key has a region.
       def donate_data
         attrs = request_data.except("key_id", "claimed_by_user_id", "claimed_at", "created_at", "updated_at")
         attrs = attrs.merge("region" => RpgClubGameKey::DEFAULT_REGION) if attrs["region"].blank?
 
-        if attrs["game_title"].blank? && attrs["gamedb_game_id"].present?
-          title = GamedbGame.where(game_id: attrs["gamedb_game_id"]).pick(:title)
-          attrs = attrs.merge("game_title" => title) if title
+        link_game(attrs)
+      end
+
+      # Every new donation is tied to a GameDB game, for members and the
+      # service alike (existing unlinked keys stay valid). A named
+      # `gamedb_game_id` must exist; when the title is omitted it falls back to
+      # the game's title so `game_title` (the listing's sort key) is always
+      # set. A lone `game_title` is linked only when exactly one GameDB game
+      # matches it (Imports::UniqueTitleMatch); otherwise the donor has to pick
+      # the game from GameDB, importing it from IGDB first if it is missing.
+      def link_game(attrs)
+        if attrs["gamedb_game_id"].present?
+          game = GamedbGame.find_by(game_id: attrs["gamedb_game_id"])
+          raise GameRequired.new("game_not_found", "No GameDB game has that gamedb_game_id.") unless game
+
+          return attrs.merge("gamedb_game_id" => game.game_id, "game_title" => attrs["game_title"].presence || game.title)
         end
 
-        attrs
+        if attrs["game_title"].blank?
+          raise GameRequired.new("game_required", "Pick the game from GameDB (gamedb_game_id).")
+        end
+
+        game_id = Imports::UniqueTitleMatch.call(attrs["game_title"]).game_id
+        unless game_id
+          raise GameRequired.new("game_not_in_gamedb",
+            "That title does not match exactly one GameDB game. Search GameDB for the game, " \
+            "or import it from IGDB if it is missing, and donate with its gamedb_game_id.")
+        end
+
+        attrs.merge("gamedb_game_id" => game_id)
+      end
+
+      def render_game_required(error)
+        render json: { error: error.code, message: error.message }, status: :unprocessable_content
       end
 
       # Who the claim is recorded against: a Discord caller can only claim for
