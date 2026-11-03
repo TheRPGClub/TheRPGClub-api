@@ -16,6 +16,8 @@ module Api
     # the claim, notify the donor). The service token's own actions queue
     # nothing: the bot already does that Discord work in-process.
     class GameKeysController < ApplicationController
+      HUB_REFRESH_VERBS = { "donate" => "donated", "claim" => "claimed", "revoke" => "revoked" }.freeze
+
       before_action :require_owner!, only: :create
       before_action :require_member_role!, only: :claim
       before_action :require_key_reader!, only: :show
@@ -214,7 +216,13 @@ module Api
         return unless member_action?
 
         BotJob.enqueue!(kind: "giveaway_hub_refresh", payload: { reason: reason, key_id: key.key_id },
+          summary: "Refresh the giveaway hub: #{key_label(key)} #{HUB_REFRESH_VERBS.fetch(reason)}",
           requested_by: current_principal.id)
+      end
+
+      # "Chrono Cross (PSN)": the title and platform only, never the key.
+      def key_label(key)
+        "#{key.game_title} (#{key.platform})"
       end
 
       # Payload: ids plus the labels the claim log needs. The secret
@@ -223,7 +231,8 @@ module Api
       def enqueue_claim_notice(key)
         return unless member_action?
 
-        BotJob.enqueue!(kind: "giveaway_claim_notice", requested_by: current_principal.id, payload: {
+        BotJob.enqueue!(kind: "giveaway_claim_notice", requested_by: current_principal.id,
+          summary: "DM the claimed #{key_label(key)} key, log the claim and notify the donor", payload: {
           key_id: key.key_id, claimed_by_user_id: key.claimed_by_user_id, donor_user_id: key.donor_user_id,
           game_title: key.game_title, platform: key.platform
         })

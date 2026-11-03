@@ -164,6 +164,7 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
         "created_by" => member.user_id, "created_by_name" => "suggester")
       job = BotJob.last
       expect(job.kind).to eq("suggestion_submitted")
+      expect(job.summary).to eq('Announce the new Suggestion "Dark mode"')
       expect(job.payload).to eq("suggestion_id" => data.fetch("suggestion_id"), "created_by" => member.user_id)
       expect(job.requested_by_user_id).to eq(member.user_id)
     end

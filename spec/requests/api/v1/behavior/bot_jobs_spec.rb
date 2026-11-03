@@ -27,8 +27,9 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     json.fetch("data")
   end
 
-  def enqueue(kind: "giveaway_hub_refresh", payload: { "reason" => "donate" }, requested_by: requester)
-    BotJob.enqueue!(kind: kind, payload: payload, requested_by: requested_by)
+  def enqueue(kind: "giveaway_hub_refresh", payload: { "reason" => "donate" }, requested_by: requester,
+    summary: "Refresh the giveaway hub")
+    BotJob.enqueue!(kind: kind, summary: summary, payload: payload, requested_by: requested_by)
   end
 
   describe "POST /api/v1/bot_jobs/claim" do
@@ -185,8 +186,10 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include(
         "id" => job.id, "kind" => "giveaway_claim_notice", "status" => "queued", "attempts" => 0,
-        "requested_by_user_id" => requester.user_id, "error_message" => nil
+        "requested_by_user_id" => requester.user_id, "error_message" => nil,
+        "summary" => "Refresh the giveaway hub", "result_text" => nil
       )
+      expect(json.dig("data", "requested_by")).to include("user_id" => requester.user_id, "username" => requester.username)
       expect(json.fetch("data")).not_to have_key("payload")
     end
 
@@ -222,6 +225,18 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
   describe "BotJob.enqueue!" do
     it "rejects an unknown kind" do
       expect { enqueue(kind: "nope") }.to raise_error(ActiveRecord::RecordInvalid)
+    end
+
+    it "requires a summary" do
+      expect { enqueue(summary: " ") }.to raise_error(ActiveRecord::RecordInvalid)
+      expect { BotJob.enqueue!(kind: "giveaway_hub_refresh") }.to raise_error(ArgumentError)
+    end
+
+    it "cuts a long summary to #{BotJob::SUMMARY_MAX} characters" do
+      job = enqueue(summary: "Announce #{'x' * 300}")
+
+      expect(job.summary.length).to eq(BotJob::SUMMARY_MAX)
+      expect(job.summary).to start_with("Announce xxx").and end_with("...")
     end
 
     it "leaves the signal down when the enqueue rolls back" do

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_02_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_03_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -74,12 +74,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_02_150000) do
     t.text "error_message"
     t.datetime "finished_at"
     t.string "kind", limit: 64, null: false
+    t.datetime "lease_expires_at"
     t.jsonb "payload", default: {}, null: false
     t.string "requested_by_user_id", limit: 30
+    t.text "result_text"
     t.string "status", limit: 16, default: "queued", null: false
+    t.string "summary", limit: 200, null: false
     t.datetime "updated_at", null: false
-    t.index ["claimed_at"], name: "ix_bot_jobs_claimed", where: "((status)::text = 'claimed'::text)"
     t.index ["id"], name: "ix_bot_jobs_queued", where: "((status)::text = 'queued'::text)"
+    t.index ["lease_expires_at"], name: "ix_bot_jobs_claimed", where: "((status)::text = 'claimed'::text)"
     t.index ["requested_by_user_id"], name: "index_bot_jobs_on_requested_by_user_id"
     t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'claimed'::character varying, 'done'::character varying, 'failed'::character varying]::text[])", name: "ck_bot_jobs_status"
   end

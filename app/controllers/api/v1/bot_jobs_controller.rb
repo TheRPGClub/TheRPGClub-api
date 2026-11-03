@@ -32,7 +32,7 @@ module Api
 
       # GET /api/v1/bot_jobs/:id
       def show
-        job = BotJob.find(params[:id])
+        job = BotJob.includes(:requested_by).find(params[:id])
         return unless require_requester_or_admin!(job)
 
         render json: { data: BotJobResource.new(job).serializable_hash }
