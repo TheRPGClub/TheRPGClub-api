@@ -13,11 +13,14 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
     get 'List synonym groups' do
       tags 'Search Synonyms'
       description 'Synonym groups — each group is an equivalence class that its terms belong to. ' \
-                  'Pass `q` to search for groups by one of their terms.'
+                  'Pass `q` to search for groups by one of their terms, and `include=terms` to get ' \
+                  'each group\'s terms in the same response.'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false,
         description: 'Free-text search: returns groups having a term that matches `q` by literal ' \
                      'text (case-insensitive) or normalised key.'
+      parameter name: :include, in: :query, schema: { type: :string, enum: %w[terms] }, required: false,
+        description: 'Pass `terms` to embed each group\'s terms (sorted by text) under `terms`.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
@@ -73,6 +76,8 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
     get 'Show a synonym group' do
       tags 'Search Synonyms'
       produces 'application/json'
+      parameter name: :include, in: :query, schema: { type: :string, enum: %w[terms] }, required: false,
+        description: 'Pass `terms` to embed each group\'s terms (sorted by text) under `terms`.'
 
       response '200', 'group detail' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonymGroup' } }
@@ -186,6 +191,61 @@ RSpec.describe 'api/v1/search_synonym_groups', type: :request do
       end
 
       response '404', 'group not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    put 'Replace all terms in a synonym group' do
+      tags 'Search Synonyms'
+      description 'Swaps every term in the group for the given list in one transaction, so the group ' \
+                  'is never left half saved. Restricted to admins (Admin and up) or the service account. ' \
+                  'Terms are trimmed and blanks dropped; a term that normalises like an earlier one is ' \
+                  'skipped. Each term needs a letter or number and the group needs at least two different ' \
+                  'terms, otherwise nothing changes and 422 is returned. A signed-in caller is recorded as ' \
+                  'the terms\' creator; only the service account may pass `created_by`. Returns the group ' \
+                  'with its new terms.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              terms: { type: :array, items: { type: :string }, minItems: 2,
+                       description: 'The group\'s complete new term list.' },
+              created_by: { type: :string, nullable: true,
+                            description: 'Service account only: the creator id to record. Ignored for signed-in callers.' }
+            },
+            required: %w[terms]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'terms replaced' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/SearchSynonymGroupWithTerms' } },
+          required: %w[data]
+      end
+
+      response '400', 'data envelope missing' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden, admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'group not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'invalid terms (not a list, a term without letters or numbers, or fewer than two)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

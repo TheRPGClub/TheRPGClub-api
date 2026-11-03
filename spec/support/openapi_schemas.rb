@@ -859,7 +859,13 @@ module OpenapiSchemas
       SearchSynonymDraft: obj(
         draft_id: int, user_id: str, pairs_json: str(nullable: true), created_at: ts, updated_at: ts
       ),
-      SearchSynonymGroup: obj(group_id: int, created_at: ts, created_by: str(nullable: true)),
+      # SearchSynonymGroupResource: all columns; `terms` (sorted by text) is
+      # embedded only when the caller asks for it (`?include=terms`, #333).
+      SearchSynonymGroup: obj(
+        group_id: int, created_at: ts, created_by: str(nullable: true), terms: array_of("SearchSynonym")
+      ),
+      # The replace-terms response (#333): the group with its new terms.
+      SearchSynonymGroupWithTerms: extends("SearchSynonymGroup", terms: array_of("SearchSynonym"), required: %w[terms]),
       JournalMessageContext: obj(
         channel_id: str, message_id: str, created_at_ms: int, owner_user_id: str, game_id: int
       ),

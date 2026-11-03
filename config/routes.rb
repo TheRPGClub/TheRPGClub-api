@@ -380,6 +380,8 @@ Rails.application.routes.draw do
         # Bulk-delete a group's terms (#108) — service/admin only. The group is
         # kept; used for the bot's atomic replace-terms flow.
         member { delete "terms", to: "search_synonym_groups#destroy_terms" }
+        # Replace all of a group's terms in one transaction (#333), Admin and up.
+        member { put "terms", to: "search_synonym_groups#replace_terms" }
       end
       resources :search_synonym_drafts, only: %i[index show create update destroy]
     end
