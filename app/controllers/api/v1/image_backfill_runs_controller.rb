@@ -18,7 +18,8 @@ module Api
           status: :conflict
       end
 
-      # GET /api/v1/image_backfill_runs/latest. 404 before the first run.
+      # GET /api/v1/image_backfill_runs/latest. 404 before the first run. A run
+      # that stopped reporting progress (see ImageBackfillRun) reads as failed.
       def latest
         render_run(ImageBackfillRun.order(id: :desc).first!)
       end
@@ -31,6 +32,7 @@ module Api
       private
 
       def render_run(run)
+        run.reload if run.in_progress? && ImageBackfillRun.fail_stale!.positive?
         render json: { data: ImageBackfillRunResource.new(run).serializable_hash }
       end
     end

@@ -110,6 +110,22 @@ RSpec.describe "api/v1/image_backfill_runs behavior", type: :request do
       )
     end
 
+    # A run cut off by a restart never reports again; reading it says so,
+    # so the site can offer to start a new one.
+    %w[queued running].each do |status|
+      it "shows a #{status} run that stopped reporting progress as failed" do
+        stale = travel_to(31.minutes.ago) { ImageBackfillRun.create!(status: status, total: 5, done: 2) }
+
+        get "/api/v1/image_backfill_runs/latest", headers: superadmin_headers
+
+        expect(json.fetch("data")).to include("id" => stale.id, "status" => "failed", "done" => 2,
+          "last_error" => ImageBackfillRun::STALE_ERROR)
+        expect(json.dig("data", "finished_at")).to be_present
+        start
+        expect(response).to have_http_status(:created)
+      end
+    end
+
     it "404s before any run" do
       get "/api/v1/image_backfill_runs/latest", headers: superadmin_headers
 
@@ -149,6 +165,14 @@ RSpec.describe "api/v1/image_backfill_runs behavior", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("id" => run.id, "status" => "completed", "total" => 3)
+    end
+
+    it "shows a run that stopped reporting progress as failed" do
+      stale = travel_to(31.minutes.ago) { ImageBackfillRun.create!(status: "running") }
+
+      get "/api/v1/image_backfill_runs/#{stale.id}", headers: superadmin_headers
+
+      expect(json.fetch("data")).to include("status" => "failed", "last_error" => ImageBackfillRun::STALE_ERROR)
     end
 
     it "lets the service read it" do
