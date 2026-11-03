@@ -358,6 +358,7 @@ Rails.application.routes.draw do
       resources :image_backfill_runs, only: %i[create show]
       # Superadmin bot actions (#337): the bot says a message, or scans the
       # guild's members, as a bot job.
+      post "bot_say",    to: "bot_say#create"
       post "memberscan", to: "memberscan#create"
       # The bot's Achievement Hub Highlights and alerts (service-only).
       get  "achievements/highlights/pending", to: "achievement_highlights#pending"

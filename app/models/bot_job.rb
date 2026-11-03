@@ -22,6 +22,7 @@ class BotJob < ApplicationRecord
     suggestion_submitted
     suggestion_outcome
     voting_poll_wakeup
+    say
     memberscan
   ].freeze
   STATUSES = %w[queued claimed done failed].freeze
