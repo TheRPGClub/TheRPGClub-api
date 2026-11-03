@@ -17,6 +17,7 @@
 # gets a new kind name.
 class BotJob < ApplicationRecord
   KINDS = %w[
+    completion_announce
     giveaway_claim_notice
     giveaway_hub_refresh
     suggestion_submitted
