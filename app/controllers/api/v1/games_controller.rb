@@ -48,16 +48,19 @@ module Api
 
       # POST /api/v1/games  { "igdb_id": 1234 }
       #
-      # Members role holders, staff and the service (#314, as the bot's
-      # `/gamedb add`). Creates a game from IGDB: fetches the full payload,
-      # upserts the gamedb_games row + taxonomy + releases, then imports its
-      # cover/artwork/logo images into Backblaze through the same importer the
-      # jobs use (#122). Idempotent on `igdb_id`, answering 200 instead of 201:
-      # an Admin or the service re-POSTing refreshes the existing game, while
-      # any other member just gets the existing game back (no IGDB or Backblaze
-      # calls). Mirrors the IGDB/Backblaze rescue ladder from #refresh_images.
+      # Any signed-in Discord user, roles or not, and the service (the bot's
+      # `/gamedb add`). Anyone who can donate a game key can import the game
+      # they are donating, and the API cannot tell a donation import from any
+      # other, so the gate is the donate gate's set of callers. Creates a game
+      # from IGDB: fetches the full payload, upserts the gamedb_games row +
+      # taxonomy + releases, then imports its cover/artwork/logo images into
+      # Backblaze through the same importer the jobs use (#122). Idempotent on
+      # `igdb_id`, answering 200 instead of 201: an Admin or the service
+      # re-POSTing refreshes the existing game, while any other caller just gets
+      # the existing game back (no IGDB or Backblaze calls). Mirrors the
+      # IGDB/Backblaze rescue ladder from #refresh_images.
       def create
-        return unless require_member_or_staff!
+        return unless require_discord_user_or_service!
 
         igdb_id = igdb_id_param
         existing = GamedbGame.without_images.includes(:images).find_by(igdb_id: igdb_id) unless admin_or_above?

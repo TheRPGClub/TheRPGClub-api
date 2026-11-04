@@ -381,13 +381,27 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(json.fetch("error")).to eq("igdb_request_failed")
     end
 
-    it "forbids a user without the Members role" do
+    it "allows a signed-in user without the Members role, as anyone who can donate a key" do
+      expect {
+        post "/api/v1/games", params: { igdb_id: igdb_id }, headers: auth_headers_for(create(:user)), as: :json
+      }.to change(GamedbGame, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      expect(json.fetch("data")).to include("igdb_id" => igdb_id, "title" => igdb_payload[:name])
+    end
+
+    it "returns the existing game to a user without roles without re-importing it" do
+      existing = create(:game, igdb_id: igdb_id, title: "Already Here #{SecureRandom.hex(3)}")
+
       expect {
         post "/api/v1/games", params: { igdb_id: igdb_id }, headers: auth_headers_for(create(:user)), as: :json
       }.not_to change(GamedbGame, :count)
 
-      expect(response).to have_http_status(:forbidden)
-      expect(json).to eq("error" => "forbidden")
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("game_id" => existing.game_id)
+      expect(json.fetch("images")).to eq([])
+      expect(igdb_client).not_to have_received(:game)
+      expect(image_importer).not_to have_received(:import!)
     end
 
     it "requires authentication" do

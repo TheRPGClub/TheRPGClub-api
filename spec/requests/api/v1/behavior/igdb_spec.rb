@@ -143,11 +143,12 @@ RSpec.describe "api/v1/igdb behavior", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it "forbids a user without the Members role" do
-      get "/api/v1/igdb/search", params: { q: "zeldaq" }, headers: auth_headers_for(create(:user))
+    it "allows a signed-in user without the Members role, as anyone who can donate a key" do
+      allow(client).to receive(:search).with("donorq", limit: 25).and_return([])
 
-      expect(response).to have_http_status(:forbidden)
-      expect(json).to eq("error" => "forbidden")
+      get "/api/v1/igdb/search", params: { q: "donorq" }, headers: auth_headers_for(create(:user))
+
+      expect(response).to have_http_status(:ok)
     end
 
     it "requires authentication" do

@@ -2,12 +2,14 @@
 
 module Api
   module V1
-    # IGDB discovery proxy (#122). Gated like POST /api/v1/games: Members role
-    # holders, staff and the service (#314, as the bot's `/gamedb add`).
-    # Searching spends the shared IGDB credential's rate budget, so it is not
-    # open to every signed-in caller.
+    # IGDB discovery proxy (#122). Gated like POST /api/v1/games: any signed-in
+    # Discord user, roles or not, and the service (the bot's `/gamedb add`).
+    # Anyone who can donate a game key can search IGDB for the game they are
+    # donating, and the API cannot tell a donation search from any other, so
+    # the gate is the donate gate's set of callers. Anonymous callers stay
+    # refused, since searching spends the shared IGDB credential's rate budget.
     class IgdbController < ApplicationController
-      before_action :require_member_or_staff!
+      before_action :require_discord_user_or_service!
 
       SEARCH_DEFAULT_LIMIT = 25
 

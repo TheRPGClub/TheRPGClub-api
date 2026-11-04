@@ -97,15 +97,15 @@ RSpec.describe 'api/v1/games', type: :request do
 
     post 'Create a game from IGDB' do
       tags 'Games'
-      description 'Members role holders, staff (Moderator and above) and the service. Creates a game ' \
-                  'from IGDB by `igdb_id`: fetches the full IGDB ' \
+      description 'Any signed-in Discord user, roles or not (anyone who can donate a game key), and ' \
+                  'the service. Creates a game from IGDB by `igdb_id`: fetches the full IGDB ' \
                   'payload, upserts the game row plus its taxonomy (genres, themes, perspectives, modes, ' \
                   'engines, franchises, platforms, developer/publisher companies, collection) and releases ' \
                   '(one per platform, earliest dated; Japan-only releases are skipped; `format` is left ' \
                   'null), then imports its cover/artwork/logo images into Backblaze through the same ' \
                   'importer the jobs use. Idempotent on `igdb_id`, answering 200 instead of 201 for a game ' \
                   'already in the GameDB: an Admin, Superadmin or the service re-POSTing refreshes it from ' \
-                  'IGDB; any other member gets the existing game back unchanged (with empty `images`). ' \
+                  'IGDB; any other caller gets the existing game back unchanged (with empty `images`). ' \
                   'Discover ids via `GET /api/v1/igdb/search`.'
       consumes 'application/json'
       produces 'application/json'
@@ -136,7 +136,7 @@ RSpec.describe 'api/v1/games', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden: Members role or staff required' do
+      response '403', 'forbidden: a signed-in Discord user or the service required' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

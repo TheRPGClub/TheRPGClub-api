@@ -37,9 +37,14 @@ RSpec.describe 'api/v1/game_keys', type: :request do
       description 'Owner-only: a Discord caller may only donate as themselves ' \
                   '(`donor_user_id` must be their own id); the bot service token ' \
                   'may donate on anyone\'s behalf. The claim fields are read-only ' \
-                  'on donation. A member\'s donation queues a `giveaway_hub_refresh` ' \
-                  'bot job (payload `{ reason: "donate", key_id }`); the service ' \
-                  'token\'s does not.'
+                  'on donation. Every new key must be linked to a GameDB game, for ' \
+                  'members and the service token alike: send `gamedb_game_id` (it ' \
+                  'must exist), or a `game_title` that matches exactly one GameDB ' \
+                  'game after normalization (case, punctuation and edition noise ' \
+                  'ignored). Otherwise the donor must search GameDB for the game, ' \
+                  'importing it from IGDB first if it is missing. A member\'s ' \
+                  'donation queues a `giveaway_hub_refresh` bot job (payload ' \
+                  '`{ reason: "donate", key_id }`); the service token\'s does not.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -49,13 +54,17 @@ RSpec.describe 'api/v1/game_keys', type: :request do
           data: {
             type: :object,
             description: 'Key attributes. Required: `platform`, `key_value`, `donor_user_id`, plus ' \
-                         '`game_title` OR `gamedb_game_id` (when only `gamedb_game_id` is given the ' \
-                         'title is backfilled from that game). Optional: `donor_notify_on_claim`, ' \
+                         '`gamedb_game_id` (preferred; `game_title` is backfilled from that game when ' \
+                         'omitted) OR a `game_title` that matches exactly one GameDB game, which links ' \
+                         'the key to it. Optional: `donor_notify_on_claim`, ' \
                          '`region` (defaults to `Global`). ' \
                          'The PK/claim/timestamp columns are server-managed and ignored if sent.',
             properties: {
-              game_title: { type: :string, description: 'Display label; backfilled from the linked game when omitted.' },
-              gamedb_game_id: { type: :integer, nullable: true, description: 'Links the key to a GamedbGame for the embedded game card.' },
+              game_title: { type: :string,
+                            description: 'Display label; backfilled from the linked game when omitted. Without ' \
+                                         '`gamedb_game_id` it must match exactly one GameDB game.' },
+              gamedb_game_id: { type: :integer, nullable: true,
+                                description: 'The GamedbGame the key is for (embedded game card). Must exist.' },
               platform: { type: :string },
               region: { type: :string, enum: RpgClubGameKey::REGIONS, default: RpgClubGameKey::DEFAULT_REGION,
                         description: 'Where the key redeems. Omitted or null stores `Global`.' },
@@ -77,7 +86,10 @@ RSpec.describe 'api/v1/game_keys', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed, or no GameDB game: `game_not_found` (unknown ' \
+                      '`gamedb_game_id`), `game_not_in_gamedb` (the `game_title` matches no GameDB game ' \
+                      'or several; the `message` tells the donor to search GameDB or import the game ' \
+                      'from IGDB) or `game_required` (neither field given)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -6,7 +6,7 @@ RSpec.describe 'api/v1/igdb', type: :request do
   path '/api/v1/igdb/search' do
     get 'Search IGDB for games' do
       tags 'IGDB'
-      description 'Members role holders, staff (Moderator and above) and the service. Returns IGDB game candidates so a caller can pick the right ' \
+      description 'Any signed-in Discord user, roles or not (anyone who can donate a game key), and the service. Returns IGDB game candidates so a caller can pick the right ' \
                   '`igdb_id` to import via `POST /api/v1/games`. Two modes, selected by param: pass ' \
                   '`igdb_id` to look games up directly by id (single or comma-separated), or `q` for a ' \
                   'fuzzy title search. Either accepts several values to seed a bulk import — ' \
@@ -51,7 +51,7 @@ RSpec.describe 'api/v1/igdb', type: :request do
         }
       end
 
-      response '403', 'forbidden: Members role or staff required' do
+      response '403', 'forbidden: a signed-in Discord user or the service required' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
