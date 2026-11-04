@@ -13,6 +13,7 @@
 #   moderator_or_above?   Moderator, Admin or Superadmin
 #   admin_or_above?       Admin or Superadmin (admin_or_service? is an older name for it)
 #   superadmin?           Superadmin (the session token's `dev` flag)
+#   discord_user_or_service?  any signed-in Discord user, whatever their roles
 #
 # The service principal passes every gate: the bot runs its own role checks
 # before acting for a member. Role flags are read from the member's record on
@@ -62,6 +63,13 @@ module StaffGates
     current_principal&.discord_user? && current_principal.dev? ? true : false
   end
 
+  # Any signed-in Discord user, roles or not, plus the service: the same set of
+  # callers the game key donate gate admits. For IGDB search and import, which
+  # cannot tell a donation from any other use.
+  def discord_user_or_service?
+    current_principal&.service? || current_principal&.discord_user? ? true : false
+  end
+
   def require_member_role!
     gate_or_forbid(member_role?)
   end
@@ -88,6 +96,10 @@ module StaffGates
 
   def require_superadmin!
     gate_or_forbid(superadmin?)
+  end
+
+  def require_discord_user_or_service!
+    gate_or_forbid(discord_user_or_service?)
   end
 
   def gate_or_forbid(allowed)
