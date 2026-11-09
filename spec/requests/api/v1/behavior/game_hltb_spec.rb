@@ -30,6 +30,16 @@ RSpec.describe "api/v1/games/:id/hltb/lookup behavior", type: :request do
   end
 
   context "when the game released more than six months ago" do
+    it "searches HLTB with GameDB's trailing article moved back to the front" do
+      game.update!(title: "The Chrono Trigger")
+      allow(client).to receive(:search).with("The Chrono Trigger").and_return(scraped)
+
+      lookup(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(game.reload.title).to eq("Chrono Trigger, The")
+    end
+
     it "searches HLTB by the game's title, saves the times and returns them" do
       allow(client).to receive(:search).with("Chrono Trigger").and_return(scraped)
 

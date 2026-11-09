@@ -25,7 +25,7 @@ module Api
 
         key = unsaved_key(game)
         cached = Rails.cache.read(key)
-        result = cached ? cached[:result] && Hltb::Client::Result.new(**cached[:result]) : Hltb::Client.new.search(game.title)
+        result = cached ? cached[:result] && Hltb::Client::Result.new(**cached[:result]) : Hltb::Client.new.search(Gamedb::TitleArticle.to_front(game.title))
         unless result
           Rails.cache.write(key, { result: nil }, expires_in: UNSAVED_TTL) unless cached
           return render json: { error: "hltb_no_match", message: "HowLongToBeat has no match for #{game.title}." },

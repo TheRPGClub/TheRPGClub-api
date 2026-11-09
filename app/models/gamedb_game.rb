@@ -202,6 +202,14 @@ class GamedbGame < ApplicationRecord
   scope :nr_gotm_winners, -> { where(NR_GOTM_WON_SQL) }
   scope :any_winners, -> { where("#{GOTM_WON_SQL} OR #{NR_GOTM_WON_SQL}") }
 
+  # The title with a trailing ", The/A/An" dropped (Gamedb::TitleArticle.strip
+  # for stored titles), so searches compare against the significant words.
+  BARE_TITLE_SQL = <<~'SQL'.squish.freeze
+    regexp_replace(gamedb_games.title, ',\s*(the|a|an)$', '', 'i')
+  SQL
+
+  before_validation { self.title = Gamedb::TitleArticle.to_end(title) if title_changed? && title }
+
   validates :title, presence: true
 
   def cover_url
@@ -228,8 +236,12 @@ class GamedbGame < ApplicationRecord
     images.where(kind: kind).primary_first.first&.url
   end
 
+  # A leading or trailing article in the query is ignored, so "The Last of
+  # Us", "Last of Us" and "Last of Us, The" all rank "Last of Us, The" as an
+  # exact match.
   def self.search(query)
-    escaped = sanitize_sql_like(query.to_s.strip)
+    bare = Gamedb::TitleArticle.strip(query)
+    escaped = sanitize_sql_like(bare)
 
     without_images
       .where(
@@ -240,7 +252,7 @@ class GamedbGame < ApplicationRecord
             SELECT 1
             FROM gamedb_search_synonyms s
             WHERE s.term_text ILIKE :term
-              AND gamedb_games.title ILIKE '%' || s.term_text || '%'
+              AND #{BARE_TITLE_SQL} ILIKE '%' || regexp_replace(s.term_text, '^(the|a|an)\\s+', '', 'i') || '%'
           )
         SQL
         term: "%#{escaped}%"
@@ -251,14 +263,14 @@ class GamedbGame < ApplicationRecord
             [
               <<~SQL.squish,
                 CASE
-                  WHEN lower(title) = lower(:exact) THEN 0
+                  WHEN lower(#{BARE_TITLE_SQL}) = lower(:exact) THEN 0
                   WHEN title ILIKE :prefix THEN 1
                   ELSE 2
                 END,
                 total_rating DESC NULLS LAST,
                 title ASC
               SQL
-              { exact: query.to_s.strip, prefix: "#{escaped}%" }
+              { exact: bare, prefix: "#{escaped}%" }
             ]
           )
         )

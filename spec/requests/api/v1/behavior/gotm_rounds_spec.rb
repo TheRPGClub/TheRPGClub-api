@@ -116,6 +116,15 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
       expect(json.dig("data", 0, "nr_gotm")).to be_nil
     end
 
+    it "matches q against a title whose article GameDB keeps at the end" do
+      create(:gotm_entry, round_number: 1, game: create(:game, title: "The Last Guardian"))
+      create(:gotm_entry, round_number: 2)
+
+      get "/api/v1/gotm_rounds", params: { q: "the last guardian" }, headers: headers
+
+      expect(round_numbers).to eq([ 1 ])
+    end
+
     it "sorts rounds descending by default and ascending with sort=asc" do
       [ 2, 9, 5 ].each { |number| create(:gotm_entry, round_number: number) }
 
