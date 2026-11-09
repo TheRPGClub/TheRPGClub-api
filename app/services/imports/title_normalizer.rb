@@ -21,7 +21,7 @@ module Imports
       ->(value) { value.gsub(MARKS, "") },
       ->(value) { value.gsub(/[-–—]/, " ") },
       ->(value) { value.tr(":", " ") },
-      ->(value) { value.sub(/\A(the|a|an)\s+/i, "") },
+      ->(value) { value.sub(/\A(the|a|an)\s+/i, "").sub(/,\s*(the|a|an)\s*\z/i, "") }, # GameDB keeps "X, The"
       ->(value) { value.gsub(/\s+(the|a|an)\s+/i, " ") },
       ->(value) { value.gsub(/[^\p{L}\p{N}'-]+/, " ") }
     ].freeze

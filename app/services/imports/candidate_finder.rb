@@ -32,7 +32,8 @@ module Imports
     def self.confidence(search_title, candidates)
       return if candidates.empty?
 
-      candidates.first.title.downcase == search_title.to_s.downcase ? "exact" : "fuzzy"
+      same = Gamedb::TitleArticle.strip(candidates.first.title).casecmp?(Gamedb::TitleArticle.strip(search_title))
+      same ? "exact" : "fuzzy"
     end
 
     def self.dump(candidates)

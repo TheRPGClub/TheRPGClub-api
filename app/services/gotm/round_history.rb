@@ -97,7 +97,7 @@ module Gotm
       scope = scope.where("#{YEAR_SQL} = ?", @year) if @year
       if @query
         matching = model.joins(:game)
-          .where("gamedb_games.title ILIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(@query.strip)}%")
+          .where("gamedb_games.title ILIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(Gamedb::TitleArticle.strip(@query))}%")
           .select(:round_number)
         scope = scope.where(round_number: matching)
       end

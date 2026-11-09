@@ -64,6 +64,10 @@ RSpec.describe Imports::TitleNormalizer do
       expect(described_class.exact_match?("The Witcher 3: Wild Hunt", "Witcher 3 - Wild Hunt")).to be(true)
     end
 
+    it "matches a leading article against GameDB's trailing one" do
+      expect(described_class.exact_match?("The Witcher 3: Wild Hunt", "Witcher 3: Wild Hunt, The")).to be(true)
+    end
+
     it "rejects different titles" do
       expect(described_class.exact_match?("Final Fantasy VII", "Final Fantasy VII Remake")).to be(false)
     end

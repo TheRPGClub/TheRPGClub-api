@@ -46,6 +46,17 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(json.fetch("data").first.fetch("game_id")).to eq(exact.game_id)
     end
 
+    it "ignores a leading or trailing article when matching and ranking" do
+      create(:game, title: "articlerank last of us part ii")
+      exact = create(:game, title: "The articlerank Last of Us")
+
+      [ "The articlerank Last of Us", "articlerank last of us", "articlerank Last of Us, The" ].each do |q|
+        get "/api/v1/games", params: { q: q }, headers: service_headers
+
+        expect(json.fetch("data").first.fetch("game_id")).to eq(exact.game_id)
+      end
+    end
+
     it "filters to GOTM winners with winner=gotm" do
       winner = create(:game, title: "winfilter won #{SecureRandom.hex(4)}")
       create(:game, title: "winfilter lost #{SecureRandom.hex(4)}")
