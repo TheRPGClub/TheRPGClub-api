@@ -139,4 +139,115 @@ RSpec.describe "session features", type: :request do
 
     expect(features_for(member_headers)).to eq([])
   end
+
+  # Feature Preferences and the staff show-Preview setting (ticket #352)
+  # narrow `shown` only: the Feature stays listed with its state.
+  def hide(user, *keys, headers: auth_headers_for(user))
+    patch "/api/v1/users/#{user.user_id}/feature_preferences",
+      params: { data: { hidden: keys.index_with(true) } }, headers: headers, as: :json
+    expect(response).to have_http_status(:ok)
+  end
+
+  def set_show_preview(user, value, headers: auth_headers_for(user))
+    patch "/api/v1/users/#{user.user_id}/feature_preferences",
+      params: { data: { show_preview_features: value } }, headers: headers, as: :json
+    expect(response).to have_http_status(:ok)
+  end
+
+  describe "with Feature Preferences" do
+    before { set_all_feature_flags("live") }
+
+    it "lists a Feature the member hid as not shown" do
+      member = create(:user, role_member: true)
+      hide(member, "reviews")
+
+      features = features_for(auth_headers_for(member))
+
+      expect(entry(features, "reviews")).to include("state" => "live", "hideable" => true, "shown" => false)
+      expect(entry(features, "journals")).to include("shown" => true)
+    end
+
+    it "hides a Feature for a Moderator who hid it" do
+      moderator = create(:user, role_moderator: true)
+      hide(moderator, "giveaways")
+
+      expect(entry(features_for(auth_headers_for(moderator)), "giveaways")).to include("shown" => false)
+    end
+
+    it "keeps the preference through any flag change" do
+      member = create(:user)
+      hide(member, "journals")
+
+      set_feature_flag("journals", "off")
+      expect(entry(features_for(auth_headers_for(member)), "journals")).to be_nil
+      set_feature_flag("journals", "live")
+
+      expect(entry(features_for(auth_headers_for(member)), "journals")).to include("state" => "live", "shown" => false)
+    end
+
+    it "hides a Preview Feature an Admin hid while testing others" do
+      admin = create(:user, :admin)
+      set_feature_flag("journals", "preview")
+      set_feature_flag("giveaways", "preview")
+      hide(admin, "journals")
+
+      features = features_for(auth_headers_for(admin))
+
+      expect(entry(features, "journals")).to include("state" => "preview", "shown" => false, "preview" => true)
+      expect(entry(features, "giveaways")).to include("state" => "preview", "shown" => true, "preview" => true)
+    end
+
+    it "only affects the member who hid it" do
+      hider = create(:user)
+      hide(hider, "reviews")
+
+      expect(entry(features_for(auth_headers_for(create(:user))), "reviews")).to include("shown" => true)
+    end
+  end
+
+  describe "with the staff show-Preview setting off" do
+    before do
+      set_feature_flag("reviews", "live")
+      set_feature_flag("journals", "preview")
+      set_feature_flag("giveaways", "off")
+    end
+
+    shared_examples "a staff member seeing Features as a member would" do
+      before { set_show_preview(staff_user, false, headers: headers) }
+
+      it "does not show a Preview Feature, still listing it with its state" do
+        expect(entry(features_for(headers), "journals")).to include(
+          "state" => "preview", "shown" => false, "preview" => true
+        )
+      end
+
+      it "shows exactly the Features a member is shown" do
+        shown = features_for(headers).select { |f| f["shown"] }.map { |f| f["key"] }
+        member_shown = features_for(auth_headers_for(create(:user))).select { |f| f["shown"] }.map { |f| f["key"] }
+
+        expect(shown).to eq(member_shown)
+        expect(shown).to eq([ "reviews" ])
+      end
+
+      it "shows Preview Features again once the setting is back on" do
+        set_show_preview(staff_user, true, headers: headers)
+
+        expect(entry(features_for(headers), "journals")).to include("shown" => true)
+      end
+    end
+
+    describe "for an Admin" do
+      let(:staff_user) { create(:user, :admin) }
+      let(:headers) { auth_headers_for(staff_user) }
+
+      it_behaves_like "a staff member seeing Features as a member would"
+    end
+
+    describe "for a Superadmin" do
+      let(:staff_user) { create(:user) }
+      let(:headers) { auth_headers_for(staff_user, is_dev: true) }
+
+      it_behaves_like "a staff member seeing Features as a member would"
+    end
+  end
 end

@@ -19521,8 +19521,11 @@ paths:
                             hide.
                         shown:
                           type: boolean
-                          description: Whether the website shows this Feature to the
-                            viewer.
+                          description: 'Whether the website shows this Feature to
+                            the viewer: they can use it, have not hidden it with a
+                            Feature Preference, and, for staff with "show Preview
+                            features" off, it is not in Preview. A hidden Feature
+                            stays listed with `shown: false`.'
                         preview:
                           type: boolean
                           description: True when the viewer sees the Feature only
