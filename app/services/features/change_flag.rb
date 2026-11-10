@@ -32,13 +32,7 @@ module Features
 
     def call
       change = FeatureFlag.transaction do
-        from = FeatureFlag.lock.where(key: @feature.key).pick(:state) || DEFAULT_STATE
-        next if from == @state
-
-        FeatureFlag.change!(@feature.key, @state, by: @by, reason: @reason)
-        logged = FeatureFlagChange.where(feature_key: @feature.key).order(:created_at, :id).last
-        announce!(from)
-        logged
+        FeatureFlag.change!(@feature.key, @state, by: @by, reason: @reason)&.tap { |logged| announce!(logged) }
       end
       after_change(change) if change
       change
@@ -49,7 +43,8 @@ module Features
     # Payload (kind feature_flag_changed): { key, name, from_state, to_state,
     # changed_by, changed_by_name, reason }. No `feature_key`: it goes to the
     # admin channel whatever the Feature's state, not where the Feature posts.
-    def announce!(from)
+    def announce!(change)
+      from = change.from_state || DEFAULT_STATE
       BotJob.enqueue!(
         kind: "feature_flag_changed",
         summary: "Feature Flag #{@feature.name}: #{from} to #{@state}",
@@ -62,8 +57,7 @@ module Features
     end
 
     def display_name
-      global_name, username = RpgClubUser.where(user_id: @by).pick(:global_name, :username)
-      global_name.presence || username.presence || @by
+      StaffList.display_names([ @by ]).fetch(@by, @by)
     end
 
     # Automated activity that waits while its Feature is Off picks up at once
