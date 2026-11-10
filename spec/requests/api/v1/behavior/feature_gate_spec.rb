@@ -125,18 +125,20 @@ RSpec.describe "feature gate behavior", type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
-  # The gate runs on every request to a Feature's endpoints, so it reads
-  # only that Feature's state, and the caller's roles only when the answer
-  # depends on them (Preview).
+  # The gate runs on every request to a Feature's endpoints, the bot's
+  # included, so it reads the Feature Flags once per few seconds in a process
+  # (one query for all of them), the caller's roles only when the answer
+  # depends on them (Preview), and nothing for the bot's service token.
   describe "the gate's own reads" do
-    # What the request reads besides authentication: "one flag" or "every
-    # flag" (feature_flags by one key or by all), and "roles" (the caller's
-    # role flags).
+    include ActiveSupport::Testing::TimeHelpers
+
+    # What the request reads besides authentication: "flags" (the
+    # feature_flags table) and "roles" (the caller's role flags).
     def reads_of_gated_request(headers)
       reads = []
       callback = lambda do |*, payload|
         sql = payload[:sql]
-        reads << (sql.include?(" IN (") ? "every flag" : "one flag") if sql.include?('FROM "feature_flags"')
+        reads << "flags" if sql.include?('FROM "feature_flags"')
         reads << "roles" if sql.include?('"rpg_club_users"."role_admin"')
       end
       ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
@@ -147,18 +149,35 @@ RSpec.describe "feature gate behavior", type: :request do
 
     let(:headers) { auth_headers_for(create(:user, role_member: true)) }
 
-    it "reads one Feature Flag and no roles for a Live or Off Feature" do
+    it "reads the Feature Flags in one query, and again only after a few seconds" do
+      set_feature_flag("journals", "live")
+
+      expect(reads_of_gated_request(headers)).to eq([ "flags" ])
+      expect(reads_of_gated_request(headers)).to eq([])
+
+      travel(Features::STATES_TTL + 1.second) do
+        expect(reads_of_gated_request(headers)).to eq([ "flags" ])
+      end
+    end
+
+    it "reads no roles for a Live or Off Feature" do
       %w[live off].each do |state|
         set_feature_flag("journals", state)
 
-        expect(reads_of_gated_request(headers)).to eq([ "one flag" ]), state
+        expect(reads_of_gated_request(headers)).not_to include("roles"), state
       end
     end
 
     it "reads the caller's roles for a Preview Feature" do
       set_feature_flag("journals", "preview")
 
-      expect(reads_of_gated_request(headers)).to eq([ "one flag", "roles" ])
+      expect(reads_of_gated_request(headers)).to eq([ "flags", "roles" ])
+    end
+
+    it "reads nothing for the bot's service token" do
+      set_feature_flag("journals", "off")
+
+      expect(reads_of_gated_request(service_headers)).to eq([])
     end
   end
 

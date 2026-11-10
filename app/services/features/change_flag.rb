@@ -34,6 +34,9 @@ module Features
       change = FeatureFlag.transaction do
         FeatureFlag.change!(@feature.key, @state, by: @by, reason: @reason)&.tap { |logged| announce!(logged) }
       end
+      # Again after the commit: a request between change! and the commit
+      # may have kept the old state.
+      Features.forget_cached_states!
       after_change(change) if change
       change
     end

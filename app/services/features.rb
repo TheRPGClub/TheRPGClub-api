@@ -101,6 +101,24 @@ module Features
     FeatureFlag.where(key: key.to_s).pick(:state) || DEFAULT_STATE
   end
 
+  # How long this process keeps the states for request-time reads.
+  STATES_TTL = 5.seconds
+
+  # Features.states, kept in this process for STATES_TTL: the feature gate
+  # and the sections that embed a Feature read it on every request. A change
+  # through FeatureFlag.change! forgets it in the process that made it;
+  # other processes see it within STATES_TTL. Jobs read Features.state.
+  def self.cached_states
+    kept = @cached_states
+    return kept.last if kept && Time.current - kept.first < STATES_TTL
+
+    states.freeze.tap { |fresh| @cached_states = [ Time.current, fresh ].freeze }
+  end
+
+  def self.forget_cached_states!
+    @cached_states = nil
+  end
+
   # Whether the Feature is Off: nobody can use it and its automated activity
   # (the API's scheduled jobs it owns) is paused. Jobs skip a run while this
   # holds; work that falls due meanwhile stays due and runs once it is back on.

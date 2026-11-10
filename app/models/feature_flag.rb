@@ -23,6 +23,9 @@ class FeatureFlag < ApplicationRecord
   # locked while it changes, and a Feature's first row is inserted with ON
   # CONFLICT DO NOTHING, so the slower writer waits and then changes the row
   # the faster one stored.
+  #
+  # This process's Features.cached_states is forgotten, so its next request
+  # reads the new state.
   def self.change!(key, state, by:, reason: nil)
     key = Features.fetch(key).key
     state = state.to_s
@@ -44,7 +47,7 @@ class FeatureFlag < ApplicationRecord
 
       where(key: key).update_all(state: state, updated_at: Time.current)
       log_change(key, from, state, by, reason)
-    end
+    end.tap { Features.forget_cached_states! }
   end
 
   # Inserts a Feature's first stored state; false when another writer stored
