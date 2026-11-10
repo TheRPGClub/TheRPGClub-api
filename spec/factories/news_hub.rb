@@ -13,4 +13,9 @@ FactoryBot.define do
     posted_at { Time.current }
     link_url { "https://example.test/news/#{SecureRandom.hex(4)}" }
   end
+
+  factory :member_news_category_preference do
+    association :user
+    category_key { "general" }
+  end
 end

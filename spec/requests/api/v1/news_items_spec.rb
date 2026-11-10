@@ -13,21 +13,30 @@ RSpec.describe 'api/v1/news_items', type: :request do
                   '`page`/`per`. An imported News Item staff have not sorted yet is never returned. ' \
                   '`category` narrows the feed to the given News Category keys (see `GET /api/v1/news_categories`): ' \
                   'comma-separated (`category=releases,industry`) or repeated (`category[]=releases&' \
-                  'category[]=industry`); an unknown key is a 400. Each item names its author by their current ' \
+                  'category[]=industry`); an unknown key is a 400. Without `category`, the feed is the ' \
+                  "member's default view: every News Category except the ones they switched off with a News " \
+                  'Category Preference. With `category`, exactly those News Categories are returned, switched ' \
+                  'off or not, so a preference never blocks anything. `q` searches the link title and the ' \
+                  'comment (case-insensitive substring) and combines with `category`. `meta` adds, for the ' \
+                  "page's category rail, `category_counts` (every News Category's count over the search alone) " \
+                  'and `hidden_categories` (the switched-off keys). Each item names its author by their current ' \
                   'member name, or by the name recorded with the message when they have no member record. ' \
                   "#{gate}"
       produces 'application/json'
       parameter name: :category, in: :query, required: false,
         schema: { type: :string, example: 'releases,industry' },
         description: "Comma-separated News Category keys (any of #{NewsCategory.keys.join(', ')}). Omit for " \
-                     'every News Category.'
+                     "the member's default view (every News Category they have not switched off)."
+      parameter name: :q, in: :query, required: false, schema: { type: :string, example: 'zelda' },
+        description: 'Search text, matched case-insensitively anywhere in the link title or the comment. ' \
+                     'Blank means no search.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
       response '200', 'a page of News Items' do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/NewsItem' } },
-          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+          meta: { '$ref' => '#/components/schemas/NewsFeedMeta' }
         }, required: %w[data meta]
       end
 
