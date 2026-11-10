@@ -140,7 +140,8 @@ RSpec.describe 'api/v1/users', type: :request do
               role_ids: {
                 type: :array, items: { type: :string },
                 description: "Optional. The member's current Discord role IDs. When present, replaces the " \
-                             'Admin, Moderator, Regulars and Members flags as `PUT /users/{user_id}/roles` does.'
+                             'Superadmin (dev), Admin, Moderator, Regulars and Members flags as ' \
+                             '`PUT /users/{user_id}/roles` does.'
               }
             },
             required: %w[discord_id]
@@ -219,10 +220,11 @@ RSpec.describe 'api/v1/users', type: :request do
     put "Report a member's Discord roles" do
       tags 'Users'
       description "Service-only. The bot reports a member's current Discord role IDs when Discord sends a guild " \
-                  'member update. The Admin, Moderator, Regulars and Members flags are replaced with the ones ' \
-                  'those roles grant (the same derivation as sign-in), so `GET /session` membership and the ' \
-                  "staff gates follow the change straight away. An empty list clears every flag. Superadmin " \
-                  "(`dev`) and Longstanding stay on the member's session token and are not changed here."
+                  'member update. The Superadmin (dev), Admin, Moderator, Regulars and Members flags are ' \
+                  'replaced with the ones those roles grant (the same derivation as sign-in), so `GET /session` ' \
+                  "membership, the staff gates and the bot's Feature access lookup follow the change straight " \
+                  'away. An empty list clears every flag. The stored dev role is read only by the Feature ' \
+                  "access lookup; the session's `dev` flag and Longstanding stay on the member's session token."
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {

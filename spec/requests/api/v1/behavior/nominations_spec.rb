@@ -349,7 +349,8 @@ RSpec.describe "api/v1/nominations behavior", type: :request do
         "user_id" => nominator.user_id,
         "game_title" => "Chrono Trigger",
         "deleted_by_user_id" => admin.user_id,
-        "reason" => "Not an RPG"
+        "reason" => "Not an RPG",
+        "feature_key" => "voting_gotm"
       )
       expect(job.summary).to eq(
         %(Announce that chrono_fan's GOTM round #{nomination.round_number} nomination "Chrono Trigger" was removed)

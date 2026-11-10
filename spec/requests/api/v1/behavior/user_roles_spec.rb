@@ -4,8 +4,9 @@ require "rails_helper"
 
 # Behavior specs for PUT /api/v1/users/:user_id/roles, the service-only role
 # report the bot sends on a guild member update, and for role IDs carried on
-# the member upsert. Both replace the Admin, Moderator, Regulars and Members
-# flags with the ones the reported Discord roles grant.
+# the member upsert. Both replace the Superadmin (dev), Admin, Moderator,
+# Regulars and Members flags with the ones the reported Discord roles grant
+# (the stored dev role is covered by behavior/feature_access_spec.rb).
 RSpec.describe "api/v1/users/:user_id/roles behavior", type: :request do
   let(:admin_role) { "461891227613265940" }
   let(:moderator_role) { "267881447258325002" }

@@ -15,6 +15,10 @@ Rails.application.routes.draw do
       get "health", to: "health#show"
       get "session", to: "sessions#show"
       get "dashboard", to: "dashboards#show"
+      # Feature Flags (spec #347): Admins and Superadmins list every Feature
+      # and change its state; the bot names the acting Discord user.
+      get   "features",      to: "features#index"
+      patch "features/:key", to: "features#update"
 
       # Unauthenticated, read-only club content for www's logged-out landing.
       namespace :public do
@@ -87,6 +91,9 @@ Rails.application.routes.draw do
           # Service-only: the bot reports the member's current Discord role
           # IDs on a guild member update; the API derives the role flags.
           put "roles", to: "user_roles#update"
+          # Service-only: what this Discord user may use, for the bot's
+          # feature gate (spec #347).
+          get "feature_access", to: "feature_access#show"
           get "avatar"
           get "profile-image"
           get "avatar_history", to: "user_avatar_history#index"
@@ -121,6 +128,8 @@ Rails.application.routes.draw do
           put "presence_prompt_opts", to: "presence_prompt_opts#update"
           get "giveaway_settings", to: "giveaway_settings#show"
           patch "giveaway_settings", to: "giveaway_settings#update"
+          get "feature_preferences", to: "feature_preferences#show"
+          patch "feature_preferences", to: "feature_preferences#update"
           get "game_keys", to: "game_keys#user_index"
           get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"

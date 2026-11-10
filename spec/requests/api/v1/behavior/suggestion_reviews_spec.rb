@@ -64,7 +64,8 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
         expect(job.payload).to eq(
           "suggestion_id" => suggestion.suggestion_id, "outcome" => "approved",
           "created_by" => suggestion.created_by, "title" => "Dark mode",
-          "github_issue_number" => 42, "github_issue_url" => issue_url, "rejection_reason" => nil
+          "github_issue_number" => 42, "github_issue_url" => issue_url, "rejection_reason" => nil,
+          "feature_key" => "suggestions"
         )
       end
     end
@@ -278,7 +279,8 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
         expect(job.payload).to eq(
           "suggestion_id" => suggestion.suggestion_id, "outcome" => "rejected",
           "created_by" => suggestion.created_by, "title" => "Dark mode",
-          "github_issue_number" => nil, "github_issue_url" => nil, "rejection_reason" => "Out of scope"
+          "github_issue_number" => nil, "github_issue_url" => nil, "rejection_reason" => "Out of scope",
+          "feature_key" => "suggestions"
         )
         expect(client).not_to have_received(:create_issue)
       end

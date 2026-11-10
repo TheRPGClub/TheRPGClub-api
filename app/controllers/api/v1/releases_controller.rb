@@ -6,6 +6,8 @@ module Api
     # `addReleaseInfo`. Reads live on GamesController#releases; this is the
     # admin/service-only write.
     class ReleasesController < ApplicationController
+      feature :game_index
+
       before_action :require_admin_or_service!, only: %i[create]
 
       # POST /api/v1/games/:id/releases

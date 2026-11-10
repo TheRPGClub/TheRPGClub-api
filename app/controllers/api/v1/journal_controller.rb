@@ -5,6 +5,8 @@ module Api
     # Per-game journal feature (bot parity, #39). Entries belong to a
     # (user, game) pair and are all public — there is no visibility concept.
     class JournalController < ApplicationController
+      feature :journals
+
       before_action :require_owner!, only: %i[create update destroy]
 
       # Caller-settable columns. `user_id` comes from the path (or the existing

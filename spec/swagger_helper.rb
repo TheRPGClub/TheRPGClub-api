@@ -15,7 +15,10 @@ RSpec.configure do |config|
         title: 'The RPG Club API',
         version: 'v1',
         description: 'Backend API for The RPG Club. Authentication is performed with a bearer ' \
-                     '`UserSessionToken` issued after Discord OAuth, or a service token for the bot.'
+                     '`UserSessionToken` issued after Discord OAuth, or a service token for the bot. ' \
+                     'Endpoints that belong to a Feature answer 404 `{ "error": "not_found" }` to a ' \
+                     'member whose Feature Flag does not let them use it (Preview: Admins and Superadmins ' \
+                     'only; Off: nobody); the service token is not gated. The session lists the Features.'
       },
       servers: [
         {

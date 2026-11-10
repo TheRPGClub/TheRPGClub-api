@@ -6,6 +6,8 @@ module Api
     # so clients don't group gotm_entries / nr_gotm_entries themselves. Read-only
     # and open to any authenticated caller.
     class GotmRoundsController < ApplicationController
+      feature :voting_gotm
+
       DEFAULT_PER = 12
       MAX_PER = 100
 

@@ -7,6 +7,8 @@ module Api
     # manage rounds via the API instead of direct SQL (#98). Each row is one game
     # slot in a round — the bot POSTs once per game for multi-game months.
     class GotmEntriesController < ApplicationController
+      feature :voting_gotm
+
       include GotmRoundWrites
 
       before_action :require_admin_or_service!, only: %i[create create_round update destroy]

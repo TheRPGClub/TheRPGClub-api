@@ -3,6 +3,8 @@
 module Api
   module V1
     class CompletionsController < ApplicationController
+      feature :game_completions
+
       before_action :require_owner!, only: %i[export update destroy]
       # A Superadmin may also log a Game Completion for another member (the
       # bot's Superadmin completion command).

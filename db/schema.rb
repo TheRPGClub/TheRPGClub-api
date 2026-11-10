@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_09_215324) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -103,6 +103,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_09_215324) do
     t.bigint "round_number", null: false
     t.datetime "vote_ends_at"
     t.index ["round_number"], name: "ix_bot_voting_info_round"
+  end
+
+  create_table "feature_flag_changes", force: :cascade do |t|
+    t.string "feature_key", limit: 64, null: false
+    t.string "from_state", limit: 16
+    t.string "to_state", limit: 16, null: false
+    t.string "changed_by", limit: 30, null: false
+    t.text "reason"
+    t.datetime "created_at", null: false
+    t.index ["feature_key", "created_at"], name: "index_feature_flag_changes_on_feature_key_and_created_at"
+    t.check_constraint "from_state IS NULL OR (from_state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[]))", name: "ck_feature_flag_changes_from_state"
+    t.check_constraint "to_state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[])", name: "ck_feature_flag_changes_to_state"
+  end
+
+  create_table "feature_flags", force: :cascade do |t|
+    t.string "key", limit: 64, null: false
+    t.string "state", limit: 16, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_feature_flags_on_key", unique: true
+    t.check_constraint "state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[])", name: "ck_feature_flags_state"
   end
 
   create_table "gamedb_collections", primary_key: "collection_id", force: :cascade do |t|
@@ -407,6 +428,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_09_215324) do
     t.index ["created_at"], name: "index_live_events_on_created_at"
     t.check_constraint "ends_at > starts_at", name: "ck_live_events_ends_after_start"
     t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'thread_created'::character varying, 'created'::character varying, 'failed'::character varying]::text[])", name: "ck_live_events_status"
+  end
+
+  create_table "member_feature_preferences", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.string "feature_key", limit: 64, null: false
+    t.datetime "created_at", null: false
+    t.index ["user_id", "feature_key"], name: "index_member_feature_preferences_on_user_id_and_feature_key", unique: true
   end
 
   create_table "nr_gotm_entries", primary_key: "nr_gotm_id", force: :cascade do |t|
@@ -835,6 +863,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_09_215324) do
     t.timestamptz "server_left_at"
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "username", limit: 100
+    t.boolean "role_dev", default: false, null: false
+    t.boolean "show_preview_features", default: true, null: false, comment: "Staff setting: show Preview Features on the website (on by default)."
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
@@ -1201,6 +1231,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_09_215324) do
   add_foreign_key "image_backfill_runs", "rpg_club_users", column: "started_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "live_events", "bot_jobs", on_delete: :nullify
   add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify
+  add_foreign_key "member_feature_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify

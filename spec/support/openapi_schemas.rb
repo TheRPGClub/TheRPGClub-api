@@ -205,16 +205,24 @@ module OpenapiSchemas
         url: str(nullable: true), created_at: ts, updated_at: ts,
         social_platform: ref("SocialPlatform")
       ),
-      # Per-user counts on the profile payload (UsersController#show).
+      # Per-user counts on the profile payload (UsersController#show). A count
+      # that belongs to a Feature the viewer cannot use is left out.
       UserCounts: obj(
         now_playing: int, favorites: int, reviews: int, completions: int,
-        backlog: int, collections: int, journal: int
+        backlog: int, collections: int, journal: int,
+        _required: %w[favorites],
+        _description: "Each count but `favorites` belongs to a Feature (now_playing: Now Playing, reviews: Reviews, " \
+                      "completions: Game Completions, backlog: Backlog, collections: Collection, journal: Journals) " \
+                      "and is left out when the viewer cannot use that Feature (Preview: staff only; Off: nobody). " \
+                      "The service token gets every count."
       ),
       # The full users#show profile payload (UserResource): UserSummary plus
       # `membership`, the embedded socials, the four preview lists, the journal
       # grid and the counts summary.
       User: extends(
         "UserSummary",
+        _description: "The Feature-owned previews (now_playing, reviews, completions, journal) are left out, like " \
+                      "their `counts`, when the viewer cannot use that Feature.",
         membership: ref("Membership"),
         socials: array_of("UserSocial"),
         now_playing: array_of("NowPlayingEntry"),
@@ -244,6 +252,55 @@ module OpenapiSchemas
       UserRoleReport: obj(
         user_id: str, membership: ref("Membership"),
         _required: %w[user_id membership]
+      ),
+      # The bot's Feature access lookup (GET /users/:user_id/feature_access,
+      # spec #347): Features::Access#lookup_features for a Discord user, with
+      # staff read from the member's stored Admin and dev roles.
+      FeatureAccess: obj(
+        user_id: str,
+        staff: { type: :boolean, description: "Admin or Superadmin by the member's stored roles. False for a " \
+                                              "Discord user with no member record." },
+        features: { type: :array, items: { "$ref" => "#/components/schemas/FeatureAccessEntry" },
+                    description: "Every Feature in registry order, whatever its state." },
+        _required: %w[user_id staff features]
+      ),
+      FeatureAccessEntry: obj(
+        key: str, name: str,
+        state: str(enum: %w[off preview live], description: "The Feature Flag state; a Feature with no stored " \
+                                                            "state reads as preview."),
+        can_use: { type: :boolean, description: "Live: everyone. Preview: staff only. Off: nobody." },
+        preview: { type: :boolean, description: "True when the user can use the Feature only because they are " \
+                                                 "staff (Preview), so the bot adds its Preview note." }
+      ),
+      # A Feature as staff see it on the flag desk and in `/flag list`
+      # (GET /features, spec #347; Features::StaffList).
+      FeatureFlagEntry: obj(
+        key: str, name: str,
+        state: str(enum: Features::STATES, description: "The Feature Flag state; a Feature with no stored state " \
+                                                        "reads as preview."),
+        core: bool.merge(description: "A Core Feature, which members cannot hide."),
+        hideable: bool.merge(description: "Members may hide it with a Feature Preference (not Core)."),
+        coverage: obj(
+          website: { type: :array, items: str, description: "Pages and sections on the website." },
+          bot: { type: :array, items: str, description: "Bot commands." },
+          posts: { type: :array, items: str, description: "Automated posts." },
+          _required: %w[website bot posts]
+        ),
+        last_change: ref("FeatureFlagLastChange", nullable: true).merge(
+          description: "The latest logged change; null when the Feature has never been set."
+        ),
+        _required: %w[key name state core hideable coverage last_change]
+      ),
+      FeatureFlagLastChange: obj(
+        from_state: str(enum: Features::STATES, description: "The state it read as before (preview when it had no " \
+                                                             "stored state)."),
+        to_state: str(enum: Features::STATES),
+        changed_by: str(description: "The acting member's Discord user id, or `system` (the seed)."),
+        changed_by_name: str(nullable: true, description: "The member's display name; null for `system`, or a " \
+                                                          "member with no record."),
+        reason: str(nullable: true),
+        changed_at: ts,
+        _required: %w[from_state to_state changed_by changed_by_name reason changed_at]
       ),
       # The result of the bulk `users#mark_departed` reconciliation (#105): the
       # count of users newly stamped as departed.
@@ -828,7 +885,11 @@ module OpenapiSchemas
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
-        payload: json(nullable: false).merge(description: "Per kind; a breaking change gets a new kind name."),
+        payload: json(nullable: false).merge(
+          description: "Per kind; a breaking change gets a new kind name. A kind that posts publicly also " \
+                       "carries `feature_key`, the key of the Feature that owns the post " \
+                       "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag."
+        ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
         lease_expires_at: ts(nullable: true).merge(
@@ -920,6 +981,33 @@ module OpenapiSchemas
       # GiveawaySettingsController. The donor's notify-on-claim preference,
       # derived from rpg_club_users.donor_notify_on_claim.
       GiveawaySettings: obj(user_id: str, notify_on_claim: bool),
+      # FeaturePreferencesController (spec #347, ticket #352). A member's
+      # Feature Preferences: the hideable Features they hid from their own view
+      # of the website, and (staff only) the show-Preview setting.
+      FeaturePreference: obj(
+        key: str(example: "reviews"),
+        name: str(example: "Reviews"),
+        state: str(enum: %w[preview live], description: "The Feature Flag state. Preview only reaches staff."),
+        preview: bool.merge(description: "True when the viewer can use it only because they are staff (Preview)."),
+        hidden: bool.merge(description: "The member hid this Feature from their view of the website."),
+        website: { type: :array, items: str, description: "Where the Feature shows up on the website." },
+        _required: %w[key name state preview hidden website]
+      ),
+      FeaturePreferences: obj(
+        user_id: str,
+        hidden: { type: :array, items: str,
+                  description: "Every Feature key the member hid, in registry order, including ones whose " \
+                               "Feature Flag currently hides them (a preference survives any flag change)." },
+        show_preview_features: bool(nullable: true).merge(
+          description: "Staff only: show Preview Features on the website (on by default). Null for anyone " \
+                       "who is not an Admin or Superadmin."
+        ),
+        features: array_of("FeaturePreference").merge(
+          description: "The Features the member may hide, in registry order: every hideable Feature they can " \
+                       "use (Live, plus Preview for staff). Empty when there is none, e.g. no hideable Feature is Live."
+        ),
+        _required: %w[user_id hidden show_preview_features features]
+      ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,
         created_at: ts, created_by: str(nullable: true)

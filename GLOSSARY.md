@@ -80,3 +80,33 @@ _Avoid_: Mod (in written docs), staff (when meaning only moderators)
 **Superadmin**:
 A member holding the club's dev role, trusted with actions that speak for the bot or change other members' records.
 _Avoid_: Owner, root, dev (when meaning the permission level rather than the role)
+
+## Features
+
+**Feature**:
+A part of the club's bot and website that staff turn on and off as one unit, covering its pages, commands and automated posts wherever they appear. Utilities such as the dashboard, profiles and staff tools are not Features.
+_Avoid_: Module, section, area
+
+**Core Feature**:
+A Feature members cannot hide with a Feature Preference because the club depends on it: the game index, voting and GOTM, and each member's backlog, collection, now playing and completions.
+_Avoid_: Required feature, default feature
+
+**Feature Flag**:
+The staff setting that decides who can use a part of the club's bot and website. It is always in one of three states: Off, Preview or Live. Only Admins and Superadmins can change it.
+_Avoid_: Toggle, switch, setting, flag (when meaning a Feature Preference)
+
+**Off**:
+The Feature Flag state in which nobody can use the feature, staff included, and its automated activity is paused.
+_Avoid_: Disabled, killed
+
+**Preview**:
+The Feature Flag state in which only Admins and Superadmins can use the feature, and anything it would post publicly goes to a staff test channel instead.
+_Avoid_: Beta, staff-only, hidden
+
+**Live**:
+The Feature Flag state in which every member can use the feature.
+_Avoid_: Public, enabled, on
+
+**Feature Preference**:
+A member's choice to hide a Live Feature that is not a Core Feature from their own view of the website. It removes the Feature everywhere it appears for them, including its sections inside other pages, but never blocks a direct link to it, and it can never make visible a Feature that its Feature Flag hides.
+_Avoid_: Feature flag, setting, opt-out

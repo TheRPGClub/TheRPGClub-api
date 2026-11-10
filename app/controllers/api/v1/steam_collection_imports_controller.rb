@@ -11,6 +11,8 @@ module Api
     # counts as the owner, per `require_owner!`) — this is private per-user
     # working data.
     class SteamCollectionImportsController < ApplicationController
+      feature :collection
+
       include TestModeRollback
       include CollectionImportReview
 

@@ -75,12 +75,16 @@ RSpec.describe "api/v1/public/winners behavior", type: :request do
       expect(items.map { |item| item.fetch("game_id") }).to eq([ gotm.gamedb_game_id ])
     end
 
-    it "is publicly cacheable for ten minutes" do
+    # Shared caches keep it one minute, so the winners leave the landing page
+    # within a minute of Voting & GOTM leaving Live; the API's own cache
+    # (ten minutes) is only read while it is Live.
+    it "is publicly cacheable for one minute" do
       create(:gotm_entry, round_number: 1)
 
       get "/api/v1/public/winners"
 
-      expect(response.headers["Cache-Control"]).to include("public", "max-age=600")
+      expect(response.headers["Cache-Control"]).to include("public", "max-age=60")
+      expect(response.headers["Cache-Control"]).not_to include("max-age=600")
     end
 
     it "serves the cached payload until a newer round busts it" do
@@ -96,6 +100,35 @@ RSpec.describe "api/v1/public/winners behavior", type: :request do
       get "/api/v1/public/winners"
       expect(items.map { |item| item.fetch("round_number") }).to eq([ 2, 1 ])
       expect(items.last.fetch("title")).to eq("Renamed")
+    end
+
+    # Only a Live Feature is public: while Voting & GOTM is in Preview the
+    # feed answers staff only, so nothing may keep that answer for others.
+    context "while Voting & GOTM is in Preview" do
+      let(:staff_headers) { auth_headers_for(create(:user, role_admin: true)) }
+
+      before { set_feature_flag("voting_gotm", "preview") }
+
+      it "answers staff without marking the answer cacheable by shared caches" do
+        create(:gotm_entry, round_number: 1)
+
+        get "/api/v1/public/winners", headers: staff_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(response.headers["Cache-Control"]).not_to include("public")
+        expect(response.headers["Cache-Control"]).to include("no-store")
+      end
+
+      it "neither serves nor keeps the cached payload" do
+        allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+        entry = create(:gotm_entry, round_number: 1)
+
+        get "/api/v1/public/winners", headers: staff_headers
+        entry.game.update!(title: "Renamed")
+        get "/api/v1/public/winners", headers: staff_headers
+
+        expect(items.first.fetch("title")).to eq("Renamed")
+      end
     end
 
     it "returns an empty list when there are no rounds" do

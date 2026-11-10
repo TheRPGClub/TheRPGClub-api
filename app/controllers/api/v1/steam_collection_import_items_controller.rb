@@ -6,6 +6,8 @@ module Api
     # app/playtime fields plus the resolved match and outcome once the bot's
     # matcher has run an app. Owner-only, resolved through the parent import.
     class SteamCollectionImportItemsController < ApplicationController
+      feature :collection
+
       include TestModeRollback
       include CollectionImportReview
       include ImportItemActions

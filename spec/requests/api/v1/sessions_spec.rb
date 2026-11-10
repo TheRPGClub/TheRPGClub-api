@@ -47,8 +47,35 @@ RSpec.describe 'api/v1/sessions', type: :request do
               dev: { type: :boolean },
               longstanding: { type: :boolean }
             }
+          },
+          features: {
+            type: :array,
+            description: 'The Features this viewer may see, in registry order (Features::Access). ' \
+                         'Admins and Superadmins get every Feature in every state; anyone else gets ' \
+                         'only Live Features, so a Preview or Off Feature never reaches a member. A ' \
+                         'Feature with no stored Feature Flag state reads as Preview.',
+            items: {
+              type: :object,
+              properties: {
+                key: { type: :string, example: 'reviews' },
+                name: { type: :string, example: 'Reviews' },
+                state: { type: :string, enum: %w[off preview live] },
+                hideable: { type: :boolean, description: 'False for a Core Feature, which members cannot hide.' },
+                shown: {
+                  type: :boolean,
+                  description: 'Whether the website shows this Feature to the viewer: they can use it, have not ' \
+                               'hidden it with a Feature Preference, and, for staff with "show Preview features" ' \
+                               'off, it is not in Preview. A hidden Feature stays listed with `shown: false`.'
+                },
+                preview: {
+                  type: :boolean,
+                  description: 'True when the viewer sees the Feature only because they are staff (Preview).'
+                }
+              },
+              required: %w[key name state hideable shown preview]
+            }
           }
-        }, required: %w[principal]
+        }, required: %w[principal features]
       end
 
       response '401', 'unauthenticated' do

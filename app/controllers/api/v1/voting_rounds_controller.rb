@@ -7,6 +7,8 @@ module Api
     # admin/service. Nothing creates rounds by hand: deciding a round schedules
     # the next one.
     class VotingRoundsController < ApplicationController
+      feature :voting_gotm
+
       before_action :require_admin_or_service!, only: %i[update resolve_tie publish_results repost_panels]
 
       # Rescheduling fields. Moving the open without a close keeps the default

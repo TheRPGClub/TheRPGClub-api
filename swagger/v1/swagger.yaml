@@ -3,8 +3,11 @@ openapi: 3.0.1
 info:
   title: The RPG Club API
   version: v1
-  description: Backend API for The RPG Club. Authentication is performed with a bearer
+  description: 'Backend API for The RPG Club. Authentication is performed with a bearer
     `UserSessionToken` issued after Discord OAuth, or a service token for the bot.
+    Endpoints that belong to a Feature answer 404 `{ "error": "not_found" }` to a
+    member whose Feature Flag does not let them use it (Preview: Admins and Superadmins
+    only; Off: nobody); the service token is not gated. The session lists the Features.'
 servers:
 - url: "{host}"
   description: Development
@@ -594,13 +597,12 @@ components:
         journal:
           type: integer
       required:
-      - now_playing
       - favorites
-      - reviews
-      - completions
-      - backlog
-      - collections
-      - journal
+      description: 'Each count but `favorites` belongs to a Feature (now_playing:
+        Now Playing, reviews: Reviews, completions: Game Completions, backlog: Backlog,
+        collections: Collection, journal: Journals) and is left out when the viewer
+        cannot use that Feature (Preview: staff only; Off: nobody). The service token
+        gets every count.'
     User:
       allOf:
       - "$ref": "#/components/schemas/UserSummary"
@@ -634,6 +636,9 @@ components:
               "$ref": "#/components/schemas/JournaledGame"
           counts:
             "$ref": "#/components/schemas/UserCounts"
+        description: The Feature-owned previews (now_playing, reviews, completions,
+          journal) are left out, like their `counts`, when the viewer cannot use that
+          Feature.
     UserWithSocials:
       allOf:
       - "$ref": "#/components/schemas/UserSummary"
@@ -669,6 +674,147 @@ components:
       required:
       - user_id
       - membership
+    FeatureAccess:
+      type: object
+      properties:
+        user_id:
+          type: string
+        staff:
+          type: boolean
+          description: Admin or Superadmin by the member's stored roles. False for
+            a Discord user with no member record.
+        features:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FeatureAccessEntry"
+          description: Every Feature in registry order, whatever its state.
+      required:
+      - user_id
+      - staff
+      - features
+    FeatureAccessEntry:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+          description: The Feature Flag state; a Feature with no stored state reads
+            as preview.
+        can_use:
+          type: boolean
+          description: 'Live: everyone. Preview: staff only. Off: nobody.'
+        preview:
+          type: boolean
+          description: True when the user can use the Feature only because they are
+            staff (Preview), so the bot adds its Preview note.
+      required:
+      - key
+      - name
+      - state
+      - can_use
+      - preview
+    FeatureFlagEntry:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+          description: The Feature Flag state; a Feature with no stored state reads
+            as preview.
+        core:
+          type: boolean
+          description: A Core Feature, which members cannot hide.
+        hideable:
+          type: boolean
+          description: Members may hide it with a Feature Preference (not Core).
+        coverage:
+          type: object
+          properties:
+            website:
+              type: array
+              items:
+                type: string
+              description: Pages and sections on the website.
+            bot:
+              type: array
+              items:
+                type: string
+              description: Bot commands.
+            posts:
+              type: array
+              items:
+                type: string
+              description: Automated posts.
+          required:
+          - website
+          - bot
+          - posts
+        last_change:
+          allOf:
+          - "$ref": "#/components/schemas/FeatureFlagLastChange"
+          nullable: true
+          description: The latest logged change; null when the Feature has never been
+            set.
+      required:
+      - key
+      - name
+      - state
+      - core
+      - hideable
+      - coverage
+      - last_change
+    FeatureFlagLastChange:
+      type: object
+      properties:
+        from_state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+          description: The state it read as before (preview when it had no stored
+            state).
+        to_state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+        changed_by:
+          type: string
+          description: The acting member's Discord user id, or `system` (the seed).
+        changed_by_name:
+          type: string
+          nullable: true
+          description: The member's display name; null for `system`, or a member with
+            no record.
+        reason:
+          type: string
+          nullable: true
+        changed_at:
+          type: string
+          format: date-time
+      required:
+      - from_state
+      - to_state
+      - changed_by
+      - changed_by_name
+      - reason
+      - changed_at
     MarkDepartedResult:
       type: object
       properties:
@@ -2537,6 +2683,7 @@ components:
           - say
           - memberscan
           - presence_set
+          - feature_flag_changed
         summary:
           type: string
           maxLength: 200
@@ -2776,12 +2923,16 @@ components:
           - say
           - memberscan
           - presence_set
+          - feature_flag_changed
         summary:
           type: string
           maxLength: 200
         payload:
           type: object
-          description: Per kind; a breaking change gets a new kind name.
+          description: Per kind; a breaking change gets a new kind name. A kind that
+            posts publicly also carries `feature_key`, the key of the Feature that
+            owns the post (BotJob::PUBLIC_POST_FEATURES), so the bot can route it
+            by that Feature's Flag.
         status:
           type: string
           enum:
@@ -3119,6 +3270,69 @@ components:
       required:
       - user_id
       - notify_on_claim
+    FeaturePreference:
+      type: object
+      properties:
+        key:
+          type: string
+          example: reviews
+        name:
+          type: string
+          example: Reviews
+        state:
+          type: string
+          enum:
+          - preview
+          - live
+          description: The Feature Flag state. Preview only reaches staff.
+        preview:
+          type: boolean
+          description: True when the viewer can use it only because they are staff
+            (Preview).
+        hidden:
+          type: boolean
+          description: The member hid this Feature from their view of the website.
+        website:
+          type: array
+          items:
+            type: string
+          description: Where the Feature shows up on the website.
+      required:
+      - key
+      - name
+      - state
+      - preview
+      - hidden
+      - website
+    FeaturePreferences:
+      type: object
+      properties:
+        user_id:
+          type: string
+        hidden:
+          type: array
+          items:
+            type: string
+          description: Every Feature key the member hid, in registry order, including
+            ones whose Feature Flag currently hides them (a preference survives any
+            flag change).
+        show_preview_features:
+          type: boolean
+          nullable: true
+          description: 'Staff only: show Preview Features on the website (on by default).
+            Null for anyone who is not an Admin or Superadmin.'
+        features:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FeaturePreference"
+          description: 'The Features the member may hide, in registry order: every
+            hideable Feature they can use (Live, plus Preview for staff). Empty when
+            there is none, e.g. no hideable Feature is Live.'
+      required:
+      - user_id
+      - hidden
+      - show_preview_features
+      - features
     SearchSynonym:
       type: object
       properties:
@@ -4376,7 +4590,8 @@ paths:
         (or skipped as permanently failing) with `POST /achievements/highlights/ack`.
         Mask a `hidden` Achievement. `alerts` carries the PSN auth alert: post it
         while `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ack
-        it.'
+        it. `data` is empty while the Achievement Hub is Off; the held Highlights
+        are listed once it is back on.'
       responses:
         '200':
           description: pending Highlights and alerts
@@ -8692,8 +8907,9 @@ paths:
       summary: Front-page dashboard
       tags:
       - Dashboard
-      description: Returns the most recent Game of the Month (GOTM) and Non-Retro
-        GOTM entries used to populate the front page.
+      description: 'Returns the most recent Game of the Month (GOTM) and Non-Retro
+        GOTM entries used to populate the front page. Both lists belong to the Voting
+        & GOTM Feature: a caller who cannot use it gets `data: {}`.'
       parameters:
       - name: limit
         in: query
@@ -9202,6 +9418,335 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/feature_access":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member acting through the bot.
+    get:
+      summary: Look up a Discord user's Feature access
+      tags:
+      - Features
+      description: 'Service-only. For the bot''s feature gate: every Feature''s Feature
+        Flag state and whether this Discord user can use it (Live: everyone; Preview:
+        Admins and Superadmins; Off: nobody). Staff is read from the member''s stored
+        roles, Admin or the dev role (Superadmin), which sign-in and the bot''s role
+        reports (`PUT /users/{user_id}/roles`) keep current. A Discord user with no
+        member record is not staff. Feature Preferences never affect this lookup.'
+      responses:
+        '200':
+          description: Feature access for the user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeatureAccess"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the service principal'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/feature_preferences":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's Feature Preferences
+      tags:
+      - Features
+      description: The hideable Features the member hid from their own view of the
+        website, the Features they may hide (with where each shows up), and, for an
+        Admin or Superadmin, the "show Preview features" setting. Only hidden Features
+        are stored, so everything is shown by default. Only the member themself may
+        read it; another member, staff and the bot's service token get 403. Preferences
+        only shape the session's `shown` values; they never block an endpoint.
+      responses:
+        '200':
+          description: feature preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeaturePreferences"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a member's Feature Preferences
+      tags:
+      - Features
+      description: Hides or shows the named Features and, for an Admin or Superadmin,
+        sets the "show Preview features" setting. Features not named are left as they
+        were. Hiding a Core Feature, naming an unknown Feature, or a non-staff member
+        sending `show_preview_features` returns 422 and changes nothing. Only the
+        member themself may update it. Returns the whole document, as GET does.
+      parameters: []
+      responses:
+        '200':
+          description: updated feature preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeaturePreferences"
+                required:
+                - data
+        '422':
+          description: Core Feature, unknown Feature, bad value, or show_preview_features
+            from a non-staff member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: At least one of `hidden` and `show_preview_features`.
+                  properties:
+                    hidden:
+                      type: object
+                      description: Feature key to true (hide it) or false (show it
+                        again).
+                      additionalProperties:
+                        type: boolean
+                      example:
+                        journals: true
+                        reviews: false
+                    show_preview_features:
+                      type: boolean
+                      description: 'Admins and Superadmins only: show Preview Features
+                        on the website.'
+              required:
+              - data
+        required: true
+  "/api/v1/features":
+    get:
+      summary: List every Feature with its Feature Flag
+      tags:
+      - Features
+      description: Every Feature in registry order with its Feature Flag state (off,
+        preview, live), whether it is Core or hideable, what it covers on the website,
+        in the bot and in automated posts, and its last change. Admins and Superadmins
+        only. A member signs in with their session. The bot calls with the service
+        token and names the acting Discord user (`acting_user_id`); the same rule
+        then applies to that member's stored roles (Admin, or the dev role for Superadmin),
+        never to the token. Moderators, members and a Discord user with no member
+        record get 403.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Bot (service token) only, and then required: the Discord user
+          acting through the bot.'
+      responses:
+        '200':
+          description: every Feature
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/FeatureFlagEntry"
+                required:
+                - data
+        '400':
+          description: the bot did not name the acting Discord user
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not an Admin or Superadmin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/features/{key}":
+    parameters:
+    - name: key
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+        - game_index
+        - voting_gotm
+        - backlog
+        - collection
+        - now_playing
+        - game_completions
+        - reviews
+        - achievement_hub
+        - giveaways
+        - journals
+        - suggestions
+      description: The Feature key.
+    patch:
+      summary: Set a Feature's Feature Flag
+      tags:
+      - Features
+      description: 'Sets the Feature Off, Preview or Live, with an optional reason.
+        Each change is written to the change log (who, from, to, reason, when) and
+        enqueues a `feature_flag_changed` bot job that the bot posts in the admin
+        channel. Its payload: `{ key, name, from_state, to_state, changed_by, changed_by_name,
+        reason }` (no `feature_key`: it is not routed by the Feature''s state). Setting
+        the state the Feature already has (a Feature with no stored state reads as
+        preview) changes, logs and announces nothing and answers `meta.changed: false`.
+        Leaving Off for Achievement Hub starts achievement sync at once. Admins and
+        Superadmins only. A member signs in with their session. The bot calls with
+        the service token and names the acting Discord user (`acting_user_id`); the
+        same rule then applies to that member''s stored roles (Admin, or the dev role
+        for Superadmin), never to the token. Moderators, members and a Discord user
+        with no member record get 403.'
+      parameters: []
+      responses:
+        '200':
+          description: the Feature's entry after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeatureFlagEntry"
+                  meta:
+                    type: object
+                    properties:
+                      changed:
+                        type: boolean
+                        description: False when the Feature already had that state.
+                    required:
+                    - changed
+                required:
+                - data
+                - meta
+        '400':
+          description: missing `data`, or the bot did not name the acting Discord
+            user
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not an Admin or Superadmin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not a Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid or missing `state`, or `reason` too long
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    state:
+                      type: string
+                      enum:
+                      - 'off'
+                      - preview
+                      - live
+                    reason:
+                      type: string
+                      maxLength: 500
+                      nullable: true
+                      description: Why, shown on the desk and in the announcement.
+                    acting_user_id:
+                      type: string
+                      description: 'Bot (service token) only, and then required: the
+                        Discord user acting through the bot. Logged as the changer.'
+                  required:
+                  - state
+              required:
+              - data
+        required: true
   "/api/v1/franchises":
     get:
       summary: List franchises
@@ -9943,10 +10488,11 @@ paths:
         other gets 409. A Discord caller claims as themselves; the bot service token
         claims on behalf of the `claimed_by_user_id` supplied in the body. A member''s
         claim queues two bot jobs: `giveaway_claim_notice` (payload `{ key_id, claimed_by_user_id,
-        donor_user_id, game_title, platform }`; the bot DMs the key, logs the claim
-        and notifies the donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id
-        }`). `meta.claim_notice_job_id` is the notice job, for polling GET /api/v1/bot_jobs/{id}.
-        The service token''s claims queue nothing.'
+        donor_user_id, game_title, platform, feature_key: "giveaways" }`; the bot
+        DMs the key, logs the claim and notifies the donor) and `giveaway_hub_refresh`
+        (`{ reason: "claim", key_id, feature_key: "giveaways" }`). `meta.claim_notice_job_id`
+        is the notice job, for polling GET /api/v1/bot_jobs/{id}. The service token''s
+        claims queue nothing.'
       parameters: []
       responses:
         '200':
@@ -10124,11 +10670,12 @@ paths:
       summary: List games
       tags:
       - Games
-      description: Returns games from the local GameDB. Supports search, a `winner`
+      description: 'Returns games from the local GameDB. Supports search, a `winner`
         filter for GOTM / Non-Retro GOTM history, and taxonomy filters (genre/engine/theme/perspective/mode/franchise/company).
         Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`)
         to match any of several. Discover valid ids via the `/genres`, `/themes`,
-        … endpoints.
+        … endpoints. Behind the Game Index Feature Flag, except a search (`q` present):
+        the game picker other Features use stays open.'
       parameters:
       - name: q
         in: query
@@ -10299,8 +10846,9 @@ paths:
       tags:
       - Games
       description: 'Any signed-in Discord user, roles or not (anyone who can donate
-        a game key), and the service. Creates a game from IGDB by `igdb_id`: fetches
-        the full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
+        a game key), and the service, whatever the Game Index Feature Flag (other
+        Features import games). Creates a game from IGDB by `igdb_id`: fetches the
+        full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
         perspectives, modes, engines, franchises, platforms, developer/publisher companies,
         collection) and releases (one per platform, earliest dated; Japan-only releases
         are skipped; `format` is left null), then imports its cover/artwork/logo images
@@ -10400,7 +10948,8 @@ paths:
       tags:
       - Games
       description: Returns a game with related GOTM/NR-GOTM month info plus now-playing
-        and completion previews.
+        and completion previews. `now_playing` is left out for a caller who cannot
+        use the Now Playing Feature, `completions` for Game Completions (Feature Flags).
       responses:
         '200':
           description: game detail
@@ -10747,7 +11296,10 @@ paths:
         the full (unpaginated) now-playing / completions / threads lists, the resolved
         primary image (nullable), and the GOTM/NR-GOTM associations, collection owners
         and HowLongToBeat cache row (nullable). Collapses six HTTP calls plus three
-        direct-SQL reads into one request.'
+        direct-SQL reads into one request. A section of a Feature the caller cannot
+        use is left out (Feature Flags): `now_playing` (Now Playing), `completions`
+        (Game Completions), `collection_owners` (Collection), `associations` (Voting
+        & GOTM). The service token gets every section.'
       responses:
         '200':
           description: game profile
@@ -16716,8 +17268,9 @@ paths:
         content only: no member data, Reddit URLs or Discord ids. One item per winning
         game, newest round first, GOTM before NR-GOTM, `game_index` order within a
         track. NR-GOTM "N/A" placeholders are omitted. `meta.rounds` is the number
-        of rounds covered. Cached for 10 minutes (`Cache-Control: public, max-age=600`);
-        a new round busts the server-side cache.'
+        of rounds covered. Cached for 10 minutes in the API and 1 minute in shared
+        caches (`Cache-Control: public, max-age=60`); a new round busts the server-side
+        cache.'
       security: []
       responses:
         '200':
@@ -16726,7 +17279,7 @@ paths:
             Cache-Control:
               schema:
                 type: string
-              description: max-age=600, public
+              description: max-age=60, public
           content:
             application/json:
               schema:
@@ -19315,8 +19868,53 @@ paths:
                         type: boolean
                       longstanding:
                         type: boolean
+                  features:
+                    type: array
+                    description: The Features this viewer may see, in registry order
+                      (Features::Access). Admins and Superadmins get every Feature
+                      in every state; anyone else gets only Live Features, so a Preview
+                      or Off Feature never reaches a member. A Feature with no stored
+                      Feature Flag state reads as Preview.
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          example: reviews
+                        name:
+                          type: string
+                          example: Reviews
+                        state:
+                          type: string
+                          enum:
+                          - 'off'
+                          - preview
+                          - live
+                        hideable:
+                          type: boolean
+                          description: False for a Core Feature, which members cannot
+                            hide.
+                        shown:
+                          type: boolean
+                          description: 'Whether the website shows this Feature to
+                            the viewer: they can use it, have not hidden it with a
+                            Feature Preference, and, for staff with "show Preview
+                            features" off, it is not in Preview. A hidden Feature
+                            stays listed with `shown: false`.'
+                        preview:
+                          type: boolean
+                          description: True when the viewer sees the Feature only
+                            because they are staff (Preview).
+                      required:
+                      - key
+                      - name
+                      - state
+                      - hideable
+                      - shown
+                      - preview
                 required:
                 - principal
+                - features
         '401':
           description: unauthenticated
           content:
@@ -21370,8 +21968,9 @@ paths:
         is required; everything else is optional. Always created Pending. A member
         is recorded as the author (body `created_by` and `created_by_name` are ignored)
         and their submission enqueues a `suggestion_submitted` bot job (payload `{
-        suggestion_id, created_by }`) so the bot pings the bot dev. A service create
-        enqueues nothing: the bot pings inline for its own submissions.'
+        suggestion_id, created_by, feature_key: "suggestions" }`) so the bot pings
+        the bot dev. A service create enqueues nothing: the bot pings inline for its
+        own submissions.'
       parameters: []
       responses:
         '201':
@@ -23083,8 +23682,9 @@ paths:
                       items:
                         type: string
                       description: Optional. The member's current Discord role IDs.
-                        When present, replaces the Admin, Moderator, Regulars and
-                        Members flags as `PUT /users/{user_id}/roles` does.
+                        When present, replaces the Superadmin (dev), Admin, Moderator,
+                        Regulars and Members flags as `PUT /users/{user_id}/roles`
+                        does.
                   required:
                   - discord_id
               required:
@@ -23153,11 +23753,13 @@ paths:
       tags:
       - Users
       description: Service-only. The bot reports a member's current Discord role IDs
-        when Discord sends a guild member update. The Admin, Moderator, Regulars and
-        Members flags are replaced with the ones those roles grant (the same derivation
-        as sign-in), so `GET /session` membership and the staff gates follow the change
-        straight away. An empty list clears every flag. Superadmin (`dev`) and Longstanding
-        stay on the member's session token and are not changed here.
+        when Discord sends a guild member update. The Superadmin (dev), Admin, Moderator,
+        Regulars and Members flags are replaced with the ones those roles grant (the
+        same derivation as sign-in), so `GET /session` membership, the staff gates
+        and the bot's Feature access lookup follow the change straight away. An empty
+        list clears every flag. The stored dev role is read only by the Feature access
+        lookup; the session's `dev` flag and Longstanding stay on the member's session
+        token.
       parameters: []
       responses:
         '200':

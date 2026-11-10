@@ -11,7 +11,8 @@ RSpec.describe 'api/v1/achievements highlights', type: :request do
                   'excluded. Post them, then ack the ids posted (or skipped as permanently failing) with ' \
                   '`POST /achievements/highlights/ack`. Mask a `hidden` Achievement. `alerts` carries the PSN ' \
                   'auth alert: post it while `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ' \
-                  'ack it.'
+                  'ack it. `data` is empty while the Achievement Hub is Off; the held Highlights are listed once ' \
+                  'it is back on.'
       produces 'application/json'
 
       response '200', 'pending Highlights and alerts' do

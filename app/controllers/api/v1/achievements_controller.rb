@@ -7,6 +7,8 @@ module Api
     # any signed-in principal. Departed members, placeholder progress rows and
     # removed Achievements are excluded (Achievements::Reads).
     class AchievementsController < ApplicationController
+      feature :achievement_hub
+
       include AchievementReadParams
 
       # The community feed: `view=latest` (default) groups Unlocks into cards

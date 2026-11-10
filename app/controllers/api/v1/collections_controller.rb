@@ -3,6 +3,8 @@
 module Api
   module V1
     class CollectionsController < ApplicationController
+      feature :collection
+
       before_action :require_owner!, only: %i[create update destroy]
 
       # Caller-settable columns. `user_id` comes from the path (or the existing

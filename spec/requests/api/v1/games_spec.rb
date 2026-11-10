@@ -44,7 +44,8 @@ RSpec.describe 'api/v1/games', type: :request do
       description 'Returns games from the local GameDB. Supports search, a `winner` filter for GOTM / ' \
                   'Non-Retro GOTM history, and taxonomy filters (genre/engine/theme/perspective/mode/franchise/company). ' \
                   'Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`) to match any of several. ' \
-                  'Discover valid ids via the `/genres`, `/themes`, … endpoints.'
+                  'Discover valid ids via the `/genres`, `/themes`, … endpoints. Behind the Game Index Feature ' \
+                  'Flag, except a search (`q` present): the game picker other Features use stays open.'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false, description: 'Full-text search against game titles.'
       parameter name: :winner, in: :query, schema: { type: :string, enum: %w[gotm nr_gotm any] }, required: false,
@@ -98,7 +99,7 @@ RSpec.describe 'api/v1/games', type: :request do
     post 'Create a game from IGDB' do
       tags 'Games'
       description 'Any signed-in Discord user, roles or not (anyone who can donate a game key), and ' \
-                  'the service. Creates a game from IGDB by `igdb_id`: fetches the full IGDB ' \
+                  'the service, whatever the Game Index Feature Flag (other Features import games). Creates a game from IGDB by `igdb_id`: fetches the full IGDB ' \
                   'payload, upserts the game row plus its taxonomy (genres, themes, perspectives, modes, ' \
                   'engines, franchises, platforms, developer/publisher companies, collection) and releases ' \
                   '(one per platform, earliest dated; Japan-only releases are skipped; `format` is left ' \
@@ -163,7 +164,9 @@ RSpec.describe 'api/v1/games', type: :request do
 
     get 'Show game' do
       tags 'Games'
-      description 'Returns a game with related GOTM/NR-GOTM month info plus now-playing and completion previews.'
+      description 'Returns a game with related GOTM/NR-GOTM month info plus now-playing and completion previews. ' \
+                  '`now_playing` is left out for a caller who cannot use the Now Playing Feature, `completions` ' \
+                  'for Game Completions (Feature Flags).'
       produces 'application/json'
 
       response '200', 'game detail' do
@@ -359,7 +362,10 @@ RSpec.describe 'api/v1/games', type: :request do
                   '`GET /api/v1/games/{id}`), its relations (same shape as `/relations`), the full ' \
                   '(unpaginated) now-playing / completions / threads lists, the resolved primary image ' \
                   '(nullable), and the GOTM/NR-GOTM associations, collection owners and HowLongToBeat ' \
-                  'cache row (nullable). Collapses six HTTP calls plus three direct-SQL reads into one request.'
+                  'cache row (nullable). Collapses six HTTP calls plus three direct-SQL reads into one request. ' \
+                  'A section of a Feature the caller cannot use is left out (Feature Flags): `now_playing` ' \
+                  '(Now Playing), `completions` (Game Completions), `collection_owners` (Collection), ' \
+                  '`associations` (Voting & GOTM). The service token gets every section.'
       produces 'application/json'
 
       response '200', 'game profile' do

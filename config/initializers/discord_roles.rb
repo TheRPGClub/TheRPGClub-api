@@ -13,9 +13,12 @@ module DiscordRoles
   MEMBER = "747520789003239530"
 
   # The rpg_club_users role flag columns that follow Discord role membership,
-  # keyed to the role each one mirrors. Superadmin (`dev`) and Longstanding
-  # stay on the session token, so they are not listed here.
+  # keyed to the role each one mirrors. `role_dev` (Superadmin) is stored so
+  # the API can tell a Superadmin acting through the bot (spec #347); the
+  # session token keeps its own `dev` flag for the session's staff gates.
+  # Longstanding stays on the session token only.
   USER_FLAG_ROLES = {
+    "role_dev" => DEV,
     "role_admin" => ADMIN,
     "role_moderator" => MODERATOR,
     "role_regular" => REGULAR,

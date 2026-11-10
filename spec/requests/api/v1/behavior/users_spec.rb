@@ -156,6 +156,44 @@ RSpec.describe "api/v1/users behavior", type: :request do
       expect(data.fetch("journal")).to eq([])
     end
 
+    # The profile's previews and counts that belong to a Feature follow its
+    # Feature Flag (spec #347, docs/adr/0005): left out for a viewer who
+    # cannot use that Feature. Favorites belong to no Feature.
+    describe "Feature-owned previews and counts" do
+      before do
+        set_feature_flag("reviews", "preview")
+        set_feature_flag("journals", "off")
+        set_feature_flag("game_completions", "off")
+      end
+
+      it "leaves out the previews and counts of Features a member cannot use" do
+        get "/api/v1/users/#{user.user_id}", headers: auth_headers_for(create(:user))
+
+        data = json.fetch("data")
+        expect(data.keys).to include("now_playing", "favorites")
+        expect(data.keys).not_to include("reviews", "journal", "completions")
+        expect(data.fetch("counts").keys).to contain_exactly("now_playing", "favorites", "backlog", "collections")
+      end
+
+      it "keeps Preview Features for staff, but nobody gets an Off Feature's" do
+        get "/api/v1/users/#{user.user_id}", headers: auth_headers_for(create(:user, role_admin: true))
+
+        data = json.fetch("data")
+        expect(data.keys).to include("reviews")
+        expect(data.keys).not_to include("journal", "completions")
+        expect(data.fetch("counts").keys)
+          .to contain_exactly("now_playing", "favorites", "reviews", "backlog", "collections")
+      end
+
+      it "gives the bot's service token everything, as the feature gate does" do
+        get "/api/v1/users/#{user.user_id}", headers: service_headers
+
+        data = json.fetch("data")
+        expect(data.keys).to include("reviews", "journal", "completions")
+        expect(data.fetch("counts").keys).to include("reviews", "journal", "completions")
+      end
+    end
+
     it "caps each preview list at preview_limit while counts stay totals" do
       UserGameFavorite.create!(user_id: user.user_id, gamedb_game_id: game.game_id, sort_order: 1)
       UserGameFavorite.create!(user_id: user.user_id, gamedb_game_id: create(:game).game_id, sort_order: 2)

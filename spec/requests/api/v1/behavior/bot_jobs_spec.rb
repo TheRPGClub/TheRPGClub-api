@@ -41,11 +41,43 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data").sole).to include(
         "id" => job.id, "kind" => "giveaway_hub_refresh", "status" => "claimed", "attempts" => 1,
-        "payload" => { "reason" => "donate" }, "requested_by_user_id" => requester.user_id
+        "payload" => { "reason" => "donate", "feature_key" => "giveaways" },
+        "requested_by_user_id" => requester.user_id
       )
 
       post "/api/v1/bot_jobs/claim", headers: service_headers
       expect(json.fetch("data")).to be_empty
+    end
+
+    # Public posts carry the Feature that owns them, so the bot can route them
+    # by its Feature Flag (bot-dev channel in Preview, nowhere when Off).
+    {
+      "completion_announce" => "game_completions",
+      "nomination_deleted" => "voting_gotm",
+      "voting_results_publish" => "voting_gotm",
+      "voting_panels_repost" => "voting_gotm",
+      "voting_tie_broken" => "voting_gotm",
+      "suggestion_outcome" => "suggestions",
+      "suggestion_submitted" => "suggestions",
+      "giveaway_hub_refresh" => "giveaways",
+      "giveaway_claim_notice" => "giveaways"
+    }.each do |kind, feature_key|
+      it "gives a #{kind} job its Feature key, #{feature_key}" do
+        enqueue(kind: kind, payload: { round_number: 7 })
+
+        expect(poll.sole.fetch("payload")).to eq("round_number" => 7, "feature_key" => feature_key)
+      end
+    end
+
+    %w[
+      voting_poll_wakeup gotm_cache_reload
+      live_event_create say memberscan presence_set
+    ].each do |kind|
+      it "gives a #{kind} job, which posts nothing publicly, no Feature key" do
+        enqueue(kind: kind, payload: { round_number: 7 })
+
+        expect(poll.sole.fetch("payload")).to eq("round_number" => 7)
+      end
     end
 
     it "makes no Postgres queries while the signal is down" do

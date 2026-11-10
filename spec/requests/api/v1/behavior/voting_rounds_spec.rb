@@ -190,7 +190,8 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
       expect(announce).to have_attributes(kind: "voting_tie_broken", requested_by_user_id: admin.user_id,
         summary: "Announce the GOTM tie break for round #{base}: #{winner.title}",
         payload: { "round_number" => base, "category" => "gotm",
-                   "games" => [ { "game_id" => winner.game_id, "title" => winner.title } ] })
+                   "games" => [ { "game_id" => winner.game_id, "title" => winner.title } ],
+                   "feature_key" => "voting_gotm" })
       expect(wakeup).to have_attributes(kind: "voting_poll_wakeup",
         summary: "Wake the voting poller: the GOTM tie for round #{base} was broken")
     end
@@ -275,7 +276,7 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
       job = BotJob.sole
       expect(job).to have_attributes(kind: "voting_results_publish", requested_by_user_id: admin.user_id,
         summary: "Publish the results of round #{base} (November 2026)",
-        payload: { "round_number" => base, "month_label" => "November 2026" })
+        payload: { "round_number" => base, "month_label" => "November 2026", "feature_key" => "voting_gotm" })
       expect(json.fetch("data")).to include("id" => job.id, "kind" => "voting_results_publish", "status" => "queued")
       expect(json.fetch("data")).not_to have_key("payload")
     end
@@ -353,7 +354,7 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
       travel_to(ended_at) { publish(auth_headers_for(admin), old) }
 
       expect(response).to have_http_status(:accepted)
-      expect(BotJob.sole.payload).to eq("round_number" => old, "month_label" => "March 2019")
+      expect(BotJob.sole.payload).to eq("round_number" => old, "month_label" => "March 2019", "feature_key" => "voting_gotm")
     end
 
     it "404s for a round that never existed" do
@@ -385,7 +386,7 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
 
       job = BotJob.sole
       expect(job).to have_attributes(kind: "voting_panels_repost", requested_by_user_id: admin.user_id,
-        summary: "Repost the voting panels for round #{base}", payload: { "round_number" => base })
+        summary: "Repost the voting panels for round #{base}", payload: { "round_number" => base, "feature_key" => "voting_gotm" })
       expect(json.fetch("data")).to include("id" => job.id, "kind" => "voting_panels_repost")
     end
 

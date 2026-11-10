@@ -122,6 +122,23 @@ RSpec.describe "api/v1/dashboards behavior", type: :request do
       expect(json.fetch("meta")).to eq("limit" => 20)
     end
 
+    # The winners belong to Voting & GOTM (spec #347): the dashboard itself
+    # belongs to no Feature, so it answers without them.
+    it "leaves out the winners for a viewer who cannot use Voting & GOTM" do
+      set_feature_flag("voting_gotm", "preview")
+
+      get "/api/v1/dashboard", headers: auth_headers_for(create(:user, role_member: true))
+      expect(response).to have_http_status(:ok)
+      expect(json).to eq("data" => {}, "meta" => { "limit" => 10 })
+
+      get "/api/v1/dashboard", headers: auth_headers_for(create(:user, role_admin: true))
+      expect(json.fetch("data").keys).to contain_exactly("gotm", "nr_gotm")
+
+      set_feature_flag("voting_gotm", "off")
+      get "/api/v1/dashboard", headers: auth_headers_for(create(:user, role_admin: true))
+      expect(json.fetch("data")).to eq({})
+    end
+
     it "requires authentication" do
       get "/api/v1/dashboard"
 
