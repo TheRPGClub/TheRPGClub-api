@@ -2684,6 +2684,8 @@ components:
           - memberscan
           - presence_set
           - feature_flag_changed
+          - news_images_renew
+          - news_catch_up
         summary:
           type: string
           maxLength: 200
@@ -2900,6 +2902,52 @@ components:
       description: 'Post `content` in `channel_id`, or reply to `reply_to.message_id`
         there. Send it with `allowed_mentions` as given: plain user mentions only,
         never @everyone, @here or roles.'
+    NewsImagesRenewJobPayload:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: The News Item's Discord message id.
+        channel_id:
+          type: string
+          description: The channel or thread the message is in (a News Category's
+            thread, or the Game News Archive for an imported News Item).
+        feature_key:
+          type: string
+          enum:
+          - news_hub
+      required:
+      - message_id
+      - channel_id
+      - feature_key
+      description: Kind `news_images_renew`. The feed served this News Item with an
+        expired Discord image address. Fetch the message and record it again with
+        `PUT /api/v1/news_items/{message_id}` (fresh addresses and expiry times),
+        or `DELETE` the News Item when the message is gone. At most one is open per
+        message. Posts nothing.
+    NewsCatchUpJobPayload:
+      type: object
+      properties:
+        from_state:
+          type: string
+          enum:
+          - 'off'
+        to_state:
+          type: string
+          enum:
+          - preview
+          - live
+        feature_key:
+          type: string
+          enum:
+          - news_hub
+      required:
+      - from_state
+      - to_state
+      - feature_key
+      description: 'Kind `news_catch_up`. The News Hub''s Feature Flag went from Off
+        to Preview or Live: scan the News Categories'' threads for messages posted,
+        edited or deleted while it was Off. The lease is 30 minutes. Posts nothing.'
     BotJobClaim:
       type: object
       properties:
@@ -2924,15 +2972,19 @@ components:
           - memberscan
           - presence_set
           - feature_flag_changed
+          - news_images_renew
+          - news_catch_up
         summary:
           type: string
           maxLength: 200
         payload:
           type: object
-          description: Per kind; a breaking change gets a new kind name. A kind that
+          description: 'Per kind; a breaking change gets a new kind name. A kind that
             posts publicly also carries `feature_key`, the key of the Feature that
             owns the post (BotJob::PUBLIC_POST_FEATURES), so the bot can route it
-            by that Feature's Flag.
+            by that Feature''s Flag. A kind that does a Feature''s work without posting
+            carries it too (BotJob::FEATURE_WORK). Documented payloads: SayJobPayload,
+            NewsImagesRenewJobPayload, NewsCatchUpJobPayload.'
         status:
           type: string
           enum:
@@ -3569,7 +3621,7 @@ components:
           type: boolean
           description: 'True when the Discord address has expired and the bot has
             been asked to renew it: show a placeholder; the image is back on a later
-            load. Always false until image renewal ships (api#358).'
+            load.'
       required:
       - url
       - unavailable
@@ -15191,8 +15243,11 @@ paths:
         `meta` adds, for the page''s category rail, `category_counts` (every News
         Category''s count over the search alone) and `hidden_categories` (the switched-off
         keys). Each item names its author by their current member name, or by the
-        name recorded with the message when they have no member record. Belongs to
-        the News Hub Feature: a member who cannot use it (Preview: Admins and Superadmins
+        name recorded with the message when they have no member record. An image whose
+        Discord address has expired comes back unavailable (`url` null) and queues
+        a `news_images_renew` bot job for its message (one at a time per message);
+        a later load serves it once the bot has recorded fresh addresses. Belongs
+        to the News Hub Feature: a member who cannot use it (Preview: Admins and Superadmins
         only; Off: nobody) gets 404 `not_found`. The service token is not gated; the
         bot runs its own feature gate.'
       parameters:

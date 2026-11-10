@@ -3,7 +3,8 @@
 module Features
   # A staff member sets a Feature Flag (spec #347). In one transaction it sets
   # the state, writes the change log and enqueues the `feature_flag_changed`
-  # bot job the bot posts in the admin channel. Setting the state a Feature
+  # bot job the bot posts in the admin channel; a News Hub change away from
+  # Off also enqueues the bot's catch-up scan. Setting the state a Feature
   # already reads as (a Feature with no stored state reads as Preview) changes,
   # logs and announces nothing.
   #
@@ -33,7 +34,10 @@ module Features
 
     def call
       change = FeatureFlag.transaction do
-        FeatureFlag.change!(@feature.key, @state, by: @by, reason: @reason)&.tap { |logged| announce!(logged) }
+        FeatureFlag.change!(@feature.key, @state, by: @by, reason: @reason)&.tap do |logged|
+          announce!(logged)
+          queue_bot_work!(logged)
+        end
       rescue InvalidState => error
         raise Invalid, error.message
       end
@@ -60,6 +64,16 @@ module Features
         },
         requested_by: @by
       )
+    end
+
+    # Bot work a change starts, queued with the change: the News Hub leaving
+    # Off sends the bot to record what was posted while it was Off. A Feature
+    # with no stored state reads as Preview, so its first change never leaves
+    # Off.
+    def queue_bot_work!(change)
+      return unless @feature.key == "news_hub" && change.from_state == "off"
+
+      NewsHub::BotJobs.catch_up!(from_state: change.from_state, to_state: change.to_state, by: @by)
     end
 
     def display_name

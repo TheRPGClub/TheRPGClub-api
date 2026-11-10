@@ -20,6 +20,9 @@ module Api
       # (News Category Preferences, ticket #357). `q` searches link title and
       # comment. `meta` adds `category_counts` and `hidden_categories` for the
       # page's category rail.
+      #
+      # An image whose Discord address has expired is served as unavailable,
+      # and the bot is asked to renew it (NewsHub::BotJobs).
       def index
         categories = category_filter
         return if performed?
@@ -31,9 +34,12 @@ module Api
         scope = scope.where.not(category_key: hidden) if categories.empty? && hidden.any?
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
+        now = Time.current
+        NewsHub::BotJobs.renew_expired_images!(items, now: now)
 
         render json: {
-          data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items) }).serializable_hash,
+          data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items), now: now })
+            .serializable_hash,
           meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden)
         }
       end

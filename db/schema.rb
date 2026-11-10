@@ -81,6 +81,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_090357) do
     t.string "status", limit: 16, default: "queued", null: false
     t.string "summary", limit: 200, default: "", null: false
     t.datetime "updated_at", null: false
+    t.index "((payload ->> 'message_id'::text))", name: "ux_bot_jobs_one_open_news_images_renew", unique: true, where: "(((kind)::text = 'news_images_renew'::text) AND ((status)::text = ANY ((ARRAY['queued'::character varying, 'claimed'::character varying])::text[])))"
     t.index ["id"], name: "ix_bot_jobs_queued", where: "((status)::text = 'queued'::text)"
     t.index ["lease_expires_at"], name: "ix_bot_jobs_claimed", where: "((status)::text = 'claimed'::text)"
     t.index ["requested_by_user_id"], name: "index_bot_jobs_on_requested_by_user_id"

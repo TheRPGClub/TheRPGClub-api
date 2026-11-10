@@ -882,13 +882,34 @@ module OpenapiSchemas
           description: "The message to reply to (always in `channel_id`); null for a plain message."),
         allowed_mentions: obj(parse: { type: :array, items: str(enum: %w[users]) }, _required: %w[parse])
       ),
+      # The News Hub's bot job payloads (#358), as BotJobClaim.payload carries them.
+      NewsImagesRenewJobPayload: obj(
+        _description: "Kind `news_images_renew`. The feed served this News Item with an expired Discord image " \
+                      "address. Fetch the message and record it again with `PUT /api/v1/news_items/{message_id}` " \
+                      "(fresh addresses and expiry times), or `DELETE` the News Item when the message is gone. " \
+                      "At most one is open per message. Posts nothing.",
+        message_id: str.merge(description: "The News Item's Discord message id."),
+        channel_id: str.merge(description: "The channel or thread the message is in (a News Category's thread, " \
+                                           "or the Game News Archive for an imported News Item)."),
+        feature_key: str(enum: %w[news_hub])
+      ),
+      NewsCatchUpJobPayload: obj(
+        _description: "Kind `news_catch_up`. The News Hub's Feature Flag went from Off to Preview or Live: scan " \
+                      "the News Categories' threads for messages posted, edited or deleted while it was Off. " \
+                      "The lease is 30 minutes. Posts nothing.",
+        from_state: str(enum: %w[off]),
+        to_state: str(enum: %w[preview live]),
+        feature_key: str(enum: %w[news_hub])
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
         payload: json(nullable: false).merge(
           description: "Per kind; a breaking change gets a new kind name. A kind that posts publicly also " \
                        "carries `feature_key`, the key of the Feature that owns the post " \
-                       "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag."
+                       "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
+                       "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
+                       "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
@@ -1089,8 +1110,7 @@ module OpenapiSchemas
         url: str(nullable: true, description: "The image's Discord attachment address. Null when unavailable."),
         unavailable: bool.merge(
           description: "True when the Discord address has expired and the bot has been asked to renew it: show " \
-                       "a placeholder; the image is back on a later load. Always false until image renewal " \
-                       "ships (api#358)."
+                       "a placeholder; the image is back on a later load."
         ),
         _required: %w[url unavailable]
       ),

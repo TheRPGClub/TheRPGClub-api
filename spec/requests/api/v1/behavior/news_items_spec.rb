@@ -29,7 +29,7 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
         image_url: "https://example.test/img/er2.jpg"
       },
       images: [
-        { url: "https://cdn.discordapp.com/attachments/1/2/shot.png?ex=1", expires_at: "2026-11-10T18:30:00Z" }
+        { url: "https://cdn.discordapp.com/attachments/1/2/shot.png?ex=1", expires_at: "2099-11-10T18:30:00Z" }
       ]
     }.merge(overrides)
   end
@@ -94,8 +94,8 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
 
     it "records an image-only News Item and keeps its images in order" do
       record("3300000000000000003", link: nil, comment: "", images: [
-        { url: "https://cdn.discordapp.com/attachments/1/2/first.png", expires_at: "2026-11-10T18:30:00Z" },
-        { url: "https://cdn.discordapp.com/attachments/1/3/second.png", expires_at: "2026-11-10T18:30:00Z" }
+        { url: "https://cdn.discordapp.com/attachments/1/2/first.png", expires_at: "2099-11-10T18:30:00Z" },
+        { url: "https://cdn.discordapp.com/attachments/1/3/second.png", expires_at: "2099-11-10T18:30:00Z" }
       ])
 
       expect(response).to have_http_status(:created)

@@ -2,18 +2,24 @@
 
 # A News Item as the website and the bot read it (spec #355). Params:
 # `authors`, { author_id => current member name } for the authors who have a
-# member record (NewsItemResource.authors_for builds it).
+# member record (NewsItemResource.authors_for builds it); `now`, the time
+# image expiry is judged at (default: the current time).
 #
 # `images` are the message's image attachments in order. Each carries
-# `unavailable`: when true its Discord address has expired and `url` is null
-# until the bot renews it (api#358); for now it is always false.
+# `unavailable`: true when its Discord address has expired, and then `url`
+# is null until the bot renews it (ticket #358; the feed queues the renewal,
+# NewsItems::ImageRenewal).
 class NewsItemResource
   include BaseResource
 
   attributes :message_id, :category_key, :origin, :comment, :posted_at, :edited_at, :link
 
   attribute :images do |item|
-    item.images.map { |image| { url: image["url"], unavailable: false } }
+    now = params[:now] || Time.current
+    item.images.map do |image|
+      expired = NewsItem.image_expired?(image, now)
+      { url: expired ? nil : image["url"], unavailable: expired }
+    end
   end
 
   attribute :author do |item|
