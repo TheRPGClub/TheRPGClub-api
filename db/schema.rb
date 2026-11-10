@@ -438,22 +438,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_190000) do
   end
 
   create_table "news_items", force: :cascade do |t|
-    t.string "message_id", limit: 30, null: false
-    t.string "channel_id", limit: 30, null: false
     t.string "author_id", limit: 30, null: false
     t.string "author_name", limit: 100, null: false
     t.string "category_key", limit: 64
-    t.string "origin", limit: 16, default: "live", null: false
+    t.string "channel_id", limit: 30, null: false
     t.text "comment"
-    t.text "link_url"
-    t.text "link_title"
-    t.text "link_site_name"
+    t.datetime "created_at", null: false
+    t.datetime "edited_at"
+    t.jsonb "images", default: [], null: false
     t.text "link_description"
     t.text "link_image_url"
-    t.jsonb "images", default: [], null: false
+    t.text "link_site_name"
+    t.text "link_title"
+    t.text "link_url"
+    t.string "message_id", limit: 30, null: false
+    t.string "origin", limit: 16, default: "live", null: false
     t.datetime "posted_at", null: false
-    t.datetime "edited_at"
-    t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["category_key", "posted_at"], name: "ix_news_items_category_feed", order: { posted_at: :desc }, where: "(category_key IS NOT NULL)"
     t.index ["message_id"], name: "index_news_items_on_message_id", unique: true
