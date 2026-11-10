@@ -142,10 +142,23 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
     end
 
-    it "rejects an image without its expiry time" do
-      record("3300000000000000003", images: [ { url: "https://cdn.discordapp.com/attachments/1/2/x.png" } ])
+    it "rejects an image whose expiry is not an ISO 8601 time" do
+      record("3300000000000000003", images: [
+        { url: "https://cdn.discordapp.com/attachments/1/2/x.png", expires_at: "next tuesday" }
+      ])
 
       expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "records an image with no expiry (an unsigned address), which is always served" do
+      record("3300000000000000003", images: [
+        { url: "https://cdn.discordapp.com/attachments/1/2/x.png", expires_at: nil }
+      ])
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "images")).to eq([
+        { "url" => "https://cdn.discordapp.com/attachments/1/2/x.png", "unavailable" => false }
+      ])
     end
 
     it "requires a data object" do

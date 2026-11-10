@@ -120,6 +120,17 @@ RSpec.describe "News Hub bot jobs behavior", type: :request do
       expect(item.dig("link", "image_url")).to eq("https://example.test/img/thumb.jpg")
     end
 
+    it "never renews an image with no expiry, however old" do
+      record("3300000000000000001", images: [
+        { url: "https://cdn.discordapp.com/attachments/1/2/plain.png", expires_at: nil }
+      ])
+      travel_to now + 1.year
+
+      expect { expect(images_of("3300000000000000001")).to eq([
+        { "url" => "https://cdn.discordapp.com/attachments/1/2/plain.png", "unavailable" => false }
+      ]) }.not_to change(BotJob, :count)
+    end
+
     it "queues nothing for unexpired images" do
       record("3300000000000000001", images: [ image("fresh", now + 1.hour) ])
 

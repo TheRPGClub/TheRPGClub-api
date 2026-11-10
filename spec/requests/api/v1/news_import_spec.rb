@@ -89,7 +89,10 @@ RSpec.describe 'api/v1/news_import', type: :request do
                         type: :object,
                         properties: {
                           url: { type: :string },
-                          expires_at: { type: :string, format: 'date-time' }
+                          expires_at: { type: :string, format: 'date-time', nullable: true,
+                                        description: "When that address expires (the `ex` parameter of " \
+                                                     "Discord's signed URL); null when the address has no " \
+                                                     '`ex` parameter, so it does not expire.' }
                         },
                         required: %w[url expires_at]
                       }
