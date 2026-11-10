@@ -11,7 +11,8 @@
 # scopes rather than re-querying. Each preview reuses the #32 entry resource so
 # the embedded entries carry their joined `game`/`platform` (the reviews
 # preview embeds `one :game`), unblocking the frontend to drop its per-list
-# fan-out (TheRPGClub-www#11).
+# fan-out (TheRPGClub-www#11). Previews and counts of a Feature the viewer
+# cannot use are not handed in, so they are absent from the payload.
 class UserResource
   include BaseResource
   include UserFields
@@ -19,11 +20,13 @@ class UserResource
   attributes :membership
   many :socials, resource: UserSocialResource
 
-  many :now_playing, resource: NowPlayingEntryResource, source: ->(params) { params[:now_playing] || [] }
+  # A preview the controller left out (its Feature is one the viewer cannot
+  # use, spec #347) is left out of the payload too.
+  many :now_playing, resource: NowPlayingEntryResource, source: ->(params) { params[:now_playing] }, if: proc { params.key?(:now_playing) }
   many :favorites,   resource: FavoriteEntryResource,   source: ->(params) { params[:favorites] || [] }
-  many :reviews,     resource: ReviewEntryResource,     source: ->(params) { params[:reviews] || [] }
-  many :completions, resource: CompletionEntryResource, source: ->(params) { params[:completions] || [] }
-  many :journal,     resource: JournaledGameResource,   source: ->(params) { params[:journal] || [] }
+  many :reviews,     resource: ReviewEntryResource,     source: ->(params) { params[:reviews] }, if: proc { params.key?(:reviews) }
+  many :completions, resource: CompletionEntryResource, source: ->(params) { params[:completions] }, if: proc { params.key?(:completions) }
+  many :journal,     resource: JournaledGameResource,   source: ->(params) { params[:journal] }, if: proc { params.key?(:journal) }
 
   attribute :counts do
     params[:counts] || {}

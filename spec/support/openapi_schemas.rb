@@ -205,16 +205,24 @@ module OpenapiSchemas
         url: str(nullable: true), created_at: ts, updated_at: ts,
         social_platform: ref("SocialPlatform")
       ),
-      # Per-user counts on the profile payload (UsersController#show).
+      # Per-user counts on the profile payload (UsersController#show). A count
+      # that belongs to a Feature the viewer cannot use is left out.
       UserCounts: obj(
         now_playing: int, favorites: int, reviews: int, completions: int,
-        backlog: int, collections: int, journal: int
+        backlog: int, collections: int, journal: int,
+        _required: %w[favorites],
+        _description: "Each count but `favorites` belongs to a Feature (now_playing: Now Playing, reviews: Reviews, " \
+                      "completions: Game Completions, backlog: Backlog, collections: Collection, journal: Journals) " \
+                      "and is left out when the viewer cannot use that Feature (Preview: staff only; Off: nobody). " \
+                      "The service token gets every count."
       ),
       # The full users#show profile payload (UserResource): UserSummary plus
       # `membership`, the embedded socials, the four preview lists, the journal
       # grid and the counts summary.
       User: extends(
         "UserSummary",
+        _description: "The Feature-owned previews (now_playing, reviews, completions, journal) are left out, like " \
+                      "their `counts`, when the viewer cannot use that Feature.",
         membership: ref("Membership"),
         socials: array_of("UserSocial"),
         now_playing: array_of("NowPlayingEntry"),
