@@ -22,6 +22,7 @@ module Api
 
         scope = NewsItem.listed
         scope = scope.where(category_key: categories) if categories.any?
+        scope = search(scope)
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
 
@@ -58,6 +59,15 @@ module Api
 
         data.permit(:channel_id, :category_key, :author_id, :author_name, :comment, :posted_at, :edited_at,
           link: NewsItem::LINK_FIELDS, images: %i[url expires_at]).to_h
+      end
+
+      # Narrows to the News Items whose link title or comment contains `q`,
+      # ignoring case. A blank `q` searches nothing.
+      def search(scope)
+        text = params[:q].to_s.strip
+        return scope if text.empty?
+
+        scope.where("link_title ILIKE :q OR comment ILIKE :q", q: "%#{NewsItem.sanitize_sql_like(text)}%")
       end
 
       # The requested News Category keys; [] when none. Renders 400 and
