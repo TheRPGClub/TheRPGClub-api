@@ -3,7 +3,12 @@
 module Api
   module V1
     class GamesController < ApplicationController
-      feature :game_index
+      # Browsing the Game Index (the list, game pages, the bot's game view) is
+      # Game Index's. Two endpoints stay open because other Live Features add
+      # games through them whatever Game Index's flag (spec #347): the game
+      # picker's title search (`GET /games?q=`, used to donate, nominate, add
+      # to a collection, journal, import) and the IGDB import (`POST /games`).
+      feature :game_index, except: :create, unless: :game_picker_search?
 
       # `newest` is most recently added to GameDB (`created_at`), not release
       # date; the title breaks ties.
@@ -40,12 +45,11 @@ module Api
       def show
         game = GamedbGame.without_images.includes(:images).find(params[:id])
 
-        render json: {
-          data: game_record_data(game).merge(
-            "now_playing" => NowPlayingUserEntryResource.new(now_playing_for(game)).serializable_hash,
-            "completions" => CompletionUserEntryResource.new(completions_for(game)).serializable_hash
-          )
+        sections = {
+          "now_playing" => -> { NowPlayingUserEntryResource.new(now_playing_for(game)).serializable_hash },
+          "completions" => -> { CompletionUserEntryResource.new(completions_for(game)).serializable_hash }
         }
+        render json: { data: game_record_data(game).merge(feature_sections(sections)) }
       end
 
       # POST /api/v1/games  { "igdb_id": 1234 }
@@ -215,24 +219,45 @@ module Api
         gotm_summary = Gamedb::GotmWinSummary.new(game.gotm_entries)
         nr_gotm_summary = Gamedb::GotmWinSummary.new(game.nr_gotm_entries)
 
+        # The full, unpaginated lists — preferred over a preview for a single
+        # game (#115); the standalone endpoints paginate, these do not.
+        sections = {
+          "now_playing" => -> { NowPlayingUserEntryResource.new(now_playing_for(game)).serializable_hash },
+          "completions" => -> { CompletionUserEntryResource.new(completions_for(game)).serializable_hash },
+          "associations" => -> { associations_for(game, gotm_summary:, nr_gotm_summary:) },
+          "collection_owners" => -> { collection_owners_for(game) }
+        }
+
         render json: {
           data: {
-            game: game_record_data(game, gotm_summary:, nr_gotm_summary:),
-            relations: relations_data(game),
-            # The full, unpaginated lists — preferred over a preview for a single
-            # game (#115); the standalone endpoints paginate, these do not.
-            now_playing: NowPlayingUserEntryResource.new(now_playing_for(game)).serializable_hash,
-            completions: CompletionUserEntryResource.new(completions_for(game)).serializable_hash,
-            threads: ThreadResource.new(threads_for(game)).serializable_hash,
-            primary_image: primary_image_for(game),
-            associations: associations_for(game, gotm_summary:, nr_gotm_summary:),
-            collection_owners: collection_owners_for(game),
-            hltb: hltb_for(game)
-          }
+            "game" => game_record_data(game, gotm_summary:, nr_gotm_summary:),
+            "relations" => relations_data(game),
+            "threads" => ThreadResource.new(threads_for(game)).serializable_hash,
+            "primary_image" => primary_image_for(game),
+            "hltb" => hltb_for(game)
+          }.merge(feature_sections(sections))
         }
       end
 
       private
+
+      def game_picker_search?
+        action_name == "index" && params[:q].present?
+      end
+
+      # The sections of #show and #profile that belong to another Feature, by
+      # response key; each is left out (not built) for a caller who cannot use
+      # its Feature.
+      SECTION_FEATURES = {
+        "now_playing" => :now_playing,
+        "completions" => :game_completions,
+        "associations" => :voting_gotm,
+        "collection_owners" => :collection
+      }.freeze
+
+      def feature_sections(sections)
+        sections.select { |name, _| can_use_feature?(SECTION_FEATURES.fetch(name)) }.transform_values(&:call)
+      end
 
       # The IGDB id to import, accepted top-level (`{ "igdb_id": 1234 }`). A
       # missing or non-integer value is a 400 (ActionController::ParameterMissing

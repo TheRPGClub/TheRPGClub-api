@@ -75,12 +75,16 @@ RSpec.describe "api/v1/public/winners behavior", type: :request do
       expect(items.map { |item| item.fetch("game_id") }).to eq([ gotm.gamedb_game_id ])
     end
 
-    it "is publicly cacheable for ten minutes" do
+    # Shared caches keep it one minute, so the winners leave the landing page
+    # within a minute of Voting & GOTM leaving Live; the API's own cache
+    # (ten minutes) is only read while it is Live.
+    it "is publicly cacheable for one minute" do
       create(:gotm_entry, round_number: 1)
 
       get "/api/v1/public/winners"
 
-      expect(response.headers["Cache-Control"]).to include("public", "max-age=600")
+      expect(response.headers["Cache-Control"]).to include("public", "max-age=60")
+      expect(response.headers["Cache-Control"]).not_to include("max-age=600")
     end
 
     it "serves the cached payload until a newer round busts it" do

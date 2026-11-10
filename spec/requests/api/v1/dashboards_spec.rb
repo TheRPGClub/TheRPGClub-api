@@ -6,7 +6,8 @@ RSpec.describe 'api/v1/dashboards', type: :request do
   path '/api/v1/dashboard' do
     get 'Front-page dashboard' do
       tags 'Dashboard'
-      description 'Returns the most recent Game of the Month (GOTM) and Non-Retro GOTM entries used to populate the front page.'
+      description 'Returns the most recent Game of the Month (GOTM) and Non-Retro GOTM entries used to populate the front page. ' \
+                  'Both lists belong to the Voting & GOTM Feature: a caller who cannot use it gets `data: {}`.'
       produces 'application/json'
       parameter name: :limit, in: :query, schema: { type: :integer, minimum: 1, maximum: 20, default: 10 }, required: false,
         description: 'Number of entries to return for each list (default 10, max 20).'

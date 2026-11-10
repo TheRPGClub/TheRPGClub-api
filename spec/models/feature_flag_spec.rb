@@ -51,7 +51,7 @@ RSpec.describe FeatureFlag do
 
     it "rejects a state other than Off, Preview or Live" do
       expect { described_class.change!("reviews", "enabled", by: "system") }
-        .to raise_error(ActiveRecord::RecordInvalid)
+        .to raise_error(Features::InvalidState, "state must be one of off, preview, live")
       expect(Features.state("reviews")).to eq("preview")
     end
   end

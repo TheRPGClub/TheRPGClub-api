@@ -8907,8 +8907,9 @@ paths:
       summary: Front-page dashboard
       tags:
       - Dashboard
-      description: Returns the most recent Game of the Month (GOTM) and Non-Retro
-        GOTM entries used to populate the front page.
+      description: 'Returns the most recent Game of the Month (GOTM) and Non-Retro
+        GOTM entries used to populate the front page. Both lists belong to the Voting
+        & GOTM Feature: a caller who cannot use it gets `data: {}`.'
       parameters:
       - name: limit
         in: query
@@ -10487,10 +10488,11 @@ paths:
         other gets 409. A Discord caller claims as themselves; the bot service token
         claims on behalf of the `claimed_by_user_id` supplied in the body. A member''s
         claim queues two bot jobs: `giveaway_claim_notice` (payload `{ key_id, claimed_by_user_id,
-        donor_user_id, game_title, platform }`; the bot DMs the key, logs the claim
-        and notifies the donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id
-        }`). `meta.claim_notice_job_id` is the notice job, for polling GET /api/v1/bot_jobs/{id}.
-        The service token''s claims queue nothing.'
+        donor_user_id, game_title, platform, feature_key: "giveaways" }`; the bot
+        DMs the key, logs the claim and notifies the donor) and `giveaway_hub_refresh`
+        (`{ reason: "claim", key_id, feature_key: "giveaways" }`). `meta.claim_notice_job_id`
+        is the notice job, for polling GET /api/v1/bot_jobs/{id}. The service token''s
+        claims queue nothing.'
       parameters: []
       responses:
         '200':
@@ -10668,11 +10670,12 @@ paths:
       summary: List games
       tags:
       - Games
-      description: Returns games from the local GameDB. Supports search, a `winner`
+      description: 'Returns games from the local GameDB. Supports search, a `winner`
         filter for GOTM / Non-Retro GOTM history, and taxonomy filters (genre/engine/theme/perspective/mode/franchise/company).
         Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`)
         to match any of several. Discover valid ids via the `/genres`, `/themes`,
-        … endpoints.
+        … endpoints. Behind the Game Index Feature Flag, except a search (`q` present):
+        the game picker other Features use stays open.'
       parameters:
       - name: q
         in: query
@@ -10843,8 +10846,9 @@ paths:
       tags:
       - Games
       description: 'Any signed-in Discord user, roles or not (anyone who can donate
-        a game key), and the service. Creates a game from IGDB by `igdb_id`: fetches
-        the full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
+        a game key), and the service, whatever the Game Index Feature Flag (other
+        Features import games). Creates a game from IGDB by `igdb_id`: fetches the
+        full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
         perspectives, modes, engines, franchises, platforms, developer/publisher companies,
         collection) and releases (one per platform, earliest dated; Japan-only releases
         are skipped; `format` is left null), then imports its cover/artwork/logo images
@@ -10944,7 +10948,8 @@ paths:
       tags:
       - Games
       description: Returns a game with related GOTM/NR-GOTM month info plus now-playing
-        and completion previews.
+        and completion previews. `now_playing` is left out for a caller who cannot
+        use the Now Playing Feature, `completions` for Game Completions (Feature Flags).
       responses:
         '200':
           description: game detail
@@ -11291,7 +11296,10 @@ paths:
         the full (unpaginated) now-playing / completions / threads lists, the resolved
         primary image (nullable), and the GOTM/NR-GOTM associations, collection owners
         and HowLongToBeat cache row (nullable). Collapses six HTTP calls plus three
-        direct-SQL reads into one request.'
+        direct-SQL reads into one request. A section of a Feature the caller cannot
+        use is left out (Feature Flags): `now_playing` (Now Playing), `completions`
+        (Game Completions), `collection_owners` (Collection), `associations` (Voting
+        & GOTM). The service token gets every section.'
       responses:
         '200':
           description: game profile
@@ -17260,8 +17268,9 @@ paths:
         content only: no member data, Reddit URLs or Discord ids. One item per winning
         game, newest round first, GOTM before NR-GOTM, `game_index` order within a
         track. NR-GOTM "N/A" placeholders are omitted. `meta.rounds` is the number
-        of rounds covered. Cached for 10 minutes (`Cache-Control: public, max-age=600`);
-        a new round busts the server-side cache.'
+        of rounds covered. Cached for 10 minutes in the API and 1 minute in shared
+        caches (`Cache-Control: public, max-age=60`); a new round busts the server-side
+        cache.'
       security: []
       responses:
         '200':
@@ -17270,7 +17279,7 @@ paths:
             Cache-Control:
               schema:
                 type: string
-              description: max-age=600, public
+              description: max-age=60, public
           content:
             application/json:
               schema:
@@ -21959,8 +21968,9 @@ paths:
         is required; everything else is optional. Always created Pending. A member
         is recorded as the author (body `created_by` and `created_by_name` are ignored)
         and their submission enqueues a `suggestion_submitted` bot job (payload `{
-        suggestion_id, created_by }`) so the bot pings the bot dev. A service create
-        enqueues nothing: the bot pings inline for its own submissions.'
+        suggestion_id, created_by, feature_key: "suggestions" }`) so the bot pings
+        the bot dev. A service create enqueues nothing: the bot pings inline for its
+        own submissions.'
       parameters: []
       responses:
         '201':

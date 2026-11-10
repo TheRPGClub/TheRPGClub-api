@@ -16,24 +16,30 @@ module Features
   class ChangeFlag
     REASON_MAX = 500
 
+    # An invalid state (Features::InvalidState, from FeatureFlag.change!) or
+    # reason.
     class Invalid < StandardError; end
 
     def self.call(...) = new(...).call
 
     # `by` is the acting member's Discord user id.
     def initialize(key, state, by:, reason: nil)
-      @feature = Features.find(key) or raise KeyError, "unknown Feature: #{key}"
+      @feature = Features.fetch(key)
       @state = state.to_s
       @by = by.to_s
       @reason = reason.to_s.strip.presence
-      raise Invalid, "state must be one of #{STATES.join(', ')}" unless STATES.include?(@state)
       raise Invalid, "reason is longer than #{REASON_MAX} characters" if @reason && @reason.length > REASON_MAX
     end
 
     def call
       change = FeatureFlag.transaction do
         FeatureFlag.change!(@feature.key, @state, by: @by, reason: @reason)&.tap { |logged| announce!(logged) }
+      rescue InvalidState => error
+        raise Invalid, error.message
       end
+      # Again after the commit: a request between change! and the commit
+      # may have kept the old state.
+      Features.forget_cached_states!
       after_change(change) if change
       change
     end

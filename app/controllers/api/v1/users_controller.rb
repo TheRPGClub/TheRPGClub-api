@@ -44,8 +44,8 @@ module Api
       end
 
       # The profile's previews and counts that belong to a Feature, by key.
-      # A viewer who cannot use the Feature (spec #347, docs/adr/0005) gets
-      # neither; favorites belong to no Feature.
+      # A viewer who cannot use the Feature (FeatureGate#can_use_feature?)
+      # gets neither; favorites belong to no Feature.
       PROFILE_FEATURES = {
         now_playing: "now_playing", reviews: "reviews", completions: "game_completions",
         backlog: "backlog", collections: "collection", journal: "journals"
@@ -200,14 +200,10 @@ module Api
         SocialPlatform.where("label ILIKE ANY (ARRAY[?])", patterns).select(:id)
       end
 
-      # Whether the viewer gets the profile section `key`. The bot's service
-      # token gets every section, as it passes the feature gate.
+      # Whether the viewer gets the profile section `key`.
       def profile_section?(key)
         feature = PROFILE_FEATURES[key]
-        return true if feature.nil? || current_principal.service?
-
-        @profile_access ||= Features::Access.new(staff: admin_or_above?)
-        @profile_access.can_use?(feature)
+        feature.nil? || can_use_feature?(feature)
       end
 
       def preview_limit

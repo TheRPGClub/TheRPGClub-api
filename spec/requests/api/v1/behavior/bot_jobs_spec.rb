@@ -58,7 +58,9 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       "voting_panels_repost" => "voting_gotm",
       "voting_tie_broken" => "voting_gotm",
       "suggestion_outcome" => "suggestions",
-      "giveaway_hub_refresh" => "giveaways"
+      "suggestion_submitted" => "suggestions",
+      "giveaway_hub_refresh" => "giveaways",
+      "giveaway_claim_notice" => "giveaways"
     }.each do |kind, feature_key|
       it "gives a #{kind} job its Feature key, #{feature_key}" do
         enqueue(kind: kind, payload: { round_number: 7 })
@@ -68,7 +70,7 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     end
 
     %w[
-      giveaway_claim_notice suggestion_submitted voting_poll_wakeup gotm_cache_reload
+      voting_poll_wakeup gotm_cache_reload
       live_event_create say memberscan presence_set
     ].each do |kind|
       it "gives a #{kind} job, which posts nothing publicly, no Feature key" do

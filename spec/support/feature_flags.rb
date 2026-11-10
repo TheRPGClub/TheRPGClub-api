@@ -27,6 +27,7 @@ module FeatureFlagHelpers
       { feature_key: key, from_state: nil, to_state: "live", changed_by: FeatureFlag::SYSTEM,
         reason: "Feature Flags shipped with every Feature Live", created_at: now }
     end)
+    Features.forget_cached_states!
   end
 end
 
@@ -35,7 +36,10 @@ RSpec.configure do |config|
 
   # A running achievement chain keeps "the Achievement Hub is not Off" for a
   # few seconds; each example starts without it.
-  config.before { Achievements::ProviderTickJob.forget_hub_state! }
+  config.before do
+    Achievements::ProviderTickJob.forget_hub_state!
+    Features.forget_cached_states!
+  end
 
   config.before(:each, type: :request) do |example|
     seed_feature_flags_live unless example.metadata[:feature_flags] == :none

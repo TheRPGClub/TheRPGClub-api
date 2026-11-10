@@ -12,14 +12,16 @@ module Api
         skip_before_action :require_authentication!
 
         ROUNDS = 24
+        SHARED_MAX_AGE = 1.minute
 
         # GET /api/v1/public/winners
         #
         # The latest ROUNDS rounds' winning games, newest round first, GOTM
         # before NR-GOTM, `game_index` order within a track. Abuse protection
         # is caching only: while Voting & GOTM is Live the payload is cached
-        # for 10 minutes, keyed on the latest round number so a new round
-        # busts it, and marked publicly cacheable for shared caches. In
+        # here for 10 minutes, keyed on the latest round number so a new round
+        # busts it, and marked publicly cacheable for SHARED_MAX_AGE, so
+        # shared caches drop it within a minute of the Feature leaving Live. In
         # Preview only staff get here (the feature gate), so the answer is
         # built fresh and marked no-store: nothing may keep it for others.
         def index
@@ -32,7 +34,7 @@ module Api
             build_payload
           end
 
-          expires_in 10.minutes, public: true
+          expires_in SHARED_MAX_AGE, public: true
           render json: payload
         end
 

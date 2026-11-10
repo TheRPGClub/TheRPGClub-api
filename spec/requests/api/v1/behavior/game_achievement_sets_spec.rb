@@ -91,6 +91,9 @@ RSpec.describe "api/v1 game achievement sets behavior", type: :request do
   it "reads every set's Achievements in a fixed number of queries" do
     headers = auth_headers_for(viewer)
     count_queries = lambda do
+      # Each call reads the Feature Flags afresh, as the first request in a
+      # process does.
+      Features.forget_cached_states!
       queries = 0
       subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
         # Cached hits count too, so the query cache cannot mask a per-set query.
