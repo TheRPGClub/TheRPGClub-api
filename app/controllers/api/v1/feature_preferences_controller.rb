@@ -10,7 +10,8 @@ module Api
     # Only the member themself may read or change it. Preferences only shape
     # the website, so the bot's service token is refused too.
     class FeaturePreferencesController < ApplicationController
-      before_action :require_self!
+      before_action :refuse_service!
+      before_action :require_owner!
 
       # GET /api/v1/users/:user_id/feature_preferences
       def show
@@ -48,10 +49,10 @@ module Api
 
       private
 
-      def require_self!
-        return if current_principal.discord_user? && current_principal.discord_id.to_s == params[:user_id].to_s
-
-        render json: { error: "forbidden" }, status: :forbidden
+      # require_owner! lets the service token act as any member; preferences
+      # are the member's own, so it is refused here first.
+      def refuse_service!
+        gate_or_forbid(!current_principal.service?)
       end
 
       def hidden_error(hidden)
