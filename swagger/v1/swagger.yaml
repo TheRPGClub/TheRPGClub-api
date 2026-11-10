@@ -3333,6 +3333,165 @@ components:
       - hidden
       - show_preview_features
       - features
+    NewsCategory:
+      type: object
+      properties:
+        key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          example: releases
+          description: Stable key. News Items, the bot's thread configuration and
+            the News Import store it.
+        name:
+          type: string
+          example: Releases & Updates
+          description: Display name.
+        position:
+          type: integer
+          example: 2
+          description: 1-based place in the list; the list is served in this order.
+      required:
+      - key
+      - name
+      - position
+    NewsItem:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: '1300000000000000003'
+          description: 'The Discord message''s snowflake: the News Item''s identity.'
+        category_key:
+          type: string
+          nullable: true
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category's key. Always set in the member feed; null
+            only for an imported News Item staff have not sorted yet, which members
+            never see.
+        origin:
+          type: string
+          enum:
+          - live
+          - import
+          description: 'live: recorded from a News Category''s thread. import: brought
+            in from the Game News Archive by the News Import.'
+        comment:
+          type: string
+          nullable: true
+          description: 'The member''s own words: the message text as a reader sees
+            it, without the link address. Null when there are none.'
+        posted_at:
+          type: string
+          format: date-time
+          description: When the message was posted in Discord.
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the message was last edited; null if never.
+        link:
+          allOf:
+          - "$ref": "#/components/schemas/NewsItemLink"
+          nullable: true
+          description: The message's first link and Discord's preview of it. Null
+            for an image-only News Item.
+        images:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsItemImage"
+          description: The message's image attachments in posted order; empty when
+            there are none.
+        author:
+          "$ref": "#/components/schemas/NewsItemAuthor"
+      required:
+      - message_id
+      - category_key
+      - origin
+      - comment
+      - posted_at
+      - edited_at
+      - link
+      - images
+      - author
+    NewsItemLink:
+      type: object
+      properties:
+        url:
+          type: string
+          example: https://example.test/news/story
+          description: The link's address (http or https).
+        title:
+          type: string
+          nullable: true
+          description: The preview's title. Null until Discord's preview arrives,
+            or when the page has none.
+        site_name:
+          type: string
+          nullable: true
+          description: The preview's site name.
+        description:
+          type: string
+          nullable: true
+          description: The preview's description.
+        image_url:
+          type: string
+          nullable: true
+          description: The outside site's own image address from the preview. Never
+            expires and is never renewed; if it stops working, show no image.
+      required:
+      - url
+      - title
+      - site_name
+      - description
+      - image_url
+    NewsItemImage:
+      type: object
+      properties:
+        url:
+          type: string
+          nullable: true
+          description: The image's Discord attachment address. Null when unavailable.
+        unavailable:
+          type: boolean
+          description: 'True when the Discord address has expired and the bot has
+            been asked to renew it: show a placeholder; the image is back on a later
+            load. Always false until image renewal ships (api#358).'
+      required:
+      - url
+      - unavailable
+    NewsItemAuthor:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: The author's Discord user id.
+        name:
+          type: string
+          description: The member's current name (display name, else username) when
+            they have a member record; otherwise the name they had when the message
+            was recorded.
+        member:
+          type: boolean
+          description: True when the author has a member record (their profile and
+            avatar exist). False for authors the club never recorded.
+      required:
+      - user_id
+      - name
+      - member
     SearchSynonym:
       type: object
       properties:
@@ -9647,6 +9806,7 @@ paths:
         - giveaways
         - journals
         - suggestions
+        - news_hub
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -14748,6 +14908,305 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/news_categories":
+    get:
+      summary: List the News Categories
+      tags:
+      - News Hub
+      description: 'The fixed, ordered list of News Categories (spec #355), so the
+        website and the bot never hard-code their keys or names. Changing the list
+        is an API release. Belongs to the News Hub Feature: a member who cannot use
+        it gets 404 `not_found`; the service token is not gated. Keys, in order: `announcements`,
+        `releases`, `emulation`, `industry`, `hardware`, `rumours`, `general`. Not
+        paginated.'
+      responses:
+        '200':
+          description: the News Categories, in order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsCategory"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/news_items":
+    get:
+      summary: The News Hub feed
+      tags:
+      - News Hub
+      description: 'News Items that have a News Category, newest first (`posted_at`
+        descending), paged with `page`/`per`. An imported News Item staff have not
+        sorted yet is never returned. `category` narrows the feed to the given News
+        Category keys (see `GET /api/v1/news_categories`): comma-separated (`category=releases,industry`)
+        or repeated (`category[]=releases&category[]=industry`); an unknown key is
+        a 400. Each item names its author by their current member name, or by the
+        name recorded with the message when they have no member record. Belongs to
+        the News Hub Feature: a member who cannot use it (Preview: Admins and Superadmins
+        only; Off: nobody) gets 404 `not_found`. The service token is not gated; the
+        bot runs its own feature gate.'
+      parameters:
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+          example: releases,industry
+        description: Comma-separated News Category keys (any of announcements, releases,
+          emulation, industry, hardware, rumours, general). Omit for every News Category.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: a page of News Items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsItem"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '400':
+          description: 'an unknown News Category key, e.g. `{ "error": "unknown category:
+            piracy" }`'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/news_items/{message_id}":
+    parameters:
+    - name: message_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The Discord message's snowflake.
+    put:
+      summary: Record a News Item
+      tags:
+      - News Hub
+      description: 'Service-only. The bot records a Discord message that is a News
+        Item (posted by a member in a News Category''s thread, with a link, an image
+        attachment, or both) when it is posted and again whenever it is edited, including
+        when Discord delivers the link preview a moment later. Creates the News Item
+        (201) or updates the one with this message id (200), so repeating a call changes
+        nothing. Every field is replaced by what is sent: send the whole message each
+        time. A new News Item has origin `live`. An imported News Item (origin `import`)
+        keeps its origin and the News Category staff assigned it; `category_key` is
+        ignored for it and may be omitted. A message with neither a link nor an image
+        is not a News Item and is refused (422): when an edit removes them, DELETE
+        the News Item instead. Recording works whatever the Feature Flag says.'
+      parameters: []
+      responses:
+        '201':
+          description: News Item recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsItem"
+                required:
+                - data
+        '200':
+          description: News Item updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsItem"
+                required:
+                - data
+        '400':
+          description: missing `data` object
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not a News Item (no link and no image), an unknown or missing
+            News Category, or an invalid field
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    channel_id:
+                      type: string
+                      description: The thread's (channel's) snowflake. Required.
+                    category_key:
+                      type: string
+                      enum:
+                      - announcements
+                      - releases
+                      - emulation
+                      - industry
+                      - hardware
+                      - rumours
+                      - general
+                      nullable: true
+                      description: The News Category of the thread the message is
+                        in. Required for a live News Item; ignored for an imported
+                        one.
+                    author_id:
+                      type: string
+                      description: The author's Discord user id. Required.
+                    author_name:
+                      type: string
+                      maxLength: 100
+                      description: The author's display name now, kept as the name
+                        to show if they have no member record. Required.
+                    comment:
+                      type: string
+                      nullable: true
+                      description: The message text as a reader sees it (mentions
+                        and custom emoji resolved to readable text), with the link
+                        address removed. Blank or null for none.
+                    posted_at:
+                      type: string
+                      format: date-time
+                      description: When it was posted. Required.
+                    edited_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                      description: When it was last edited; null if never.
+                    link:
+                      type: object
+                      nullable: true
+                      description: The message's first link and Discord's preview
+                        of it; null or omitted for none. Further links stay in `comment`.
+                        Preview fields are null until the preview arrives.
+                      properties:
+                        url:
+                          type: string
+                          description: http(s) address. Required when `link` is sent.
+                        title:
+                          type: string
+                          nullable: true
+                        site_name:
+                          type: string
+                          nullable: true
+                        description:
+                          type: string
+                          nullable: true
+                        image_url:
+                          type: string
+                          nullable: true
+                          description: The outside site's own image address (http(s))
+                            from the preview.
+                      required:
+                      - url
+                    images:
+                      type: array
+                      description: Every image attachment, in order; empty or omitted
+                        for none. Other attachments are not sent.
+                      items:
+                        type: object
+                        properties:
+                          url:
+                            type: string
+                            description: The attachment's Discord address (http(s)).
+                          expires_at:
+                            type: string
+                            format: date-time
+                            description: When that address expires (the `ex` parameter
+                              of Discord's signed URL).
+                        required:
+                        - url
+                        - expires_at
+                  required:
+                  - channel_id
+                  - author_id
+                  - author_name
+                  - posted_at
+              required:
+              - data
+        required: true
+    delete:
+      summary: Remove a News Item
+      tags:
+      - News Hub
+      description: 'Service-only. The bot removes the News Item when its message is
+        deleted (singly or in bulk) or edited so it no longer has a link or an image.
+        A hard delete. Idempotent: 204 whether or not a News Item with this message
+        id was recorded.'
+      responses:
+        '204':
+          description: News Item removed (or was never recorded)
+        '403':
+          description: forbidden - caller is not the service principal
+        '401':
+          description: unauthenticated
   "/api/v1/gotm_entries/{round}/nominations":
     parameters:
     - name: round

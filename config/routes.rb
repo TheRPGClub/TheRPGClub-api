@@ -412,6 +412,13 @@ Rails.application.routes.draw do
         member { put "terms", to: "search_synonym_groups#replace_terms" }
       end
       resources :search_synonym_drafts, only: %i[index show create update destroy]
+      # News Hub (spec #355): the fixed News Categories; the members' feed of
+      # News Items; the bot records (PUT, an upsert) and removes News Items
+      # by their Discord message id (service-only).
+      get "news_categories", to: "news_categories#index"
+      get    "news_items",             to: "news_items#index"
+      put    "news_items/:message_id", to: "news_items#update"
+      delete "news_items/:message_id", to: "news_items#destroy"
     end
   end
 end

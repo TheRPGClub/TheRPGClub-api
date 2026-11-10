@@ -11,18 +11,31 @@ RSpec.describe SeedFeatureFlagsLive do
     ActiveRecord::Migration.suppress_messages { described_class.new.migrate(:up) }
   end
 
-  it "leaves all 11 Features Live" do
+  # The Features that existed when Feature Flags shipped. A Feature
+  # registered later (the News Hub, spec #355) is not seeded and so starts
+  # in Preview.
+  seeded = described_class::KEYS
+
+  it "leaves the 11 Features that existed then Live" do
     migrate_up
 
-    expect(Features.states).to eq(Features.keys.index_with { "live" })
-    expect(Features.keys.size).to eq(11)
+    expect(seeded.size).to eq(11)
+    expect(Features.states.slice(*seeded)).to eq(seeded.index_with { "live" })
+  end
+
+  it "leaves a Feature registered later with no stored state, so it reads as Preview" do
+    migrate_up
+
+    expect(Features.keys - seeded).to eq([ "news_hub" ])
+    expect(FeatureFlag.where(key: "news_hub")).to be_empty
+    expect(Features.state("news_hub")).to eq("preview")
   end
 
   it "logs each seeded Feature as a change by system" do
     migrate_up
 
     expect(FeatureFlagChange.pluck(:feature_key, :from_state, :to_state, :changed_by))
-      .to match_array(Features.keys.map { |key| [ key, nil, "live", "system" ] })
+      .to match_array(seeded.map { |key| [ key, nil, "live", "system" ] })
   end
 
   it "leaves a Feature that already has a state, and its log, alone" do

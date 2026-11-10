@@ -83,7 +83,12 @@ module Features
     define("suggestions", "Suggestions", core: false,
       website: [ "Suggestion Board" ],
       bot: [ "/suggestion" ],
-      posts: [ "Suggestion posts" ])
+      posts: [ "Suggestion posts" ]),
+    # Spec #355. Registered after Feature Flags shipped, so it has no stored
+    # state and starts in Preview.
+    define("news_hub", "News Hub", core: false,
+      website: [ "News" ],
+      bot: [ "/news-import" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze
