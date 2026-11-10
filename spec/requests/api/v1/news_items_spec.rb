@@ -15,6 +15,9 @@ RSpec.describe 'api/v1/news_items', type: :request do
                   'comma-separated (`category=releases,industry`) or repeated (`category[]=releases&' \
                   'category[]=industry`); an unknown key is a 400. Each item names its author by their current ' \
                   'member name, or by the name recorded with the message when they have no member record. ' \
+                  'An image whose Discord address has expired comes back unavailable (`url` null) and queues ' \
+                  'a `news_images_renew` bot job for its message (one at a time per message); a later load ' \
+                  'serves it once the bot has recorded fresh addresses. ' \
                   "#{gate}"
       produces 'application/json'
       parameter name: :category, in: :query, required: false,
