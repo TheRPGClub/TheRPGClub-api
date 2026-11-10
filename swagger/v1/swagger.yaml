@@ -3171,6 +3171,69 @@ components:
       required:
       - user_id
       - notify_on_claim
+    FeaturePreference:
+      type: object
+      properties:
+        key:
+          type: string
+          example: reviews
+        name:
+          type: string
+          example: Reviews
+        state:
+          type: string
+          enum:
+          - preview
+          - live
+          description: The Feature Flag state. Preview only reaches staff.
+        preview:
+          type: boolean
+          description: True when the viewer can use it only because they are staff
+            (Preview).
+        hidden:
+          type: boolean
+          description: The member hid this Feature from their view of the website.
+        website:
+          type: array
+          items:
+            type: string
+          description: Where the Feature shows up on the website.
+      required:
+      - key
+      - name
+      - state
+      - preview
+      - hidden
+      - website
+    FeaturePreferences:
+      type: object
+      properties:
+        user_id:
+          type: string
+        hidden:
+          type: array
+          items:
+            type: string
+          description: Every Feature key the member hid, in registry order, including
+            ones whose Feature Flag currently hides them (a preference survives any
+            flag change).
+        show_preview_features:
+          type: boolean
+          nullable: true
+          description: 'Staff only: show Preview Features on the website (on by default).
+            Null for anyone who is not an Admin or Superadmin.'
+        features:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FeaturePreference"
+          description: 'The Features the member may hide, in registry order: every
+            hideable Feature they can use (Live, plus Preview for staff). Empty when
+            there is none, e.g. no hideable Feature is Live.'
+      required:
+      - user_id
+      - hidden
+      - show_preview_features
+      - features
     SearchSynonym:
       type: object
       properties:
@@ -9297,6 +9360,121 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/feature_preferences":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's Feature Preferences
+      tags:
+      - Features
+      description: The hideable Features the member hid from their own view of the
+        website, the Features they may hide (with where each shows up), and, for an
+        Admin or Superadmin, the "show Preview features" setting. Only hidden Features
+        are stored, so everything is shown by default. Only the member themself may
+        read it; another member, staff and the bot's service token get 403. Preferences
+        only shape the session's `shown` values; they never block an endpoint.
+      responses:
+        '200':
+          description: feature preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeaturePreferences"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a member's Feature Preferences
+      tags:
+      - Features
+      description: Hides or shows the named Features and, for an Admin or Superadmin,
+        sets the "show Preview features" setting. Features not named are left as they
+        were. Hiding a Core Feature, naming an unknown Feature, or a non-staff member
+        sending `show_preview_features` returns 422 and changes nothing. Only the
+        member themself may update it. Returns the whole document, as GET does.
+      parameters: []
+      responses:
+        '200':
+          description: updated feature preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeaturePreferences"
+                required:
+                - data
+        '422':
+          description: Core Feature, unknown Feature, bad value, or show_preview_features
+            from a non-staff member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: At least one of `hidden` and `show_preview_features`.
+                  properties:
+                    hidden:
+                      type: object
+                      description: Feature key to true (hide it) or false (show it
+                        again).
+                      additionalProperties:
+                        type: boolean
+                      example:
+                        journals: true
+                        reviews: false
+                    show_preview_features:
+                      type: boolean
+                      description: 'Admins and Superadmins only: show Preview Features
+                        on the website.'
+              required:
+              - data
+        required: true
   "/api/v1/franchises":
     get:
       summary: List franchises
@@ -19438,8 +19616,11 @@ paths:
                             hide.
                         shown:
                           type: boolean
-                          description: Whether the website shows this Feature to the
-                            viewer.
+                          description: 'Whether the website shows this Feature to
+                            the viewer: they can use it, have not hidden it with a
+                            Feature Preference, and, for staff with "show Preview
+                            features" off, it is not in Preview. A hidden Feature
+                            stays listed with `shown: false`.'
                         preview:
                           type: boolean
                           description: True when the viewer sees the Feature only

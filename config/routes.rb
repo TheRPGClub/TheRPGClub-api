@@ -124,6 +124,8 @@ Rails.application.routes.draw do
           put "presence_prompt_opts", to: "presence_prompt_opts#update"
           get "giveaway_settings", to: "giveaway_settings#show"
           patch "giveaway_settings", to: "giveaway_settings#update"
+          get "feature_preferences", to: "feature_preferences#show"
+          patch "feature_preferences", to: "feature_preferences#update"
           get "game_keys", to: "game_keys#user_index"
           get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"

@@ -943,6 +943,33 @@ module OpenapiSchemas
       # GiveawaySettingsController. The donor's notify-on-claim preference,
       # derived from rpg_club_users.donor_notify_on_claim.
       GiveawaySettings: obj(user_id: str, notify_on_claim: bool),
+      # FeaturePreferencesController (spec #347, ticket #352). A member's
+      # Feature Preferences: the hideable Features they hid from their own view
+      # of the website, and (staff only) the show-Preview setting.
+      FeaturePreference: obj(
+        key: str(example: "reviews"),
+        name: str(example: "Reviews"),
+        state: str(enum: %w[preview live], description: "The Feature Flag state. Preview only reaches staff."),
+        preview: bool.merge(description: "True when the viewer can use it only because they are staff (Preview)."),
+        hidden: bool.merge(description: "The member hid this Feature from their view of the website."),
+        website: { type: :array, items: str, description: "Where the Feature shows up on the website." },
+        _required: %w[key name state preview hidden website]
+      ),
+      FeaturePreferences: obj(
+        user_id: str,
+        hidden: { type: :array, items: str,
+                  description: "Every Feature key the member hid, in registry order, including ones whose " \
+                               "Feature Flag currently hides them (a preference survives any flag change)." },
+        show_preview_features: bool(nullable: true).merge(
+          description: "Staff only: show Preview Features on the website (on by default). Null for anyone " \
+                       "who is not an Admin or Superadmin."
+        ),
+        features: array_of("FeaturePreference").merge(
+          description: "The Features the member may hide, in registry order: every hideable Feature they can " \
+                       "use (Live, plus Preview for staff). Empty when there is none, e.g. no hideable Feature is Live."
+        ),
+        _required: %w[user_id hidden show_preview_features features]
+      ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,
         created_at: ts, created_by: str(nullable: true)

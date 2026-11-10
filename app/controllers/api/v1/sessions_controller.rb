@@ -16,7 +16,7 @@ module Api
         render json: {
           principal: current_principal,
           membership: membership,
-          features: Features::Access.new(staff: admin_or_above?).session_features
+          features: Features::Access.for_viewer(user, staff: admin_or_above?).session_features
         }
       end
     end

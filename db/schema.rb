@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_152100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -428,6 +428,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_140000) do
     t.index ["created_at"], name: "index_live_events_on_created_at"
     t.check_constraint "ends_at > starts_at", name: "ck_live_events_ends_after_start"
     t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'thread_created'::character varying, 'created'::character varying, 'failed'::character varying]::text[])", name: "ck_live_events_status"
+  end
+
+  create_table "member_feature_preferences", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.string "feature_key", limit: 64, null: false
+    t.datetime "created_at", null: false
+    t.index ["user_id", "feature_key"], name: "index_member_feature_preferences_on_user_id_and_feature_key", unique: true
   end
 
   create_table "nr_gotm_entries", primary_key: "nr_gotm_id", force: :cascade do |t|
@@ -857,6 +864,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_140000) do
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "username", limit: 100
     t.boolean "role_dev", default: false, null: false
+    t.boolean "show_preview_features", default: true, null: false, comment: "Staff setting: show Preview Features on the website (on by default)."
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
@@ -1223,6 +1231,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_140000) do
   add_foreign_key "image_backfill_runs", "rpg_club_users", column: "started_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "live_events", "bot_jobs", on_delete: :nullify
   add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify
+  add_foreign_key "member_feature_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify
