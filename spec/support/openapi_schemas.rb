@@ -1008,6 +1008,68 @@ module OpenapiSchemas
         ),
         _required: %w[user_id hidden show_preview_features features]
       ),
+
+      # ---- News Hub (spec #355) --------------------------------------------
+      # NewsCategory: the fixed, ordered list in code. Keys are stable.
+      NewsCategory: obj(
+        key: str(enum: NewsCategory.keys, example: "releases",
+          description: "Stable key. News Items, the bot's thread configuration and the News Import store it."),
+        name: str(example: "Releases & Updates", description: "Display name."),
+        position: int.merge(example: 2, description: "1-based place in the list; the list is served in this order."),
+        _required: %w[key name position]
+      ),
+      # NewsItemResource: a News Item as the website and the bot read it.
+      NewsItem: obj(
+        message_id: str(example: "1300000000000000003",
+          description: "The Discord message's snowflake: the News Item's identity."),
+        category_key: str(enum: NewsCategory.keys, nullable: true,
+          description: "The News Category's key. Always set in the member feed; null only for an imported " \
+                       "News Item staff have not sorted yet, which members never see."),
+        origin: str(enum: NewsItem::ORIGINS,
+          description: "live: recorded from a News Category's thread. import: brought in from the Game News " \
+                       "Archive by the News Import."),
+        comment: str(nullable: true,
+          description: "The member's own words: the message text as a reader sees it, without the link " \
+                       "address. Null when there are none."),
+        posted_at: ts.merge(description: "When the message was posted in Discord."),
+        edited_at: ts(nullable: true).merge(description: "When the message was last edited; null if never."),
+        link: ref("NewsItemLink", nullable: true).merge(
+          description: "The message's first link and Discord's preview of it. Null for an image-only News Item."
+        ),
+        images: array_of("NewsItemImage").merge(
+          description: "The message's image attachments in posted order; empty when there are none."
+        ),
+        author: ref("NewsItemAuthor"),
+        _required: %w[message_id category_key origin comment posted_at edited_at link images author]
+      ),
+      NewsItemLink: obj(
+        url: str(example: "https://example.test/news/story", description: "The link's address (http or https)."),
+        title: str(nullable: true, description: "The preview's title. Null until Discord's preview arrives, " \
+                                                "or when the page has none."),
+        site_name: str(nullable: true, description: "The preview's site name."),
+        description: str(nullable: true, description: "The preview's description."),
+        image_url: str(nullable: true,
+          description: "The outside site's own image address from the preview. Never expires and is never " \
+                       "renewed; if it stops working, show no image."),
+        _required: %w[url title site_name description image_url]
+      ),
+      NewsItemImage: obj(
+        url: str(nullable: true, description: "The image's Discord attachment address. Null when unavailable."),
+        unavailable: bool.merge(
+          description: "True when the Discord address has expired and the bot has been asked to renew it: show " \
+                       "a placeholder; the image is back on a later load. Always false until image renewal " \
+                       "ships (api#358)."
+        ),
+        _required: %w[url unavailable]
+      ),
+      NewsItemAuthor: obj(
+        user_id: str(description: "The author's Discord user id."),
+        name: str(description: "The member's current name (display name, else username) when they have a " \
+                               "member record; otherwise the name they had when the message was recorded."),
+        member: bool.merge(description: "True when the author has a member record (their profile and avatar " \
+                                        "exist). False for authors the club never recorded."),
+        _required: %w[user_id name member]
+      ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,
         created_at: ts, created_by: str(nullable: true)
