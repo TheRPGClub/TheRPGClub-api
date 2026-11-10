@@ -75,6 +75,34 @@ RSpec.describe "feature-gated endpoints", type: :request do
     end
   end
 
+  # Other Features add games while Game Index is not Live (donating a key,
+  # nominating, adding to a collection, importing): the game picker's search
+  # and the IGDB import stay open. Browsing the Game Index does not.
+  describe "Game Index endpoints other Features depend on" do
+    let(:member) { create(:user, role_member: true) }
+    let(:game) { create(:game, igdb_id: 900_000 + SecureRandom.random_number(90_000)) }
+
+    before { set_feature_flag("game_index", "off") }
+
+    it "answers the game picker's search and the import of a game already in GameDB" do
+      get "/api/v1/games", params: { q: game.title }, headers: auth_headers_for(member)
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").map { |row| row.fetch("game_id") }).to include(game.game_id)
+
+      post "/api/v1/games", params: { igdb_id: game.igdb_id }, headers: auth_headers_for(member), as: :json
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "game_id")).to eq(game.game_id)
+    end
+
+    it "keeps browsing gated" do
+      get "/api/v1/games", headers: auth_headers_for(member)
+      expect(response).to have_http_status(:not_found)
+
+      get "/api/v1/games/#{game.game_id}", headers: auth_headers_for(member)
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "the logged-out landing page's winners" do
     it "follows Voting & GOTM's flag" do
       get "/api/v1/public/winners"
@@ -179,7 +207,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
   # members and profiles, sign-in, the staff desk, bot utilities) and for the
   # shared lookups other Features' pickers depend on.
   declared = {
-    # Game Index
+    # Game Index (games#create and the `q` title search stay open: see
+    # "Game Index endpoints other Features depend on" above)
     "api/v1/games" => "game_index",
     "api/v1/game_images" => "game_index",
     "api/v1/game_alternates" => "game_index",

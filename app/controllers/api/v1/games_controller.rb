@@ -3,7 +3,12 @@
 module Api
   module V1
     class GamesController < ApplicationController
-      feature :game_index
+      # Browsing the Game Index (the list, game pages, the bot's game view) is
+      # Game Index's. Two endpoints stay open because other Live Features add
+      # games through them whatever Game Index's flag (spec #347): the game
+      # picker's title search (`GET /games?q=`, used to donate, nominate, add
+      # to a collection, journal, import) and the IGDB import (`POST /games`).
+      feature :game_index, except: :create, unless: :game_picker_search?
 
       # `newest` is most recently added to GameDB (`created_at`), not release
       # date; the title breaks ties.
@@ -235,6 +240,10 @@ module Api
       end
 
       private
+
+      def game_picker_search?
+        action_name == "index" && params[:q].present?
+      end
 
       # The sections of #show and #profile that belong to another Feature, by
       # response key; each is left out (not built) for a caller who cannot use
