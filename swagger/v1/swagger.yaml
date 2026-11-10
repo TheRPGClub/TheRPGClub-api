@@ -19315,8 +19315,50 @@ paths:
                         type: boolean
                       longstanding:
                         type: boolean
+                  features:
+                    type: array
+                    description: The Features this viewer may see, in registry order
+                      (Features::Access). Admins and Superadmins get every Feature
+                      in every state; anyone else gets only Live Features, so a Preview
+                      or Off Feature never reaches a member. A Feature with no stored
+                      Feature Flag state reads as Preview.
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          example: reviews
+                        name:
+                          type: string
+                          example: Reviews
+                        state:
+                          type: string
+                          enum:
+                          - 'off'
+                          - preview
+                          - live
+                        hideable:
+                          type: boolean
+                          description: False for a Core Feature, which members cannot
+                            hide.
+                        shown:
+                          type: boolean
+                          description: Whether the website shows this Feature to the
+                            viewer.
+                        preview:
+                          type: boolean
+                          description: True when the viewer sees the Feature only
+                            because they are staff (Preview).
+                      required:
+                      - key
+                      - name
+                      - state
+                      - hideable
+                      - shown
+                      - preview
                 required:
                 - principal
+                - features
         '401':
           description: unauthenticated
           content:

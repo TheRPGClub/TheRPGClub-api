@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_09_215324) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -103,6 +103,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_09_215324) do
     t.bigint "round_number", null: false
     t.datetime "vote_ends_at"
     t.index ["round_number"], name: "ix_bot_voting_info_round"
+  end
+
+  create_table "feature_flag_changes", force: :cascade do |t|
+    t.string "feature_key", limit: 64, null: false
+    t.string "from_state", limit: 16
+    t.string "to_state", limit: 16, null: false
+    t.string "changed_by", limit: 30, null: false
+    t.text "reason"
+    t.datetime "created_at", null: false
+    t.index ["feature_key", "created_at"], name: "index_feature_flag_changes_on_feature_key_and_created_at"
+    t.check_constraint "from_state IS NULL OR (from_state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[]))", name: "ck_feature_flag_changes_from_state"
+    t.check_constraint "to_state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[])", name: "ck_feature_flag_changes_to_state"
+  end
+
+  create_table "feature_flags", force: :cascade do |t|
+    t.string "key", limit: 64, null: false
+    t.string "state", limit: 16, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["key"], name: "index_feature_flags_on_key", unique: true
+    t.check_constraint "state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[])", name: "ck_feature_flags_state"
   end
 
   create_table "gamedb_collections", primary_key: "collection_id", force: :cascade do |t|
