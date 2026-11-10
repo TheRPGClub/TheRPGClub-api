@@ -1122,6 +1122,65 @@ module OpenapiSchemas
                                         "exist). False for authors the club never recorded."),
         _required: %w[user_id name member]
       ),
+      # ---- News Import (ticket #359) ---------------------------------------
+      # NewsImportItemResource: an unsorted imported News Item, as the
+      # download file lists it for a classifier.
+      NewsImportItem: obj(
+        message_id: str(example: "1300000000000000003", description: "The archived Discord message's snowflake."),
+        posted_at: ts.merge(description: "When the message was posted in the Game News Archive."),
+        author_name: str(description: "The member's current name when they have a member record; otherwise " \
+                                      "the name recorded with the message."),
+        comment: str(nullable: true, description: "The member's own words; null when there are none."),
+        link_url: str(nullable: true, description: "The link's address; null for an image-only item."),
+        link_title: str(nullable: true, description: "The link preview's title."),
+        link_site_name: str(nullable: true, description: "The link preview's site name."),
+        link_description: str(nullable: true, description: "The link preview's description."),
+        image_count: int.merge(description: "How many image attachments the message has."),
+        _required: %w[message_id posted_at author_name comment link_url link_title link_site_name
+                      link_description image_count]
+      ),
+      NewsImportBatchResult: obj(
+        created: int.merge(description: "Messages recorded as new imported News Items."),
+        updated: int.merge(description: "Messages already recorded, updated in place (an assigned News " \
+                                        "Category is kept)."),
+        previously_removed: int.merge(description: "Messages staff removed with `skip`, left out."),
+        rejected: array_of("NewsImportBatchRejection").merge(
+          description: "Messages not recorded, each with its reason. Empty when every message was recorded."
+        ),
+        _required: %w[created updated previously_removed rejected]
+      ),
+      NewsImportBatchRejection: obj(
+        index: int.merge(description: "The message's 0-based position in `items`."),
+        message_id: str(nullable: true, description: "The message id as sent; null when missing."),
+        reason: str(example: "A News Item needs a link or at least one image",
+          description: "Why it was not recorded: the News Item's validation errors, or `already recorded as " \
+                       "a live News Item`."),
+        _required: %w[index message_id reason]
+      ),
+      NewsImportAssignResult: obj(
+        assigned: int.merge(description: "Rows that assigned a News Category."),
+        removed: int.merge(description: "`skip` rows (including items already removed by an earlier `skip`)."),
+        rejected: int.merge(description: "Rows rejected; listed in `rejections`."),
+        unsorted: int.merge(description: "Imported News Items still unsorted after this request."),
+        rejections: array_of("NewsImportAssignRejection").merge(description: "The rejected rows, in order."),
+        _required: %w[assigned removed rejected unsorted rejections]
+      ),
+      NewsImportAssignRejection: obj(
+        index: int.merge(description: "The row's 0-based position in `rows`."),
+        message_id: str(description: "The message id as sent (trimmed); empty when missing."),
+        value: str(description: "The value as sent."),
+        reason: str(example: "unknown message ID",
+          description: "One of: `missing message ID`, `message ID appears more than once`, `no value: ...`, " \
+                       "`invalid value: ...` (both end with the accepted values), `removed with skip`, " \
+                       "`unknown message ID`, `not an imported News Item`."),
+        _required: %w[index message_id value reason]
+      ),
+      NewsImportStatus: obj(
+        sorted: int.merge(description: "Imported News Items with a News Category (shown to members)."),
+        unsorted: int.merge(description: "Imported News Items with no News Category yet (hidden)."),
+        removed: int.merge(description: "Archive messages staff removed with `skip`."),
+        _required: %w[sorted unsorted removed]
+      ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,
         created_at: ts, created_by: str(nullable: true)

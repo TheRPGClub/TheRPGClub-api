@@ -3644,6 +3644,164 @@ components:
       - user_id
       - name
       - member
+    NewsImportItem:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: '1300000000000000003'
+          description: The archived Discord message's snowflake.
+        posted_at:
+          type: string
+          format: date-time
+          description: When the message was posted in the Game News Archive.
+        author_name:
+          type: string
+          description: The member's current name when they have a member record; otherwise
+            the name recorded with the message.
+        comment:
+          type: string
+          nullable: true
+          description: The member's own words; null when there are none.
+        link_url:
+          type: string
+          nullable: true
+          description: The link's address; null for an image-only item.
+        link_title:
+          type: string
+          nullable: true
+          description: The link preview's title.
+        link_site_name:
+          type: string
+          nullable: true
+          description: The link preview's site name.
+        link_description:
+          type: string
+          nullable: true
+          description: The link preview's description.
+        image_count:
+          type: integer
+          description: How many image attachments the message has.
+      required:
+      - message_id
+      - posted_at
+      - author_name
+      - comment
+      - link_url
+      - link_title
+      - link_site_name
+      - link_description
+      - image_count
+    NewsImportBatchResult:
+      type: object
+      properties:
+        created:
+          type: integer
+          description: Messages recorded as new imported News Items.
+        updated:
+          type: integer
+          description: Messages already recorded, updated in place (an assigned News
+            Category is kept).
+        previously_removed:
+          type: integer
+          description: Messages staff removed with `skip`, left out.
+        rejected:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsImportBatchRejection"
+          description: Messages not recorded, each with its reason. Empty when every
+            message was recorded.
+      required:
+      - created
+      - updated
+      - previously_removed
+      - rejected
+    NewsImportBatchRejection:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: The message's 0-based position in `items`.
+        message_id:
+          type: string
+          nullable: true
+          description: The message id as sent; null when missing.
+        reason:
+          type: string
+          example: A News Item needs a link or at least one image
+          description: 'Why it was not recorded: the News Item''s validation errors,
+            or `already recorded as a live News Item`.'
+      required:
+      - index
+      - message_id
+      - reason
+    NewsImportAssignResult:
+      type: object
+      properties:
+        assigned:
+          type: integer
+          description: Rows that assigned a News Category.
+        removed:
+          type: integer
+          description: "`skip` rows (including items already removed by an earlier
+            `skip`)."
+        rejected:
+          type: integer
+          description: Rows rejected; listed in `rejections`.
+        unsorted:
+          type: integer
+          description: Imported News Items still unsorted after this request.
+        rejections:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsImportAssignRejection"
+          description: The rejected rows, in order.
+      required:
+      - assigned
+      - removed
+      - rejected
+      - unsorted
+      - rejections
+    NewsImportAssignRejection:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: The row's 0-based position in `rows`.
+        message_id:
+          type: string
+          description: The message id as sent (trimmed); empty when missing.
+        value:
+          type: string
+          description: The value as sent.
+        reason:
+          type: string
+          example: unknown message ID
+          description: 'One of: `missing message ID`, `message ID appears more than
+            once`, `no value: ...`, `invalid value: ...` (both end with the accepted
+            values), `removed with skip`, `unknown message ID`, `not an imported News
+            Item`.'
+      required:
+      - index
+      - message_id
+      - value
+      - reason
+    NewsImportStatus:
+      type: object
+      properties:
+        sorted:
+          type: integer
+          description: Imported News Items with a News Category (shown to members).
+        unsorted:
+          type: integer
+          description: Imported News Items with no News Category yet (hidden).
+        removed:
+          type: integer
+          description: Archive messages staff removed with `skip`.
+      required:
+      - sorted
+      - unsorted
+      - removed
     SearchSynonym:
       type: object
       properties:
@@ -15225,6 +15383,385 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/news_import/items":
+    post:
+      summary: Record a batch of archived messages
+      tags:
+      - News Hub
+      description: 'Service-only. The News Import scan sends the Game News Archive''s
+        qualifying messages (by a member, not a bot, with a link, an image attachment,
+        or both) in batches of up to 100. Each becomes an imported News Item (origin
+        `import`) with no News Category, hidden from members until staff assign one.
+        Safe to repeat: a message already recorded is updated in place and keeps any
+        News Category staff assigned; a message staff removed with `skip` is left
+        out (`previously_removed`) and never comes back. Each message stands alone:
+        one that is not a valid News Item, or is already a live News Item, is listed
+        in `rejected` with its reason and the rest are still recorded. The fields
+        are those of `PUT /api/v1/news_items/{message_id}` plus `message_id`, without
+        `category_key`. Works whatever the Feature Flag says.'
+      parameters: []
+      responses:
+        '200':
+          description: the batch was applied; counts and per-message rejections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsImportBatchResult"
+                required:
+                - data
+        '400':
+          description: missing `data.items`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'more than 100 items, `{ "error": "at most 100 items per batch"
+            }`; nothing was recorded'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    items:
+                      type: array
+                      maxItems: 100
+                      items:
+                        type: object
+                        properties:
+                          message_id:
+                            type: string
+                            description: The archived message's snowflake. Required.
+                          channel_id:
+                            type: string
+                            description: The Game News Archive's channel id. Required.
+                          author_id:
+                            type: string
+                            description: The author's Discord user id. Required.
+                          author_name:
+                            type: string
+                            maxLength: 100
+                            description: The author's display name now (for a member
+                              who left, the name Discord still shows). Required.
+                          comment:
+                            type: string
+                            nullable: true
+                            description: The message text as a reader sees it, without
+                              the link address.
+                          posted_at:
+                            type: string
+                            format: date-time
+                            description: When it was originally posted. Required.
+                          edited_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          link:
+                            type: object
+                            nullable: true
+                            description: The message's first link and Discord's preview
+                              of it; null for none.
+                            properties:
+                              url:
+                                type: string
+                              title:
+                                type: string
+                                nullable: true
+                              site_name:
+                                type: string
+                                nullable: true
+                              description:
+                                type: string
+                                nullable: true
+                              image_url:
+                                type: string
+                                nullable: true
+                            required:
+                            - url
+                          images:
+                            type: array
+                            description: Every image attachment, in order, with its
+                              Discord address and expiry.
+                            items:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                expires_at:
+                                  type: string
+                                  format: date-time
+                              required:
+                              - url
+                              - expires_at
+                        required:
+                        - message_id
+                        - channel_id
+                        - author_id
+                        - author_name
+                        - posted_at
+                  required:
+                  - items
+              required:
+              - data
+        required: true
+    get:
+      summary: List the unsorted imported News Items
+      tags:
+      - News Hub
+      description: 'The imported News Items staff have not assigned a News Category
+        yet, oldest first (`posted_at`, then id), paged with `page`/`per`, with the
+        fields a classifier needs. The bot turns them into the download file. Admins
+        and Superadmins only, in every Feature Flag state (Live included). A signed-in
+        member is checked by their own roles; the bot calls with the service token
+        and names the acting Discord user (`acting_user_id`), and the same rule applies
+        to that member''s stored roles: 400 `acting_user_id required` without one,
+        403 when they are not an Admin or Superadmin or have no member record. Also
+        behind the News Hub Feature gate, which a signed-in caller meets only when
+        not Off; the service token is not gated.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Bot only (required with the service token): the Discord user
+          id of the staff member who ran the command.'
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: a page of unsorted imported News Items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsImportItem"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the acting member is not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: a signed-in caller while the News Hub is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/news_import/assignments":
+    post:
+      summary: Assign News Categories to imported News Items
+      tags:
+      - News Hub
+      description: 'Applies a reviewed list of rows, each a message id and a value.
+        A News Category key (announcements, releases, emulation, industry, hardware,
+        rumours, general) assigns it, which shows the item to members with its original
+        author and date; assigning again changes it. `skip` deletes the item and remembers
+        the removal, so a later scan never brings it back; `skip` for an item already
+        removed counts as removed again, so the same file can be applied twice. Values
+        ignore case and surrounding spaces. Applies to imported News Items only. Each
+        bad row is listed in `rejections` with its reason and does not stop the others:
+        a missing or repeated message id (every occurrence is rejected), a blank or
+        invalid value, an unknown message id, a live News Item, or a News Category
+        for an item removed with `skip`. Leave rows with no value out of the request.
+        Up to 5000 rows per request. Admins and Superadmins only, in every Feature
+        Flag state (Live included). A signed-in member is checked by their own roles;
+        the bot calls with the service token and names the acting Discord user (`acting_user_id`),
+        and the same rule applies to that member''s stored roles: 400 `acting_user_id
+        required` without one, 403 when they are not an Admin or Superadmin or have
+        no member record. Also behind the News Hub Feature gate, which a signed-in
+        caller meets only when not Off; the service token is not gated.'
+      parameters: []
+      responses:
+        '200':
+          description: the valid rows were applied; counts and per-row rejections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsImportAssignResult"
+                required:
+                - data
+        '422':
+          description: 'more than 5000 rows, `{ "error": "at most 5000 rows per request"
+            }`; nothing was applied'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: the bot named no `data.acting_user_id`, or `data.rows` is missing
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the acting member is not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: a signed-in caller while the News Hub is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only (required with the service token): the
+                        Discord user id of the staff member who ran the command.'
+                    rows:
+                      type: array
+                      maxItems: 5000
+                      items:
+                        type: object
+                        properties:
+                          message_id:
+                            type: string
+                          value:
+                            type: string
+                            example: releases
+                            description: A News Category key, or `skip`.
+                        required:
+                        - message_id
+                        - value
+                  required:
+                  - rows
+              required:
+              - data
+        required: true
+  "/api/v1/news_import/status":
+    get:
+      summary: News Import counts
+      tags:
+      - News Hub
+      description: 'How many imported News Items are sorted and unsorted, and how
+        many archive messages staff removed with `skip`. Admins and Superadmins only,
+        in every Feature Flag state (Live included). A signed-in member is checked
+        by their own roles; the bot calls with the service token and names the acting
+        Discord user (`acting_user_id`), and the same rule applies to that member''s
+        stored roles: 400 `acting_user_id required` without one, 403 when they are
+        not an Admin or Superadmin or have no member record. Also behind the News
+        Hub Feature gate, which a signed-in caller meets only when not Off; the service
+        token is not gated.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Bot only (required with the service token): the Discord user
+          id of the staff member who ran the command.'
+      responses:
+        '200':
+          description: the counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsImportStatus"
+                required:
+                - data
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the acting member is not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: a signed-in caller while the News Hub is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/news_items":
     get:
       summary: The News Hub feed

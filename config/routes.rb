@@ -421,6 +421,13 @@ Rails.application.routes.draw do
       get    "news_items",             to: "news_items#index"
       put    "news_items/:message_id", to: "news_items#update"
       delete "news_items/:message_id", to: "news_items#destroy"
+      # The News Import (ticket #359): the bot records the Game News Archive
+      # in batches (service-only); staff, through the bot, list the unsorted
+      # imported News Items, assign their News Categories and read counts.
+      post "news_import/items",       to: "news_import#record"
+      get  "news_import/items",       to: "news_import#unsorted"
+      post "news_import/assignments", to: "news_import#assign"
+      get  "news_import/status",      to: "news_import#status"
     end
   end
 end

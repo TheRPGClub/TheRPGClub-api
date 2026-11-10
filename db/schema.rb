@@ -445,6 +445,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_090357) do
     t.index ["user_id", "category_key"], name: "index_member_news_category_preferences_on_user_and_category", unique: true
   end
 
+  create_table "news_import_removals", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "message_id", limit: 30, null: false
+    t.string "removed_by", limit: 30
+    t.index ["message_id"], name: "index_news_import_removals_on_message_id", unique: true
+  end
+
   create_table "news_items", force: :cascade do |t|
     t.string "author_id", limit: 30, null: false
     t.string "author_name", limit: 100, null: false
