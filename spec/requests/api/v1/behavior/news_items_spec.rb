@@ -17,4 +17,35 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
         "last_change" => nil)
     end
   end
+
+  describe "GET /api/v1/news_categories" do
+    it "lists the seven News Categories in order, with key and name" do
+      get "/api/v1/news_categories", headers: auth_headers_for(create(:user, role_member: true))
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to eq([
+        { "key" => "announcements", "name" => "Announcements & Trailers", "position" => 1 },
+        { "key" => "releases", "name" => "Releases & Updates", "position" => 2 },
+        { "key" => "emulation", "name" => "Emulation & Preservation", "position" => 3 },
+        { "key" => "industry", "name" => "Industry", "position" => 4 },
+        { "key" => "hardware", "name" => "Hardware & Platforms", "position" => 5 },
+        { "key" => "rumours", "name" => "Rumours & Leaks", "position" => 6 },
+        { "key" => "general", "name" => "General", "position" => 7 }
+      ])
+    end
+
+    it "answers the bot's service token" do
+      get "/api/v1/news_categories", headers: service_headers
+
+      expect(json.fetch("data").size).to eq(7)
+    end
+
+    it "is not found for a member while the News Hub is in Preview" do
+      set_feature_flag("news_hub", "preview")
+
+      get "/api/v1/news_categories", headers: auth_headers_for(create(:user, role_member: true))
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
 end

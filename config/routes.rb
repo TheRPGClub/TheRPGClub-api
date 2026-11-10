@@ -412,6 +412,8 @@ Rails.application.routes.draw do
         member { put "terms", to: "search_synonym_groups#replace_terms" }
       end
       resources :search_synonym_drafts, only: %i[index show create update destroy]
+      # News Hub (spec #355): the fixed News Categories.
+      get "news_categories", to: "news_categories#index"
     end
   end
 end
