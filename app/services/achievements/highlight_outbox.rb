@@ -17,8 +17,12 @@ module Achievements
     module_function
 
     # Unannounced announceable Unlocks of active members on non-removed
-    # Achievements, oldest first.
+    # Achievements, oldest first. None while the Achievement Hub is Off: its
+    # Highlight announcements pause, and the held ones are listed once it is
+    # back on.
     def pending(limit: LIMIT)
+      return UserAchievementUnlock.none if Features.off?("achievement_hub")
+
       Reads.unlocks
         .where(announceable: true, announced_at: nil)
         .includes(:user, achievement: :achievement_set)
