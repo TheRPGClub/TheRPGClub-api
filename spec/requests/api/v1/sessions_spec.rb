@@ -61,7 +61,12 @@ RSpec.describe 'api/v1/sessions', type: :request do
                 name: { type: :string, example: 'Reviews' },
                 state: { type: :string, enum: %w[off preview live] },
                 hideable: { type: :boolean, description: 'False for a Core Feature, which members cannot hide.' },
-                shown: { type: :boolean, description: 'Whether the website shows this Feature to the viewer.' },
+                shown: {
+                  type: :boolean,
+                  description: 'Whether the website shows this Feature to the viewer: they can use it, have not ' \
+                               'hidden it with a Feature Preference, and, for staff with "show Preview features" ' \
+                               'off, it is not in Preview. A hidden Feature stays listed with `shown: false`.'
+                },
                 preview: {
                   type: :boolean,
                   description: 'True when the viewer sees the Feature only because they are staff (Preview).'

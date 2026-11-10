@@ -46,6 +46,27 @@ RSpec.describe Voting::AdvanceRoundsJob do
       expect(Voting::SweepSchedule.due?(reminder_at + 1.minute)).to be(false)
     end
 
+    context "while Voting & GOTM is Off" do
+      before { set_feature_flag("voting_gotm", "off") }
+
+      it "does nothing, not even read the schedule" do
+        expect(Voting::SweepSchedule).not_to receive(:due?)
+
+        perform_at(reminder_at)
+
+        expect(VotingEvent.count).to eq(0)
+      end
+
+      it "queues what fell due meanwhile once Voting & GOTM is back on" do
+        perform_at(reminder_at)
+
+        set_feature_flag("voting_gotm", "live")
+        perform_at(reminder_at + 1.hour)
+
+        expect(VotingEvent.pluck(:kind)).to eq(%w[nomination_reminder_5d])
+      end
+    end
+
     it "looks again by RECHECK when nothing is scheduled" do
       round.update!(decided_at: Time.utc(2026, 10, 1))
       perform_at(Time.utc(2026, 10, 20))

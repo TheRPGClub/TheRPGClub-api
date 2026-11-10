@@ -54,6 +54,18 @@ RSpec.describe "api/v1/achievements highlights behavior", type: :request do
       expect(json.fetch("data").sole.dig("achievement", "hidden")).to be(true)
     end
 
+    it "holds every Highlight while the Achievement Hub is Off, and lists it once it is back on" do
+      unlock = highlight
+      set_feature_flag("achievement_hub", "off")
+
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+      expect(json.fetch("data")).to eq([])
+
+      set_feature_flag("achievement_hub", "preview")
+      get "/api/v1/achievements/highlights/pending", headers: service_headers
+      expect(json.fetch("data").map { |row| row.fetch("id") }).to eq([ unlock.id ])
+    end
+
     it "is forbidden to admins and members" do
       get "/api/v1/achievements/highlights/pending", headers: auth_headers_for(create(:user, role_admin: true))
 

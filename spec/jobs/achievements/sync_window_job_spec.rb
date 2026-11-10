@@ -62,6 +62,29 @@ RSpec.describe Achievements::SyncWindowJob do
     end
   end
 
+  describe "while the Achievement Hub is Off" do
+    before { set_feature_flag("achievement_hub", "off") }
+
+    it "marks nothing and starts no Provider tick" do
+      linked = account
+
+      described_class.perform_now
+
+      expect(linked.reload.sync_due_at).to be_nil
+      expect(Achievements::ProviderTickJob).not_to have_been_enqueued
+    end
+
+    it "opens the next window as usual once the Achievement Hub is back on" do
+      linked = account
+      described_class.perform_now
+
+      set_feature_flag("achievement_hub", "preview")
+      described_class.perform_now
+
+      expect(marked?(linked)).to be(true)
+    end
+  end
+
   describe "while PSN auth has expired" do
     let(:psn_client) { instance_double(Psn::Client) }
 

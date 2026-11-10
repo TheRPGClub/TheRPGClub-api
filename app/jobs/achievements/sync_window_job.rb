@@ -11,6 +11,8 @@ module Achievements
   # member's Retry), accounts still in their Backfill, departed members (their
   # data is kept, so a rejoin resumes without a new Backfill), and PSN accounts
   # while the club account's auth has expired (the PSN pause).
+  #
+  # A window that opens while the Achievement Hub is Off is skipped whole.
   class SyncWindowJob < ApplicationJob
     include CpuLogging
 
@@ -19,6 +21,8 @@ module Achievements
     queue_as :default
 
     def perform
+      return if Features.off?("achievement_hub")
+
       now = Time.current
       scope = eligible
       scope.where.not(backfilled_at: nil).update_all(sync_due_at: now, sync_mode: "incremental", updated_at: now)

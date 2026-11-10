@@ -14,7 +14,9 @@
 # The summary is what the /admin activity list shows, so keep it plain and
 # free of secrets (no game keys, tokens or other payload-only values). The
 # payload is per kind and only the bot sees it; a breaking payload change
-# gets a new kind name.
+# gets a new kind name. A kind that posts publicly is owned by a Feature
+# (PUBLIC_POST_FEATURES), and its payload carries that Feature's key as
+# `feature_key`, so the bot can route the post by its Feature Flag.
 class BotJob < ApplicationRecord
   KINDS = %w[
     completion_announce
@@ -34,6 +36,17 @@ class BotJob < ApplicationRecord
     presence_set
     feature_flag_changed
   ].freeze
+  # The kinds that post publicly, and the Feature each post belongs to. The
+  # other kinds DM, post to a staff channel or post nothing.
+  PUBLIC_POST_FEATURES = {
+    "completion_announce" => "game_completions",
+    "giveaway_hub_refresh" => "giveaways",
+    "nomination_deleted" => "voting_gotm",
+    "suggestion_outcome" => "suggestions",
+    "voting_results_publish" => "voting_gotm",
+    "voting_panels_repost" => "voting_gotm",
+    "voting_tie_broken" => "voting_gotm"
+  }.freeze
   STATUSES = %w[queued claimed done failed].freeze
   # Default claim lease, and per-kind overrides for jobs the bot needs
   # longer to finish (e.g. a whole-guild scan).
@@ -73,9 +86,15 @@ class BotJob < ApplicationRecord
   # SUMMARY_MAX rather than failing the member's write.
   def self.enqueue!(kind:, summary:, payload: {}, requested_by: nil)
     user_id = requested_by.is_a?(RpgClubUser) ? requested_by.user_id : requested_by&.to_s
-    create!(kind: kind, summary: summary.to_s.squish.truncate(SUMMARY_MAX), payload: payload,
+    create!(kind: kind, summary: summary.to_s.squish.truncate(SUMMARY_MAX), payload: with_feature_key(kind, payload),
       requested_by_user_id: user_id)
   end
+
+  def self.with_feature_key(kind, payload)
+    feature_key = PUBLIC_POST_FEATURES[kind.to_s]
+    feature_key ? payload.to_h.stringify_keys.merge("feature_key" => feature_key) : payload
+  end
+  private_class_method :with_feature_key
 
   # How long a claim of `kind` may go unacked before it is handed out again.
   def self.lease_for(kind)

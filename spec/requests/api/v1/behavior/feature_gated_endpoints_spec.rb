@@ -162,6 +162,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/users" => nil,
     "api/v1/feature_access" => nil,
     "api/v1/features" => nil,
+    "api/v1/feature_preferences" => nil,
     "api/v1/user_roles" => nil,
     "api/v1/user_avatar_history" => nil,
     "api/v1/user_nick_history" => nil,
