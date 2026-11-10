@@ -884,10 +884,11 @@ module OpenapiSchemas
       ),
       # The News Hub's bot job payloads (#358), as BotJobClaim.payload carries them.
       NewsImagesRenewJobPayload: obj(
-        _description: "Kind `news_images_renew`. The feed served this News Item with an expired Discord image " \
-                      "address. Fetch the message and record it again with `PUT /api/v1/news_items/{message_id}` " \
-                      "(fresh addresses and expiry times), or `DELETE` the News Item when the message is gone. " \
-                      "At most one is open per message. Posts nothing.",
+        _description: "Kind `news_images_renew`. The feed served a member this News Item with an expired " \
+                      "Discord image address. Fetch the message and record it again with " \
+                      "`PUT /api/v1/news_items/{message_id}` (fresh addresses and expiry times), or `DELETE` the " \
+                      "News Item when the message is gone. At most one is open per message, and none is queued " \
+                      "within six hours of the last one for that message ending. Posts nothing.",
         message_id: str.merge(description: "The News Item's Discord message id."),
         channel_id: str.merge(description: "The channel or thread the message is in (a News Category's thread, " \
                                            "or the Game News Archive for an imported News Item)."),
@@ -1179,7 +1180,11 @@ module OpenapiSchemas
         sorted: int.merge(description: "Imported News Items with a News Category (shown to members)."),
         unsorted: int.merge(description: "Imported News Items with no News Category yet (hidden)."),
         removed: int.merge(description: "Archive messages staff removed with `skip`."),
-        _required: %w[sorted unsorted removed]
+        oldest_message_id: str(nullable: true, example: "1300000000000000003",
+          description: "The oldest archive message imported so far (by snowflake), kept or removed with " \
+                       "`skip`; null before any. The archive is locked and the scan reads it newest first, " \
+                       "so a re-run scan continues from just before this message."),
+        _required: %w[sorted unsorted removed oldest_message_id]
       ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,

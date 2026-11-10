@@ -24,18 +24,21 @@ module Api
       # Body: { "data": { "hidden": { "<category key>": true|false, ... } } }
       # Switches each named News Category off (true) or on again (false) and
       # leaves the others untouched. Any invalid part refuses the whole change
-      # with 422.
+      # with 422. Switching off one already off is a no-op, also when two
+      # requests do it at once.
       def update
         hidden = request_data["hidden"]
         error = hidden_error(hidden)
         return render(json: { error: error }, status: :unprocessable_content) if error
 
         user = RpgClubUser.find_or_create_by!(user_id: params[:user_id])
+        off, on = hidden.keys.partition { |key| hidden[key] }
         MemberNewsCategoryPreference.transaction do
-          hidden.each do |key, hide|
-            scope = MemberNewsCategoryPreference.where(user_id: user.user_id, category_key: key)
-            hide ? scope.first_or_create! : scope.delete_all
+          if off.any?
+            MemberNewsCategoryPreference.insert_all(off.map { |key| { user_id: user.user_id, category_key: key } },
+              unique_by: %i[user_id category_key])
           end
+          MemberNewsCategoryPreference.where(user_id: user.user_id, category_key: on).delete_all if on.any?
         end
 
         render json: { data: document(user.user_id) }

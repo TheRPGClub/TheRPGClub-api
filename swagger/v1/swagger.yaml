@@ -2920,11 +2920,12 @@ components:
       - message_id
       - channel_id
       - feature_key
-      description: Kind `news_images_renew`. The feed served this News Item with an
-        expired Discord image address. Fetch the message and record it again with
-        `PUT /api/v1/news_items/{message_id}` (fresh addresses and expiry times),
+      description: Kind `news_images_renew`. The feed served a member this News Item
+        with an expired Discord image address. Fetch the message and record it again
+        with `PUT /api/v1/news_items/{message_id}` (fresh addresses and expiry times),
         or `DELETE` the News Item when the message is gone. At most one is open per
-        message. Posts nothing.
+        message, and none is queued within six hours of the last one for that message
+        ending. Posts nothing.
     NewsCatchUpJobPayload:
       type: object
       properties:
@@ -3798,10 +3799,19 @@ components:
         removed:
           type: integer
           description: Archive messages staff removed with `skip`.
+        oldest_message_id:
+          type: string
+          nullable: true
+          example: '1300000000000000003'
+          description: The oldest archive message imported so far (by snowflake),
+            kept or removed with `skip`; null before any. The archive is locked and
+            the scan reads it newest first, so a re-run scan continues from just before
+            this message.
       required:
       - sorted
       - unsorted
       - removed
+      - oldest_message_id
     SearchSynonym:
       type: object
       properties:
@@ -15398,7 +15408,9 @@ paths:
         one that is not a valid News Item, or is already a live News Item, is listed
         in `rejected` with its reason and the rest are still recorded. The fields
         are those of `PUT /api/v1/news_items/{message_id}` plus `message_id`, without
-        `category_key`. Works whatever the Feature Flag says.'
+        `category_key`. The service token is not gated; the bot runs the scan only
+        for an Admin or Superadmin while the News Hub is Preview or Live (nobody imports
+        while it is Off).'
       parameters: []
       responses:
         '200':
@@ -15513,6 +15525,11 @@ paths:
                                 expires_at:
                                   type: string
                                   format: date-time
+                                  nullable: true
+                                  description: When that address expires (the `ex`
+                                    parameter of Discord's signed URL); null when
+                                    the address has no `ex` parameter, so it does
+                                    not expire.
                               required:
                               - url
                               - expires_at
@@ -15533,14 +15550,15 @@ paths:
       - News Hub
       description: 'The imported News Items staff have not assigned a News Category
         yet, oldest first (`posted_at`, then id), paged with `page`/`per`, with the
-        fields a classifier needs. The bot turns them into the download file. Admins
-        and Superadmins only, in every Feature Flag state (Live included). A signed-in
-        member is checked by their own roles; the bot calls with the service token
-        and names the acting Discord user (`acting_user_id`), and the same rule applies
-        to that member''s stored roles: 400 `acting_user_id required` without one,
-        403 when they are not an Admin or Superadmin or have no member record. Also
-        behind the News Hub Feature gate, which a signed-in caller meets only when
-        not Off; the service token is not gated.'
+        fields a classifier needs. The bot turns them into the download file. The
+        News Import works for Admins and Superadmins while the News Hub is Preview
+        or Live, and for nobody while it is Off. A signed-in member is checked by
+        their own roles; the bot calls with the service token and names the acting
+        Discord user (`acting_user_id`), and the same rule applies to that member''s
+        stored roles: 400 `acting_user_id required` without one, 403 when they are
+        not an Admin or Superadmin or have no member record. While Off, the News Hub
+        Feature gate answers a signed-in caller 404; the service token is not gated,
+        so the bot refuses its /news-import commands itself.'
       parameters:
       - name: acting_user_id
         in: query
@@ -15620,13 +15638,14 @@ paths:
         a missing or repeated message id (every occurrence is rejected), a blank or
         invalid value, an unknown message id, a live News Item, or a News Category
         for an item removed with `skip`. Leave rows with no value out of the request.
-        Up to 5000 rows per request. Admins and Superadmins only, in every Feature
-        Flag state (Live included). A signed-in member is checked by their own roles;
-        the bot calls with the service token and names the acting Discord user (`acting_user_id`),
-        and the same rule applies to that member''s stored roles: 400 `acting_user_id
-        required` without one, 403 when they are not an Admin or Superadmin or have
-        no member record. Also behind the News Hub Feature gate, which a signed-in
-        caller meets only when not Off; the service token is not gated.'
+        Up to 5000 rows per request. The News Import works for Admins and Superadmins
+        while the News Hub is Preview or Live, and for nobody while it is Off. A signed-in
+        member is checked by their own roles; the bot calls with the service token
+        and names the acting Discord user (`acting_user_id`), and the same rule applies
+        to that member''s stored roles: 400 `acting_user_id required` without one,
+        403 when they are not an Admin or Superadmin or have no member record. While
+        Off, the News Hub Feature gate answers a signed-in caller 404; the service
+        token is not gated, so the bot refuses its /news-import commands itself.'
       parameters: []
       responses:
         '200':
@@ -15709,15 +15728,17 @@ paths:
       summary: News Import counts
       tags:
       - News Hub
-      description: 'How many imported News Items are sorted and unsorted, and how
-        many archive messages staff removed with `skip`. Admins and Superadmins only,
-        in every Feature Flag state (Live included). A signed-in member is checked
-        by their own roles; the bot calls with the service token and names the acting
-        Discord user (`acting_user_id`), and the same rule applies to that member''s
-        stored roles: 400 `acting_user_id required` without one, 403 when they are
-        not an Admin or Superadmin or have no member record. Also behind the News
-        Hub Feature gate, which a signed-in caller meets only when not Off; the service
-        token is not gated.'
+      description: 'How many imported News Items are sorted and unsorted, how many
+        archive messages staff removed with `skip`, and the oldest message imported
+        so far (`oldest_message_id`), where a re-run scan continues. The News Import
+        works for Admins and Superadmins while the News Hub is Preview or Live, and
+        for nobody while it is Off. A signed-in member is checked by their own roles;
+        the bot calls with the service token and names the acting Discord user (`acting_user_id`),
+        and the same rule applies to that member''s stored roles: 400 `acting_user_id
+        required` without one, 403 when they are not an Admin or Superadmin or have
+        no member record. While Off, the News Hub Feature gate answers a signed-in
+        caller 404; the service token is not gated, so the bot refuses its /news-import
+        commands itself.'
       parameters:
       - name: acting_user_id
         in: query
@@ -15782,11 +15803,13 @@ paths:
         keys). Each item names its author by their current member name, or by the
         name recorded with the message when they have no member record. An image whose
         Discord address has expired comes back unavailable (`url` null) and queues
-        a `news_images_renew` bot job for its message (one at a time per message);
-        a later load serves it once the bot has recorded fresh addresses. Belongs
-        to the News Hub Feature: a member who cannot use it (Preview: Admins and Superadmins
-        only; Off: nobody) gets 404 `not_found`. The service token is not gated; the
-        bot runs its own feature gate.'
+        a `news_images_renew` bot job for its message: one at a time per message,
+        none within six hours of that message''s last renewal ending, and none for
+        the service token''s own reads; a later load serves it once the bot has recorded
+        fresh addresses. An image recorded with no expiry (`expires_at` null) is always
+        served. Belongs to the News Hub Feature: a member who cannot use it (Preview:
+        Admins and Superadmins only; Off: nobody) gets 404 `not_found`. The service
+        token is not gated; the bot runs its own feature gate.'
       parameters:
       - name: category
         in: query
@@ -16015,8 +16038,11 @@ paths:
                           expires_at:
                             type: string
                             format: date-time
+                            nullable: true
                             description: When that address expires (the `ex` parameter
-                              of Discord's signed URL).
+                              of Discord's signed URL); null when the address has
+                              no `ex` parameter, so it does not expire and is never
+                              renewed.
                         required:
                         - url
                         - expires_at

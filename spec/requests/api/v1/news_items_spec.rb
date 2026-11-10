@@ -22,8 +22,10 @@ RSpec.describe 'api/v1/news_items', type: :request do
                   'and `hidden_categories` (the switched-off keys). Each item names its author by their current ' \
                   'member name, or by the name recorded with the message when they have no member record. ' \
                   'An image whose Discord address has expired comes back unavailable (`url` null) and queues ' \
-                  'a `news_images_renew` bot job for its message (one at a time per message); a later load ' \
-                  'serves it once the bot has recorded fresh addresses. ' \
+                  'a `news_images_renew` bot job for its message: one at a time per message, none within six ' \
+                  "hours of that message's last renewal ending, and none for the service token's own reads; " \
+                  'a later load serves it once the bot has recorded fresh addresses. An image recorded with ' \
+                  'no expiry (`expires_at` null) is always served. ' \
                   "#{gate}"
       produces 'application/json'
       parameter name: :category, in: :query, required: false,
@@ -120,9 +122,10 @@ RSpec.describe 'api/v1/news_items', type: :request do
                   type: :object,
                   properties: {
                     url: { type: :string, description: "The attachment's Discord address (http(s))." },
-                    expires_at: { type: :string, format: 'date-time',
+                    expires_at: { type: :string, format: 'date-time', nullable: true,
                                   description: "When that address expires (the `ex` parameter of Discord's " \
-                                               'signed URL).' }
+                                               'signed URL); null when the address has no `ex` parameter, so ' \
+                                               'it does not expire and is never renewed.' }
                   },
                   required: %w[url expires_at]
                 }

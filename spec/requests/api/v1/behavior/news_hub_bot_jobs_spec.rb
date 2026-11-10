@@ -79,13 +79,22 @@ RSpec.describe "News Hub bot jobs behavior", type: :request do
       expect { feed }.not_to change(BotJob, :count)
     end
 
-    it "queues the renewal again once the earlier job has finished without renewing the address" do
-      record("3300000000000000001", images: [ image("stale", now - 1.minute) ])
-      feed
-      BotJob.last.ack!(status: "failed", error_message: "Discord was down")
+    { "failed" => { error_message: "Discord was down" }, "done" => {} }.each do |outcome, ack|
+      it "waits six hours after a renewal ends #{outcome} without renewing the address before queuing another" do
+        record("3300000000000000001", images: [ image("stale", now - 1.minute) ])
+        record("3300000000000000002", images: [ image("other", now - 1.minute) ])
+        feed
+        BotJob.find_by!("payload->>'message_id' = ?", "3300000000000000001").ack!(status: outcome, **ack)
 
-      expect { feed }.to change(BotJob, :count).by(1)
-      expect(BotJob.last).to have_attributes(kind: "news_images_renew", status: "queued")
+        expect { feed }.not_to change(BotJob, :count)
+        travel_to now + 6.hours - 1.minute
+        expect { feed }.not_to change(BotJob, :count)
+
+        travel_to now + 6.hours + 1.minute
+        expect { feed }.to change(BotJob, :count).by(1)
+        expect(BotJob.last).to have_attributes(kind: "news_images_renew", status: "queued",
+          payload: include("message_id" => "3300000000000000001"))
+      end
     end
 
     it "lets the bot see the renewal at once" do
@@ -118,6 +127,27 @@ RSpec.describe "News Hub bot jobs behavior", type: :request do
       item = feed.sole
       expect(item.fetch("images")).to eq([])
       expect(item.dig("link", "image_url")).to eq("https://example.test/img/thumb.jpg")
+    end
+
+    it "queues no renewal when the bot reads the feed, though the image is still served unavailable" do
+      record("3300000000000000001", images: [ image("stale", now - 1.minute) ])
+
+      expect do
+        get "/api/v1/news_items", headers: service_headers
+      end.not_to change(BotJob, :count)
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").sole.fetch("images")).to eq([ { "url" => nil, "unavailable" => true } ])
+    end
+
+    it "never renews an image with no expiry, however old" do
+      record("3300000000000000001", images: [
+        { url: "https://cdn.discordapp.com/attachments/1/2/plain.png", expires_at: nil }
+      ])
+      travel_to now + 1.year
+
+      expect { expect(images_of("3300000000000000001")).to eq([
+        { "url" => "https://cdn.discordapp.com/attachments/1/2/plain.png", "unavailable" => false }
+      ]) }.not_to change(BotJob, :count)
     end
 
     it "queues nothing for unexpired images" do

@@ -46,7 +46,8 @@ class NewsItem < ApplicationRecord
   #
   # `attrs` holds the writable fields: channel_id, category_key, author_id,
   # author_name, comment, posted_at, edited_at, link (a Hash of LINK_FIELDS,
-  # or nil for no link) and images (an Array of { url, expires_at }).
+  # or nil for no link) and images (an Array of { url, expires_at }, where a
+  # null expires_at means the address does not expire).
   #
   # A new News Item takes `origin` (the News Import records with "import").
   # An imported News Item keeps its origin and the News Category staff
@@ -81,8 +82,9 @@ class NewsItem < ApplicationRecord
   def imported? = origin == "import"
 
   # Whether a stored image's Discord address has run out at `now`. Only the
-  # message's attachments expire; the link preview's outside-site image never
-  # does.
+  # message's signed attachment addresses expire: an image with no
+  # `expires_at` (an address without Discord's `ex` parameter) never does,
+  # nor does the link preview's outside-site image.
   def self.image_expired?(image, now)
     expires_at = image["expires_at"].presence
     expires_at.present? && Time.iso8601(expires_at) <= now
@@ -100,14 +102,17 @@ class NewsItem < ApplicationRecord
 
   private
 
-  # { "url", "expires_at" } with the expiry in UTC ISO 8601; anything else
-  # is kept as given for images_are_addresses_with_expiry to reject.
+  # { "url", "expires_at" } with the expiry in UTC ISO 8601, or nil for an
+  # address that does not expire. An expiry that is not a time, or anything
+  # else, is kept as given for images_are_addresses_with_expiry to reject.
   def normalize_image(image)
     image = image.to_h if image.respond_to?(:permitted?)
     return image unless image.is_a?(Hash)
 
     image = image.stringify_keys
-    { "url" => image["url"].to_s.strip, "expires_at" => parse_time(image["expires_at"])&.utc&.iso8601 }
+    expires_at = image["expires_at"].presence
+    expires_at = parse_time(expires_at)&.utc&.iso8601 || expires_at if expires_at
+    { "url" => image["url"].to_s.strip, "expires_at" => expires_at }
   end
 
   def images_are_addresses_with_expiry
@@ -117,7 +122,9 @@ class NewsItem < ApplicationRecord
       next errors.add(:images, "[#{index}] must be an object with url and expires_at") unless image.is_a?(Hash)
 
       errors.add(:images, "[#{index}] url must be an http(s) address") unless image["url"].to_s.match?(WEB_URL)
-      errors.add(:images, "[#{index}] expires_at must be an ISO 8601 time") if image["expires_at"].blank?
+      next if image["expires_at"].nil? || parse_time(image["expires_at"])
+
+      errors.add(:images, "[#{index}] expires_at must be an ISO 8601 time or null")
     end
   end
 
