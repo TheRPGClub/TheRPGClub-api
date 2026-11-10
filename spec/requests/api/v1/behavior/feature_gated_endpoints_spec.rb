@@ -260,6 +260,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     # News Hub
     "api/v1/news_items" => "news_hub",
     "api/v1/news_categories" => "news_hub",
+    "api/v1/news_category_preferences" => "news_hub",
     # Not part of any Feature.
     "api/v1/health" => nil,
     "api/v1/sessions" => nil,
