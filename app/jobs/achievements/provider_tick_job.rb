@@ -42,9 +42,12 @@ module Achievements
       provider.to_s == "psn" && AchievementHubState.get(Psn::Client::AUTH_EXPIRED_KEY).present?
     end
 
+    # While the Achievement Hub is Off the chain stops, as in the PSN pause:
+    # the work stays due and the first Sync Window (or boot catch-up) after it
+    # is back on restarts the chain.
     def perform(provider)
       provider = provider.to_s
-      return if self.class.paused?(provider)
+      return if Features.off?("achievement_hub") || self.class.paused?(provider)
 
       run_one_unit(provider)
       self.class.set(wait: SPACING.fetch(provider)).perform_later(provider) if due?(provider)
