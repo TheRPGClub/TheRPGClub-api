@@ -11,7 +11,7 @@ RSpec.describe Features do
     )
     expect(described_class.all.map { |feature| feature.coverage[:website] }).to all(be_present)
     expect(described_class.fetch("giveaways").coverage).to eq(
-      website: [ "Giveaways", "Dashboard Giveaways panel" ],
+      website: [ "Giveaways", "Donate", "Your claimed keys" ],
       bot: [ "/giveaway" ],
       posts: [ "Giveaway hub", "Giveaway claim notices" ]
     )
