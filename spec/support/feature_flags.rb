@@ -33,6 +33,10 @@ end
 RSpec.configure do |config|
   config.include FeatureFlagHelpers
 
+  # A running achievement chain keeps "the Achievement Hub is not Off" for a
+  # few seconds; each example starts without it.
+  config.before { Achievements::ProviderTickJob.forget_hub_state! }
+
   config.before(:each, type: :request) do |example|
     seed_feature_flags_live unless example.metadata[:feature_flags] == :none
   end
