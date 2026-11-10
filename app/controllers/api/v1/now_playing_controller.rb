@@ -11,6 +11,8 @@ module Api
     # the cross-member `index` is service/admin-only; create/update/destroy are
     # owner-only (the bot's service token counts as the owner).
     class NowPlayingController < ApplicationController
+      feature :now_playing
+
       before_action :require_admin_or_service!, only: %i[index]
       before_action :require_owner!, only: %i[create update destroy]
 

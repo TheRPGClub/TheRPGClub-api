@@ -6,8 +6,9 @@ require "rails_helper"
 # viewer, each Feature they may see, its Feature Flag state, whether it is
 # hideable, whether it is shown, and whether it is shown only because the
 # viewer is staff. Admins and Superadmins see Preview; Moderators and members
-# do not; nobody sees Off.
-RSpec.describe "session features", type: :request do
+# do not; nobody sees Off. Starts with no stored Feature Flags, so every
+# Feature reads Preview until an example sets one.
+RSpec.describe "session features", type: :request, feature_flags: :none do
   def features_for(headers)
     get "/api/v1/session", headers: headers
     expect(response).to have_http_status(:ok)

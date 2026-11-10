@@ -16,6 +16,8 @@ module Api
     # the claim, notify the donor). The service token's own actions queue
     # nothing: the bot already does that Discord work in-process.
     class GameKeysController < ApplicationController
+      feature :giveaways
+
       HUB_REFRESH_VERBS = { "donate" => "donated", "claim" => "claimed", "revoke" => "revoked" }.freeze
 
       # A donation that names no GameDB game it can be linked to (422).

@@ -172,6 +172,33 @@ RSpec.describe Achievements::ProviderTickJob do
     end
   end
 
+  describe "while the Achievement Hub is Off" do
+    before { set_feature_flag("achievement_hub", "off") }
+
+    it "runs no unit and stops the chain, leaving the work due" do
+      row = pending_set
+      account = due_account
+
+      tick
+
+      expect(client).not_to have_received(:set_with_progress)
+      expect(client).not_to have_received(:played_sets)
+      expect(row.reload.sync_pending_at).to eq(now - 1.minute)
+      expect(account.reload.sync_due_at).to eq(now - 1.minute)
+      expect(described_class).not_to have_been_enqueued
+    end
+
+    it "picks the work up again once the Achievement Hub is back on" do
+      row = pending_set
+      tick
+
+      set_feature_flag("achievement_hub", "live")
+      tick
+
+      expect(row.reload.sync_pending_at).to be_nil
+    end
+  end
+
   describe "the PSN pause" do
     it "stops the PSN chain at once while PSN auth has expired" do
       row = pending_set("psn")

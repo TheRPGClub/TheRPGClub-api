@@ -5,6 +5,8 @@ module Api
     # Alternate-version links between two games (gamedb_game_alternates), the
     # bot's `linkAlternateVersions`. Admin/service-only.
     class GameAlternatesController < ApplicationController
+      feature :game_index
+
       before_action :require_admin_or_service!, only: %i[create]
 
       # POST /api/v1/games/:id/alternates  { data: { alt_game_id } }

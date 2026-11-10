@@ -3,6 +3,8 @@
 module Api
   module V1
     class GamesController < ApplicationController
+      feature :game_index
+
       # `newest` is most recently added to GameDB (`created_at`), not release
       # date; the title breaks ties.
       SORTS = {

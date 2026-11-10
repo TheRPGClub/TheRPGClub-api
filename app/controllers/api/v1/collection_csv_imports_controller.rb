@@ -10,6 +10,8 @@ module Api
     # resumed across bot restarts. Owner-only (the bot service token counts as
     # the owner, per `require_owner!`) — this is private per-user working data.
     class CollectionCsvImportsController < ApplicationController
+      feature :collection
+
       include TestModeRollback
       include CollectionImportReview
       include ImportCsvUpload

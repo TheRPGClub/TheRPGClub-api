@@ -10,6 +10,8 @@ module Api
     # Rails cache for UNSAVED_TTL, so repeated lookups do not spend the Google
     # Custom Search quota.
     class GameHltbController < ApplicationController
+      feature :game_index
+
       SAVE_AFTER = 6.months
       UNSAVED_TTL = 1.day
 

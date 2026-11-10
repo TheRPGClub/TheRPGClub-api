@@ -245,6 +245,25 @@ module OpenapiSchemas
         user_id: str, membership: ref("Membership"),
         _required: %w[user_id membership]
       ),
+      # The bot's Feature access lookup (GET /users/:user_id/feature_access,
+      # spec #347): Features::Access#lookup_features for a Discord user, with
+      # staff read from the member's stored Admin and dev roles.
+      FeatureAccess: obj(
+        user_id: str,
+        staff: { type: :boolean, description: "Admin or Superadmin by the member's stored roles. False for a " \
+                                              "Discord user with no member record." },
+        features: { type: :array, items: { "$ref" => "#/components/schemas/FeatureAccessEntry" },
+                    description: "Every Feature in registry order, whatever its state." },
+        _required: %w[user_id staff features]
+      ),
+      FeatureAccessEntry: obj(
+        key: str, name: str,
+        state: str(enum: %w[off preview live], description: "The Feature Flag state; a Feature with no stored " \
+                                                            "state reads as preview."),
+        can_use: { type: :boolean, description: "Live: everyone. Preview: staff only. Off: nobody." },
+        preview: { type: :boolean, description: "True when the user can use the Feature only because they are " \
+                                                 "staff (Preview), so the bot adds its Preview note." }
+      ),
       # The result of the bulk `users#mark_departed` reconciliation (#105): the
       # count of users newly stamped as departed.
       MarkDepartedResult: obj(
@@ -828,7 +847,11 @@ module OpenapiSchemas
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
-        payload: json(nullable: false).merge(description: "Per kind; a breaking change gets a new kind name."),
+        payload: json(nullable: false).merge(
+          description: "Per kind; a breaking change gets a new kind name. A kind that posts publicly also " \
+                       "carries `feature_key`, the key of the Feature that owns the post " \
+                       "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag."
+        ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
         lease_expires_at: ts(nullable: true).merge(

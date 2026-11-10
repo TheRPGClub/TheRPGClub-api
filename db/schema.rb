@@ -863,6 +863,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_152100) do
     t.timestamptz "server_left_at"
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "username", limit: 100
+    t.boolean "role_dev", default: false, null: false
     t.boolean "show_preview_features", default: true, null: false, comment: "Staff setting: show Preview Features on the website (on by default)."
   end
 

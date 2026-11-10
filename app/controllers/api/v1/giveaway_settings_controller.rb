@@ -12,6 +12,8 @@ module Api
     # user row when absent — so a donor can set the flag before any other write
     # has materialized their row.
     class GiveawaySettingsController < ApplicationController
+      feature :giveaways
+
       before_action :require_owner!, only: :update
 
       # GET /api/v1/users/:user_id/giveaway_settings

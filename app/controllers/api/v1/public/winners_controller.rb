@@ -7,6 +7,8 @@ module Api
       # (cover story hero and winners marquee). Unauthenticated, so it carries
       # club content only: no member data, Reddit URLs or Discord ids.
       class WinnersController < ApplicationController
+        feature :voting_gotm
+
         skip_before_action :require_authentication!
 
         ROUNDS = 24

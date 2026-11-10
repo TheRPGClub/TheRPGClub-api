@@ -59,7 +59,9 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
     end
 
     it "lists a member no Features when no hideable Feature is Live" do
-      set_feature_flag("reviews", "off")
+      set_all_feature_flags("live")
+      %w[reviews achievement_hub giveaways].each { |key| set_feature_flag(key, "off") }
+      %w[journals suggestions].each { |key| set_feature_flag(key, "preview") }
 
       expect(preferences_for(member)["features"]).to eq([])
     end

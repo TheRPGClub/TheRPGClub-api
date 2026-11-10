@@ -87,6 +87,9 @@ Rails.application.routes.draw do
           # Service-only: the bot reports the member's current Discord role
           # IDs on a guild member update; the API derives the role flags.
           put "roles", to: "user_roles#update"
+          # Service-only: what this Discord user may use, for the bot's
+          # feature gate (spec #347).
+          get "feature_access", to: "feature_access#show"
           get "avatar"
           get "profile-image"
           get "avatar_history", to: "user_avatar_history#index"
