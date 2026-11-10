@@ -10,13 +10,13 @@ RSpec.describe 'api/v1/public/winners', type: :request do
                   'require authentication — so it carries club content only: no member data, Reddit URLs or ' \
                   'Discord ids. One item per winning game, newest round first, GOTM before NR-GOTM, ' \
                   '`game_index` order within a track. NR-GOTM "N/A" placeholders are omitted. `meta.rounds` is ' \
-                  'the number of rounds covered. Cached for 10 minutes (`Cache-Control: public, max-age=600`); ' \
+                  'the number of rounds covered. Cached for 10 minutes in the API and 1 minute in shared caches (`Cache-Control: public, max-age=60`); ' \
                   'a new round busts the server-side cache.'
       produces 'application/json'
       security []
 
       response '200', 'recent winners' do
-        header 'Cache-Control', schema: { type: :string }, description: 'max-age=600, public'
+        header 'Cache-Control', schema: { type: :string }, description: 'max-age=60, public'
         schema type: :object, required: %w[data meta], properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/PublicWinner' } },
           meta: { type: :object, required: %w[rounds], properties: {
