@@ -191,4 +191,87 @@ RSpec.describe "api/v1/news_category_preferences behavior", type: :request do
       expect(preferences_for(member)["hidden"]).to eq([ "rumours" ])
     end
   end
+
+  describe "the News Hub feed" do
+    def switch_off(user, *keys)
+      keys.each { |key| create(:member_news_category_preference, user: user, category_key: key) }
+    end
+
+    def feed(user = member, params = {})
+      get "/api/v1/news_items", params: params, headers: auth_headers_for(user)
+      expect(response).to have_http_status(:ok)
+      json
+    end
+
+    def feed_ids(user = member, params = {}) = feed(user, params).fetch("data").map { |item| item.fetch("message_id") }
+
+    it "leaves the member's switched-off News Categories out of the default view" do
+      kept = create(:news_item, category_key: "releases")
+      create(:news_item, category_key: "rumours")
+      create(:news_item, category_key: "industry")
+      switch_off(member, "rumours", "industry")
+
+      expect(feed_ids).to eq([ kept.message_id ])
+    end
+
+    it "returns a switched-off News Category when the member asks for it" do
+      rumour = create(:news_item, category_key: "rumours", posted_at: 1.hour.ago)
+      release = create(:news_item, category_key: "releases", posted_at: 2.hours.ago)
+      switch_off(member, "rumours")
+
+      expect(feed_ids(member, category: "rumours")).to eq([ rumour.message_id ])
+      expect(feed_ids(member, category: "rumours,releases")).to eq([ rumour.message_id, release.message_id ])
+    end
+
+    it "counts pages over the default view only" do
+      3.times { |i| create(:news_item, category_key: "releases", posted_at: i.hours.ago) }
+      4.times { create(:news_item, category_key: "rumours") }
+      switch_off(member, "rumours")
+
+      body = feed(member, per: 2)
+
+      expect(body.fetch("meta")).to include("count" => 3, "pages" => 2)
+    end
+
+    it "applies the search within the default view" do
+      kept = create(:news_item, category_key: "releases", link_title: "Zelda dated")
+      create(:news_item, category_key: "rumours", link_title: "Zelda leak")
+      create(:news_item, category_key: "releases", link_title: "Mario dated")
+      switch_off(member, "rumours")
+
+      expect(feed_ids(member, q: "zelda")).to eq([ kept.message_id ])
+    end
+
+    it "ignores a stored preference for a key that is no longer a News Category" do
+      item = create(:news_item, category_key: "general")
+      MemberNewsCategoryPreference.insert({ user_id: member.user_id, category_key: "retired", created_at: Time.current })
+
+      expect(feed_ids).to eq([ item.message_id ])
+    end
+
+    it "shows everything to a member who switched nothing off, whatever other members chose" do
+      other = create(:user)
+      switch_off(other, "rumours")
+      item = create(:news_item, category_key: "rumours")
+
+      expect(feed_ids).to eq([ item.message_id ])
+    end
+
+    it "shows nothing by default when the member switched every News Category off, yet still answers a filter" do
+      item = create(:news_item, category_key: "industry")
+      switch_off(member, *NewsCategory.keys)
+
+      expect(feed_ids).to eq([])
+      expect(feed_ids(member, category: "industry")).to eq([ item.message_id ])
+    end
+
+    it "shows the bot's service token every News Category" do
+      item = create(:news_item, category_key: "rumours")
+      switch_off(member, "rumours")
+
+      get "/api/v1/news_items", headers: service_headers
+
+      expect(json.fetch("data").map { |i| i["message_id"] }).to eq([ item.message_id ])
+    end
+  end
 end

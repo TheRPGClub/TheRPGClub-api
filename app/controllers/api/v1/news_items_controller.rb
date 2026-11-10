@@ -11,17 +11,20 @@ module Api
 
       before_action :require_service!, only: %i[update destroy]
 
-      # GET /api/v1/news_items?category=releases,industry&page=1&per=50
+      # GET /api/v1/news_items?category=releases,industry&q=zelda&page=1&per=50
       #
       # The News Items that have a News Category, newest first. `category`
       # narrows to those News Categories (comma-separated, or repeated as
-      # `category[]`); an unknown key is a 400.
+      # `category[]`); an unknown key is a 400. Without it, the member's
+      # default view: every News Category but the ones they switched off
+      # (News Category Preferences, ticket #357). `q` searches link title and
+      # comment.
       def index
         categories = category_filter
         return if performed?
 
         scope = NewsItem.listed
-        scope = scope.where(category_key: categories) if categories.any?
+        scope = categories.any? ? scope.where(category_key: categories) : without_switched_off(scope)
         scope = search(scope)
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
@@ -59,6 +62,16 @@ module Api
 
         data.permit(:channel_id, :category_key, :author_id, :author_name, :comment, :posted_at, :edited_at,
           link: NewsItem::LINK_FIELDS, images: %i[url expires_at]).to_h
+      end
+
+      # The default view leaves out the News Categories the signed-in member
+      # switched off. A requested category is always returned, so a
+      # preference never blocks anything.
+      def without_switched_off(scope)
+        return scope unless current_principal.discord_user?
+
+        hidden = MemberNewsCategoryPreference.hidden_keys(current_principal.id)
+        hidden.any? ? scope.where.not(category_key: hidden) : scope
       end
 
       # Narrows to the News Items whose link title or comment contains `q`,
