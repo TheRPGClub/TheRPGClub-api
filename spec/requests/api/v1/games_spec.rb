@@ -163,7 +163,9 @@ RSpec.describe 'api/v1/games', type: :request do
 
     get 'Show game' do
       tags 'Games'
-      description 'Returns a game with related GOTM/NR-GOTM month info plus now-playing and completion previews.'
+      description 'Returns a game with related GOTM/NR-GOTM month info plus now-playing and completion previews. ' \
+                  '`now_playing` is left out for a caller who cannot use the Now Playing Feature, `completions` ' \
+                  'for Game Completions (Feature Flags).'
       produces 'application/json'
 
       response '200', 'game detail' do
@@ -359,7 +361,10 @@ RSpec.describe 'api/v1/games', type: :request do
                   '`GET /api/v1/games/{id}`), its relations (same shape as `/relations`), the full ' \
                   '(unpaginated) now-playing / completions / threads lists, the resolved primary image ' \
                   '(nullable), and the GOTM/NR-GOTM associations, collection owners and HowLongToBeat ' \
-                  'cache row (nullable). Collapses six HTTP calls plus three direct-SQL reads into one request.'
+                  'cache row (nullable). Collapses six HTTP calls plus three direct-SQL reads into one request. ' \
+                  'A section of a Feature the caller cannot use is left out (Feature Flags): `now_playing` ' \
+                  '(Now Playing), `completions` (Game Completions), `collection_owners` (Collection), ' \
+                  '`associations` (Voting & GOTM). The service token gets every section.'
       produces 'application/json'
 
       response '200', 'game profile' do

@@ -86,6 +86,77 @@ RSpec.describe "feature-gated endpoints", type: :request do
     end
   end
 
+  # Endpoints that embed another Feature's data, each section by the Feature
+  # it belongs to (paths under `data`, dot-separated). A member who cannot
+  # use that Feature gets the endpoint without the section, never a 404 for
+  # the whole page. An endpoint that embeds another Feature's data belongs in
+  # this list and leaves the section out with FeatureGate#can_use_feature?.
+  embedded = {
+    "GET /api/v1/users/:id" => {
+      path: ->(user, _game) { "/api/v1/users/#{user.user_id}" },
+      sections: {
+        "now_playing" => %w[now_playing counts.now_playing],
+        "reviews" => %w[reviews counts.reviews],
+        "game_completions" => %w[completions counts.completions],
+        "backlog" => %w[counts.backlog],
+        "collection" => %w[counts.collections],
+        "journals" => %w[journal counts.journal]
+      }
+    },
+    "GET /api/v1/games/:id" => {
+      path: ->(_user, game) { "/api/v1/games/#{game.game_id}" },
+      sections: { "now_playing" => %w[now_playing], "game_completions" => %w[completions] }
+    },
+    "GET /api/v1/games/:id/profile" => {
+      path: ->(_user, game) { "/api/v1/games/#{game.game_id}/profile" },
+      sections: {
+        "now_playing" => %w[now_playing],
+        "game_completions" => %w[completions],
+        "collection" => %w[collection_owners],
+        "voting_gotm" => %w[associations]
+      }
+    },
+    "GET /api/v1/dashboard" => {
+      path: ->(_user, _game) { "/api/v1/dashboard" },
+      sections: { "voting_gotm" => %w[gotm nr_gotm] }
+    }
+  }
+
+  embedded.each do |endpoint, spec|
+    describe "#{endpoint}'s embedded Feature sections" do
+      let(:member) { create(:user, role_member: true) }
+      let(:game) { create(:game) }
+
+      def present_at?(body, dotted)
+        *parents, last = dotted.split(".")
+        parent = parents.empty? ? body.fetch("data") : body.fetch("data").dig(*parents)
+        parent.is_a?(Hash) && parent.key?(last)
+      end
+
+      it "has every section while its Feature is Live" do
+        get spec[:path].call(member, game), headers: auth_headers_for(member)
+
+        expect(response).to have_http_status(:ok)
+        spec[:sections].values.flatten.each do |section|
+          expect(present_at?(json, section)).to be(true), "#{section} missing"
+        end
+      end
+
+      spec[:sections].each do |key, sections|
+        it "leaves out #{sections.join(', ')} for a member who cannot use #{Features.fetch(key).name}" do
+          set_feature_flag(key, "preview")
+
+          get spec[:path].call(member, game), headers: auth_headers_for(member)
+
+          expect(response).to have_http_status(:ok)
+          sections.each { |section| expect(present_at?(json, section)).to be(false), "#{section} still there" }
+          others = spec[:sections].except(key).values.flatten
+          others.each { |section| expect(present_at?(json, section)).to be(true), "#{section} missing" }
+        end
+      end
+    end
+  end
+
   describe "an endpoint that belongs to no Feature" do
     it "answers whatever the Feature Flags say" do
       user = create(:user, role_member: true)
@@ -99,6 +170,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
 
       get "/api/v1/dashboard", headers: auth_headers_for(user)
       expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to eq({})
     end
   end
 
