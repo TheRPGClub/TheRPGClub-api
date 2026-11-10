@@ -245,6 +245,25 @@ module OpenapiSchemas
         user_id: str, membership: ref("Membership"),
         _required: %w[user_id membership]
       ),
+      # The bot's Feature access lookup (GET /users/:user_id/feature_access,
+      # spec #347): Features::Access#lookup_features for a Discord user, with
+      # staff read from the member's stored Admin and dev roles.
+      FeatureAccess: obj(
+        user_id: str,
+        staff: { type: :boolean, description: "Admin or Superadmin by the member's stored roles. False for a " \
+                                              "Discord user with no member record." },
+        features: { type: :array, items: { "$ref" => "#/components/schemas/FeatureAccessEntry" },
+                    description: "Every Feature in registry order, whatever its state." },
+        _required: %w[user_id staff features]
+      ),
+      FeatureAccessEntry: obj(
+        key: str, name: str,
+        state: str(enum: %w[off preview live], description: "The Feature Flag state; a Feature with no stored " \
+                                                            "state reads as preview."),
+        can_use: { type: :boolean, description: "Live: everyone. Preview: staff only. Off: nobody." },
+        preview: { type: :boolean, description: "True when the user can use the Feature only because they are " \
+                                                 "staff (Preview), so the bot adds its Preview note." }
+      ),
       # The result of the bulk `users#mark_departed` reconciliation (#105): the
       # count of users newly stamped as departed.
       MarkDepartedResult: obj(

@@ -21,6 +21,13 @@ module Features
   #   access.can_use?(:reviews)
   #   access.session_features # => [{ key:, name:, state:, hideable:, shown:, preview: }, ...]
   class Access
+    # Access for a stored member (nil for a Discord user with no record), with
+    # staff read from their role flags: Admin, or Superadmin by the dev role.
+    # For callers acting for a Discord user without their session, i.e. the bot.
+    def self.for_member(user, states: Features.states)
+      new(staff: user&.admin_or_above?, states: states)
+    end
+
     def initialize(staff:, states: Features.states)
       @staff = staff ? true : false
       @states = states
@@ -50,6 +57,20 @@ module Features
 
     def preview?(key)
       staff? && state(key) == "preview"
+    end
+
+    # The bot's per-user lookup: every Feature in registry order, whatever its
+    # state, so the bot's gate can tell "not available" from "Preview".
+    def lookup_features
+      Features.all.map do |feature|
+        {
+          key: feature.key,
+          name: feature.name,
+          state: state(feature.key),
+          can_use: can_use?(feature.key),
+          preview: preview?(feature.key)
+        }
+      end
     end
 
     # The session's `features` list, in registry order. Staff get every

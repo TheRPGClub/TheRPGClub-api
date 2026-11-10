@@ -669,6 +669,52 @@ components:
       required:
       - user_id
       - membership
+    FeatureAccess:
+      type: object
+      properties:
+        user_id:
+          type: string
+        staff:
+          type: boolean
+          description: Admin or Superadmin by the member's stored roles. False for
+            a Discord user with no member record.
+        features:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FeatureAccessEntry"
+          description: Every Feature in registry order, whatever its state.
+      required:
+      - user_id
+      - staff
+      - features
+    FeatureAccessEntry:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+          description: The Feature Flag state; a Feature with no stored state reads
+            as preview.
+        can_use:
+          type: boolean
+          description: 'Live: everyone. Preview: staff only. Off: nobody.'
+        preview:
+          type: boolean
+          description: True when the user can use the Feature only because they are
+            staff (Preview), so the bot adds its Preview note.
+      required:
+      - key
+      - name
+      - state
+      - can_use
+      - preview
     MarkDepartedResult:
       type: object
       properties:
@@ -9196,6 +9242,48 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/feature_access":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member acting through the bot.
+    get:
+      summary: Look up a Discord user's Feature access
+      tags:
+      - Features
+      description: 'Service-only. For the bot''s feature gate: every Feature''s Feature
+        Flag state and whether this Discord user can use it (Live: everyone; Preview:
+        Admins and Superadmins; Off: nobody). Staff is read from the member''s stored
+        roles, Admin or the dev role (Superadmin), which sign-in and the bot''s role
+        reports (`PUT /users/{user_id}/roles`) keep current. A Discord user with no
+        member record is not staff. Feature Preferences never affect this lookup.'
+      responses:
+        '200':
+          description: Feature access for the user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeatureAccess"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the service principal'
           content:
             application/json:
               schema:
@@ -23129,8 +23217,9 @@ paths:
                       items:
                         type: string
                       description: Optional. The member's current Discord role IDs.
-                        When present, replaces the Admin, Moderator, Regulars and
-                        Members flags as `PUT /users/{user_id}/roles` does.
+                        When present, replaces the Superadmin (dev), Admin, Moderator,
+                        Regulars and Members flags as `PUT /users/{user_id}/roles`
+                        does.
                   required:
                   - discord_id
               required:
@@ -23199,11 +23288,13 @@ paths:
       tags:
       - Users
       description: Service-only. The bot reports a member's current Discord role IDs
-        when Discord sends a guild member update. The Admin, Moderator, Regulars and
-        Members flags are replaced with the ones those roles grant (the same derivation
-        as sign-in), so `GET /session` membership and the staff gates follow the change
-        straight away. An empty list clears every flag. Superadmin (`dev`) and Longstanding
-        stay on the member's session token and are not changed here.
+        when Discord sends a guild member update. The Superadmin (dev), Admin, Moderator,
+        Regulars and Members flags are replaced with the ones those roles grant (the
+        same derivation as sign-in), so `GET /session` membership, the staff gates
+        and the bot's Feature access lookup follow the change straight away. An empty
+        list clears every flag. The stored dev role is read only by the Feature access
+        lookup; the session's `dev` flag and Longstanding stay on the member's session
+        token.
       parameters: []
       responses:
         '200':
