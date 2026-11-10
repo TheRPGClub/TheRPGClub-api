@@ -2781,7 +2781,10 @@ components:
           maxLength: 200
         payload:
           type: object
-          description: Per kind; a breaking change gets a new kind name.
+          description: Per kind; a breaking change gets a new kind name. A kind that
+            posts publicly also carries `feature_key`, the key of the Feature that
+            owns the post (BotJob::PUBLIC_POST_FEATURES), so the bot can route it
+            by that Feature's Flag.
         status:
           type: string
           enum:
@@ -4376,7 +4379,8 @@ paths:
         (or skipped as permanently failing) with `POST /achievements/highlights/ack`.
         Mask a `hidden` Achievement. `alerts` carries the PSN auth alert: post it
         while `psn_auth_expired_at` is set and `psn_auth_alerted` is false, then ack
-        it.'
+        it. `data` is empty while the Achievement Hub is Off; the held Highlights
+        are listed once it is back on.'
       responses:
         '200':
           description: pending Highlights and alerts
