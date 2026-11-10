@@ -53,7 +53,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
       description 'Members role holders, Moderator and above, or the service. `title` is required; everything else is optional. ' \
                   'Always created Pending. A member is recorded as the author (body `created_by` and ' \
                   '`created_by_name` are ignored) and their submission enqueues a `suggestion_submitted` ' \
-                  'bot job (payload `{ suggestion_id, created_by }`) so the bot pings the bot dev. ' \
+                  'bot job (payload `{ suggestion_id, created_by, feature_key: "suggestions" }`) so the bot pings the bot dev. ' \
                   "A service create enqueues nothing: the bot pings inline for its own submissions."
       consumes 'application/json'
       produces 'application/json'

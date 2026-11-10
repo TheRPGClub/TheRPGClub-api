@@ -173,8 +173,8 @@ RSpec.describe 'api/v1/game_keys', type: :request do
                   'claims on behalf of the `claimed_by_user_id` supplied in the body. ' \
                   'A member\'s claim queues two bot jobs: `giveaway_claim_notice` ' \
                   '(payload `{ key_id, claimed_by_user_id, donor_user_id, game_title, ' \
-                  'platform }`; the bot DMs the key, logs the claim and notifies the ' \
-                  'donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id }`). ' \
+                  'platform, feature_key: "giveaways" }`; the bot DMs the key, logs the claim and notifies the ' \
+                  'donor) and `giveaway_hub_refresh` (`{ reason: "claim", key_id, feature_key: "giveaways" }`). ' \
                   '`meta.claim_notice_job_id` is the notice job, for polling ' \
                   'GET /api/v1/bot_jobs/{id}. The service token\'s claims queue nothing.'
       consumes 'application/json'

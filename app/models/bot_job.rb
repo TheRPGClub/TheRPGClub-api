@@ -36,12 +36,16 @@ class BotJob < ApplicationRecord
     presence_set
     feature_flag_changed
   ].freeze
-  # The kinds that post publicly, and the Feature each post belongs to. The
-  # other kinds DM, post to a staff channel or post nothing.
+  # The kinds that post, and the Feature each post belongs to (the posts in
+  # Features::REGISTRY's coverage): the claim notice's claim log and the
+  # submitted Suggestion's announcement included. The other kinds post to a
+  # staff channel or post nothing.
   PUBLIC_POST_FEATURES = {
     "completion_announce" => "game_completions",
+    "giveaway_claim_notice" => "giveaways",
     "giveaway_hub_refresh" => "giveaways",
     "nomination_deleted" => "voting_gotm",
+    "suggestion_submitted" => "suggestions",
     "suggestion_outcome" => "suggestions",
     "voting_results_publish" => "voting_gotm",
     "voting_panels_repost" => "voting_gotm",

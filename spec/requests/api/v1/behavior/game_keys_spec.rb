@@ -642,7 +642,7 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(giveaway_jobs("giveaway_claim_notice")).to eq([ [
         { "key_id" => key.key_id, "claimed_by_user_id" => claimant.user_id, "donor_user_id" => donor.user_id,
-          "game_title" => "Chrono Cross", "platform" => "PSN" },
+          "game_title" => "Chrono Cross", "platform" => "PSN", "feature_key" => "giveaways" },
         claimant.user_id
       ] ])
       expect(giveaway_jobs("giveaway_hub_refresh")).to eq([ [
