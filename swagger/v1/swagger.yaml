@@ -718,6 +718,101 @@ components:
       - state
       - can_use
       - preview
+    FeatureFlagEntry:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+          description: The Feature Flag state; a Feature with no stored state reads
+            as preview.
+        core:
+          type: boolean
+          description: A Core Feature, which members cannot hide.
+        hideable:
+          type: boolean
+          description: Members may hide it with a Feature Preference (not Core).
+        coverage:
+          type: object
+          properties:
+            website:
+              type: array
+              items:
+                type: string
+              description: Pages and sections on the website.
+            bot:
+              type: array
+              items:
+                type: string
+              description: Bot commands.
+            posts:
+              type: array
+              items:
+                type: string
+              description: Automated posts.
+          required:
+          - website
+          - bot
+          - posts
+        last_change:
+          allOf:
+          - "$ref": "#/components/schemas/FeatureFlagLastChange"
+          nullable: true
+          description: The latest logged change; null when the Feature has never been
+            set.
+      required:
+      - key
+      - name
+      - state
+      - core
+      - hideable
+      - coverage
+      - last_change
+    FeatureFlagLastChange:
+      type: object
+      properties:
+        from_state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+          description: The state it read as before (preview when it had no stored
+            state).
+        to_state:
+          type: string
+          enum:
+          - 'off'
+          - preview
+          - live
+        changed_by:
+          type: string
+          description: The acting member's Discord user id, or `system` (the seed).
+        changed_by_name:
+          type: string
+          nullable: true
+          description: The member's display name; null for `system`, or a member with
+            no record.
+        reason:
+          type: string
+          nullable: true
+        changed_at:
+          type: string
+          format: date-time
+      required:
+      - from_state
+      - to_state
+      - changed_by
+      - changed_by_name
+      - reason
+      - changed_at
     MarkDepartedResult:
       type: object
       properties:
@@ -2586,6 +2681,7 @@ components:
           - say
           - memberscan
           - presence_set
+          - feature_flag_changed
         summary:
           type: string
           maxLength: 200
@@ -2825,6 +2921,7 @@ components:
           - say
           - memberscan
           - presence_set
+          - feature_flag_changed
         summary:
           type: string
           maxLength: 200
@@ -9293,6 +9390,178 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/features":
+    get:
+      summary: List every Feature with its Feature Flag
+      tags:
+      - Features
+      description: Every Feature in registry order with its Feature Flag state (off,
+        preview, live), whether it is Core or hideable, what it covers on the website,
+        in the bot and in automated posts, and its last change. Admins and Superadmins
+        only. A member signs in with their session. The bot calls with the service
+        token and names the acting Discord user (`acting_user_id`); the same rule
+        then applies to that member's stored roles (Admin, or the dev role for Superadmin),
+        never to the token. Moderators, members and a Discord user with no member
+        record get 403.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Bot (service token) only, and then required: the Discord user
+          acting through the bot.'
+      responses:
+        '200':
+          description: every Feature
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/FeatureFlagEntry"
+                required:
+                - data
+        '400':
+          description: the bot did not name the acting Discord user
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not an Admin or Superadmin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/features/{key}":
+    parameters:
+    - name: key
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+        - game_index
+        - voting_gotm
+        - backlog
+        - collection
+        - now_playing
+        - game_completions
+        - reviews
+        - achievement_hub
+        - giveaways
+        - journals
+        - suggestions
+      description: The Feature key.
+    patch:
+      summary: Set a Feature's Feature Flag
+      tags:
+      - Features
+      description: 'Sets the Feature Off, Preview or Live, with an optional reason.
+        Each change is written to the change log (who, from, to, reason, when) and
+        enqueues a `feature_flag_changed` bot job that the bot posts in the admin
+        channel. Its payload: `{ key, name, from_state, to_state, changed_by, changed_by_name,
+        reason }` (no `feature_key`: it is not routed by the Feature''s state). Setting
+        the state the Feature already has (a Feature with no stored state reads as
+        preview) changes, logs and announces nothing and answers `meta.changed: false`.
+        Leaving Off for Achievement Hub starts achievement sync at once. Admins and
+        Superadmins only. A member signs in with their session. The bot calls with
+        the service token and names the acting Discord user (`acting_user_id`); the
+        same rule then applies to that member''s stored roles (Admin, or the dev role
+        for Superadmin), never to the token. Moderators, members and a Discord user
+        with no member record get 403.'
+      parameters: []
+      responses:
+        '200':
+          description: the Feature's entry after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FeatureFlagEntry"
+                  meta:
+                    type: object
+                    properties:
+                      changed:
+                        type: boolean
+                        description: False when the Feature already had that state.
+                    required:
+                    - changed
+                required:
+                - data
+                - meta
+        '400':
+          description: missing `data`, or the bot did not name the acting Discord
+            user
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not an Admin or Superadmin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not a Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid or missing `state`, or `reason` too long
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    state:
+                      type: string
+                      enum:
+                      - 'off'
+                      - preview
+                      - live
+                    reason:
+                      type: string
+                      maxLength: 500
+                      nullable: true
+                      description: Why, shown on the desk and in the announcement.
+                    acting_user_id:
+                      type: string
+                      description: 'Bot (service token) only, and then required: the
+                        Discord user acting through the bot. Logged as the changer.'
+                  required:
+                  - state
+              required:
+              - data
+        required: true
   "/api/v1/franchises":
     get:
       summary: List franchises
