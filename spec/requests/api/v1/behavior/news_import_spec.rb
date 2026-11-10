@@ -245,7 +245,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       assign([ "4400000000000000001", "skip" ], [ "4400000000000000002", "general" ])
 
       expect(json.fetch("data")).to include("assigned" => 1, "removed" => 1, "rejected" => 0)
-      expect(status).to eq("sorted" => 1, "unsorted" => 1, "removed" => 1)
+      expect(status).to include("sorted" => 1, "unsorted" => 1, "removed" => 1)
     end
 
     it "rejects bad rows one by one with a reason and still applies the valid ones" do
@@ -320,7 +320,35 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       get "/api/v1/news_import/status", params: { acting_user_id: admin.user_id }, headers: service_headers
 
       expect(response).to have_http_status(:ok)
-      expect(json).to eq("data" => { "sorted" => 1, "unsorted" => 2, "removed" => 1 })
+      expect(json.fetch("data")).to include("sorted" => 1, "unsorted" => 2, "removed" => 1)
+    end
+
+    def oldest_message_id
+      get "/api/v1/news_import/status", params: { acting_user_id: admin.user_id }, headers: service_headers
+      expect(response).to have_http_status(:ok)
+      json.fetch("data").fetch("oldest_message_id")
+    end
+
+    it "names no oldest message before anything is imported" do
+      create(:news_item, origin: "live", message_id: "100000000000000001")
+
+      expect(oldest_message_id).to be_nil
+    end
+
+    it "names the oldest imported message by snowflake order, for a re-run scan to continue from" do
+      record_batch(archived("1000000000000000000"), archived("999999999999999999"), archived("4400000000000000001"))
+      create(:news_item, origin: "live", message_id: "100000000000000001")
+
+      expect(oldest_message_id).to eq("999999999999999999")
+    end
+
+    it "still names the oldest message after staff remove it with skip" do
+      record_batch(archived("999999999999999999"), archived("4400000000000000001"))
+      post "/api/v1/news_import/assignments", headers: service_headers, as: :json, params: { data: {
+        acting_user_id: admin.user_id, rows: [ { message_id: "999999999999999999", value: "skip" } ]
+      } }
+
+      expect(oldest_message_id).to eq("999999999999999999")
     end
   end
 

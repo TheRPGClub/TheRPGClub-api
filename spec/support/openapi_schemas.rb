@@ -1179,7 +1179,11 @@ module OpenapiSchemas
         sorted: int.merge(description: "Imported News Items with a News Category (shown to members)."),
         unsorted: int.merge(description: "Imported News Items with no News Category yet (hidden)."),
         removed: int.merge(description: "Archive messages staff removed with `skip`."),
-        _required: %w[sorted unsorted removed]
+        oldest_message_id: str(nullable: true, example: "1300000000000000003",
+          description: "The oldest archive message imported so far (by snowflake), kept or removed with " \
+                       "`skip`; null before any. The archive is locked and the scan reads it newest first, " \
+                       "so a re-run scan continues from just before this message."),
+        _required: %w[sorted unsorted removed oldest_message_id]
       ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,
