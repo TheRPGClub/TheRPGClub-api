@@ -34,6 +34,7 @@ class BotJob < ApplicationRecord
     say
     memberscan
     presence_set
+    feature_flag_changed
   ].freeze
   # The kinds that post publicly, and the Feature each post belongs to. The
   # other kinds DM, post to a staff channel or post nothing.

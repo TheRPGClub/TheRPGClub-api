@@ -264,6 +264,36 @@ module OpenapiSchemas
         preview: { type: :boolean, description: "True when the user can use the Feature only because they are " \
                                                  "staff (Preview), so the bot adds its Preview note." }
       ),
+      # A Feature as staff see it on the flag desk and in `/flag list`
+      # (GET /features, spec #347; Features::StaffList).
+      FeatureFlagEntry: obj(
+        key: str, name: str,
+        state: str(enum: Features::STATES, description: "The Feature Flag state; a Feature with no stored state " \
+                                                        "reads as preview."),
+        core: bool.merge(description: "A Core Feature, which members cannot hide."),
+        hideable: bool.merge(description: "Members may hide it with a Feature Preference (not Core)."),
+        coverage: obj(
+          website: { type: :array, items: str, description: "Pages and sections on the website." },
+          bot: { type: :array, items: str, description: "Bot commands." },
+          posts: { type: :array, items: str, description: "Automated posts." },
+          _required: %w[website bot posts]
+        ),
+        last_change: ref("FeatureFlagLastChange", nullable: true).merge(
+          description: "The latest logged change; null when the Feature has never been set."
+        ),
+        _required: %w[key name state core hideable coverage last_change]
+      ),
+      FeatureFlagLastChange: obj(
+        from_state: str(enum: Features::STATES, description: "The state it read as before (preview when it had no " \
+                                                             "stored state)."),
+        to_state: str(enum: Features::STATES),
+        changed_by: str(description: "The acting member's Discord user id, or `system` (the seed)."),
+        changed_by_name: str(nullable: true, description: "The member's display name; null for `system`, or a " \
+                                                          "member with no record."),
+        reason: str(nullable: true),
+        changed_at: ts,
+        _required: %w[from_state to_state changed_by changed_by_name reason changed_at]
+      ),
       # The result of the bulk `users#mark_departed` reconciliation (#105): the
       # count of users newly stamped as departed.
       MarkDepartedResult: obj(
