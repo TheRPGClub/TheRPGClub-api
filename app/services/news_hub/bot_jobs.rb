@@ -27,5 +27,12 @@ module NewsHub
       end
       BotJob.enqueue_once!(kind: RENEW_IMAGES, jobs: jobs)
     end
+
+    # Queues the catch-up scan for a Feature Flag change from `from_state` (Off)
+    # to `to_state`, requested by the staff member `by` (a Discord user id).
+    def self.catch_up!(from_state:, to_state:, by:)
+      BotJob.enqueue!(kind: CATCH_UP, summary: "News Hub catch-up: the Feature Flag went from #{from_state} to #{to_state}",
+        payload: { from_state: from_state, to_state: to_state }, requested_by: by)
+    end
   end
 end

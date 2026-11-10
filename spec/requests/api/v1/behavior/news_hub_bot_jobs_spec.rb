@@ -127,4 +127,56 @@ RSpec.describe "News Hub bot jobs behavior", type: :request do
     end
   end
 
+  describe "catch-up" do
+    let(:admin) { create(:user, role_admin: true, global_name: "Ada") }
+
+    def set_flag(state)
+      patch "/api/v1/features/news_hub", params: { data: { state: state } }, headers: auth_headers_for(admin),
+        as: :json
+      expect(response).to have_http_status(:ok)
+    end
+
+    def catch_up_jobs = BotJob.where(kind: "news_catch_up")
+
+    %w[preview live].each do |state|
+      it "queues one catch-up job when the News Hub goes from Off to #{state}" do
+        set_feature_flag("news_hub", "off")
+
+        expect { set_flag(state) }.to change(catch_up_jobs, :count).by(1)
+
+        job = catch_up_jobs.sole
+        expect(job).to have_attributes(status: "queued", requested_by_user_id: admin.user_id,
+          summary: "News Hub catch-up: the Feature Flag went from off to #{state}")
+        expect(job.payload).to eq("from_state" => "off", "to_state" => state, "feature_key" => "news_hub")
+      end
+    end
+
+    {
+      %w[live preview] => "Live to Preview",
+      %w[preview live] => "Preview to Live",
+      %w[live off] => "Live to Off",
+      %w[preview off] => "Preview to Off",
+      %w[live live] => "an unchanged state"
+    }.each do |(from, to), label|
+      it "queues none for #{label}" do
+        set_feature_flag("news_hub", from)
+
+        expect { set_flag(to) }.not_to change(catch_up_jobs, :count)
+      end
+    end
+
+    it "queues none when a Feature with no stored state, which reads as Preview, goes Live", feature_flags: :none do
+      expect { set_flag("live") }.not_to change(catch_up_jobs, :count)
+    end
+
+    it "queues none when another Feature leaves Off" do
+      set_feature_flag("journals", "off")
+
+      patch "/api/v1/features/journals", params: { data: { state: "live" } }, headers: auth_headers_for(admin),
+        as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(catch_up_jobs).to be_empty
+    end
+  end
 end
