@@ -26,6 +26,8 @@ module Api
     # is a thin GOTM/NR-GOTM pair delegating to a model-agnostic private
     # helper, like NominationsController.
     class VotesController < ApplicationController
+      feature :voting_gotm
+
       before_action :require_owner!,            only: %i[create_gotm create_nr_gotm]
       before_action :require_admin_or_service!, only: %i[destroy_all_gotm destroy_all_nr_gotm]
 

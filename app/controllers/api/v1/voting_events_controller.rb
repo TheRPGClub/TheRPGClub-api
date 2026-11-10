@@ -5,6 +5,8 @@ module Api
     # The bot's outbox (see VotingEvent): claim due events, post them to
     # Discord, ack each one. Service token only.
     class VotingEventsController < ApplicationController
+      feature :voting_gotm
+
       before_action :require_service!
 
       DEFAULT_CLAIM = 10

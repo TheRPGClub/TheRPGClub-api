@@ -7,6 +7,8 @@ module Api
     # the bot's matcher has run a row. Owner-only, resolved through the
     # parent import.
     class CompletionatorImportItemsController < ApplicationController
+      feature :game_completions
+
       include TestModeRollback
       include CompletionatorImportReview
       include ImportItemActions

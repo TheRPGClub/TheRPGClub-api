@@ -7,6 +7,8 @@ module Api
     # Departed members, placeholder progress rows and removed Achievements are
     # excluded (Achievements::Reads).
     class MemberAchievementsController < ApplicationController
+      feature :achievement_hub
+
       include AchievementReadParams
 
       # 404 unless the member is active and has at least one Linked Account:

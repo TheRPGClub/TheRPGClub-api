@@ -7,6 +7,8 @@ module Api
     # be re-resolved by the bot's matcher. Bot-written; read is open to any
     # authenticated caller.
     class SteamAppGamedbMapsController < ApplicationController
+      feature :collection
+
       before_action :require_admin_or_service!, only: %i[create]
 
       # GET /api/v1/steam_app_gamedb_maps/:steam_app_id

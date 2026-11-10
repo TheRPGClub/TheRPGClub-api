@@ -6,6 +6,8 @@ module Api
     # fields plus the resolved match and outcome once the bot's matcher has run
     # a row. Owner-only, resolved through the parent import.
     class CollectionCsvImportItemsController < ApplicationController
+      feature :collection
+
       include TestModeRollback
       include CollectionImportReview
       include ImportItemActions

@@ -3,6 +3,8 @@
 module Api
   module V1
     class SuggestionsController < ApplicationController
+      feature :suggestions
+
       # Columns a caller may set on create. Status and the review columns are
       # server-managed; a member's authorship comes from their session.
       WRITABLE = %w[title details labels created_by created_by_name].freeze

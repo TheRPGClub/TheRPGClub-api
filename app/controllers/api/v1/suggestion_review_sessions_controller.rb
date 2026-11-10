@@ -14,6 +14,8 @@ module Api
     # Reads are open to any authenticated caller; writes are admin/service-gated.
     # Pruning expired sessions is a service-only maintenance route.
     class SuggestionReviewSessionsController < ApplicationController
+      feature :suggestions
+
       before_action :require_admin_or_service!, only: %i[create update destroy destroy_all]
       before_action :require_service!, only: %i[destroy_expired]
 

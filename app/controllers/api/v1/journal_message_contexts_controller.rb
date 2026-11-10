@@ -7,6 +7,8 @@ module Api
     # via #create, deletes a single context via #destroy, and prunes stale
     # contexts in bulk via #prune, replacing its old direct-SQL bookkeeping.
     class JournalMessageContextsController < ApplicationController
+      feature :journals
+
       before_action :require_admin_or_service!, only: %i[create destroy]
       before_action :require_service!, only: %i[prune]
 
