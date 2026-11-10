@@ -181,6 +181,13 @@ class RpgClubUser < ApplicationRecord
     update!(DiscordRoles.user_flags_for(role_ids))
   end
 
+  # Admin or Superadmin by the member's stored roles, for callers acting for
+  # the member without their session (the bot). Session callers use
+  # StaffGates#admin_or_above?.
+  def admin_or_above?
+    role_admin? || role_dev?
+  end
+
   def membership
     {
       admin: role_admin?,
