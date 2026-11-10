@@ -11,23 +11,30 @@ module Api
 
       before_action :require_service!, only: %i[update destroy]
 
-      # GET /api/v1/news_items?category=releases,industry&page=1&per=50
+      # GET /api/v1/news_items?category=releases,industry&q=zelda&page=1&per=50
       #
       # The News Items that have a News Category, newest first. `category`
       # narrows to those News Categories (comma-separated, or repeated as
-      # `category[]`); an unknown key is a 400.
+      # `category[]`); an unknown key is a 400. Without it, the member's
+      # default view: every News Category but the ones they switched off
+      # (News Category Preferences, ticket #357). `q` searches link title and
+      # comment. `meta` adds `category_counts` and `hidden_categories` for the
+      # page's category rail.
       def index
         categories = category_filter
         return if performed?
 
-        scope = NewsItem.listed
+        searched = search(NewsItem.listed)
+        hidden = switched_off_categories
+        scope = searched
         scope = scope.where(category_key: categories) if categories.any?
+        scope = scope.where.not(category_key: hidden) if categories.empty? && hidden.any?
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
 
         render json: {
           data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items) }).serializable_hash,
-          meta: pagy_meta(pagy)
+          meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden)
         }
       end
 
@@ -58,6 +65,33 @@ module Api
 
         data.permit(:channel_id, :category_key, :author_id, :author_name, :comment, :posted_at, :edited_at,
           link: NewsItem::LINK_FIELDS, images: %i[url expires_at]).to_h
+      end
+
+      # The News Categories the signed-in member switched off (their News
+      # Category Preferences), which the default view leaves out. A requested
+      # category is always returned, so a preference never blocks anything.
+      # The service token has none.
+      def switched_off_categories
+        return [] unless current_principal.discord_user?
+
+        MemberNewsCategoryPreference.hidden_keys(current_principal.id)
+      end
+
+      # How many News Items each News Category holds in `scope` (the search
+      # alone, before the category filter and the preferences), keyed by every
+      # News Category in order, so the page can show a count for each.
+      def category_counts(scope)
+        counts = scope.group(:category_key).count
+        NewsCategory.keys.index_with { |key| counts.fetch(key, 0) }
+      end
+
+      # Narrows to the News Items whose link title or comment contains `q`,
+      # ignoring case. A blank `q` searches nothing.
+      def search(scope)
+        text = params[:q].to_s.strip
+        return scope if text.empty?
+
+        scope.where("link_title ILIKE :q OR comment ILIKE :q", q: "%#{NewsItem.sanitize_sql_like(text)}%")
       end
 
       # The requested News Category keys; [] when none. Renders 400 and
