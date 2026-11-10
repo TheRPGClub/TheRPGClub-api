@@ -8,16 +8,13 @@ class FeatureFlag < ApplicationRecord
   # Who `changed_by` names when no member made the change, e.g. the seed.
   SYSTEM = "system"
 
-  validates :key, presence: true, uniqueness: true
-  validates :state, inclusion: { in: Features::STATES }
-  validate :key_is_registered
-
   # Sets Feature `key` to `state` and logs the change: `by` is "system" or the
   # acting member's Discord user id, `reason` is optional. Returns the logged
   # FeatureFlagChange, or nil when the Feature already reads as `state` (a
   # Feature with no stored state reads as Preview), which changes and logs
-  # nothing. Raises KeyError for an unknown key, RecordInvalid for a state
-  # other than Off, Preview or Live.
+  # nothing. Raises KeyError for an unknown key, Features::InvalidState for a
+  # state other than Off, Preview or Live (rows are written only here, never
+  # through validations).
   #
   # Safe when two staff members set the same Feature at once: the row is
   # locked while it changes, and a Feature's first row is inserted with ON
@@ -28,12 +25,7 @@ class FeatureFlag < ApplicationRecord
   # reads the new state.
   def self.change!(key, state, by:, reason: nil)
     key = Features.fetch(key).key
-    state = state.to_s
-    unless Features::STATES.include?(state)
-      flag = new(key: key, state: state)
-      flag.errors.add(:state, :inclusion, value: state)
-      raise ActiveRecord::RecordInvalid, flag
-    end
+    state = Features.check_state!(state)
 
     transaction do
       from = lock.where(key: key).pick(:state)
@@ -62,10 +54,4 @@ class FeatureFlag < ApplicationRecord
     FeatureFlagChange.create!(feature_key: key, from_state: from, to_state: to, changed_by: by.to_s, reason: reason.presence)
   end
   private_class_method :log_change
-
-  private
-
-  def key_is_registered
-    errors.add(:key, "is not a registered Feature") unless Features.known?(key)
-  end
 end

@@ -20,6 +20,19 @@ module Features
   STATES = %w[off preview live].freeze
   DEFAULT_STATE = "preview"
 
+  # A Feature Flag state other than Off, Preview or Live.
+  class InvalidState < ArgumentError; end
+
+  # The one check of a state to store: returns it as a String, or raises
+  # InvalidState. FeatureFlag.change! (and through it Features::ChangeFlag)
+  # uses it.
+  def self.check_state!(state)
+    state = state.to_s
+    raise InvalidState, "state must be one of #{STATES.join(', ')}" unless STATES.include?(state)
+
+    state
+  end
+
   Feature = Data.define(:key, :name, :core, :coverage) do
     def core? = core
     def hideable? = !core
