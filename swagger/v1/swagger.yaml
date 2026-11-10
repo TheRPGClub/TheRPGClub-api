@@ -3798,10 +3798,19 @@ components:
         removed:
           type: integer
           description: Archive messages staff removed with `skip`.
+        oldest_message_id:
+          type: string
+          nullable: true
+          example: '1300000000000000003'
+          description: The oldest archive message imported so far (by snowflake),
+            kept or removed with `skip`; null before any. The archive is locked and
+            the scan reads it newest first, so a re-run scan continues from just before
+            this message.
       required:
       - sorted
       - unsorted
       - removed
+      - oldest_message_id
     SearchSynonym:
       type: object
       properties:
@@ -15513,6 +15522,11 @@ paths:
                                 expires_at:
                                   type: string
                                   format: date-time
+                                  nullable: true
+                                  description: When that address expires (the `ex`
+                                    parameter of Discord's signed URL); null when
+                                    the address has no `ex` parameter, so it does
+                                    not expire.
                               required:
                               - url
                               - expires_at
@@ -15709,9 +15723,10 @@ paths:
       summary: News Import counts
       tags:
       - News Hub
-      description: 'How many imported News Items are sorted and unsorted, and how
-        many archive messages staff removed with `skip`. Admins and Superadmins only,
-        in every Feature Flag state (Live included). A signed-in member is checked
+      description: 'How many imported News Items are sorted and unsorted, how many
+        archive messages staff removed with `skip`, and the oldest message imported
+        so far (`oldest_message_id`), where a re-run scan continues. Admins and Superadmins
+        only, in every Feature Flag state (Live included). A signed-in member is checked
         by their own roles; the bot calls with the service token and names the acting
         Discord user (`acting_user_id`), and the same rule applies to that member''s
         stored roles: 400 `acting_user_id required` without one, 403 when they are
@@ -16015,8 +16030,11 @@ paths:
                           expires_at:
                             type: string
                             format: date-time
+                            nullable: true
                             description: When that address expires (the `ex` parameter
-                              of Discord's signed URL).
+                              of Discord's signed URL); null when the address has
+                              no `ex` parameter, so it does not expire and is never
+                              renewed.
                         required:
                         - url
                         - expires_at
