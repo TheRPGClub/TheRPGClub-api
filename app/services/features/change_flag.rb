@@ -8,7 +8,8 @@ module Features
   # logs and announces nothing.
   #
   # After an Achievement Hub change away from Off, the achievement sync chains
-  # start at once instead of waiting for the next Sync Window.
+  # start at once instead of waiting for the next Sync Window; after a Voting &
+  # GOTM change, the round sweep looks again on the next minute.
   #
   #   Features::ChangeFlag.call("journals", "off", by: "123", reason: "Journal sync broken")
   #   # => the FeatureFlagChange, or nil when nothing changed
@@ -39,7 +40,7 @@ module Features
         announce!(from)
         logged
       end
-      restart_achievement_sync if change && @feature.key == "achievement_hub" && change.from_state == "off"
+      after_change(change) if change
       change
     end
 
@@ -65,8 +66,15 @@ module Features
       global_name.presence || username.presence || @by
     end
 
-    def restart_achievement_sync
-      Achievements::ProviderTickJob.enqueue_all
+    # Automated activity that waits while its Feature is Off picks up at once
+    # instead of at its next scheduled look.
+    def after_change(change)
+      case @feature.key
+      when "achievement_hub"
+        Achievements::ProviderTickJob.enqueue_all if change.from_state == "off"
+      when "voting_gotm"
+        Voting::SweepSchedule.clear
+      end
     end
   end
 end
