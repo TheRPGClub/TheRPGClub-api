@@ -10,9 +10,15 @@ module Api
     # service token (`record`). Staff then work through the bot: list the
     # unsorted imported News Items (`unsorted`), assign News Categories or
     # remove items with `skip` (`assign`), and read the counts (`status`).
-    # Those three require the acting member to be an Admin or Superadmin
-    # whatever the Feature Flag says, decided here from the acting member the
-    # bot names (`acting_user_id`), as the Feature Flag endpoints do.
+    # Those three require the acting member to be an Admin or Superadmin,
+    # decided here from the acting member the bot names (`acting_user_id`),
+    # as the Feature Flag endpoints do.
+    #
+    # The News Import works for Admins and Superadmins while the News Hub is
+    # Preview or Live, and for nobody while it is Off (docs/adr/0005: Off
+    # means nobody uses the Feature, staff included). The feature gate turns
+    # signed-in callers away while Off; the service token is never gated, so
+    # the bot refuses its /news-import commands itself while Off.
     class NewsImportController < ApplicationController
       feature :news_hub
 
@@ -68,8 +74,9 @@ module Api
           end
       end
 
-      # Admins and Superadmins only, in every Feature state. The bot's service
-      # token is not enough: the acting member's stored roles decide.
+      # Admins and Superadmins only. The bot's service token is not enough:
+      # the acting member's stored roles decide. (Whether the News Hub is Off
+      # is the feature gate's call, and the bot's.)
       def require_import_staff!
         return require_admin_or_above! unless current_principal.service?
         return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?

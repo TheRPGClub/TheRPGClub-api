@@ -3,12 +3,13 @@
 require 'swagger_helper'
 
 RSpec.describe 'api/v1/news_import', type: :request do
-  staff = 'Admins and Superadmins only, in every Feature Flag state (Live included). A signed-in member is ' \
-          'checked by their own roles; the bot calls with the service token and names the acting Discord user ' \
-          '(`acting_user_id`), and the same rule applies to that member\'s stored roles: 400 `acting_user_id ' \
-          'required` without one, 403 when they are not an Admin or Superadmin or have no member record. Also ' \
-          'behind the News Hub Feature gate, which a signed-in caller meets only when not Off; the service ' \
-          'token is not gated.'
+  staff = 'The News Import works for Admins and Superadmins while the News Hub is Preview or Live, and for ' \
+          'nobody while it is Off. A signed-in member is checked by their own roles; the bot calls with the ' \
+          'service token and names the acting Discord user (`acting_user_id`), and the same rule applies to ' \
+          'that member\'s stored roles: 400 `acting_user_id required` without one, 403 when they are not an ' \
+          'Admin or Superadmin or have no member record. While Off, the News Hub Feature gate answers a ' \
+          'signed-in caller 404; the service token is not gated, so the bot refuses its /news-import commands ' \
+          'itself.'
   acting_query = lambda do
     parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string },
       description: 'Bot only (required with the service token): the Discord user id of the staff member who ' \
@@ -44,7 +45,9 @@ RSpec.describe 'api/v1/news_import', type: :request do
                   '(`previously_removed`) and never comes back. Each message stands alone: one that is not a ' \
                   'valid News Item, or is already a live News Item, is listed in `rejected` with its reason and ' \
                   'the rest are still recorded. The fields are those of `PUT /api/v1/news_items/{message_id}` ' \
-                  'plus `message_id`, without `category_key`. Works whatever the Feature Flag says.'
+                  'plus `message_id`, without `category_key`. The service token is not gated; the bot runs the ' \
+                  'scan only for an Admin or Superadmin while the News Hub is Preview or Live (nobody imports ' \
+                  'while it is Off).'
       consumes 'application/json'
       produces 'application/json'
 
