@@ -41,11 +41,16 @@ module FeatureGate
   def require_feature!
     return true if current_principal&.service?
 
-    state = Features.state(feature_key)
+    state = feature_state
     access = Features::Access.new(staff: state == "preview" && admin_or_above?, states: { feature_key => state })
     return true if access.can_use?(feature_key)
 
     render json: { error: "not_found" }, status: :not_found
     false
+  end
+
+  # The controller's Feature's Feature Flag state, read once per request.
+  def feature_state
+    @feature_state ||= Features.state(feature_key)
   end
 end
