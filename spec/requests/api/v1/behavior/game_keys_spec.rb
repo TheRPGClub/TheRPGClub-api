@@ -265,7 +265,7 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       post "/api/v1/game_keys", params: payload, headers: auth_headers_for(donor), as: :json
 
       expect(giveaway_jobs("giveaway_hub_refresh")).to eq([ [
-        { "reason" => "donate", "key_id" => json.dig("data", "key_id") }, donor.user_id
+        { "reason" => "donate", "key_id" => json.dig("data", "key_id"), "feature_key" => "giveaways" }, donor.user_id
       ] ])
       expect(BotJob.sole.summary).to eq("Refresh the giveaway hub: Chrono Cross (PSN) donated")
     end
@@ -496,7 +496,7 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       delete "/api/v1/game_keys/#{key.key_id}", headers: auth_headers_for(donor)
 
       expect(giveaway_jobs("giveaway_hub_refresh")).to eq([ [
-        { "reason" => "revoke", "key_id" => key.key_id }, donor.user_id
+        { "reason" => "revoke", "key_id" => key.key_id, "feature_key" => "giveaways" }, donor.user_id
       ] ])
       expect(BotJob.sole.summary).to eq("Refresh the giveaway hub: Chrono Cross (PSN) revoked")
     end
@@ -646,7 +646,7 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
         claimant.user_id
       ] ])
       expect(giveaway_jobs("giveaway_hub_refresh")).to eq([ [
-        { "reason" => "claim", "key_id" => key.key_id }, claimant.user_id
+        { "reason" => "claim", "key_id" => key.key_id, "feature_key" => "giveaways" }, claimant.user_id
       ] ])
       expect(BotJob.order(:id).pluck(:summary)).to eq([
         "DM the claimed Chrono Cross (PSN) key, log the claim and notify the donor",

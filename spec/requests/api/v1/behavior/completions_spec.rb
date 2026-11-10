@@ -334,7 +334,8 @@ RSpec.describe "api/v1/completions behavior", type: :request do
           "completion_id" => json.dig("data", "completion_id"),
           "user_id" => owner.user_id,
           "game_id" => game.game_id,
-          "actor_user_id" => superadmin.user_id
+          "actor_user_id" => superadmin.user_id,
+          "feature_key" => "game_completions"
         )
         expect(job.summary).to eq(%(Announce Alice's Game Completion of "Chrono Trigger"))
         expect(job.requested_by_user_id).to eq(superadmin.user_id)

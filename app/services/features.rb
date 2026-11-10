@@ -97,4 +97,9 @@ module Features
     fetch(key)
     FeatureFlag.where(key: key.to_s).pick(:state) || DEFAULT_STATE
   end
+
+  # Whether the Feature is Off: nobody can use it and its automated activity
+  # (the API's scheduled jobs it owns) is paused. Jobs skip a run while this
+  # holds; work that falls due meanwhile stays due and runs once it is back on.
+  def self.off?(key) = state(key) == "off"
 end

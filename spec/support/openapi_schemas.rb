@@ -847,7 +847,11 @@ module OpenapiSchemas
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
-        payload: json(nullable: false).merge(description: "Per kind; a breaking change gets a new kind name."),
+        payload: json(nullable: false).merge(
+          description: "Per kind; a breaking change gets a new kind name. A kind that posts publicly also " \
+                       "carries `feature_key`, the key of the Feature that owns the post " \
+                       "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag."
+        ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
         lease_expires_at: ts(nullable: true).merge(
