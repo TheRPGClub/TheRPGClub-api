@@ -1,0 +1,99 @@
+# frozen_string_literal: true
+
+module Api
+  module V1
+    # The News Import (GLOSSARY.md, "News Hub"; spec #355, ticket #359):
+    # bringing the Game News Archive's history into the News Hub, hidden until
+    # staff sort it.
+    #
+    # The bot scans the archive and records its messages in batches with the
+    # service token (`record`). Staff then work through the bot: list the
+    # unsorted imported News Items (`unsorted`), assign News Categories or
+    # remove items with `skip` (`assign`), and read the counts (`status`).
+    # Those three require the acting member to be an Admin or Superadmin
+    # whatever the Feature Flag says, decided here from the acting member the
+    # bot names (`acting_user_id`), as the Feature Flag endpoints do.
+    class NewsImportController < ApplicationController
+      feature :news_hub
+
+      before_action :require_service!, only: :record
+      before_action :require_import_staff!, except: :record
+
+      # POST /api/v1/news_import/items
+      # Body: { "data": { "items": [ { "message_id": "...", ...News Item fields } ] } }
+      def record
+        render json: { data: NewsImport::RecordBatch.call(batch_items) }
+      rescue NewsImport::RecordBatch::TooLarge => error
+        render json: { error: error.message }, status: :unprocessable_content
+      end
+
+      # GET /api/v1/news_import/items?acting_user_id=&page=&per=
+      #
+      # The imported News Items staff have not sorted, oldest first.
+      def unsorted
+        pagy, items = pagy(NewsItem.unsorted.order(posted_at: :asc, id: :asc), **pagy_options)
+        items = items.to_a
+
+        render json: {
+          data: NewsImportItemResource.new(items, params: { authors: NewsItemResource.authors_for(items) })
+            .serializable_hash,
+          meta: pagy_meta(pagy)
+        }
+      end
+
+      # POST /api/v1/news_import/assignments
+      # Body: { "data": { "acting_user_id": "..." (bot only), "rows": [ { "message_id": "...", "value": "releases|skip" } ] } }
+      def assign
+        render json: { data: NewsImport::Assign.call(assignment_rows, by: acting_user_id) }
+      rescue NewsImport::Assign::TooLarge => error
+        render json: { error: error.message }, status: :unprocessable_content
+      end
+
+      # GET /api/v1/news_import/status?acting_user_id=
+      def status
+        render json: { data: NewsImport.status }
+      end
+
+      private
+
+      # The member the request acts for, by Discord user id: the session's
+      # member, or the bot's named acting user (a query parameter on reads,
+      # `data.acting_user_id` on writes).
+      def acting_user_id
+        @acting_user_id ||=
+          if current_principal.service?
+            (request.get? ? params[:acting_user_id] : params.dig(:data, :acting_user_id)).presence&.to_s
+          else
+            current_principal.id.to_s
+          end
+      end
+
+      # Admins and Superadmins only, in every Feature state. The bot's service
+      # token is not enough: the acting member's stored roles decide.
+      def require_import_staff!
+        return require_admin_or_above! unless current_principal.service?
+        return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?
+
+        gate_or_forbid(Features::Access.staff_member?(RpgClubUser.without_images.find_by(user_id: acting_user_id)))
+      end
+
+      def batch_items
+        data = params.require(:data)
+        raise ActionController::ParameterMissing, "data (object)" unless data.respond_to?(:permit)
+
+        items = data.permit(items: [ :message_id, :channel_id, :author_id, :author_name, :comment, :posted_at,
+          :edited_at, { link: NewsItem::LINK_FIELDS, images: %i[url expires_at] } ])[:items]
+        raise ActionController::ParameterMissing, "data.items (array)" unless items.is_a?(Array)
+
+        items.map(&:to_h)
+      end
+
+      def assignment_rows
+        rows = params.require(:data).permit(rows: %i[message_id value])[:rows]
+        raise ActionController::ParameterMissing, "data.rows (array)" unless rows.is_a?(Array)
+
+        rows.map(&:to_h)
+      end
+    end
+  end
+end

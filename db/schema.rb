@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_193000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -435,6 +435,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_190000) do
     t.string "feature_key", limit: 64, null: false
     t.datetime "created_at", null: false
     t.index ["user_id", "feature_key"], name: "index_member_feature_preferences_on_user_id_and_feature_key", unique: true
+  end
+
+  create_table "news_import_removals", force: :cascade do |t|
+    t.string "message_id", limit: 30, null: false
+    t.string "removed_by", limit: 30
+    t.datetime "created_at", null: false
+    t.index ["message_id"], name: "index_news_import_removals_on_message_id", unique: true
   end
 
   create_table "news_items", force: :cascade do |t|

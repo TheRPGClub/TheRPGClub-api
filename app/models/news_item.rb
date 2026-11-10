@@ -37,6 +37,9 @@ class NewsItem < ApplicationRecord
 
   # The News Items members may see: every one with a News Category.
   scope :listed, -> { where.not(category_key: nil) }
+  # The News Import's items (ticket #359), and those staff have not sorted.
+  scope :imported, -> { where(origin: "import") }
+  scope :unsorted, -> { imported.where(category_key: nil) }
 
   # Records the message `message_id` from the bot's payload, creating the
   # News Item or updating the one already recorded. Returns [item, created].
