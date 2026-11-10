@@ -125,6 +125,43 @@ RSpec.describe "feature gate behavior", type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
+  # The gate runs on every request to a Feature's endpoints, so it reads
+  # only that Feature's state, and the caller's roles only when the answer
+  # depends on them (Preview).
+  describe "the gate's own reads" do
+    # What the request reads besides authentication: "one flag" or "every
+    # flag" (feature_flags by one key or by all), and "roles" (the caller's
+    # role flags).
+    def reads_of_gated_request(headers)
+      reads = []
+      callback = lambda do |*, payload|
+        sql = payload[:sql]
+        reads << (sql.include?(" IN (") ? "every flag" : "one flag") if sql.include?('FROM "feature_flags"')
+        reads << "roles" if sql.include?('"rpg_club_users"."role_admin"')
+      end
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        get "/feature_gate_probe", headers: headers
+      end
+      reads
+    end
+
+    let(:headers) { auth_headers_for(create(:user, role_member: true)) }
+
+    it "reads one Feature Flag and no roles for a Live or Off Feature" do
+      %w[live off].each do |state|
+        set_feature_flag("journals", state)
+
+        expect(reads_of_gated_request(headers)).to eq([ "one flag" ]), state
+      end
+    end
+
+    it "reads the caller's roles for a Preview Feature" do
+      set_feature_flag("journals", "preview")
+
+      expect(reads_of_gated_request(headers)).to eq([ "one flag", "roles" ])
+    end
+  end
+
   it "refuses to declare a Feature that is not registered" do
     expect { Class.new(ApplicationController) { feature :not_a_feature } }.to raise_error(KeyError)
   end
