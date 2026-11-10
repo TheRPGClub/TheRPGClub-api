@@ -193,6 +193,17 @@ RSpec.describe "auth/discord behavior", type: :request do
       )
     end
 
+    it "stores the dev role, so the bot's Feature access lookup sees the Superadmin" do
+      stub_successful_oauth(roles: [ DiscordRoles::DEV ])
+      state = begin_oauth
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+      reset!
+      get "/api/v1/users/#{discord_id}/feature_access", headers: service_headers
+
+      expect(json.dig("data", "staff")).to be(true)
+    end
+
     it "clears role flags the member no longer holds at sign-in" do
       create(:user, :admin, user_id: discord_id, role_moderator: true, role_regular: true, role_member: true)
       stub_successful_oauth(roles: [ "747520789003239530" ])

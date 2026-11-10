@@ -166,7 +166,7 @@ class RpgClubUser < ApplicationRecord
     user.discord_avatar = payload["avatar"] if user.has_attribute?(:discord_avatar)
     user.last_fetched_at = Time.current if user.has_attribute?(:last_fetched_at)
 
-    %w[role_admin role_moderator role_regular role_member role_newcomer donor_notify_on_claim].each do |column|
+    %w[role_admin role_moderator role_regular role_member role_newcomer role_dev donor_notify_on_claim].each do |column|
       user[column] = false if user.has_attribute?(column) && user[column].nil?
     end
 
@@ -174,10 +174,18 @@ class RpgClubUser < ApplicationRecord
     user
   end
 
-  # Replaces the Admin, Moderator, Regulars and Members flags with the ones
-  # the member's current Discord role IDs grant (DiscordRoles::USER_FLAG_ROLES).
+  # Replaces the Superadmin (dev), Admin, Moderator, Regulars and Members flags
+  # with the ones the member's current Discord role IDs grant
+  # (DiscordRoles::USER_FLAG_ROLES).
   def apply_discord_roles!(role_ids)
     update!(DiscordRoles.user_flags_for(role_ids))
+  end
+
+  # Admin or Superadmin by the member's stored roles, for callers acting for
+  # the member without their session (the bot). Session callers use
+  # StaffGates#admin_or_above?.
+  def admin_or_above?
+    role_admin? || role_dev?
   end
 
   def membership
