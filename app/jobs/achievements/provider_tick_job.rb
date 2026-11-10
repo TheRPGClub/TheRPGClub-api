@@ -19,6 +19,10 @@ module Achievements
     }.freeze
     # Wait after a RateLimited that carried no Retry-After.
     RATE_LIMITED_WAIT = 60.seconds
+    # How long a running chain trusts "the Achievement Hub is not Off" before
+    # reading its Feature Flag again, so a Backfill (a tick every 1 to 4
+    # seconds) does not read it on every tick.
+    HUB_RECHECK = 30.seconds
 
     queue_as :default
 
@@ -42,12 +46,29 @@ module Achievements
       provider.to_s == "psn" && AchievementHubState.get(Psn::Client::AUTH_EXPIRED_KEY).present?
     end
 
+    # Whether the Achievement Hub is Off. Only a "not Off" answer is kept, for
+    # HUB_RECHECK in this process, so a chain stops within HUB_RECHECK of the
+    # flag going Off and a tick after it is back on reads it afresh.
+    def self.hub_off?
+      checked_at = @hub_on_at
+      return false if checked_at && Time.current - checked_at < HUB_RECHECK
+
+      off = Features.off?("achievement_hub")
+      @hub_on_at = off ? nil : Time.current
+      off
+    end
+
+    # Forgets the kept answer (for specs).
+    def self.forget_hub_state!
+      @hub_on_at = nil
+    end
+
     # While the Achievement Hub is Off the chain stops, as in the PSN pause:
     # the work stays due and the first Sync Window (or boot catch-up) after it
     # is back on restarts the chain.
     def perform(provider)
       provider = provider.to_s
-      return if Features.off?("achievement_hub") || self.class.paused?(provider)
+      return if self.class.hub_off? || self.class.paused?(provider)
 
       run_one_unit(provider)
       self.class.set(wait: SPACING.fetch(provider)).perform_later(provider) if due?(provider)

@@ -188,6 +188,18 @@ RSpec.describe Achievements::ProviderTickJob do
       expect(described_class).not_to have_been_enqueued
     end
 
+    it "stops a running chain within HUB_RECHECK of the Achievement Hub going Off" do
+      set_feature_flag("achievement_hub", "live")
+      3.times { pending_set }
+      tick
+
+      set_feature_flag("achievement_hub", "off")
+      travel(described_class::HUB_RECHECK + 1.second)
+      tick
+
+      expect(UserAchievementSetProgress.sync_pending("steam").count).to eq(2)
+    end
+
     it "picks the work up again once the Achievement Hub is back on" do
       row = pending_set
       tick
@@ -197,6 +209,25 @@ RSpec.describe Achievements::ProviderTickJob do
 
       expect(row.reload.sync_pending_at).to be_nil
     end
+  end
+
+  # A Backfill ticks every 1 to 4 seconds; the chain reads the Achievement
+  # Hub's flag once per HUB_RECHECK instead of on every tick.
+  it "reads the Achievement Hub flag once per HUB_RECHECK while a chain runs" do
+    4.times { pending_set }
+
+    flag_reads = 0
+    callback = ->(*, payload) { flag_reads += 1 if payload[:sql].include?('FROM "feature_flags"') }
+    ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+      3.times do
+        tick
+        travel(1.second)
+      end
+      travel(described_class::HUB_RECHECK)
+      tick
+    end
+
+    expect(flag_reads).to eq(2)
   end
 
   describe "the PSN pause" do

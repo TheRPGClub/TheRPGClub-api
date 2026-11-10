@@ -46,22 +46,38 @@ RSpec.describe Voting::AdvanceRoundsJob do
       expect(Voting::SweepSchedule.due?(reminder_at + 1.minute)).to be(false)
     end
 
+    it "runs no query at all in a minute with nothing due, whatever the Feature Flags" do
+      perform_at(Time.utc(2026, 10, 20))
+
+      queries = []
+      callback = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        perform_at(Time.utc(2026, 10, 20, 0, 1))
+      end
+
+      expect(queries).to be_empty
+    end
+
     context "while Voting & GOTM is Off" do
       before { set_feature_flag("voting_gotm", "off") }
 
-      it "does nothing, not even read the schedule" do
-        expect(Voting::SweepSchedule).not_to receive(:due?)
-
+      it "queues nothing when the round's next event comes due" do
         perform_at(reminder_at)
 
         expect(VotingEvent.count).to eq(0)
       end
 
-      it "queues what fell due meanwhile once Voting & GOTM is back on" do
+      it "does not look again every minute while it stays Off" do
         perform_at(reminder_at)
 
-        set_feature_flag("voting_gotm", "live")
-        perform_at(reminder_at + 1.hour)
+        expect(Voting::SweepSchedule.due?(reminder_at + 1.minute)).to be(false)
+      end
+
+      it "queues what fell due meanwhile on the next minute after staff set it back on" do
+        perform_at(reminder_at)
+
+        Features::ChangeFlag.call("voting_gotm", "live", by: create(:user, role_admin: true).user_id)
+        perform_at(reminder_at + 1.minute)
 
         expect(VotingEvent.pluck(:kind)).to eq(%w[nomination_reminder_5d])
       end

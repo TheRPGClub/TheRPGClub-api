@@ -37,7 +37,13 @@ module Features
     # staff read from their role flags: Admin, or Superadmin by the dev role.
     # For callers acting for a Discord user without their session, i.e. the bot.
     def self.for_member(user, states: Features.states)
-      new(staff: user&.admin_or_above?, states: states)
+      new(staff: staff_member?(user), states: states)
+    end
+
+    # Whether a stored member (nil for none) is staff by their role flags:
+    # Admin, or Superadmin by the dev role.
+    def self.staff_member?(user)
+      user&.admin_or_above? ? true : false
     end
 
     def initialize(staff:, states: Features.states, hidden: [], show_preview: true)
@@ -48,6 +54,10 @@ module Features
     end
 
     def staff? = @staff
+
+    # Every Feature key the viewer hid with a Feature Preference, including
+    # ones a Feature Flag hides anyway.
+    def hidden_keys = @hidden
 
     def state(key)
       @states.fetch(Features.fetch(key).key)

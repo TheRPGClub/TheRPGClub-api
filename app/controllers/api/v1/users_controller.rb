@@ -43,31 +43,35 @@ module Api
         end
       end
 
+      # The profile's previews and counts that belong to a Feature, by key.
+      # A viewer who cannot use the Feature (spec #347, docs/adr/0005) gets
+      # neither; favorites belong to no Feature.
+      PROFILE_FEATURES = {
+        now_playing: "now_playing", reviews: "reviews", completions: "game_completions",
+        backlog: "backlog", collections: "collection", journal: "journals"
+      }.freeze
+
       def show
         user = RpgClubUser.without_images.includes(socials: :social_platform).find(params[:user_id])
         limit = preview_limit
 
         previews = {
-          now_playing: user.now_playing_entries.with_now_playing_details.preload(:game, :platform).order(added_at: :desc).limit(limit).to_a,
-          favorites:   user.game_favorites.preload(:game).order(:sort_order).limit(limit).to_a,
-          reviews:     user.reviews.preload(:game).order(created_at: :desc).limit(limit).to_a,
-          completions: user.game_completions.preload(:game, :platform).order(completed_at: :desc).limit(limit).to_a,
-          journal:     UserGameJournalEntry.journaled_games_for(user.user_id).order(Arel.sql("last_entry_at DESC")).limit(limit).to_a
-        }
-
-        now_playing = user.now_playing_entries.async_count
-        favorites   = user.game_favorites.async_count
-        reviews     = user.reviews.async_count
-        completions = user.game_completions.async_count
-        backlog     = user.game_backlog_entries.async_count
-        collections = user.game_collections.async_count
-        journal     = user.journal_entries.distinct.async_count(:gamedb_game_id)
+          now_playing: -> { user.now_playing_entries.with_now_playing_details.preload(:game, :platform).order(added_at: :desc).limit(limit).to_a },
+          favorites:   -> { user.game_favorites.preload(:game).order(:sort_order).limit(limit).to_a },
+          reviews:     -> { user.reviews.preload(:game).order(created_at: :desc).limit(limit).to_a },
+          completions: -> { user.game_completions.preload(:game, :platform).order(completed_at: :desc).limit(limit).to_a },
+          journal:     -> { UserGameJournalEntry.journaled_games_for(user.user_id).order(Arel.sql("last_entry_at DESC")).limit(limit).to_a }
+        }.select { |key, _| profile_section?(key) }.transform_values(&:call)
 
         counts = {
-          now_playing: now_playing.value, favorites: favorites.value, reviews: reviews.value,
-          completions: completions.value, backlog: backlog.value, collections: collections.value,
-          journal: journal.value
-        }
+          now_playing: -> { user.now_playing_entries.async_count },
+          favorites:   -> { user.game_favorites.async_count },
+          reviews:     -> { user.reviews.async_count },
+          completions: -> { user.game_completions.async_count },
+          backlog:     -> { user.game_backlog_entries.async_count },
+          collections: -> { user.game_collections.async_count },
+          journal:     -> { user.journal_entries.distinct.async_count(:gamedb_game_id) }
+        }.select { |key, _| profile_section?(key) }.transform_values(&:call).transform_values(&:value)
 
         render json: {
           data: UserResource.new(user, params: previews.merge(counts: counts)).serializable_hash
@@ -194,6 +198,16 @@ module Api
           .flat_map { |t| PLATFORM_LABEL_ALIASES.fetch(t, [ t ]) }
           .map { |p| "%#{ActiveRecord::Base.sanitize_sql_like(p)}%" }
         SocialPlatform.where("label ILIKE ANY (ARRAY[?])", patterns).select(:id)
+      end
+
+      # Whether the viewer gets the profile section `key`. The bot's service
+      # token gets every section, as it passes the feature gate.
+      def profile_section?(key)
+        feature = PROFILE_FEATURES[key]
+        return true if feature.nil? || current_principal.service?
+
+        @profile_access ||= Features::Access.new(staff: admin_or_above?)
+        @profile_access.can_use?(feature)
       end
 
       def preview_limit

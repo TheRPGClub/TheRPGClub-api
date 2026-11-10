@@ -9,6 +9,15 @@ module Features
   # change log row's missing `from_state` (the Feature had no stored state)
   # is shown as Preview, the state it read as.
   class StaffList
+    # Display names (global name, else username, else the id) for the
+    # members among `ids`, keyed by Discord user id. "system" and departed
+    # members have none.
+    def self.display_names(ids)
+      RpgClubUser.where(user_id: ids.uniq - [ FeatureFlag::SYSTEM ])
+        .pluck(:user_id, :global_name, :username)
+        .to_h { |user_id, global_name, username| [ user_id, global_name.presence || username.presence || user_id ] }
+    end
+
     def initialize(states: Features.states)
       @states = states
     end
@@ -55,12 +64,6 @@ module Features
         .index_by(&:feature_key)
     end
 
-    # Display names for the members among `ids` ("system" and departed
-    # members have none).
-    def names_for(ids)
-      RpgClubUser.where(user_id: ids.uniq - [ FeatureFlag::SYSTEM ])
-        .pluck(:user_id, :global_name, :username)
-        .to_h { |user_id, global_name, username| [ user_id, global_name.presence || username.presence || user_id ] }
-    end
+    def names_for(ids) = self.class.display_names(ids)
   end
 end

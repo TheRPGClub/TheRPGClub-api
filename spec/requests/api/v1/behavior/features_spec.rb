@@ -29,7 +29,7 @@ RSpec.describe "staff flag control", type: :request do
       ])
       expect(entry("journals")).to include(
         "name" => "Journals", "core" => false, "hideable" => true,
-        "coverage" => { "website" => [ "Journals", "Profile Journal" ], "bot" => [ "/game-journal" ], "posts" => [] }
+        "coverage" => { "website" => [ "Game Journals", "Game page Journals", "Profile Game Journal" ], "bot" => [ "/game-journal" ], "posts" => [] }
       )
       expect(entry("journals").fetch("last_change")).to include(
         "from_state" => "live", "to_state" => "off", "changed_by" => admin.user_id,

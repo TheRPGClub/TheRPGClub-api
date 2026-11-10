@@ -597,13 +597,12 @@ components:
         journal:
           type: integer
       required:
-      - now_playing
       - favorites
-      - reviews
-      - completions
-      - backlog
-      - collections
-      - journal
+      description: 'Each count but `favorites` belongs to a Feature (now_playing:
+        Now Playing, reviews: Reviews, completions: Game Completions, backlog: Backlog,
+        collections: Collection, journal: Journals) and is left out when the viewer
+        cannot use that Feature (Preview: staff only; Off: nobody). The service token
+        gets every count.'
     User:
       allOf:
       - "$ref": "#/components/schemas/UserSummary"
@@ -637,6 +636,9 @@ components:
               "$ref": "#/components/schemas/JournaledGame"
           counts:
             "$ref": "#/components/schemas/UserCounts"
+        description: The Feature-owned previews (now_playing, reviews, completions,
+          journal) are left out, like their `counts`, when the viewer cannot use that
+          Feature.
     UserWithSocials:
       allOf:
       - "$ref": "#/components/schemas/UserSummary"

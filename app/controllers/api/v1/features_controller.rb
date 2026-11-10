@@ -34,7 +34,7 @@ module Api
         change = Features::ChangeFlag.call(params[:key], data["state"], by: acting_user_id, reason: data["reason"])
         render json: { data: Features::StaffList.new.entry_for(params[:key]), meta: { changed: change.present? } }
       rescue Features::ChangeFlag::Invalid => error
-        render json: { error: error.message }, status: :unprocessable_entity
+        render json: { error: error.message }, status: :unprocessable_content
       end
 
       private
@@ -56,8 +56,7 @@ module Api
             return render json: { error: "acting_user_id required" }, status: :bad_request
           end
 
-          staff = RpgClubUser.without_images.find_by(user_id: acting_user_id)&.admin_or_above?
-          gate_or_forbid(staff)
+          gate_or_forbid(Features::Access.staff_member?(RpgClubUser.without_images.find_by(user_id: acting_user_id)))
         else
           require_admin_or_above!
         end

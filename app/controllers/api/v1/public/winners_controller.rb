@@ -17,10 +17,17 @@ module Api
         #
         # The latest ROUNDS rounds' winning games, newest round first, GOTM
         # before NR-GOTM, `game_index` order within a track. Abuse protection
-        # is caching only: the payload is cached for 10 minutes, keyed on the
-        # latest round number so a new round busts it, and marked publicly
-        # cacheable for shared caches.
+        # is caching only: while Voting & GOTM is Live the payload is cached
+        # for 10 minutes, keyed on the latest round number so a new round
+        # busts it, and marked publicly cacheable for shared caches. In
+        # Preview only staff get here (the feature gate), so the answer is
+        # built fresh and marked no-store: nothing may keep it for others.
         def index
+          unless feature_state == "live"
+            no_store
+            return render json: build_payload
+          end
+
           payload = Rails.cache.fetch([ "public_winners", ROUNDS, latest_round_number ], expires_in: 10.minutes) do
             build_payload
           end

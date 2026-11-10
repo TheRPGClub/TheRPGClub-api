@@ -82,7 +82,7 @@ module Api
         access = Features::Access.for_viewer(user, staff: admin_or_above?)
         {
           user_id: user_id,
-          hidden: user ? MemberFeaturePreference.hidden_keys(user.user_id) : [],
+          hidden: access.hidden_keys,
           show_preview_features: access.staff? ? (user.nil? || user.show_preview_features) : nil,
           features: access.preference_features
         }

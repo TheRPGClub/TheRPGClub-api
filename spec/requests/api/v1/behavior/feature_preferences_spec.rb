@@ -28,15 +28,15 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
         "show_preview_features" => nil,
         "features" => [
           { "key" => "reviews", "name" => "Reviews", "state" => "live", "preview" => false, "hidden" => false,
-            "website" => [ "Game page Reviews tab", "Profile reviews" ] },
+            "website" => [ "Game page Reviews", "Profile Reviews", "Dashboard review counts" ] },
           { "key" => "achievement_hub", "name" => "Achievement Hub", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Achievements", "Profile Achievements" ] },
+            "hidden" => false, "website" => [ "Achievements", "Game page Achievements", "Profile Achievements", "Linked Accounts" ] },
           { "key" => "giveaways", "name" => "Giveaways", "state" => "live", "preview" => false, "hidden" => false,
-            "website" => [ "Giveaways", "Dashboard Giveaways panel" ] },
+            "website" => [ "Giveaways", "Donate", "Your claimed keys" ] },
           { "key" => "journals", "name" => "Journals", "state" => "live", "preview" => false, "hidden" => false,
-            "website" => [ "Journals", "Profile Journal" ] },
+            "website" => [ "Game Journals", "Game page Journals", "Profile Game Journal" ] },
           { "key" => "suggestions", "name" => "Suggestions", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Suggestions" ] }
+            "hidden" => false, "website" => [ "Suggestion Board" ] }
         ]
       )
     end

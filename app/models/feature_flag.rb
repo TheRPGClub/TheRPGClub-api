@@ -13,21 +13,52 @@ class FeatureFlag < ApplicationRecord
   validate :key_is_registered
 
   # Sets Feature `key` to `state` and logs the change: `by` is "system" or the
-  # acting member's Discord user id, `reason` is optional. Setting the state a
-  # Feature already has changes and logs nothing. Returns the FeatureFlag.
+  # acting member's Discord user id, `reason` is optional. Returns the logged
+  # FeatureFlagChange, or nil when the Feature already reads as `state` (a
+  # Feature with no stored state reads as Preview), which changes and logs
+  # nothing. Raises KeyError for an unknown key, RecordInvalid for a state
+  # other than Off, Preview or Live.
+  #
+  # Safe when two staff members set the same Feature at once: the row is
+  # locked while it changes, and a Feature's first row is inserted with ON
+  # CONFLICT DO NOTHING, so the slower writer waits and then changes the row
+  # the faster one stored.
   def self.change!(key, state, by:, reason: nil)
-    Features.fetch(key)
-    transaction do
-      flag = lock.find_or_initialize_by(key: key.to_s)
-      from = flag.new_record? ? nil : flag.state
-      next flag if from == state.to_s
+    key = Features.fetch(key).key
+    state = state.to_s
+    unless Features::STATES.include?(state)
+      flag = new(key: key, state: state)
+      flag.errors.add(:state, :inclusion, value: state)
+      raise ActiveRecord::RecordInvalid, flag
+    end
 
-      flag.update!(state: state.to_s)
-      FeatureFlagChange.create!(feature_key: flag.key, from_state: from, to_state: flag.state,
-        changed_by: by.to_s, reason: reason.presence)
-      flag
+    transaction do
+      from = lock.where(key: key).pick(:state)
+      if from.nil?
+        next if state == Features::DEFAULT_STATE
+        next log_change(key, nil, state, by, reason) if insert_first(key, state)
+
+        from = lock.where(key: key).pick(:state)
+      end
+      next if from == state
+
+      where(key: key).update_all(state: state, updated_at: Time.current)
+      log_change(key, from, state, by, reason)
     end
   end
+
+  # Inserts a Feature's first stored state; false when another writer stored
+  # it first.
+  def self.insert_first(key, state)
+    now = Time.current
+    insert_all([ { key: key, state: state, created_at: now, updated_at: now } ], unique_by: :key, returning: [ :key ]).any?
+  end
+  private_class_method :insert_first
+
+  def self.log_change(key, from, to, by, reason)
+    FeatureFlagChange.create!(feature_key: key, from_state: from, to_state: to, changed_by: by.to_s, reason: reason.presence)
+  end
+  private_class_method :log_change
 
   private
 
