@@ -16,6 +16,9 @@ module Api
       # The News Items that have a News Category, newest first. `category`
       # narrows to those News Categories (comma-separated, or repeated as
       # `category[]`); an unknown key is a 400.
+      #
+      # An image whose Discord address has expired is served as unavailable,
+      # and the bot is asked to renew it (NewsHub::BotJobs).
       def index
         categories = category_filter
         return if performed?
@@ -24,9 +27,12 @@ module Api
         scope = scope.where(category_key: categories) if categories.any?
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
+        now = Time.current
+        NewsHub::BotJobs.renew_expired_images!(items, now: now)
 
         render json: {
-          data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items) }).serializable_hash,
+          data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items), now: now })
+            .serializable_hash,
           meta: pagy_meta(pagy)
         }
       end

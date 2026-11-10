@@ -77,6 +77,17 @@ class NewsItem < ApplicationRecord
 
   def imported? = origin == "import"
 
+  # Whether a stored image's Discord address has run out at `now`. Only the
+  # message's attachments expire; the link preview's outside-site image never
+  # does.
+  def self.image_expired?(image, now)
+    expires_at = image["expires_at"].presence
+    expires_at.present? && Time.iso8601(expires_at) <= now
+  end
+
+  # Whether any of this News Item's image addresses has run out at `now`.
+  def images_expired?(now) = images.any? { |image| self.class.image_expired?(image, now) }
+
   # The link and the preview Discord generated for it, or nil for no link.
   def link
     return nil if link_url.blank?

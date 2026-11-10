@@ -69,6 +69,18 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       end
     end
 
+    # Work a Feature owns that posts nothing carries the key too.
+    {
+      "news_images_renew" => "news_hub",
+      "news_catch_up" => "news_hub"
+    }.each do |kind, feature_key|
+      it "gives a #{kind} job, which does #{feature_key}'s work, its Feature key" do
+        enqueue(kind: kind, payload: { round_number: 7 })
+
+        expect(poll.sole.fetch("payload")).to eq("round_number" => 7, "feature_key" => feature_key)
+      end
+    end
+
     %w[
       voting_poll_wakeup gotm_cache_reload
       live_event_create say memberscan presence_set
