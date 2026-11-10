@@ -884,10 +884,11 @@ module OpenapiSchemas
       ),
       # The News Hub's bot job payloads (#358), as BotJobClaim.payload carries them.
       NewsImagesRenewJobPayload: obj(
-        _description: "Kind `news_images_renew`. The feed served this News Item with an expired Discord image " \
-                      "address. Fetch the message and record it again with `PUT /api/v1/news_items/{message_id}` " \
-                      "(fresh addresses and expiry times), or `DELETE` the News Item when the message is gone. " \
-                      "At most one is open per message. Posts nothing.",
+        _description: "Kind `news_images_renew`. The feed served a member this News Item with an expired " \
+                      "Discord image address. Fetch the message and record it again with " \
+                      "`PUT /api/v1/news_items/{message_id}` (fresh addresses and expiry times), or `DELETE` the " \
+                      "News Item when the message is gone. At most one is open per message, and none is queued " \
+                      "within six hours of the last one for that message ending. Posts nothing.",
         message_id: str.merge(description: "The News Item's Discord message id."),
         channel_id: str.merge(description: "The channel or thread the message is in (a News Category's thread, " \
                                            "or the Game News Archive for an imported News Item)."),

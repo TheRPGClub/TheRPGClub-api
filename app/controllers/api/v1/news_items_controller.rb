@@ -22,7 +22,9 @@ module Api
       # page's category rail.
       #
       # An image whose Discord address has expired is served as unavailable,
-      # and the bot is asked to renew it (NewsHub::BotJobs).
+      # and the bot is asked to renew it (NewsHub::BotJobs). The bot's own
+      # reads (its catch-up lists the News Categories through the feed) ask
+      # for nothing.
       def index
         categories = category_filter
         return if performed?
@@ -35,7 +37,7 @@ module Api
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
         now = Time.current
-        NewsHub::BotJobs.renew_expired_images!(items, now: now)
+        NewsHub::BotJobs.renew_expired_images!(items, now: now) unless current_principal.service?
 
         render json: {
           data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items), now: now })
