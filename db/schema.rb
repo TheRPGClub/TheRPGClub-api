@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_11_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -81,6 +81,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_160000) do
     t.string "status", limit: 16, default: "queued", null: false
     t.string "summary", limit: 200, default: "", null: false
     t.datetime "updated_at", null: false
+    t.index "((payload ->> 'message_id'::text))", name: "ux_bot_jobs_one_open_news_images_renew", unique: true, where: "(((kind)::text = 'news_images_renew'::text) AND ((status)::text = ANY ((ARRAY['queued'::character varying, 'claimed'::character varying])::text[])))"
+    t.index "((payload ->> 'message_id'::text)), finished_at", name: "ix_bot_jobs_finished_news_images_renew", where: "(((kind)::text = 'news_images_renew'::text) AND ((status)::text = ANY ((ARRAY['done'::character varying, 'failed'::character varying])::text[])))"
     t.index ["id"], name: "ix_bot_jobs_queued", where: "((status)::text = 'queued'::text)"
     t.index ["lease_expires_at"], name: "ix_bot_jobs_claimed", where: "((status)::text = 'claimed'::text)"
     t.index ["requested_by_user_id"], name: "index_bot_jobs_on_requested_by_user_id"
@@ -435,6 +437,45 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_160000) do
     t.string "feature_key", limit: 64, null: false
     t.datetime "created_at", null: false
     t.index ["user_id", "feature_key"], name: "index_member_feature_preferences_on_user_id_and_feature_key", unique: true
+  end
+
+  create_table "member_news_category_preferences", force: :cascade do |t|
+    t.string "category_key", limit: 64, null: false
+    t.datetime "created_at", null: false
+    t.string "user_id", limit: 30, null: false
+    t.index ["user_id", "category_key"], name: "index_member_news_category_preferences_on_user_and_category", unique: true
+  end
+
+  create_table "news_import_removals", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "message_id", limit: 30, null: false
+    t.string "removed_by", limit: 30
+    t.index ["message_id"], name: "index_news_import_removals_on_message_id", unique: true
+  end
+
+  create_table "news_items", force: :cascade do |t|
+    t.string "author_id", limit: 30, null: false
+    t.string "author_name", limit: 100, null: false
+    t.string "category_key", limit: 64
+    t.string "channel_id", limit: 30, null: false
+    t.text "comment"
+    t.datetime "created_at", null: false
+    t.datetime "edited_at"
+    t.jsonb "images", default: [], null: false
+    t.text "link_description"
+    t.text "link_image_url"
+    t.text "link_site_name"
+    t.text "link_title"
+    t.text "link_url"
+    t.string "message_id", limit: 30, null: false
+    t.string "origin", limit: 16, default: "live", null: false
+    t.datetime "posted_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["category_key", "posted_at"], name: "ix_news_items_category_feed", order: { posted_at: :desc }, where: "(category_key IS NOT NULL)"
+    t.index ["message_id"], name: "index_news_items_on_message_id", unique: true
+    t.index ["posted_at", "id"], name: "ix_news_items_feed", order: :desc, where: "(category_key IS NOT NULL)"
+    t.check_constraint "category_key IS NOT NULL OR origin::text = 'import'::text", name: "ck_news_items_category"
+    t.check_constraint "origin::text = ANY (ARRAY['live'::character varying, 'import'::character varying]::text[])", name: "ck_news_items_origin"
   end
 
   create_table "nr_gotm_entries", primary_key: "nr_gotm_id", force: :cascade do |t|
@@ -1232,6 +1273,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_160000) do
   add_foreign_key "live_events", "bot_jobs", on_delete: :nullify
   add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "member_feature_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify

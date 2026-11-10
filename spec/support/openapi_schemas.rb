@@ -882,13 +882,35 @@ module OpenapiSchemas
           description: "The message to reply to (always in `channel_id`); null for a plain message."),
         allowed_mentions: obj(parse: { type: :array, items: str(enum: %w[users]) }, _required: %w[parse])
       ),
+      # The News Hub's bot job payloads (#358), as BotJobClaim.payload carries them.
+      NewsImagesRenewJobPayload: obj(
+        _description: "Kind `news_images_renew`. The feed served a member this News Item with an expired " \
+                      "Discord image address. Fetch the message and record it again with " \
+                      "`PUT /api/v1/news_items/{message_id}` (fresh addresses and expiry times), or `DELETE` the " \
+                      "News Item when the message is gone. At most one is open per message, and none is queued " \
+                      "within six hours of the last one for that message ending. Posts nothing.",
+        message_id: str.merge(description: "The News Item's Discord message id."),
+        channel_id: str.merge(description: "The channel or thread the message is in (a News Category's thread, " \
+                                           "or the Game News Archive for an imported News Item)."),
+        feature_key: str(enum: %w[news_hub])
+      ),
+      NewsCatchUpJobPayload: obj(
+        _description: "Kind `news_catch_up`. The News Hub's Feature Flag went from Off to Preview or Live: scan " \
+                      "the News Categories' threads for messages posted, edited or deleted while it was Off. " \
+                      "The lease is 30 minutes. Posts nothing.",
+        from_state: str(enum: %w[off]),
+        to_state: str(enum: %w[preview live]),
+        feature_key: str(enum: %w[news_hub])
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
         payload: json(nullable: false).merge(
           description: "Per kind; a breaking change gets a new kind name. A kind that posts publicly also " \
                        "carries `feature_key`, the key of the Feature that owns the post " \
-                       "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag."
+                       "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
+                       "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
+                       "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
@@ -1007,6 +1029,162 @@ module OpenapiSchemas
                        "use (Live, plus Preview for staff). Empty when there is none, e.g. no hideable Feature is Live."
         ),
         _required: %w[user_id hidden show_preview_features features]
+      ),
+
+      # ---- News Hub (spec #355) --------------------------------------------
+      # NewsCategory: the fixed, ordered list in code. Keys are stable.
+      NewsCategory: obj(
+        key: str(enum: NewsCategory.keys, example: "releases",
+          description: "Stable key. News Items, the bot's thread configuration and the News Import store it."),
+        name: str(example: "Releases & Updates", description: "Display name."),
+        position: int.merge(example: 2, description: "1-based place in the list; the list is served in this order."),
+        _required: %w[key name position]
+      ),
+      # NewsCategoryPreferencesController (ticket #357): a member's News
+      # Category Preferences, the News Categories they switched off.
+      NewsCategoryPreference: extends("NewsCategory",
+        hidden: bool.merge(description: "The member switched this News Category off: it is left out of their " \
+                                        "default News Hub view."),
+        required: %w[hidden]),
+      NewsCategoryPreferences: obj(
+        user_id: str,
+        hidden: { type: :array, items: str(enum: NewsCategory.keys),
+                  description: "Every News Category key the member switched off, in News Category order." },
+        categories: array_of("NewsCategoryPreference").merge(
+          description: "Every News Category, in order, each marked switched off or not."
+        ),
+        _required: %w[user_id hidden categories]
+      ),
+      # NewsItemsController#index meta: pagination plus the category rail.
+      NewsFeedMeta: extends("PaginationMeta",
+        category_counts: {
+          type: :object,
+          description: "How many News Items each News Category holds for the current search (`q`), ignoring " \
+                       "`category` and the member's News Category Preferences. Keyed by every News Category " \
+                       "key in order, 0 for none. Only sorted News Items count.",
+          properties: NewsCategory.keys.index_with { { type: :integer } },
+          required: NewsCategory.keys,
+          example: NewsCategory.keys.index_with(0).merge("releases" => 12, "industry" => 3)
+        },
+        hidden_categories: {
+          type: :array, items: str(enum: NewsCategory.keys),
+          description: "The News Category keys the member switched off, in order, whatever this request " \
+                       "filters by: the default view leaves these out. Empty for the service token."
+        },
+        required: %w[category_counts hidden_categories]),
+      # NewsItemResource: a News Item as the website and the bot read it.
+      NewsItem: obj(
+        message_id: str(example: "1300000000000000003",
+          description: "The Discord message's snowflake: the News Item's identity."),
+        category_key: str(enum: NewsCategory.keys, nullable: true,
+          description: "The News Category's key. Always set in the member feed; null only for an imported " \
+                       "News Item staff have not sorted yet, which members never see."),
+        origin: str(enum: NewsItem::ORIGINS,
+          description: "live: recorded from a News Category's thread. import: brought in from the Game News " \
+                       "Archive by the News Import."),
+        comment: str(nullable: true,
+          description: "The member's own words: the message text as a reader sees it, without the link " \
+                       "address. Null when there are none."),
+        posted_at: ts.merge(description: "When the message was posted in Discord."),
+        edited_at: ts(nullable: true).merge(description: "When the message was last edited; null if never."),
+        link: ref("NewsItemLink", nullable: true).merge(
+          description: "The message's first link and Discord's preview of it. Null for an image-only News Item."
+        ),
+        images: array_of("NewsItemImage").merge(
+          description: "The message's image attachments in posted order; empty when there are none."
+        ),
+        author: ref("NewsItemAuthor"),
+        _required: %w[message_id category_key origin comment posted_at edited_at link images author]
+      ),
+      NewsItemLink: obj(
+        url: str(example: "https://example.test/news/story", description: "The link's address (http or https)."),
+        title: str(nullable: true, description: "The preview's title. Null until Discord's preview arrives, " \
+                                                "or when the page has none."),
+        site_name: str(nullable: true, description: "The preview's site name."),
+        description: str(nullable: true, description: "The preview's description."),
+        image_url: str(nullable: true,
+          description: "The outside site's own image address from the preview. Never expires and is never " \
+                       "renewed; if it stops working, show no image."),
+        _required: %w[url title site_name description image_url]
+      ),
+      NewsItemImage: obj(
+        url: str(nullable: true, description: "The image's Discord attachment address. Null when unavailable."),
+        unavailable: bool.merge(
+          description: "True when the Discord address has expired and the bot has been asked to renew it: show " \
+                       "a placeholder; the image is back on a later load."
+        ),
+        _required: %w[url unavailable]
+      ),
+      NewsItemAuthor: obj(
+        user_id: str(description: "The author's Discord user id."),
+        name: str(description: "The member's current name (display name, else username) when they have a " \
+                               "member record; otherwise the name they had when the message was recorded."),
+        member: bool.merge(description: "True when the author has a member record (their profile and avatar " \
+                                        "exist). False for authors the club never recorded."),
+        _required: %w[user_id name member]
+      ),
+      # ---- News Import (ticket #359) ---------------------------------------
+      # NewsImportItemResource: an unsorted imported News Item, as the
+      # download file lists it for a classifier.
+      NewsImportItem: obj(
+        message_id: str(example: "1300000000000000003", description: "The archived Discord message's snowflake."),
+        posted_at: ts.merge(description: "When the message was posted in the Game News Archive."),
+        author_name: str(description: "The member's current name when they have a member record; otherwise " \
+                                      "the name recorded with the message."),
+        comment: str(nullable: true, description: "The member's own words; null when there are none."),
+        link_url: str(nullable: true, description: "The link's address; null for an image-only item."),
+        link_title: str(nullable: true, description: "The link preview's title."),
+        link_site_name: str(nullable: true, description: "The link preview's site name."),
+        link_description: str(nullable: true, description: "The link preview's description."),
+        image_count: int.merge(description: "How many image attachments the message has."),
+        _required: %w[message_id posted_at author_name comment link_url link_title link_site_name
+                      link_description image_count]
+      ),
+      NewsImportBatchResult: obj(
+        created: int.merge(description: "Messages recorded as new imported News Items."),
+        updated: int.merge(description: "Messages already recorded, updated in place (an assigned News " \
+                                        "Category is kept)."),
+        previously_removed: int.merge(description: "Messages staff removed with `skip`, left out."),
+        rejected: array_of("NewsImportBatchRejection").merge(
+          description: "Messages not recorded, each with its reason. Empty when every message was recorded."
+        ),
+        _required: %w[created updated previously_removed rejected]
+      ),
+      NewsImportBatchRejection: obj(
+        index: int.merge(description: "The message's 0-based position in `items`."),
+        message_id: str(nullable: true, description: "The message id as sent; null when missing."),
+        reason: str(example: "A News Item needs a link or at least one image",
+          description: "Why it was not recorded: the News Item's validation errors, or `already recorded as " \
+                       "a live News Item`."),
+        _required: %w[index message_id reason]
+      ),
+      NewsImportAssignResult: obj(
+        assigned: int.merge(description: "Rows that assigned a News Category."),
+        removed: int.merge(description: "`skip` rows (including items already removed by an earlier `skip`)."),
+        rejected: int.merge(description: "Rows rejected; listed in `rejections`."),
+        unsorted: int.merge(description: "Imported News Items still unsorted after this request."),
+        rejections: array_of("NewsImportAssignRejection").merge(description: "The rejected rows, in order."),
+        _required: %w[assigned removed rejected unsorted rejections]
+      ),
+      NewsImportAssignRejection: obj(
+        index: int.merge(description: "The row's 0-based position in `rows`."),
+        message_id: str(description: "The message id as sent (trimmed); empty when missing."),
+        value: str(description: "The value as sent."),
+        reason: str(example: "unknown message ID",
+          description: "One of: `missing message ID`, `message ID appears more than once`, `no value: ...`, " \
+                       "`invalid value: ...` (both end with the accepted values), `removed with skip`, " \
+                       "`unknown message ID`, `not an imported News Item`."),
+        _required: %w[index message_id value reason]
+      ),
+      NewsImportStatus: obj(
+        sorted: int.merge(description: "Imported News Items with a News Category (shown to members)."),
+        unsorted: int.merge(description: "Imported News Items with no News Category yet (hidden)."),
+        removed: int.merge(description: "Archive messages staff removed with `skip`."),
+        oldest_message_id: str(nullable: true, example: "1300000000000000003",
+          description: "The oldest archive message imported so far (by snowflake), kept or removed with " \
+                       "`skip`; null before any. The archive is locked and the scan reads it newest first, " \
+                       "so a re-run scan continues from just before this message."),
+        _required: %w[sorted unsorted removed oldest_message_id]
       ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,

@@ -17,11 +17,11 @@ RSpec.describe Features do
     )
   end
 
-  it "has six Core Features and five hideable ones" do
+  it "has six Core Features and six hideable ones" do
     expect(described_class.all.select(&:core?).map(&:key))
       .to eq(%w[game_index voting_gotm backlog collection now_playing game_completions])
     expect(described_class.all.select(&:hideable?).map(&:key))
-      .to eq(%w[reviews achievement_hub giveaways journals suggestions])
+      .to eq(%w[reviews achievement_hub giveaways journals suggestions news_hub])
   end
 
   it "does not know things that are not Features" do

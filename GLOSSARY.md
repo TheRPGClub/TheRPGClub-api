@@ -110,3 +110,29 @@ _Avoid_: Public, enabled, on
 **Feature Preference**:
 A member's choice to hide a Live Feature that is not a Core Feature from their own view of the website. It removes the Feature everywhere it appears for them, including its sections inside other pages, but never blocks a direct link to it, and it can never make visible a Feature that its Feature Flag hides.
 _Avoid_: Feature flag, setting, opt-out
+
+## News Hub
+
+**News Hub**:
+The Feature that gathers the game news members post in Discord into one place on the website, where members filter it by News Category.
+_Avoid_: News feed, news page, game news (when meaning the Feature)
+
+**News Item**:
+A message a member posted in a News Category's thread that carries a link, an image, or both. A member's text alongside it is their comment on the news. Messages with text only, and messages posted by a bot, are never News Items.
+_Avoid_: Article, post, story, news (as a countable noun)
+
+**News Category**:
+One of the fixed kinds of news the club sorts News Items into. Every News Item shown on the News Hub belongs to exactly one News Category: the one whose thread it was posted in, or the one staff assigned during the News Import.
+_Avoid_: Tag, topic, thread (when meaning the kind of news)
+
+**News Category Preference**:
+A member's choice to leave a News Category out of their own default view of the News Hub. It affects only the website, and never stops the member from viewing that category when they ask for it.
+_Avoid_: Mute, unfollow, filter (when meaning the saved choice)
+
+**Game News Archive**:
+The original single game news channel, locked and kept readable once the News Hub replaces it.
+_Avoid_: Old channel, legacy channel
+
+**News Import**:
+The one-time move of the Game News Archive's messages into the News Hub as News Items, each keeping its original author and date. An imported News Item stays hidden until staff assign its News Category.
+_Avoid_: Backfill (that is the Achievement Hub's term), migration, re-post

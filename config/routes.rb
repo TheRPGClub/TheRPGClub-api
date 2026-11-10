@@ -130,6 +130,8 @@ Rails.application.routes.draw do
           patch "giveaway_settings", to: "giveaway_settings#update"
           get "feature_preferences", to: "feature_preferences#show"
           patch "feature_preferences", to: "feature_preferences#update"
+          get "news_category_preferences", to: "news_category_preferences#show"
+          patch "news_category_preferences", to: "news_category_preferences#update"
           get "game_keys", to: "game_keys#user_index"
           get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"
@@ -412,6 +414,20 @@ Rails.application.routes.draw do
         member { put "terms", to: "search_synonym_groups#replace_terms" }
       end
       resources :search_synonym_drafts, only: %i[index show create update destroy]
+      # News Hub (spec #355): the fixed News Categories; the members' feed of
+      # News Items; the bot records (PUT, an upsert) and removes News Items
+      # by their Discord message id (service-only).
+      get "news_categories", to: "news_categories#index"
+      get    "news_items",             to: "news_items#index"
+      put    "news_items/:message_id", to: "news_items#update"
+      delete "news_items/:message_id", to: "news_items#destroy"
+      # The News Import (ticket #359): the bot records the Game News Archive
+      # in batches (service-only); staff, through the bot, list the unsorted
+      # imported News Items, assign their News Categories and read counts.
+      post "news_import/items",       to: "news_import#record"
+      get  "news_import/items",       to: "news_import#unsorted"
+      post "news_import/assignments", to: "news_import#assign"
+      get  "news_import/status",      to: "news_import#status"
     end
   end
 end

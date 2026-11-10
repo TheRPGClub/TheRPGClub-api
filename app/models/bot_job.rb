@@ -16,7 +16,9 @@
 # payload is per kind and only the bot sees it; a breaking payload change
 # gets a new kind name. A kind that posts publicly is owned by a Feature
 # (PUBLIC_POST_FEATURES), and its payload carries that Feature's key as
-# `feature_key`, so the bot can route the post by its Feature Flag.
+# `feature_key`, so the bot can route the post by its Feature Flag. A kind
+# that does a Feature's work without posting can carry its key the same way
+# (FEATURE_WORK).
 class BotJob < ApplicationRecord
   KINDS = %w[
     completion_announce
@@ -35,6 +37,8 @@ class BotJob < ApplicationRecord
     memberscan
     presence_set
     feature_flag_changed
+    news_images_renew
+    news_catch_up
   ].freeze
   # The kinds that post, and the Feature each post belongs to (the posts in
   # Features::REGISTRY's coverage): the claim notice's claim log and the
@@ -51,12 +55,20 @@ class BotJob < ApplicationRecord
     "voting_panels_repost" => "voting_gotm",
     "voting_tie_broken" => "voting_gotm"
   }.freeze
+  # Kinds that post nothing but do a Feature's work, and that Feature: the
+  # News Hub's image renewal and catch-up scan (ticket #358).
+  FEATURE_WORK = {
+    "news_images_renew" => "news_hub",
+    "news_catch_up" => "news_hub"
+  }.freeze
+  FEATURE_KEYS = PUBLIC_POST_FEATURES.merge(FEATURE_WORK).freeze
   STATUSES = %w[queued claimed done failed].freeze
   # Default claim lease, and per-kind overrides for jobs the bot needs
   # longer to finish (e.g. a whole-guild scan).
   LEASE = 5.minutes
   LEASES = {
-    "memberscan" => 30.minutes
+    "memberscan" => 30.minutes,
+    "news_catch_up" => 30.minutes
   }.freeze
   SUMMARY_MAX = 200
   TEXT_MAX = 2000
@@ -94,8 +106,28 @@ class BotJob < ApplicationRecord
       requested_by_user_id: user_id)
   end
 
+  # Queues one job of `kind` per entry of `jobs` (each { summary:, payload: })
+  # in one statement, leaving out every one a partial unique index on open
+  # jobs of that kind already covers (ux_bot_jobs_one_open_news_images_renew
+  # allows one open news_images_renew per message), so racing requests queue
+  # it once. System jobs: no requester. Returns how many were queued.
+  def self.enqueue_once!(kind:, jobs:)
+    return 0 if jobs.empty?
+
+    now = Time.current
+    rows = jobs.map do |job|
+      { kind: kind, summary: job.fetch(:summary).to_s.squish.truncate(SUMMARY_MAX),
+        payload: with_feature_key(kind, job.fetch(:payload)), created_at: now, updated_at: now }
+    end
+    # No conflict target: ON CONFLICT DO NOTHING skips a row any unique index rejects.
+    queued = insert_all(rows, returning: %i[id]).length
+    # insert_all runs no callbacks, so raise the signal here.
+    WorkSignal.set! if queued.positive?
+    queued
+  end
+
   def self.with_feature_key(kind, payload)
-    feature_key = PUBLIC_POST_FEATURES[kind.to_s]
+    feature_key = FEATURE_KEYS[kind.to_s]
     feature_key ? payload.to_h.stringify_keys.merge("feature_key" => feature_key) : payload
   end
   private_class_method :with_feature_key
