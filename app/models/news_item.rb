@@ -45,15 +45,16 @@ class NewsItem < ApplicationRecord
   # author_name, comment, posted_at, edited_at, link (a Hash of LINK_FIELDS,
   # or nil for no link) and images (an Array of { url, expires_at }).
   #
+  # A new News Item takes `origin` (the News Import records with "import").
   # An imported News Item keeps its origin and the News Category staff
   # assigned it: recording it again (to renew its image addresses, say)
   # changes everything else.
-  def self.record!(message_id, attrs)
+  def self.record!(message_id, attrs, origin: "live")
     attempts = 0
     begin
       item = find_or_initialize_by(message_id: message_id.to_s)
       created = item.new_record?
-      item.assign_payload(attrs)
+      item.assign_payload(attrs, origin: origin)
       item.save!
       [ item, created ]
     rescue ActiveRecord::RecordNotUnique
@@ -64,14 +65,14 @@ class NewsItem < ApplicationRecord
     end
   end
 
-  def assign_payload(attrs)
+  def assign_payload(attrs, origin: "live")
     attrs = attrs.to_h.stringify_keys
     link = attrs["link"].is_a?(Hash) ? attrs["link"].stringify_keys : {}
     assign_attributes(attrs.slice("channel_id", "author_id", "author_name", "comment", "posted_at", "edited_at"))
     assign_attributes(LINK_FIELDS.to_h { |field| [ "link_#{field}", link[field] ] })
     self.images = Array(attrs["images"]).map { |image| normalize_image(image) }
-    self.origin = "live" if new_record?
-    self.category_key = attrs["category_key"].presence unless origin == "import"
+    self.origin = origin if new_record?
+    self.category_key = attrs["category_key"].presence unless imported?
   end
 
   def imported? = origin == "import"
