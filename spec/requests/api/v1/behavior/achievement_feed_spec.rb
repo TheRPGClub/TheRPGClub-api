@@ -139,6 +139,9 @@ RSpec.describe "api/v1 achievement feed behavior", type: :request do
     it "loads a page in a fixed number of queries, however many cards it has" do
       headers = auth_headers_for(viewer)
       count_queries = lambda do
+        # Each call reads the Feature Flags afresh, as the first request in a
+        # process does.
+        Features.forget_cached_states!
         queries = 0
         subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
           # Cached hits count too, so the query cache cannot mask a per-card query.
