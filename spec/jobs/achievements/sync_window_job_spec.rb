@@ -65,23 +65,36 @@ RSpec.describe Achievements::SyncWindowJob do
   describe "while the Achievement Hub is Off" do
     before { set_feature_flag("achievement_hub", "off") }
 
-    it "marks nothing and starts no Provider tick" do
+    it "marks the accounts due but starts no Provider tick" do
       linked = account
 
-      described_class.perform_now
-
-      expect(linked.reload.sync_due_at).to be_nil
-      expect(Achievements::ProviderTickJob).not_to have_been_enqueued
-    end
-
-    it "opens the next window as usual once the Achievement Hub is back on" do
-      linked = account
-      described_class.perform_now
-
-      set_feature_flag("achievement_hub", "preview")
       described_class.perform_now
 
       expect(marked?(linked)).to be(true)
+      expect(Achievements::ProviderTickJob).not_to have_been_enqueued
+    end
+
+    it "leaves the window's work due for the restart once the Achievement Hub is back on" do
+      linked = account
+      described_class.perform_now
+
+      Features::ChangeFlag.call("achievement_hub", "live", by: create(:user, role_admin: true).user_id)
+
+      expect(marked?(linked)).to be(true)
+      expect(Achievements::ProviderTickJob).to have_been_enqueued.with("steam")
+    end
+
+    it "makes no PSN auth attempt while PSN auth has expired, and marks no PSN account" do
+      AchievementHubState.set(Psn::Client::AUTH_EXPIRED_KEY, (now - 1.day).iso8601)
+      allow(Achievements::Providers).to receive(:client_for)
+      psn = account(provider: "psn")
+      steam = account
+
+      described_class.perform_now
+
+      expect(Achievements::Providers).not_to have_received(:client_for)
+      expect(psn.reload.sync_due_at).to be_nil
+      expect(marked?(steam)).to be(true)
     end
   end
 

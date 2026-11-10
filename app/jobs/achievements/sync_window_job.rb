@@ -12,7 +12,10 @@ module Achievements
   # data is kept, so a rejoin resumes without a new Backfill), and PSN accounts
   # while the club account's auth has expired (the PSN pause).
   #
-  # A window that opens while the Achievement Hub is Off is skipped whole.
+  # A window that opens while the Achievement Hub is Off still marks the
+  # accounts due, so its work stays due, but starts no tick and makes no PSN
+  # auth attempt: the restart when the Hub leaves Off (Features::ChangeFlag)
+  # drains the marks.
   class SyncWindowJob < ApplicationJob
     include CpuLogging
 
@@ -21,22 +24,22 @@ module Achievements
     queue_as :default
 
     def perform
-      return if Features.off?("achievement_hub")
-
+      hub_off = Features.off?("achievement_hub")
       now = Time.current
-      scope = eligible
+      scope = eligible(hub_off:)
       scope.where.not(backfilled_at: nil).update_all(sync_due_at: now, sync_mode: "incremental", updated_at: now)
       scope.where(backfilled_at: nil, sync_status: "error").update_all(sync_due_at: now, updated_at: now)
-      ProviderTickJob.enqueue_all
+      ProviderTickJob.enqueue_all unless hub_off
     end
 
     private
 
-    def eligible
+    def eligible(hub_off:)
       scope = UserLinkedAccount
         .where(sync_status: MARKED_STATUSES, sync_due_at: nil)
         .where(user_id: RpgClubUser.active.select(:user_id))
-      psn_paused? ? scope.where.not(provider: "psn") : scope
+      paused = hub_off ? ProviderTickJob.paused?("psn") : psn_paused?
+      paused ? scope.where.not(provider: "psn") : scope
     end
 
     # While PSN auth has expired, one auth attempt per window: a fixed NPSSO
