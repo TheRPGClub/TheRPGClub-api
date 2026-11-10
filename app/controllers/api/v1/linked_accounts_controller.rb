@@ -8,6 +8,8 @@ module Api
     # due kicks its Provider's tick, which drains the durable sync state
     # (ADR 0003).
     class LinkedAccountsController < ApplicationController
+      feature :achievement_hub
+
       before_action :require_owner!, only: %i[index create retry sync]
       before_action :require_owner_or_admin!, only: :destroy
 

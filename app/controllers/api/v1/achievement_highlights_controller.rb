@@ -6,6 +6,8 @@ module Api
     # unannounced Highlights, ack the posted ones, ack the PSN auth alert.
     # Service token only.
     class AchievementHighlightsController < ApplicationController
+      feature :achievement_hub
+
       before_action :require_service!
 
       # GET /api/v1/achievements/highlights/pending

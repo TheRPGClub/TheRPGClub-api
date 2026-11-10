@@ -3,6 +3,8 @@
 module Api
   module V1
     class GameImagesController < ApplicationController
+      feature :game_index
+
       before_action :set_game
 
       def index

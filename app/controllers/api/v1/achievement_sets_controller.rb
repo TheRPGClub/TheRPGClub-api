@@ -9,6 +9,8 @@ module Api
     # - `update` is the admin-only manual fix for a set's GameDB link, which
     #   Achievements::LinkSetToGame resolves best-effort and never overwrites.
     class AchievementSetsController < ApplicationController
+      feature :achievement_hub
+
       include AchievementReadParams
 
       before_action :require_admin!, only: %i[update]

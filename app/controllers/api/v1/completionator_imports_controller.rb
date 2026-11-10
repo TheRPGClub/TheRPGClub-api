@@ -11,6 +11,8 @@ module Api
     # counts as the owner, per `require_owner!`) — this is private per-user
     # working data.
     class CompletionatorImportsController < ApplicationController
+      feature :game_completions
+
       include TestModeRollback
       include CompletionatorImportReview
       include ImportCsvUpload

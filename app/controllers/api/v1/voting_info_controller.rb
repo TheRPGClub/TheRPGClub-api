@@ -3,6 +3,8 @@
 module Api
   module V1
     class VotingInfoController < ApplicationController
+      feature :voting_gotm
+
       before_action :require_admin_or_service!, only: %i[create update destroy]
 
       def index

@@ -21,6 +21,8 @@ module Api
     # a thin GOTM/NR-GOTM pair that delegates to a model-agnostic private
     # helper.
     class NominationsController < ApplicationController
+      feature :voting_gotm
+
       before_action :require_nomination_owner!, only: %i[
         create_gotm create_nr_gotm
         destroy_gotm destroy_nr_gotm
