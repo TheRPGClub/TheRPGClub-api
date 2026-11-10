@@ -229,7 +229,7 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
       body = feed(page: 2, per: 2)
 
       expect(body.fetch("data").map { |item| item["message_id"] }).to eq(%w[3300000000000000002 3300000000000000001])
-      expect(body.fetch("meta")).to eq("page" => 2, "pages" => 3, "count" => 5, "per" => 2, "prev" => 1, "next" => 3)
+      expect(body.fetch("meta")).to include("page" => 2, "pages" => 3, "count" => 5, "per" => 2, "prev" => 1, "next" => 3)
     end
 
     it "filters by one News Category" do

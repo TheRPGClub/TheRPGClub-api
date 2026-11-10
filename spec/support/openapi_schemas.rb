@@ -1039,6 +1039,38 @@ module OpenapiSchemas
         position: int.merge(example: 2, description: "1-based place in the list; the list is served in this order."),
         _required: %w[key name position]
       ),
+      # NewsCategoryPreferencesController (ticket #357): a member's News
+      # Category Preferences, the News Categories they switched off.
+      NewsCategoryPreference: extends("NewsCategory",
+        hidden: bool.merge(description: "The member switched this News Category off: it is left out of their " \
+                                        "default News Hub view."),
+        required: %w[hidden]),
+      NewsCategoryPreferences: obj(
+        user_id: str,
+        hidden: { type: :array, items: str(enum: NewsCategory.keys),
+                  description: "Every News Category key the member switched off, in News Category order." },
+        categories: array_of("NewsCategoryPreference").merge(
+          description: "Every News Category, in order, each marked switched off or not."
+        ),
+        _required: %w[user_id hidden categories]
+      ),
+      # NewsItemsController#index meta: pagination plus the category rail.
+      NewsFeedMeta: extends("PaginationMeta",
+        category_counts: {
+          type: :object,
+          description: "How many News Items each News Category holds for the current search (`q`), ignoring " \
+                       "`category` and the member's News Category Preferences. Keyed by every News Category " \
+                       "key in order, 0 for none. Only sorted News Items count.",
+          properties: NewsCategory.keys.index_with { { type: :integer } },
+          required: NewsCategory.keys,
+          example: NewsCategory.keys.index_with(0).merge("releases" => 12, "industry" => 3)
+        },
+        hidden_categories: {
+          type: :array, items: str(enum: NewsCategory.keys),
+          description: "The News Category keys the member switched off, in order, whatever this request " \
+                       "filters by: the default view leaves these out. Empty for the service token."
+        },
+        required: %w[category_counts hidden_categories]),
       # NewsItemResource: a News Item as the website and the bot read it.
       NewsItem: obj(
         message_id: str(example: "1300000000000000003",

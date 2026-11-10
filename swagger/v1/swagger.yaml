@@ -3413,6 +3413,106 @@ components:
       - key
       - name
       - position
+    NewsCategoryPreference:
+      allOf:
+      - "$ref": "#/components/schemas/NewsCategory"
+      - type: object
+        properties:
+          hidden:
+            type: boolean
+            description: 'The member switched this News Category off: it is left out
+              of their default News Hub view.'
+        required:
+        - hidden
+    NewsCategoryPreferences:
+      type: object
+      properties:
+        user_id:
+          type: string
+        hidden:
+          type: array
+          items:
+            type: string
+            enum:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+          description: Every News Category key the member switched off, in News Category
+            order.
+        categories:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsCategoryPreference"
+          description: Every News Category, in order, each marked switched off or
+            not.
+      required:
+      - user_id
+      - hidden
+      - categories
+    NewsFeedMeta:
+      allOf:
+      - "$ref": "#/components/schemas/PaginationMeta"
+      - type: object
+        properties:
+          category_counts:
+            type: object
+            description: How many News Items each News Category holds for the current
+              search (`q`), ignoring `category` and the member's News Category Preferences.
+              Keyed by every News Category key in order, 0 for none. Only sorted News
+              Items count.
+            properties:
+              announcements:
+                type: integer
+              releases:
+                type: integer
+              emulation:
+                type: integer
+              industry:
+                type: integer
+              hardware:
+                type: integer
+              rumours:
+                type: integer
+              general:
+                type: integer
+            required:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+            example:
+              announcements: 0
+              releases: 12
+              emulation: 0
+              industry: 3
+              hardware: 0
+              rumours: 0
+              general: 0
+          hidden_categories:
+            type: array
+            items:
+              type: string
+              enum:
+              - announcements
+              - releases
+              - emulation
+              - industry
+              - hardware
+              - rumours
+              - general
+            description: 'The News Category keys the member switched off, in order,
+              whatever this request filters by: the default view leaves these out.
+              Empty for the service token.'
+        required:
+        - category_counts
+        - hidden_categories
     NewsItem:
       type: object
       properties:
@@ -14997,6 +15097,134 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/news_category_preferences":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's News Category Preferences
+      tags:
+      - News Hub
+      description: 'The News Categories the member switched off, which `GET /api/v1/news_items`
+        leaves out of its default view (no `category`), and every News Category in
+        order with its switch. Only switched-off categories are stored, so every News
+        Category is on by default. Only the member themself may read it; another member,
+        staff and the bot''s service token get 403. A preference never blocks a request
+        and has no effect in Discord. Belongs to the News Hub Feature: a member who
+        cannot use it (Preview: Admins and Superadmins only; Off: nobody) gets 404
+        `not_found`.'
+      responses:
+        '200':
+          description: News Category Preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsCategoryPreferences"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Update a member's News Category Preferences
+      tags:
+      - News Hub
+      description: 'Switches the named News Categories off (true) or on again (false).
+        News Categories not named are left as they were; repeating a change is a no-op.
+        An unknown News Category key or a value that is not true or false returns
+        422 and changes nothing. Only the member themself may update it. Returns the
+        whole document, as GET does. Belongs to the News Hub Feature: a member who
+        cannot use it (Preview: Admins and Superadmins only; Off: nobody) gets 404
+        `not_found`.'
+      parameters: []
+      responses:
+        '200':
+          description: updated News Category Preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsCategoryPreferences"
+                required:
+                - data
+        '422':
+          description: missing `hidden`, an unknown News Category key, or a value
+            that is not true or false
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    hidden:
+                      type: object
+                      description: News Category key to true (switch it off) or false
+                        (switch it on again).
+                      additionalProperties:
+                        type: boolean
+                      example:
+                        rumours: true
+                        industry: false
+                  required:
+                  - hidden
+              required:
+              - data
+        required: true
   "/api/v1/news_items":
     get:
       summary: The News Hub feed
@@ -15007,7 +15235,14 @@ paths:
         sorted yet is never returned. `category` narrows the feed to the given News
         Category keys (see `GET /api/v1/news_categories`): comma-separated (`category=releases,industry`)
         or repeated (`category[]=releases&category[]=industry`); an unknown key is
-        a 400. Each item names its author by their current member name, or by the
+        a 400. Without `category`, the feed is the member''s default view: every News
+        Category except the ones they switched off with a News Category Preference.
+        With `category`, exactly those News Categories are returned, switched off
+        or not, so a preference never blocks anything. `q` searches the link title
+        and the comment (case-insensitive substring) and combines with `category`.
+        `meta` adds, for the page''s category rail, `category_counts` (every News
+        Category''s count over the search alone) and `hidden_categories` (the switched-off
+        keys). Each item names its author by their current member name, or by the
         name recorded with the message when they have no member record. An image whose
         Discord address has expired comes back unavailable (`url` null) and queues
         a `news_images_renew` bot job for its message (one at a time per message);
@@ -15023,7 +15258,16 @@ paths:
           type: string
           example: releases,industry
         description: Comma-separated News Category keys (any of announcements, releases,
-          emulation, industry, hardware, rumours, general). Omit for every News Category.
+          emulation, industry, hardware, rumours, general). Omit for the member's
+          default view (every News Category they have not switched off).
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          example: zelda
+        description: Search text, matched case-insensitively anywhere in the link
+          title or the comment. Blank means no search.
       - name: page
         in: query
         schema:
@@ -15051,7 +15295,7 @@ paths:
                     items:
                       "$ref": "#/components/schemas/NewsItem"
                   meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
+                    "$ref": "#/components/schemas/NewsFeedMeta"
                 required:
                 - data
                 - meta
