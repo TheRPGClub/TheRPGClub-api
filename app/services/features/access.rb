@@ -55,6 +55,10 @@ module Features
 
     def staff? = @staff
 
+    # Every Feature key the viewer hid with a Feature Preference, including
+    # ones a Feature Flag hides anyway.
+    def hidden_keys = @hidden
+
     def state(key)
       @states.fetch(Features.fetch(key).key)
     end
