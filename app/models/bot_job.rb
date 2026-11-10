@@ -32,6 +32,7 @@ class BotJob < ApplicationRecord
     say
     memberscan
     presence_set
+    feature_flag_changed
   ].freeze
   STATUSES = %w[queued claimed done failed].freeze
   # Default claim lease, and per-kind overrides for jobs the bot needs

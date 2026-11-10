@@ -15,6 +15,10 @@ Rails.application.routes.draw do
       get "health", to: "health#show"
       get "session", to: "sessions#show"
       get "dashboard", to: "dashboards#show"
+      # Feature Flags (spec #347): Admins and Superadmins list every Feature
+      # and change its state; the bot names the acting Discord user.
+      get   "features",      to: "features#index"
+      patch "features/:key", to: "features#update"
 
       # Unauthenticated, read-only club content for www's logged-out landing.
       namespace :public do
