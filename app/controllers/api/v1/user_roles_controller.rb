@@ -5,9 +5,10 @@ module Api
     # PUT /api/v1/users/:user_id/roles
     #
     # Service-only role report. The bot sends a member's current Discord role
-    # IDs when Discord reports a guild member update; the Admin, Moderator,
-    # Regulars and Members flags are replaced with the ones those roles grant
-    # (DiscordRoles::USER_FLAG_ROLES), the same derivation sign-in uses.
+    # IDs when Discord reports a guild member update; the Superadmin (dev),
+    # Admin, Moderator, Regulars and Members flags are replaced with the ones
+    # those roles grant (DiscordRoles::USER_FLAG_ROLES), the same derivation
+    # sign-in uses.
     class UserRolesController < ApplicationController
       before_action :require_service!
 

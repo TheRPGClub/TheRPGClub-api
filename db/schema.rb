@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_10_130100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_10_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -856,6 +856,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_10_130100) do
     t.timestamptz "server_left_at"
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "username", limit: 100
+    t.boolean "role_dev", default: false, null: false
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
