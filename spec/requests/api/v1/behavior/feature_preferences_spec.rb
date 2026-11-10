@@ -193,6 +193,26 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
 
+    it "never blocks the member's own use of a Feature they hid" do
+      patch_preferences(member, { hidden: { reviews: true, journals: true } })
+
+      get "/api/v1/users/#{member.user_id}/reviews", headers: auth_headers_for(member)
+      expect(response).to have_http_status(:ok)
+
+      get "/api/v1/users/#{member.user_id}/journal", headers: auth_headers_for(member)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "never blocks staff from a Preview Feature with show-Preview off" do
+      admin = create(:user, :admin)
+      set_feature_flag("reviews", "preview")
+      patch_preferences(admin, { show_preview_features: false })
+
+      get "/api/v1/users/#{admin.user_id}/reviews", headers: auth_headers_for(admin)
+
+      expect(response).to have_http_status(:ok)
+    end
+
     it "keeps a preference through any flag change" do
       patch_preferences(member, { hidden: { journals: true } })
 
