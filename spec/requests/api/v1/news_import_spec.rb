@@ -60,7 +60,8 @@ RSpec.describe 'api/v1/news_import', type: :request do
       tags 'News Hub'
       description 'Applies a reviewed list of rows, each a message id and a value. A News Category key ' \
                   "(#{NewsCategory.keys.join(', ')}) assigns it, which shows the item to members with its " \
-                  'original author and date; assigning again changes it. `skip` deletes the item and remembers ' \
+                  'original author and date; assigning again changes it. Each item whose News Category ' \
+                  'changes records the acting staff member and the time of the change. `skip` deletes the item and remembers ' \
                   'the removal (counted in `removed`); `skip` for an item already removed counts ' \
                   'as removed again, so the same file can be applied twice. Values ignore case and surrounding ' \
                   'spaces. Applies to imported News Items only. Each bad row is listed in `rejections` with its ' \
@@ -117,7 +118,7 @@ RSpec.describe 'api/v1/news_import', type: :request do
   path '/api/v1/news_import/status' do
     get 'News Import counts' do
       tags 'News Hub'
-      description "How many imported News Items are sorted and unsorted, how many archive messages staff " \
+      description "How many imported News Items are sorted and unsorted, how many imported News Items staff " \
                   "removed with `skip`, and for the history copy how many News Items have a News Copy " \
                   "(`copied`) and how many with a News Category still have none (`uncopied`). #{staff}"
       produces 'application/json'

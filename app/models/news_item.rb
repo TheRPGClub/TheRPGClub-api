@@ -7,10 +7,12 @@
 #
 # The bot picks the News Category when the item is posted (docs/adr/0007)
 # and keeps the pick in `picked_category_key`. The author or staff may
-# change the category afterwards (change_category!, ticket #369), which
-# records who changed it last and when (`category_changed_by`,
-# `category_changed_at`) and leaves the pick as it was, so the bot's misses
-# can be listed to refresh its rules. The category may be empty
+# change the category afterwards (change_category!, ticket #369), as staff
+# do for imported items with a News Import upload (NewsImport::Assign); both
+# record who changed it last and when (`category_changed_by`,
+# `category_changed_at`) and leave the pick as it was, so the bot's misses
+# can be listed to refresh its rules. Only staff give an unsorted imported
+# item its first category. The category may be empty
 # only for an imported News Item (`origin` "import") that staff have not
 # sorted yet, and such an item is never shown to members (`listed`).
 #
@@ -104,6 +106,17 @@ class NewsItem < ApplicationRecord
     [ item, false ]
   end
 
+  # Deletes the News Item recorded for `message_id` for good. Returns the
+  # removed item (its News Copy location still readable), or nil when none
+  # was recorded.
+  def self.remove!(message_id)
+    transaction do
+      item = lock.find_by(message_id: message_id.to_s)
+      item&.delete
+      item
+    end
+  end
+
   # Drops the null character from every string in the bot's payload. Discord
   # lets a member type one, and PostgreSQL text and jsonb cannot store it.
   def self.without_null_characters(value)
@@ -159,6 +172,9 @@ class NewsItem < ApplicationRecord
   end
 
   def imported? = origin == "import"
+
+  # An imported News Item staff have not given a News Category yet.
+  def unsorted? = imported? && category_key.nil?
 
   # Whether a stored image's Discord address has run out at `now`. Only the
   # message's signed attachment addresses expire: an image with no

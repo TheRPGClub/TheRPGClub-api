@@ -15,7 +15,9 @@ module Api
     #
     # Not behind the feature gate: the staff desk is not part of any Feature.
     class FeaturesController < ApplicationController
-      before_action :require_flag_staff!
+      include ActingMember
+
+      before_action :require_acting_staff!
 
       # GET /api/v1/features[?acting_user_id=]
       def index
@@ -35,31 +37,6 @@ module Api
         render json: { data: Features::StaffList.new.entry_for(params[:key]), meta: { changed: change.present? } }
       rescue Features::ChangeFlag::Invalid => error
         render json: { error: error.message }, status: :unprocessable_content
-      end
-
-      private
-
-      # The member the request acts for, by Discord user id: the session's
-      # member, or the bot's named acting user.
-      def acting_user_id
-        @acting_user_id ||=
-          if current_principal.service?
-            (action_name == "update" ? params.dig(:data, :acting_user_id) : params[:acting_user_id]).presence&.to_s
-          else
-            current_principal.id.to_s
-          end
-      end
-
-      def require_flag_staff!
-        if current_principal.service?
-          if acting_user_id.blank?
-            return render json: { error: "acting_user_id required" }, status: :bad_request
-          end
-
-          gate_or_forbid(Features::Access.staff_member?(RpgClubUser.without_images.find_by(user_id: acting_user_id)))
-        else
-          require_admin_or_above!
-        end
       end
     end
   end

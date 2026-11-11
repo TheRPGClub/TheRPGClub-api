@@ -1,7 +1,3 @@
----
-status: superseded by ADR-0007
----
-
 # A News Item's category comes from the thread it was posted in
 
 Superseded by [ADR 0007](0007-news-posted-in-one-channel-copied-into-category-threads.md): members post news in one channel again and the bot copies it into the category threads.

@@ -427,7 +427,7 @@ Rails.application.routes.draw do
       delete "news_items/:message_id",          to: "news_items#destroy"
       # The News Import (ticket #359): staff, through the bot, list the
       # unsorted imported News Items, assign their News Categories and read
-      # counts. (The scan's batch recording is gone, ticket #370.)
+      # counts.
       get  "news_import/items",       to: "news_import#unsorted"
       post "news_import/assignments", to: "news_import#assign"
       get  "news_import/status",      to: "news_import#status"

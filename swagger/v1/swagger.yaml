@@ -2910,8 +2910,8 @@ components:
           description: The News Item's Discord message id.
         channel_id:
           type: string
-          description: The channel or thread the message is in (a News Category's
-            thread, or the Game News Archive for an imported News Item).
+          description: The channel or thread the message is in (the News Channel,
+            or a News Category's thread for a News Item posted before it).
         feature_key:
           type: string
           enum:
@@ -3625,6 +3625,22 @@ components:
       required:
       - changed
       - previous_category_key
+    NewsItemRemoval:
+      type: object
+      properties:
+        removed:
+          type: boolean
+          description: True when a News Item was recorded for the message and is now
+            deleted; false when none was recorded (nothing changed).
+        news_copy:
+          allOf:
+          - "$ref": "#/components/schemas/NewsCopy"
+          nullable: true
+          description: Where the removed News Item's News Copy lives, so the bot can
+            delete it; null when it had none, or when nothing was removed.
+      required:
+      - removed
+      - news_copy
     NewsCopy:
       type: object
       properties:
@@ -3711,11 +3727,11 @@ components:
         message_id:
           type: string
           example: '1300000000000000003'
-          description: The archived Discord message's snowflake.
+          description: The imported Discord message's snowflake.
         posted_at:
           type: string
           format: date-time
-          description: When the message was posted in the Game News Archive.
+          description: When the message was posted in the News Channel.
         author_name:
           type: string
           description: The member's current name when they have a member record; otherwise
@@ -3861,7 +3877,7 @@ components:
           description: Imported News Items with no News Category yet (hidden).
         removed:
           type: integer
-          description: Archive messages staff removed with `skip`.
+          description: Imported News Items staff removed with `skip`.
         copied:
           type: integer
           description: News Items, live and imported, that have a News Copy.
@@ -15544,25 +15560,26 @@ paths:
       description: 'Applies a reviewed list of rows, each a message id and a value.
         A News Category key (announcements, releases, emulation, industry, hardware,
         rumours, general) assigns it, which shows the item to members with its original
-        author and date; assigning again changes it. `skip` deletes the item and remembers
-        the removal (counted in `removed`); `skip` for an item already removed counts
-        as removed again, so the same file can be applied twice. Values ignore case
-        and surrounding spaces. Applies to imported News Items only. Each bad row
-        is listed in `rejections` with its reason and does not stop the others: a
-        missing or repeated message id (every occurrence is rejected), a blank or
-        invalid value, an unknown message id, a live News Item, or a News Category
-        for an item removed with `skip`. Leave rows with no value out of the request.
-        Up to 5000 rows per request. `moved` lists, in row order, the items whose
-        News Category this request changed and that have a News Copy, with where each
-        copy lives, so the bot can move those copies to their new categories'' threads.
-        The News Import works for Admins and Superadmins while the News Hub is Preview
-        or Live, and for nobody while it is Off. A signed-in member is checked by
-        their own roles; the bot calls with the service token and names the acting
-        Discord user (`acting_user_id`), and the same rule applies to that member''s
-        stored roles: 400 `acting_user_id required` without one, 403 when they are
-        not an Admin or Superadmin or have no member record. While Off, the News Hub
-        Feature gate answers a signed-in caller 404; the service token is not gated,
-        so the bot refuses its /news-import commands itself.'
+        author and date; assigning again changes it. Each item whose News Category
+        changes records the acting staff member and the time of the change. `skip`
+        deletes the item and remembers the removal (counted in `removed`); `skip`
+        for an item already removed counts as removed again, so the same file can
+        be applied twice. Values ignore case and surrounding spaces. Applies to imported
+        News Items only. Each bad row is listed in `rejections` with its reason and
+        does not stop the others: a missing or repeated message id (every occurrence
+        is rejected), a blank or invalid value, an unknown message id, a live News
+        Item, or a News Category for an item removed with `skip`. Leave rows with
+        no value out of the request. Up to 5000 rows per request. `moved` lists, in
+        row order, the items whose News Category this request changed and that have
+        a News Copy, with where each copy lives, so the bot can move those copies
+        to their new categories'' threads. The News Import works for Admins and Superadmins
+        while the News Hub is Preview or Live, and for nobody while it is Off. A signed-in
+        member is checked by their own roles; the bot calls with the service token
+        and names the acting Discord user (`acting_user_id`), and the same rule applies
+        to that member''s stored roles: 400 `acting_user_id required` without one,
+        403 when they are not an Admin or Superadmin or have no member record. While
+        Off, the News Hub Feature gate answers a signed-in caller 404; the service
+        token is not gated, so the bot refuses its /news-import commands itself.'
       parameters: []
       responses:
         '200':
@@ -15646,10 +15663,10 @@ paths:
       tags:
       - News Hub
       description: 'How many imported News Items are sorted and unsorted, how many
-        archive messages staff removed with `skip`, and for the history copy how many
-        News Items have a News Copy (`copied`) and how many with a News Category still
-        have none (`uncopied`). The News Import works for Admins and Superadmins while
-        the News Hub is Preview or Live, and for nobody while it is Off. A signed-in
+        imported News Items staff removed with `skip`, and for the history copy how
+        many News Items have a News Copy (`copied`) and how many with a News Category
+        still have none (`uncopied`). The News Import works for Admins and Superadmins
+        while the News Hub is Preview or Live, and for nobody while it is Off. A signed-in
         member is checked by their own roles; the bot calls with the service token
         and names the acting Discord user (`acting_user_id`), and the same rule applies
         to that member''s stored roles: 400 `acting_user_id required` without one,
@@ -15807,8 +15824,21 @@ paths:
         with `PUT /api/v1/news_items/{message_id}` and `{ "data": { "news_copy": {
         ... } } }`; a reported item leaves the listing, so a run that copies as it
         goes reads the first page again rather than the next. Imported News Items
-        staff have not sorted are left out. Answers whatever the Feature Flag says.'
+        staff have not sorted are left out. `origin` narrows to live or imported News
+        Items (catch-up retries live ones; the history copy copies imported ones).
+        Answers whatever the Feature Flag says.'
       parameters:
+      - name: origin
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - live
+          - import
+        description: 'Only News Items of this origin: `live` (recorded from the News
+          Channel as posted) or `import` (brought in by the News Import). Omit for
+          both.'
       - name: page
         in: query
         schema:
@@ -15840,6 +15870,13 @@ paths:
                 required:
                 - data
                 - meta
+        '422':
+          description: 'an unknown `origin`, e.g. `{ "error": "unknown origin: forum
+            (expected live or import)" }`'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
           description: forbidden - caller is not the service principal
           content:
@@ -16079,16 +16116,36 @@ paths:
       tags:
       - News Hub
       description: 'Service-only. The bot removes the News Item when its message is
-        deleted (singly or in bulk) or edited so it no longer has a link or an image.
-        A hard delete. Idempotent: 204 whether or not a News Item with this message
-        id was recorded.'
+        deleted (singly or in bulk) or edited so it no longer has a link or an image,
+        or when renewal finds the message gone. A hard delete. Idempotent: 200 whether
+        or not a News Item with this message id was recorded; `removed` says which.
+        Answers where the removed News Item''s News Copy lives (`news_copy`, null
+        when it had none or nothing was removed), so the bot can delete the copy without
+        looking it up first.'
       responses:
-        '204':
+        '200':
           description: News Item removed (or was never recorded)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsItemRemoval"
+                required:
+                - data
         '403':
           description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/news_items/{message_id}/category":
     parameters:
     - name: message_id
@@ -16104,19 +16161,20 @@ paths:
       description: 'Service-only. The bot changes a News Item''s News Category for
         the member who used "Change news category" on it (`acting_user_id`). Allowed
         for the News Item''s author and for staff (Admins and Superadmins by their
-        stored roles, as for the News Import); anyone else gets 403 `forbidden`. The
-        News Hub Feature Flag applies to the acting member: while Off nobody may,
-        staff included; while Preview only staff may; while Live the author and staff
-        may. A refusal by the flag is 403 `feature_unavailable`. Live and imported
-        News Items alike. The change records who made it and when; `picked_category_key`
-        (the bot''s first pick) and `news_copy` are left as they are. Answers the
-        News Item with its News Copy location (null when it has none) so the bot can
-        move the copy to the new category''s thread and then report the new location
-        with `PUT /api/v1/news_items/{message_id}` and `{ "data": { "news_copy": {
-        ... } } }`. Changing to the category the item already has changes nothing
-        (`meta.changed` false). Checked in this order: `acting_user_id` (400), the
-        Feature Flag (403), the News Item (404), author or staff (403), the category
-        (422).'
+        stored roles, as for the News Import); anyone else gets 403 `forbidden`. An
+        imported News Item staff have not sorted (no News Category yet) is staff''s
+        alone: its author gets 403 `forbidden` too. The News Hub Feature Flag applies
+        to the acting member: while Off nobody may, staff included; while Preview
+        only staff may; while Live the author and staff may. A refusal by the flag
+        is 403 `feature_unavailable`. Live and imported News Items alike. The change
+        records who made it and when; `picked_category_key` (the bot''s first pick)
+        and `news_copy` are left as they are. Answers the News Item with its News
+        Copy location (null when it has none) so the bot can move the copy to the
+        new category''s thread and then report the new location with `PUT /api/v1/news_items/{message_id}`
+        and `{ "data": { "news_copy": { ... } } }`. Changing to the category the item
+        already has changes nothing (`meta.changed` false). Checked in this order:
+        `acting_user_id` (400), the Feature Flag (403), the News Item (404), author
+        or staff (403), the category (422).'
       parameters: []
       responses:
         '200':
@@ -16142,8 +16200,9 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '403':
           description: "`forbidden`: the acting member is neither the author nor staff,
-            or the caller is not the service principal; `feature_unavailable`: the
-            News Hub Feature Flag does not let the acting member use it"
+            is the non-staff author of an unsorted imported News Item, or the caller
+            is not the service principal; `feature_unavailable`: the News Hub Feature
+            Flag does not let the acting member use it"
           content:
             application/json:
               schema:
