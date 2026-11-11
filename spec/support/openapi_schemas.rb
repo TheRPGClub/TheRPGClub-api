@@ -895,9 +895,9 @@ module OpenapiSchemas
         feature_key: str(enum: %w[news_hub])
       ),
       NewsCatchUpJobPayload: obj(
-        _description: "Kind `news_catch_up`. The News Hub's Feature Flag went from Off to Preview or Live: scan " \
-                      "the News Categories' threads for messages posted, edited or deleted while it was Off. " \
-                      "The lease is 30 minutes. Posts nothing.",
+        _description: "Kind `news_catch_up`. The News Hub's Feature Flag went from Off to Preview or Live: " \
+                      "record News Channel messages posted while it was Off and post missing News Copies. " \
+                      "The lease is 30 minutes.",
         from_state: str(enum: %w[off]),
         to_state: str(enum: %w[preview live]),
         feature_key: str(enum: %w[news_hub])
