@@ -15,8 +15,8 @@ module NewsHub
   # address expired is not retried on every load.
   #
   # news_catch_up, payload { from_state, to_state, feature_key }: the News
-  # Hub's Feature Flag left Off, so the bot scans the News Categories'
-  # threads for what was posted meanwhile.
+  # Hub's Feature Flag left Off, so the bot records what was posted in the
+  # News Channel meanwhile and posts missing News Copies.
   module BotJobs
     RENEW_IMAGES = "news_images_renew"
     CATCH_UP = "news_catch_up"

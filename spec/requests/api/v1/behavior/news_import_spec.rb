@@ -3,16 +3,18 @@
 require "rails_helper"
 
 # Behavior specs for the News Import (GLOSSARY.md, "News Hub"; spec #355,
-# ticket #359): the bot records the Game News Archive's messages in batches
-# as imported News Items with no News Category, and staff list the unsorted
-# ones, assign their News Categories (or remove them with `skip`) and read
-# the counts, through the bot.
+# ticket #359): the messages posted in the News Channel before the News Hub
+# launched are imported News Items with no News Category, and staff list the
+# unsorted ones, assign their News Categories (or remove them with `skip`)
+# and read the counts, through the bot.
 RSpec.describe "api/v1/news_import behavior", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:member) { create(:user, role_member: true) }
   let(:admin) { create(:user, role_admin: true) }
 
-  # What the bot sends for one archived Discord message.
-  def archived(message_id, **overrides)
+  # One imported Discord message's payload.
+  def imported_message(message_id, **overrides)
     {
       message_id: message_id,
       channel_id: "1100000000000000001",
@@ -34,8 +36,9 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
     }.merge(overrides)
   end
 
-  def record_batch(*items, headers: service_headers)
-    post "/api/v1/news_import/items", headers: headers, as: :json, params: { data: { items: items } }
+  # Records the messages as imported News Items.
+  def import(*items)
+    items.each { |item| NewsItem.record!(item[:message_id], item.except(:message_id), origin: "import") }
   end
 
   def feed_ids
@@ -45,79 +48,11 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
   end
 
   describe "POST /api/v1/news_import/items" do
-    it "records each message as an imported News Item with no News Category, hidden from the feed" do
-      record_batch(archived("4400000000000000001"), archived("4400000000000000002"))
+    it "is not an endpoint: the API records no imported News Items itself" do
+      post "/api/v1/news_import/items", headers: service_headers, as: :json,
+        params: { data: { items: [ imported_message("4400000000000000001") ] } }
 
-      expect(response).to have_http_status(:ok)
-      expect(json.fetch("data")).to eq(
-        "created" => 2, "updated" => 0, "previously_removed" => 0, "rejected" => []
-      )
-      expect(feed_ids).to be_empty
-    end
-
-    it "records a message whose text holds a null character, dropping the character" do
-      record_batch(archived("4400000000000000001", comment: "Day\u0000 one"), archived("4400000000000000002"))
-
-      expect(response).to have_http_status(:ok)
-      expect(json.fetch("data")).to include("created" => 2, "rejected" => [])
-      expect(NewsItem.find_by!(message_id: "4400000000000000001").comment).to eq("Day one")
-    end
-
-    it "updates the same imported News Items when the batch is repeated, creating no duplicates" do
-      record_batch(archived("4400000000000000001"), archived("4400000000000000002"))
-      record_batch(archived("4400000000000000001", comment: "Changed"), archived("4400000000000000003"))
-
-      expect(json.fetch("data")).to include("created" => 1, "updated" => 1)
-      record_batch(archived("4400000000000000001"))
-      expect(json.fetch("data")).to include("created" => 0, "updated" => 1)
-    end
-
-    it "rejects a message that is not a News Item with its reason, and still records the rest" do
-      record_batch(archived("4400000000000000001", link: nil, images: []), archived("4400000000000000002"))
-
-      expect(response).to have_http_status(:ok)
-      expect(json.fetch("data")).to include("created" => 1, "rejected" => [
-        { "index" => 0, "message_id" => "4400000000000000001", "reason" => "A News Item needs a link or at least one image" }
-      ])
-    end
-
-    it "rejects a message already recorded as a live News Item and leaves that item alone" do
-      live = create(:news_item, message_id: "4400000000000000001", category_key: "industry")
-
-      record_batch(archived("4400000000000000001"))
-
-      expect(json.fetch("data")).to include("created" => 0, "updated" => 0, "rejected" => [
-        { "index" => 0, "message_id" => "4400000000000000001", "reason" => "already recorded as a live News Item" }
-      ])
-      expect(feed_ids).to eq([ live.message_id ])
-    end
-
-    it "rejects a message without a message id" do
-      record_batch(archived(nil))
-
-      expect(json.dig("data", "rejected")).to eq([
-        { "index" => 0, "message_id" => nil, "reason" => "Message must be a Discord id" }
-      ])
-    end
-
-    it "refuses more than 100 messages in one batch" do
-      record_batch(*Array.new(101) { |i| archived((4_400_000_000_000_000_000 + i).to_s) })
-
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(json).to eq("error" => "at most 100 items per batch")
-    end
-
-    it "is a bad request without data.items" do
-      post "/api/v1/news_import/items", headers: service_headers, as: :json, params: { data: { foo: 1 } }
-
-      expect(response).to have_http_status(:bad_request)
-    end
-
-    it "is service-only, even for staff" do
-      [ member, admin ].each do |user|
-        record_batch(archived("4400000000000000001"), headers: auth_headers_for(user))
-        expect(response).to have_http_status(:forbidden)
-      end
+      expect(response).to have_http_status(:not_found)
       expect(NewsItem.count).to eq(0)
     end
   end
@@ -129,9 +64,9 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
     end
 
     it "lists the unsorted imported News Items, oldest first, with the fields a classifier needs" do
-      record_batch(
-        archived("4400000000000000002", posted_at: "2022-01-01T00:00:00Z"),
-        archived("4400000000000000001", posted_at: "2021-01-01T00:00:00Z", link: nil, comment: nil, images: [
+      import(
+        imported_message("4400000000000000002", posted_at: "2022-01-01T00:00:00Z"),
+        imported_message("4400000000000000001", posted_at: "2021-01-01T00:00:00Z", link: nil, comment: nil, images: [
           { url: "https://cdn.discordapp.com/attachments/1/2/a.png", expires_at: "2026-11-11T00:00:00Z" },
           { url: "https://cdn.discordapp.com/attachments/1/2/b.png", expires_at: "2026-11-11T00:00:00Z" }
         ])
@@ -159,7 +94,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
     it "names an author with a member record by their current name" do
       author = create(:user, global_name: "Renamed Member")
-      record_batch(archived("4400000000000000001", author_id: author.user_id))
+      import(imported_message("4400000000000000001", author_id: author.user_id))
 
       unsorted
 
@@ -167,7 +102,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
     end
 
     it "pages with page and per" do
-      record_batch(*Array.new(3) { |i| archived((4_400_000_000_000_000_000 + i).to_s) })
+      import(*Array.new(3) { |i| imported_message((4_400_000_000_000_000_000 + i).to_s) })
 
       unsorted({ page: 2, per: 2 })
 
@@ -193,7 +128,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
     end
 
     before do
-      record_batch(*%w[4400000000000000001 4400000000000000002 4400000000000000003].map { |id| archived(id) })
+      import(*%w[4400000000000000001 4400000000000000002 4400000000000000003].map { |id| imported_message(id) })
     end
 
     it "assigns a News Category, which shows the item in the feed with its original author and date" do
@@ -201,7 +136,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to eq(
-        "assigned" => 2, "removed" => 0, "rejected" => 0, "unsorted" => 1, "rejections" => []
+        "assigned" => 2, "removed" => 0, "rejected" => 0, "unsorted" => 1, "rejections" => [], "moved" => []
       )
 
       get "/api/v1/news_items", params: { category: "releases" }, headers: auth_headers_for(member)
@@ -223,29 +158,71 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       expect(json.fetch("data").map { |item| item.fetch("message_id") }).to eq([ "4400000000000000001" ])
     end
 
-    it "keeps an assigned News Category when the batch is recorded again" do
-      assign([ "4400000000000000001", "hardware" ])
+    it "reports the items whose category changed and that have a News Copy, with where each copy lives (ticket #369)" do
+      assign([ "4400000000000000001", "releases" ], [ "4400000000000000002", "industry" ])
+      [ %w[4400000000000000001 5500000000000000001], %w[4400000000000000002 5500000000000000002] ].each do |id, copy|
+        put "/api/v1/news_items/#{id}", headers: service_headers, as: :json,
+          params: { data: { news_copy: { message_id: copy, thread_id: "6600000000000000006" } } }
+      end
 
-      record_batch(archived("4400000000000000001", comment: "Rescanned"))
+      assign(
+        [ "4400000000000000001", "rumours" ],
+        [ "4400000000000000002", "industry" ],
+        [ "4400000000000000003", "general" ]
+      )
 
-      expect(json.fetch("data")).to include("updated" => 1, "rejected" => [])
-      get "/api/v1/news_items", params: { category: "hardware" }, headers: auth_headers_for(member)
-      expect(json.fetch("data")).to contain_exactly(include("message_id" => "4400000000000000001",
-        "comment" => "Rescanned"))
+      expect(json.fetch("data")).to include("assigned" => 3, "moved" => [
+        { "message_id" => "4400000000000000001", "category_key" => "rumours", "previous_category_key" => "releases",
+          "news_copy" => { "message_id" => "5500000000000000001", "thread_id" => "6600000000000000006" } }
+      ])
     end
 
-    it "removes an item with skip and remembers it, so a re-scan does not bring it back" do
+    it "reports moved items in row order" do
+      ids = %w[4400000000000000001 4400000000000000002 4400000000000000003]
+      assign(*ids.map { |id| [ id, "general" ] })
+      ids.each_with_index do |id, index|
+        put "/api/v1/news_items/#{id}", headers: service_headers, as: :json,
+          params: { data: { news_copy: { message_id: "550000000000000000#{index}", thread_id: "6600000000000000006" } } }
+      end
+
+      assign([ ids[0], "rumours" ], [ ids[1], "hardware" ], [ ids[2], "rumours" ])
+
+      expect(json.dig("data", "moved").map { |move| move.values_at("message_id", "category_key") })
+        .to eq([ [ ids[0], "rumours" ], [ ids[1], "hardware" ], [ ids[2], "rumours" ] ])
+    end
+
+    it "records which staff member changed each item's category and when, leaving unchanged rows alone" do
+      other_admin = create(:user, role_admin: true)
+      first = Time.utc(2026, 11, 10, 12)
+      travel_to(first) { assign([ "4400000000000000001", "releases" ], [ "4400000000000000002", "industry" ]) }
+
+      travel_to(first + 1.hour) do
+        assign([ "4400000000000000001", "releases" ], [ "4400000000000000002", "rumours" ], acting: other_admin)
+      end
+
+      expect(NewsItem.find_by(message_id: "4400000000000000001"))
+        .to have_attributes(category_changed_by: admin.user_id, category_changed_at: first)
+      expect(NewsItem.find_by(message_id: "4400000000000000002"))
+        .to have_attributes(category_changed_by: other_admin.user_id, category_changed_at: first + 1.hour)
+      expect(NewsItem.find_by(message_id: "4400000000000000003"))
+        .to have_attributes(category_changed_by: nil, category_changed_at: nil)
+    end
+
+    it "does not report a changed item that has no News Copy" do
+      assign([ "4400000000000000001", "releases" ])
+
+      assign([ "4400000000000000001", "rumours" ])
+
+      expect(json.fetch("data")).to include("assigned" => 1, "moved" => [])
+    end
+
+    it "removes an item with skip and remembers it" do
       assign([ "4400000000000000001", "skip" ], [ "4400000000000000002", "SKIP" ])
 
       expect(json.fetch("data")).to include("assigned" => 0, "removed" => 2, "unsorted" => 1)
       expect(unsorted_ids).to eq([ "4400000000000000003" ])
-
-      record_batch(archived("4400000000000000001"), archived("4400000000000000004"))
-      expect(json.fetch("data")).to eq(
-        "created" => 1, "updated" => 0, "previously_removed" => 1, "rejected" => []
-      )
-      expect(unsorted_ids).to eq(%w[4400000000000000003 4400000000000000004])
       expect(feed_ids).to be_empty
+      expect(status).to include("removed" => 2)
     end
 
     it "counts skip again for an item already removed, so the same file can be uploaded twice" do
@@ -285,7 +262,8 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
           { "index" => 5, "message_id" => "4400000000000000001", "value" => "general",
             "reason" => "removed with skip" },
           { "index" => 6, "message_id" => "", "value" => "general", "reason" => "missing message ID" }
-        ]
+        ],
+        "moved" => []
       )
       expect(feed_ids).to contain_exactly("4400000000000000002", live.message_id)
       get "/api/v1/news_items", params: { category: "industry" }, headers: auth_headers_for(member)
@@ -318,7 +296,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
   describe "GET /api/v1/news_import/status" do
     it "counts imported items that are sorted, unsorted and removed, leaving live items out" do
-      record_batch(*Array.new(4) { |i| archived((4_400_000_000_000_000_000 + i).to_s) })
+      import(*Array.new(4) { |i| imported_message((4_400_000_000_000_000_000 + i).to_s) })
       create(:news_item, origin: "live")
       post "/api/v1/news_import/assignments", headers: service_headers, as: :json, params: { data: {
         acting_user_id: admin.user_id,
@@ -331,32 +309,27 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       expect(json.fetch("data")).to include("sorted" => 1, "unsorted" => 2, "removed" => 1)
     end
 
-    def oldest_message_id
+    it "counts the News Items with a News Copy and those members may see that have none yet (ticket #368)" do
+      create(:news_item, :copied, origin: "live")
+      create(:news_item, :copied, origin: "import", category_key: "industry")
+      create(:news_item, origin: "live")
+      create(:news_item, origin: "import", category_key: "general")
+      create(:news_item, origin: "import", category_key: nil)
+
       get "/api/v1/news_import/status", params: { acting_user_id: admin.user_id }, headers: service_headers
+
       expect(response).to have_http_status(:ok)
-      json.fetch("data").fetch("oldest_message_id")
+      expect(json.fetch("data")).to include("copied" => 2, "uncopied" => 2, "sorted" => 2, "unsorted" => 1)
     end
 
-    it "names no oldest message before anything is imported" do
-      create(:news_item, origin: "live", message_id: "100000000000000001")
+    it "reports the counts and nothing else" do
+      import(imported_message("999999999999999999"))
 
-      expect(oldest_message_id).to be_nil
-    end
+      get "/api/v1/news_import/status", params: { acting_user_id: admin.user_id }, headers: service_headers
 
-    it "names the oldest imported message by snowflake order, for a re-run scan to continue from" do
-      record_batch(archived("1000000000000000000"), archived("999999999999999999"), archived("4400000000000000001"))
-      create(:news_item, origin: "live", message_id: "100000000000000001")
-
-      expect(oldest_message_id).to eq("999999999999999999")
-    end
-
-    it "still names the oldest message after staff remove it with skip" do
-      record_batch(archived("999999999999999999"), archived("4400000000000000001"))
-      post "/api/v1/news_import/assignments", headers: service_headers, as: :json, params: { data: {
-        acting_user_id: admin.user_id, rows: [ { message_id: "999999999999999999", value: "skip" } ]
-      } }
-
-      expect(oldest_message_id).to eq("999999999999999999")
+      expect(json.fetch("data")).to eq(
+        "sorted" => 0, "unsorted" => 1, "removed" => 0, "copied" => 0, "uncopied" => 0
+      )
     end
   end
 

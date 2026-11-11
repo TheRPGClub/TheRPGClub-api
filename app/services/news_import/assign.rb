@@ -3,9 +3,12 @@
 module NewsImport
   # Applies a reviewed list of (message id, value) rows to imported News
   # Items (spec #355, ticket #359). A News Category key assigns that News
-  # Category, which makes the item visible to members; `skip` deletes the
-  # item and remembers the removal (NewsImportRemoval). Values ignore case
-  # and surrounding spaces. Assigning again changes the News Category, and
+  # Category, which makes the item visible to members, and records the
+  # acting staff member and the time on each item whose News Category this
+  # changed (`category_changed_by`, `category_changed_at`; a row repeating
+  # the stored category changes nothing); `skip` deletes the item and
+  # remembers the removal (NewsImportRemoval). Values ignore case and
+  # surrounding spaces. Assigning again changes the News Category, and
   # `skip` for an item already removed counts as removed again, so the same
   # file can be applied twice.
   #
@@ -14,8 +17,13 @@ module NewsImport
   # with no News Item, a live (not imported) News Item, or a category for an
   # item removed with `skip`.
   #
-  # Returns { assigned:, removed:, rejected:, unsorted:, rejections: [ { index, message_id, value, reason } ] },
-  # where `unsorted` is how many imported News Items are still unsorted afterwards.
+  # Returns { assigned:, removed:, rejected:, unsorted:, rejections: [ { index, message_id, value, reason } ],
+  # moved: [ { message_id, category_key, previous_category_key, news_copy: { message_id, thread_id } } ] },
+  # where `unsorted` is how many imported News Items are still unsorted
+  # afterwards and `moved` lists, in row order, the items whose News Category
+  # this request changed and that have a News Copy (ticket #369), so the bot
+  # can move each copy to its new category's thread. A first assignment to an
+  # unsorted item is not a move: an unsorted item has no News Copy.
   class Assign
     SKIP = "skip"
     MAX_ROWS = 5000
@@ -33,7 +41,7 @@ module NewsImport
     def call
       raise TooLarge, "at most #{MAX_ROWS} rows per request" if @rows.size > MAX_ROWS
 
-      assignments = Hash.new { |hash, key| hash[key] = [] }
+      assigned = []
       removals = []
       rejections = []
       @rows.each_with_index do |row, index|
@@ -43,14 +51,15 @@ module NewsImport
         elsif value == SKIP
           removals << row[:message_id]
         else
-          assignments[value] << row[:message_id]
+          assigned << [ row[:message_id], value ]
         end
       end
 
-      apply(assignments, removals)
+      moved = copies_to_move(assigned)
+      apply(assigned, removals)
       {
-        assigned: assignments.values.sum(&:size), removed: removals.size, rejected: rejections.size,
-        unsorted: NewsItem.unsorted.count, rejections: rejections
+        assigned: assigned.size, removed: removals.size, rejected: rejections.size,
+        unsorted: NewsItem.unsorted.count, rejections: rejections, moved: moved
       }
     end
 
@@ -69,11 +78,27 @@ module NewsImport
       "not an imported News Item" unless origins[id] == "import"
     end
 
-    def apply(assignments, removals)
+    # The assigned items that have a News Copy and are changing to another
+    # News Category, in row order. `assigned` is [ [ message_id, key ] ].
+    def copies_to_move(assigned)
+      copied = NewsItem.imported.copied.where(message_id: assigned.map(&:first))
+        .pluck(:message_id, :category_key, :news_copy_message_id, :news_copy_thread_id)
+        .to_h { |id, *rest| [ id, rest ] }
+      assigned.filter_map do |id, key|
+        previous, copy_id, thread_id = copied[id]
+        next if previous.nil? || previous == key
+
+        { message_id: id, category_key: key, previous_category_key: previous,
+          news_copy: { message_id: copy_id, thread_id: thread_id } }
+      end
+    end
+
+    def apply(assigned, removals)
       now = Time.current
       NewsItem.transaction do
-        assignments.each do |key, ids|
-          NewsItem.imported.where(message_id: ids).update_all(category_key: key, updated_at: now)
+        assigned.group_by(&:last).transform_values { |rows| rows.map(&:first) }.each do |key, ids|
+          NewsItem.imported.where(message_id: ids).where("category_key IS DISTINCT FROM ?", key)
+            .update_all(category_key: key, category_changed_by: @by, category_changed_at: now, updated_at: now)
         end
         fresh = removals - removed_ids.to_a
         if fresh.any?

@@ -2910,8 +2910,8 @@ components:
           description: The News Item's Discord message id.
         channel_id:
           type: string
-          description: The channel or thread the message is in (a News Category's
-            thread, or the Game News Archive for an imported News Item).
+          description: The channel or thread the message is in (the News Channel,
+            or a News Category's thread for a News Item posted before it).
         feature_key:
           type: string
           enum:
@@ -2947,8 +2947,8 @@ components:
       - to_state
       - feature_key
       description: 'Kind `news_catch_up`. The News Hub''s Feature Flag went from Off
-        to Preview or Live: scan the News Categories'' threads for messages posted,
-        edited or deleted while it was Off. The lease is 30 minutes. Posts nothing.'
+        to Preview or Live: record News Channel messages posted while it was Off and
+        post missing News Copies. The lease is 30 minutes.'
     BotJobClaim:
       type: object
       properties:
@@ -3540,8 +3540,28 @@ components:
           enum:
           - live
           - import
-          description: 'live: recorded from a News Category''s thread. import: brought
-            in from the Game News Archive by the News Import.'
+          description: 'live: recorded from the News Channel as it was posted. import:
+            brought in by the News Import from before the News Hub.'
+        picked_category_key:
+          type: string
+          nullable: true
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category the bot first picked for it, kept when the
+            category is corrected; null when the bot reported none (imported News
+            Items, and items recorded before the News Channel).
+        news_copy:
+          allOf:
+          - "$ref": "#/components/schemas/NewsCopy"
+          nullable: true
+          description: Where the News Copy (the bot's copy in the News Category's
+            thread) lives; null while the News Item has none.
         comment:
           type: string
           nullable: true
@@ -3580,6 +3600,62 @@ components:
       - link
       - images
       - author
+      - picked_category_key
+      - news_copy
+    NewsCategoryChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+          description: 'False when the News Item already had that News Category and
+            nothing changed: the News Copy stays where it is.'
+        previous_category_key:
+          type: string
+          nullable: true
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category before this request (the same as `category_key`
+            when nothing changed); null for an imported News Item staff had not sorted.
+      required:
+      - changed
+      - previous_category_key
+    NewsItemRemoval:
+      type: object
+      properties:
+        removed:
+          type: boolean
+          description: True when a News Item was recorded for the message and is now
+            deleted; false when none was recorded (nothing changed).
+        news_copy:
+          allOf:
+          - "$ref": "#/components/schemas/NewsCopy"
+          nullable: true
+          description: Where the removed News Item's News Copy lives, so the bot can
+            delete it; null when it had none, or when nothing was removed.
+      required:
+      - removed
+      - news_copy
+    NewsCopy:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: '1500000000000000005'
+          description: The News Copy's Discord message id.
+        thread_id:
+          type: string
+          example: '1600000000000000006'
+          description: The id of the News Category's thread the News Copy is posted
+            in.
+      required:
+      - message_id
+      - thread_id
     NewsItemLink:
       type: object
       properties:
@@ -3651,11 +3727,11 @@ components:
         message_id:
           type: string
           example: '1300000000000000003'
-          description: The archived Discord message's snowflake.
+          description: The imported Discord message's snowflake.
         posted_at:
           type: string
           format: date-time
-          description: When the message was posted in the Game News Archive.
+          description: When the message was posted in the News Channel.
         author_name:
           type: string
           description: The member's current name when they have a member record; otherwise
@@ -3693,49 +3769,6 @@ components:
       - link_site_name
       - link_description
       - image_count
-    NewsImportBatchResult:
-      type: object
-      properties:
-        created:
-          type: integer
-          description: Messages recorded as new imported News Items.
-        updated:
-          type: integer
-          description: Messages already recorded, updated in place (an assigned News
-            Category is kept).
-        previously_removed:
-          type: integer
-          description: Messages staff removed with `skip`, left out.
-        rejected:
-          type: array
-          items:
-            "$ref": "#/components/schemas/NewsImportBatchRejection"
-          description: Messages not recorded, each with its reason. Empty when every
-            message was recorded.
-      required:
-      - created
-      - updated
-      - previously_removed
-      - rejected
-    NewsImportBatchRejection:
-      type: object
-      properties:
-        index:
-          type: integer
-          description: The message's 0-based position in `items`.
-        message_id:
-          type: string
-          nullable: true
-          description: The message id as sent; null when missing.
-        reason:
-          type: string
-          example: A News Item needs a link or at least one image
-          description: 'Why it was not recorded: the News Item''s validation errors,
-            or `already recorded as a live News Item`.'
-      required:
-      - index
-      - message_id
-      - reason
     NewsImportAssignResult:
       type: object
       properties:
@@ -3757,12 +3790,58 @@ components:
           items:
             "$ref": "#/components/schemas/NewsImportAssignRejection"
           description: The rejected rows, in order.
+        moved:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsImportMove"
+          description: 'The items whose News Category this request changed and that
+            have a News Copy, in row order: the bot moves each copy to the new category''s
+            thread. A first assignment to an unsorted item is never listed (it has
+            no News Copy).'
       required:
       - assigned
       - removed
       - rejected
       - unsorted
       - rejections
+      - moved
+    NewsImportMove:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: '1300000000000000003'
+          description: The News Item's message snowflake.
+        category_key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category it now has.
+        previous_category_key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category it had before.
+        news_copy:
+          "$ref": "#/components/schemas/NewsCopy"
+          description: Where its News Copy lives now, in the previous category's thread.
+      required:
+      - message_id
+      - category_key
+      - previous_category_key
+      - news_copy
     NewsImportAssignRejection:
       type: object
       properties:
@@ -3798,20 +3877,21 @@ components:
           description: Imported News Items with no News Category yet (hidden).
         removed:
           type: integer
-          description: Archive messages staff removed with `skip`.
-        oldest_message_id:
-          type: string
-          nullable: true
-          example: '1300000000000000003'
-          description: The oldest archive message imported so far (by snowflake),
-            kept or removed with `skip`; null before any. The archive is locked and
-            the scan reads it newest first, so a re-run scan continues from just before
-            this message.
+          description: Imported News Items staff removed with `skip`.
+        copied:
+          type: integer
+          description: News Items, live and imported, that have a News Copy.
+        uncopied:
+          type: integer
+          description: 'News Items, live and imported, that have a News Category but
+            no News Copy yet: what the history copy has left (see `GET /api/v1/news_items/uncopied`).
+            Unsorted items are not counted.'
       required:
       - sorted
       - unsorted
       - removed
-      - oldest_message_id
+      - copied
+      - uncopied
     SearchSynonym:
       type: object
       properties:
@@ -15394,156 +15474,6 @@ paths:
               - data
         required: true
   "/api/v1/news_import/items":
-    post:
-      summary: Record a batch of archived messages
-      tags:
-      - News Hub
-      description: 'Service-only. The News Import scan sends the Game News Archive''s
-        qualifying messages (by a member, not a bot, with a link, an image attachment,
-        or both) in batches of up to 100. Each becomes an imported News Item (origin
-        `import`) with no News Category, hidden from members until staff assign one.
-        Safe to repeat: a message already recorded is updated in place and keeps any
-        News Category staff assigned; a message staff removed with `skip` is left
-        out (`previously_removed`) and never comes back. Each message stands alone:
-        one that is not a valid News Item, or is already a live News Item, is listed
-        in `rejected` with its reason and the rest are still recorded. The fields
-        are those of `PUT /api/v1/news_items/{message_id}` plus `message_id`, without
-        `category_key`. The service token is not gated; the bot runs the scan only
-        for an Admin or Superadmin while the News Hub is Preview or Live (nobody imports
-        while it is Off).'
-      parameters: []
-      responses:
-        '200':
-          description: the batch was applied; counts and per-message rejections
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/NewsImportBatchResult"
-                required:
-                - data
-        '400':
-          description: missing `data.items`
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '422':
-          description: 'more than 100 items, `{ "error": "at most 100 items per batch"
-            }`; nothing was recorded'
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: forbidden - caller is not the service principal
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    items:
-                      type: array
-                      maxItems: 100
-                      items:
-                        type: object
-                        properties:
-                          message_id:
-                            type: string
-                            description: The archived message's snowflake. Required.
-                          channel_id:
-                            type: string
-                            description: The Game News Archive's channel id. Required.
-                          author_id:
-                            type: string
-                            description: The author's Discord user id. Required.
-                          author_name:
-                            type: string
-                            maxLength: 100
-                            description: The author's display name now (for a member
-                              who left, the name Discord still shows). Required.
-                          comment:
-                            type: string
-                            nullable: true
-                            description: The message text as a reader sees it, without
-                              the link address.
-                          posted_at:
-                            type: string
-                            format: date-time
-                            description: When it was originally posted. Required.
-                          edited_at:
-                            type: string
-                            format: date-time
-                            nullable: true
-                          link:
-                            type: object
-                            nullable: true
-                            description: The message's first link and Discord's preview
-                              of it; null for none.
-                            properties:
-                              url:
-                                type: string
-                              title:
-                                type: string
-                                nullable: true
-                              site_name:
-                                type: string
-                                nullable: true
-                              description:
-                                type: string
-                                nullable: true
-                              image_url:
-                                type: string
-                                nullable: true
-                            required:
-                            - url
-                          images:
-                            type: array
-                            description: Every image attachment, in order, with its
-                              Discord address and expiry.
-                            items:
-                              type: object
-                              properties:
-                                url:
-                                  type: string
-                                expires_at:
-                                  type: string
-                                  format: date-time
-                                  nullable: true
-                                  description: When that address expires (the `ex`
-                                    parameter of Discord's signed URL); null when
-                                    the address has no `ex` parameter, so it does
-                                    not expire.
-                              required:
-                              - url
-                              - expires_at
-                        required:
-                        - message_id
-                        - channel_id
-                        - author_id
-                        - author_name
-                        - posted_at
-                  required:
-                  - items
-              required:
-              - data
-        required: true
     get:
       summary: List the unsorted imported News Items
       tags:
@@ -15630,15 +15560,19 @@ paths:
       description: 'Applies a reviewed list of rows, each a message id and a value.
         A News Category key (announcements, releases, emulation, industry, hardware,
         rumours, general) assigns it, which shows the item to members with its original
-        author and date; assigning again changes it. `skip` deletes the item and remembers
-        the removal, so a later scan never brings it back; `skip` for an item already
-        removed counts as removed again, so the same file can be applied twice. Values
-        ignore case and surrounding spaces. Applies to imported News Items only. Each
-        bad row is listed in `rejections` with its reason and does not stop the others:
-        a missing or repeated message id (every occurrence is rejected), a blank or
-        invalid value, an unknown message id, a live News Item, or a News Category
-        for an item removed with `skip`. Leave rows with no value out of the request.
-        Up to 5000 rows per request. The News Import works for Admins and Superadmins
+        author and date; assigning again changes it. Each item whose News Category
+        changes records the acting staff member and the time of the change. `skip`
+        deletes the item and remembers the removal (counted in `removed`); `skip`
+        for an item already removed counts as removed again, so the same file can
+        be applied twice. Values ignore case and surrounding spaces. Applies to imported
+        News Items only. Each bad row is listed in `rejections` with its reason and
+        does not stop the others: a missing or repeated message id (every occurrence
+        is rejected), a blank or invalid value, an unknown message id, a live News
+        Item, or a News Category for an item removed with `skip`. Leave rows with
+        no value out of the request. Up to 5000 rows per request. `moved` lists, in
+        row order, the items whose News Category this request changed and that have
+        a News Copy, with where each copy lives, so the bot can move those copies
+        to their new categories'' threads. The News Import works for Admins and Superadmins
         while the News Hub is Preview or Live, and for nobody while it is Off. A signed-in
         member is checked by their own roles; the bot calls with the service token
         and names the acting Discord user (`acting_user_id`), and the same rule applies
@@ -15729,16 +15663,16 @@ paths:
       tags:
       - News Hub
       description: 'How many imported News Items are sorted and unsorted, how many
-        archive messages staff removed with `skip`, and the oldest message imported
-        so far (`oldest_message_id`), where a re-run scan continues. The News Import
-        works for Admins and Superadmins while the News Hub is Preview or Live, and
-        for nobody while it is Off. A signed-in member is checked by their own roles;
-        the bot calls with the service token and names the acting Discord user (`acting_user_id`),
-        and the same rule applies to that member''s stored roles: 400 `acting_user_id
-        required` without one, 403 when they are not an Admin or Superadmin or have
-        no member record. While Off, the News Hub Feature gate answers a signed-in
-        caller 404; the service token is not gated, so the bot refuses its /news-import
-        commands itself.'
+        imported News Items staff removed with `skip`, and for the history copy how
+        many News Items have a News Copy (`copied`) and how many with a News Category
+        still have none (`uncopied`). The News Import works for Admins and Superadmins
+        while the News Hub is Preview or Live, and for nobody while it is Off. A signed-in
+        member is checked by their own roles; the bot calls with the service token
+        and names the acting Discord user (`acting_user_id`), and the same rule applies
+        to that member''s stored roles: 400 `acting_user_id required` without one,
+        403 when they are not an Admin or Superadmin or have no member record. While
+        Off, the News Hub Feature gate answers a signed-in caller 404; the service
+        token is not gated, so the bot refuses its /news-import commands itself.'
       parameters:
       - name: acting_user_id
         in: query
@@ -15878,6 +15812,83 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/news_items/uncopied":
+    get:
+      summary: News Items without a News Copy
+      tags:
+      - News Hub
+      description: 'Service-only. The News Items that have a News Category but no
+        News Copy yet, live and imported alike, oldest first (`posted_at` ascending,
+        then the order they were recorded), paged with `page`/`per`. The bot''s history
+        copy and its retries of failed copies work through them, reporting each copy
+        with `PUT /api/v1/news_items/{message_id}` and `{ "data": { "news_copy": {
+        ... } } }`; a reported item leaves the listing, so a run that copies as it
+        goes reads the first page again rather than the next. Imported News Items
+        staff have not sorted are left out. `origin` narrows to live or imported News
+        Items (catch-up retries live ones; the history copy copies imported ones).
+        Answers whatever the Feature Flag says.'
+      parameters:
+      - name: origin
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - live
+          - import
+        description: 'Only News Items of this origin: `live` (recorded from the News
+          Channel as posted) or `import` (brought in by the News Import). Omit for
+          both.'
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: a page of News Items without a News Copy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsItem"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '422':
+          description: 'an unknown `origin`, e.g. `{ "error": "unknown origin: forum
+            (expected live or import)" }`'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/news_items/{message_id}":
     parameters:
     - name: message_id
@@ -15891,16 +15902,22 @@ paths:
       tags:
       - News Hub
       description: 'Service-only. The bot records a Discord message that is a News
-        Item (posted by a member in a News Category''s thread, with a link, an image
-        attachment, or both) when it is posted and again whenever it is edited, including
-        when Discord delivers the link preview a moment later. Creates the News Item
-        (201) or updates the one with this message id (200), so repeating a call changes
-        nothing. Every field is replaced by what is sent: send the whole message each
-        time. A new News Item has origin `live`. An imported News Item (origin `import`)
-        keeps its origin and the News Category staff assigned it; `category_key` is
-        ignored for it and may be omitted. A message with neither a link nor an image
-        is not a News Item and is refused (422): when an edit removes them, DELETE
-        the News Item instead. Recording works whatever the Feature Flag says.'
+        Item (posted in the News Channel with a link, an image attachment, or both)
+        when it is posted and again whenever it is edited, including when Discord
+        delivers the link preview a moment later. Creates the News Item (201) or updates
+        the one with this message id (200), so repeating a call changes nothing. The
+        message fields are replaced by what is sent: send the whole message each time.
+        `category_key`, `picked_category_key` and `news_copy` keep their stored values
+        when omitted on an update (send `news_copy: null` to record that the News
+        Copy is gone); a new live News Item needs `category_key`. A new News Item
+        has origin `live`. An imported News Item (origin `import`) keeps its origin
+        and the News Category staff assigned it; `category_key` is ignored for it
+        and may be omitted. A message with neither a link nor an image is not a News
+        Item and is refused (422): when an edit removes them, DELETE the News Item
+        instead. A body holding only `news_copy` reports where the News Copy of a
+        recorded News Item (live or imported) lives and changes nothing else (200,
+        or 404 when the message was never recorded). Recording works whatever the
+        Feature Flag says.'
       parameters: []
       responses:
         '201':
@@ -15931,9 +15948,17 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '404':
+          description: only `news_copy` was sent and no News Item has this message
+            id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           description: not a News Item (no link and no image), an unknown or missing
-            News Category, or an invalid field
+            News Category, an unknown picked category, a `news_copy` without both
+            ids, or an invalid field
           content:
             application/json:
               schema:
@@ -15961,7 +15986,8 @@ paths:
                   properties:
                     channel_id:
                       type: string
-                      description: The thread's (channel's) snowflake. Required.
+                      description: The channel's snowflake. Required unless only `news_copy`
+                        is sent.
                     category_key:
                       type: string
                       enum:
@@ -15973,17 +15999,50 @@ paths:
                       - rumours
                       - general
                       nullable: true
-                      description: The News Category of the thread the message is
-                        in. Required for a live News Item; ignored for an imported
-                        one.
+                      description: The News Item's News Category. Required for a new
+                        live News Item; kept when omitted on an update; ignored for
+                        an imported one.
+                    picked_category_key:
+                      type: string
+                      enum:
+                      - announcements
+                      - releases
+                      - emulation
+                      - industry
+                      - hardware
+                      - rumours
+                      - general
+                      nullable: true
+                      description: The News Category the bot picked for the message.
+                        Optional; kept when omitted.
+                    news_copy:
+                      type: object
+                      nullable: true
+                      description: Where the News Copy lives, once the bot has posted
+                        it. Optional; kept when omitted; null records that the News
+                        Item has no News Copy. Sent alone, it reports the location
+                        without changing anything else.
+                      properties:
+                        message_id:
+                          type: string
+                          description: The News Copy's Discord message id.
+                        thread_id:
+                          type: string
+                          description: The id of the News Category's thread it is
+                            in.
+                      required:
+                      - message_id
+                      - thread_id
                     author_id:
                       type: string
-                      description: The author's Discord user id. Required.
+                      description: The author's Discord user id. Required unless only
+                        `news_copy` is sent.
                     author_name:
                       type: string
                       maxLength: 100
                       description: The author's display name now, kept as the name
-                        to show if they have no member record. Required.
+                        to show if they have no member record. Required unless only
+                        `news_copy` is sent.
                     comment:
                       type: string
                       nullable: true
@@ -15993,7 +16052,8 @@ paths:
                     posted_at:
                       type: string
                       format: date-time
-                      description: When it was posted. Required.
+                      description: When it was posted. Required unless only `news_copy`
+                        is sent.
                     edited_at:
                       type: string
                       format: date-time
@@ -16046,11 +16106,8 @@ paths:
                         required:
                         - url
                         - expires_at
-                  required:
-                  - channel_id
-                  - author_id
-                  - author_name
-                  - posted_at
+                  description: The whole message (`channel_id`, `author_id`, `author_name`
+                    and `posted_at` required), or only `news_copy`.
               required:
               - data
         required: true
@@ -16059,16 +16116,145 @@ paths:
       tags:
       - News Hub
       description: 'Service-only. The bot removes the News Item when its message is
-        deleted (singly or in bulk) or edited so it no longer has a link or an image.
-        A hard delete. Idempotent: 204 whether or not a News Item with this message
-        id was recorded.'
+        deleted (singly or in bulk) or edited so it no longer has a link or an image,
+        or when renewal finds the message gone. A hard delete. Idempotent: 200 whether
+        or not a News Item with this message id was recorded; `removed` says which.
+        Answers where the removed News Item''s News Copy lives (`news_copy`, null
+        when it had none or nothing was removed), so the bot can delete the copy without
+        looking it up first.'
       responses:
-        '204':
+        '200':
           description: News Item removed (or was never recorded)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsItemRemoval"
+                required:
+                - data
         '403':
           description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/news_items/{message_id}/category":
+    parameters:
+    - name: message_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The News Item's Discord message snowflake.
+    put:
+      summary: Change a News Item's News Category
+      tags:
+      - News Hub
+      description: 'Service-only. The bot changes a News Item''s News Category for
+        the member who used "Change news category" on it (`acting_user_id`). Allowed
+        for the News Item''s author and for staff (Admins and Superadmins by their
+        stored roles, as for the News Import); anyone else gets 403 `forbidden`. An
+        imported News Item staff have not sorted (no News Category yet) is staff''s
+        alone: its author gets 403 `forbidden` too. The News Hub Feature Flag applies
+        to the acting member: while Off nobody may, staff included; while Preview
+        only staff may; while Live the author and staff may. A refusal by the flag
+        is 403 `feature_unavailable`. Live and imported News Items alike. The change
+        records who made it and when; `picked_category_key` (the bot''s first pick)
+        and `news_copy` are left as they are. Answers the News Item with its News
+        Copy location (null when it has none) so the bot can move the copy to the
+        new category''s thread and then report the new location with `PUT /api/v1/news_items/{message_id}`
+        and `{ "data": { "news_copy": { ... } } }`. Changing to the category the item
+        already has changes nothing (`meta.changed` false). Checked in this order:
+        `acting_user_id` (400), the Feature Flag (403), the News Item (404), author
+        or staff (403), the category (422).'
+      parameters: []
+      responses:
+        '200':
+          description: the News Item, changed or already in that category
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsItem"
+                  meta:
+                    "$ref": "#/components/schemas/NewsCategoryChange"
+                required:
+                - data
+                - meta
+        '400':
+          description: 'missing `data`, `data.category_key` or `data.acting_user_id`
+            (`{ "error": "acting_user_id required" }`)'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: "`forbidden`: the acting member is neither the author nor staff,
+            is the non-staff author of an unsorted imported News Item, or the caller
+            is not the service principal; `feature_unavailable`: the News Hub Feature
+            Flag does not let the acting member use it"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no News Item has this message id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not a News Category key
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: The Discord user id of the member who asked for
+                        the change.
+                    category_key:
+                      type: string
+                      enum:
+                      - announcements
+                      - releases
+                      - emulation
+                      - industry
+                      - hardware
+                      - rumours
+                      - general
+                      description: The News Category to move the News Item to.
+                  required:
+                  - acting_user_id
+                  - category_key
+              required:
+              - data
+        required: true
   "/api/v1/gotm_entries/{round}/nominations":
     parameters:
     - name: round

@@ -890,14 +890,14 @@ module OpenapiSchemas
                       "News Item when the message is gone. At most one is open per message, and none is queued " \
                       "within six hours of the last one for that message ending. Posts nothing.",
         message_id: str.merge(description: "The News Item's Discord message id."),
-        channel_id: str.merge(description: "The channel or thread the message is in (a News Category's thread, " \
-                                           "or the Game News Archive for an imported News Item)."),
+        channel_id: str.merge(description: "The channel or thread the message is in (the News Channel, or a " \
+                                           "News Category's thread for a News Item posted before it)."),
         feature_key: str(enum: %w[news_hub])
       ),
       NewsCatchUpJobPayload: obj(
-        _description: "Kind `news_catch_up`. The News Hub's Feature Flag went from Off to Preview or Live: scan " \
-                      "the News Categories' threads for messages posted, edited or deleted while it was Off. " \
-                      "The lease is 30 minutes. Posts nothing.",
+        _description: "Kind `news_catch_up`. The News Hub's Feature Flag went from Off to Preview or Live: " \
+                      "record News Channel messages posted while it was Off and post missing News Copies. " \
+                      "The lease is 30 minutes.",
         from_state: str(enum: %w[off]),
         to_state: str(enum: %w[preview live]),
         feature_key: str(enum: %w[news_hub])
@@ -1080,8 +1080,16 @@ module OpenapiSchemas
           description: "The News Category's key. Always set in the member feed; null only for an imported " \
                        "News Item staff have not sorted yet, which members never see."),
         origin: str(enum: NewsItem::ORIGINS,
-          description: "live: recorded from a News Category's thread. import: brought in from the Game News " \
-                       "Archive by the News Import."),
+          description: "live: recorded from the News Channel as it was posted. import: brought in by the " \
+                       "News Import from before the News Hub."),
+        picked_category_key: str(enum: NewsCategory.keys, nullable: true,
+          description: "The News Category the bot first picked for it, kept when the category is corrected; " \
+                       "null when the bot reported none (imported News Items, and items recorded before the " \
+                       "News Channel)."),
+        news_copy: ref("NewsCopy", nullable: true).merge(
+          description: "Where the News Copy (the bot's copy in the News Category's thread) lives; null while " \
+                       "the News Item has none."
+        ),
         comment: str(nullable: true,
           description: "The member's own words: the message text as a reader sees it, without the link " \
                        "address. Null when there are none."),
@@ -1094,7 +1102,31 @@ module OpenapiSchemas
           description: "The message's image attachments in posted order; empty when there are none."
         ),
         author: ref("NewsItemAuthor"),
-        _required: %w[message_id category_key origin comment posted_at edited_at link images author]
+        _required: %w[message_id category_key origin comment posted_at edited_at link images author
+                      picked_category_key news_copy]
+      ),
+      NewsCategoryChange: obj(
+        changed: bool.merge(description: "False when the News Item already had that News Category and nothing " \
+                                         "changed: the News Copy stays where it is."),
+        previous_category_key: str(enum: NewsCategory.keys, nullable: true,
+          description: "The News Category before this request (the same as `category_key` when nothing " \
+                       "changed); null for an imported News Item staff had not sorted."),
+        _required: %w[changed previous_category_key]
+      ),
+      NewsItemRemoval: obj(
+        removed: bool.merge(description: "True when a News Item was recorded for the message and is now " \
+                                         "deleted; false when none was recorded (nothing changed)."),
+        news_copy: ref("NewsCopy", nullable: true).merge(
+          description: "Where the removed News Item's News Copy lives, so the bot can delete it; null when " \
+                       "it had none, or when nothing was removed."
+        ),
+        _required: %w[removed news_copy]
+      ),
+      NewsCopy: obj(
+        message_id: str(example: "1500000000000000005", description: "The News Copy's Discord message id."),
+        thread_id: str(example: "1600000000000000006",
+          description: "The id of the News Category's thread the News Copy is posted in."),
+        _required: %w[message_id thread_id]
       ),
       NewsItemLink: obj(
         url: str(example: "https://example.test/news/story", description: "The link's address (http or https)."),
@@ -1127,8 +1159,8 @@ module OpenapiSchemas
       # NewsImportItemResource: an unsorted imported News Item, as the
       # download file lists it for a classifier.
       NewsImportItem: obj(
-        message_id: str(example: "1300000000000000003", description: "The archived Discord message's snowflake."),
-        posted_at: ts.merge(description: "When the message was posted in the Game News Archive."),
+        message_id: str(example: "1300000000000000003", description: "The imported Discord message's snowflake."),
+        posted_at: ts.merge(description: "When the message was posted in the News Channel."),
         author_name: str(description: "The member's current name when they have a member record; otherwise " \
                                       "the name recorded with the message."),
         comment: str(nullable: true, description: "The member's own words; null when there are none."),
@@ -1140,31 +1172,26 @@ module OpenapiSchemas
         _required: %w[message_id posted_at author_name comment link_url link_title link_site_name
                       link_description image_count]
       ),
-      NewsImportBatchResult: obj(
-        created: int.merge(description: "Messages recorded as new imported News Items."),
-        updated: int.merge(description: "Messages already recorded, updated in place (an assigned News " \
-                                        "Category is kept)."),
-        previously_removed: int.merge(description: "Messages staff removed with `skip`, left out."),
-        rejected: array_of("NewsImportBatchRejection").merge(
-          description: "Messages not recorded, each with its reason. Empty when every message was recorded."
-        ),
-        _required: %w[created updated previously_removed rejected]
-      ),
-      NewsImportBatchRejection: obj(
-        index: int.merge(description: "The message's 0-based position in `items`."),
-        message_id: str(nullable: true, description: "The message id as sent; null when missing."),
-        reason: str(example: "A News Item needs a link or at least one image",
-          description: "Why it was not recorded: the News Item's validation errors, or `already recorded as " \
-                       "a live News Item`."),
-        _required: %w[index message_id reason]
-      ),
       NewsImportAssignResult: obj(
         assigned: int.merge(description: "Rows that assigned a News Category."),
         removed: int.merge(description: "`skip` rows (including items already removed by an earlier `skip`)."),
         rejected: int.merge(description: "Rows rejected; listed in `rejections`."),
         unsorted: int.merge(description: "Imported News Items still unsorted after this request."),
         rejections: array_of("NewsImportAssignRejection").merge(description: "The rejected rows, in order."),
-        _required: %w[assigned removed rejected unsorted rejections]
+        moved: array_of("NewsImportMove").merge(
+          description: "The items whose News Category this request changed and that have a News Copy, in row " \
+                       "order: the bot moves each copy to the new category's thread. A first assignment to an " \
+                       "unsorted item is never listed (it has no News Copy)."
+        ),
+        _required: %w[assigned removed rejected unsorted rejections moved]
+      ),
+      NewsImportMove: obj(
+        message_id: str(example: "1300000000000000003", description: "The News Item's message snowflake."),
+        category_key: str(enum: NewsCategory.keys, description: "The News Category it now has."),
+        previous_category_key: str(enum: NewsCategory.keys, description: "The News Category it had before."),
+        news_copy: ref("NewsCopy").merge(description: "Where its News Copy lives now, in the previous " \
+                                                      "category's thread."),
+        _required: %w[message_id category_key previous_category_key news_copy]
       ),
       NewsImportAssignRejection: obj(
         index: int.merge(description: "The row's 0-based position in `rows`."),
@@ -1179,12 +1206,12 @@ module OpenapiSchemas
       NewsImportStatus: obj(
         sorted: int.merge(description: "Imported News Items with a News Category (shown to members)."),
         unsorted: int.merge(description: "Imported News Items with no News Category yet (hidden)."),
-        removed: int.merge(description: "Archive messages staff removed with `skip`."),
-        oldest_message_id: str(nullable: true, example: "1300000000000000003",
-          description: "The oldest archive message imported so far (by snowflake), kept or removed with " \
-                       "`skip`; null before any. The archive is locked and the scan reads it newest first, " \
-                       "so a re-run scan continues from just before this message."),
-        _required: %w[sorted unsorted removed oldest_message_id]
+        removed: int.merge(description: "Imported News Items staff removed with `skip`."),
+        copied: int.merge(description: "News Items, live and imported, that have a News Copy."),
+        uncopied: int.merge(description: "News Items, live and imported, that have a News Category but no " \
+                                         "News Copy yet: what the history copy has left (see " \
+                                         "`GET /api/v1/news_items/uncopied`). Unsorted items are not counted."),
+        _required: %w[sorted unsorted removed copied uncopied]
       ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,

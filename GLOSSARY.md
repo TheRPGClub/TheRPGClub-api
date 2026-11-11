@@ -117,22 +117,26 @@ _Avoid_: Feature flag, setting, opt-out
 The Feature that gathers the game news members post in Discord into one place on the website, where members filter it by News Category.
 _Avoid_: News feed, news page, game news (when meaning the Feature)
 
+**News Channel**:
+The single Discord channel where members share game news, and where discussion of a piece of news happens in a thread on the member's message.
+_Avoid_: Game news channel, main channel, feed, Game News Archive (retired: the News Channel is the same channel, reopened)
+
 **News Item**:
-A message a member posted in a News Category's thread that carries a link, an image, or both. A member's text alongside it is their comment on the news. Messages with text only, and messages posted by a bot, are never News Items.
+A message a member posted in the News Channel that carries a link, an image, or both, or one the bot posted there for a member who shared news through the bot. A member's text alongside it is their comment on the news. Messages with text only, and messages a bot posts on its own account, are never News Items.
 _Avoid_: Article, post, story, news (as a countable noun)
 
 **News Category**:
-One of the fixed kinds of news the club sorts News Items into. Every News Item shown on the News Hub belongs to exactly one News Category: the one whose thread it was posted in, or the one staff assigned during the News Import.
+One of the fixed kinds of news the club sorts News Items into. Every News Item belongs to exactly one News Category, which the bot picks when the item is posted (or staff assigned during the News Import) and which can be corrected afterwards.
 _Avoid_: Tag, topic, thread (when meaning the kind of news)
+
+**News Copy**:
+The bot's copy of a News Item in the thread of the item's News Category. It links back to the News Item, where discussion happens, and follows it when the item is edited, deleted or moved to another category. A News Copy is never a News Item.
+_Avoid_: Repost, mirror, crosspost
 
 **News Category Preference**:
 A member's choice to leave a News Category out of their own default view of the News Hub. It affects only the website, and never stops the member from viewing that category when they ask for it.
 _Avoid_: Mute, unfollow, filter (when meaning the saved choice)
 
-**Game News Archive**:
-The original single game news channel, locked and kept readable once the News Hub replaces it.
-_Avoid_: Old channel, legacy channel
-
 **News Import**:
-The one-time move of the Game News Archive's messages into the News Hub as News Items, each keeping its original author and date. An imported News Item stays hidden until staff assign its News Category.
+The one-time move of the messages posted in the News Channel before the News Hub launched into the News Hub as News Items, each keeping its original author and date. An imported News Item stays hidden until staff assign its News Category.
 _Avoid_: Backfill (that is the Achievement Hub's term), migration, re-post

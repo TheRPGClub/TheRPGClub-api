@@ -3,16 +3,15 @@
 module Api
   module V1
     # The News Import (GLOSSARY.md, "News Hub"; spec #355, ticket #359):
-    # bringing the Game News Archive's history into the News Hub, hidden until
-    # staff sort it.
+    # the messages posted in the News Channel before the News Hub launched,
+    # brought in as imported News Items, hidden until staff sort them.
     #
-    # The bot scans the archive and records its messages in batches with the
-    # service token (`record`). Staff then work through the bot: list the
-    # unsorted imported News Items (`unsorted`), assign News Categories or
-    # remove items with `skip` (`assign`), and read the counts (`status`).
-    # Those three require the acting member to be an Admin or Superadmin,
-    # decided here from the acting member the bot names (`acting_user_id`),
-    # as the Feature Flag endpoints do.
+    # Staff work through the bot: list the unsorted imported News Items
+    # (`unsorted`), assign News Categories or remove items with `skip`
+    # (`assign`), and read the counts (`status`). Each requires the acting
+    # member to be an Admin or Superadmin, decided from the member the bot
+    # names (`acting_user_id`), as the Feature Flag endpoints do
+    # (ActingMember).
     #
     # The News Import works for Admins and Superadmins while the News Hub is
     # Preview or Live, and for nobody while it is Off (docs/adr/0005: Off
@@ -20,18 +19,11 @@ module Api
     # signed-in callers away while Off; the service token is never gated, so
     # the bot refuses its /news-import commands itself while Off.
     class NewsImportController < ApplicationController
+      include ActingMember
+
       feature :news_hub
 
-      before_action :require_service!, only: :record
-      before_action :require_import_staff!, except: :record
-
-      # POST /api/v1/news_import/items
-      # Body: { "data": { "items": [ { "message_id": "...", ...News Item fields } ] } }
-      def record
-        render json: { data: NewsImport::RecordBatch.call(batch_items) }
-      rescue NewsImport::RecordBatch::TooLarge => error
-        render json: { error: error.message }, status: :unprocessable_content
-      end
+      before_action :require_acting_staff!
 
       # GET /api/v1/news_import/items?acting_user_id=&page=&per=
       #
@@ -61,39 +53,6 @@ module Api
       end
 
       private
-
-      # The member the request acts for, by Discord user id: the session's
-      # member, or the bot's named acting user (a query parameter on reads,
-      # `data.acting_user_id` on writes).
-      def acting_user_id
-        @acting_user_id ||=
-          if current_principal.service?
-            (request.get? ? params[:acting_user_id] : params.dig(:data, :acting_user_id)).presence&.to_s
-          else
-            current_principal.id.to_s
-          end
-      end
-
-      # Admins and Superadmins only. The bot's service token is not enough:
-      # the acting member's stored roles decide. (Whether the News Hub is Off
-      # is the feature gate's call, and the bot's.)
-      def require_import_staff!
-        return require_admin_or_above! unless current_principal.service?
-        return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?
-
-        gate_or_forbid(Features::Access.staff_member?(RpgClubUser.without_images.find_by(user_id: acting_user_id)))
-      end
-
-      def batch_items
-        data = params.require(:data)
-        raise ActionController::ParameterMissing, "data (object)" unless data.respond_to?(:permit)
-
-        items = data.permit(items: [ :message_id, :channel_id, :author_id, :author_name, :comment, :posted_at,
-          :edited_at, { link: NewsItem::LINK_FIELDS, images: %i[url expires_at] } ])[:items]
-        raise ActionController::ParameterMissing, "data.items (array)" unless items.is_a?(Array)
-
-        items.map(&:to_h)
-      end
 
       def assignment_rows
         rows = params.require(:data).permit(rows: %i[message_id value])[:rows]
