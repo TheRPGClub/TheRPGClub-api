@@ -6,7 +6,11 @@
 # message again updates it (NewsItem.record!), and removal is a hard delete.
 #
 # The bot picks the News Category when the item is posted (docs/adr/0007)
-# and keeps the pick in `picked_category_key`. The category may be empty
+# and keeps the pick in `picked_category_key`. The author or staff may
+# change the category afterwards (change_category!, ticket #369), which
+# records who changed it last and when (`category_changed_by`,
+# `category_changed_at`) and leaves the pick as it was, so the bot's misses
+# can be listed to refresh its rules. The category may be empty
 # only for an imported News Item (`origin` "import") that staff have not
 # sorted yet, and such an item is never shown to members (`listed`).
 #
@@ -131,6 +135,20 @@ class NewsItem < ApplicationRecord
     copy = @news_copy_malformed || copy.nil? ? {} : copy.stringify_keys
     self.news_copy_message_id = copy["message_id"].to_s.strip.presence
     self.news_copy_thread_id = copy["thread_id"].to_s.strip.presence
+  end
+
+  # Changes the News Category to `key` for the member `by` (a Discord user
+  # id; the API checked they may), recording who changed it and when. The
+  # bot's first pick (`picked_category_key`) and the News Copy's location
+  # are left as they are: the bot moves the copy and reports it. Returns
+  # false, changing nothing, when the item is already in that category.
+  # Raises ActiveRecord::RecordInvalid for a key that is not a News Category.
+  def change_category!(key, by:)
+    with_lock do
+      changed = category_key != key
+      update!(category_key: key, category_changed_by: by, category_changed_at: Time.current) if changed
+      changed
+    end
   end
 
   # Where the News Copy lives, { message_id, thread_id }, or nil for none.
