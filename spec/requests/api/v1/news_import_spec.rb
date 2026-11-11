@@ -35,104 +35,6 @@ RSpec.describe 'api/v1/news_import', type: :request do
   end
 
   path '/api/v1/news_import/items' do
-    post 'Record a batch of archived messages' do
-      tags 'News Hub'
-      description 'Service-only. The News Import scan sends the Game News Archive\'s qualifying messages (by a ' \
-                  'member, not a bot, with a link, an image attachment, or both) in batches of up to 100. Each ' \
-                  'becomes an imported News Item (origin `import`) with no News Category, hidden from members ' \
-                  'until staff assign one. Safe to repeat: a message already recorded is updated in place and ' \
-                  'keeps any News Category staff assigned; a message staff removed with `skip` is left out ' \
-                  '(`previously_removed`) and never comes back. Each message stands alone: one that is not a ' \
-                  'valid News Item, or is already a live News Item, is listed in `rejected` with its reason and ' \
-                  'the rest are still recorded. The fields are those of `PUT /api/v1/news_items/{message_id}` ' \
-                  'plus `message_id`, without `category_key`. The service token is not gated; the bot runs the ' \
-                  'scan only for an Admin or Superadmin while the News Hub is Preview or Live (nobody imports ' \
-                  'while it is Off).'
-      consumes 'application/json'
-      produces 'application/json'
-
-      parameter name: :body, in: :body, required: true, schema: {
-        type: :object,
-        properties: {
-          data: {
-            type: :object,
-            properties: {
-              items: {
-                type: :array, maxItems: 100,
-                items: {
-                  type: :object,
-                  properties: {
-                    message_id: { type: :string, description: "The archived message's snowflake. Required." },
-                    channel_id: { type: :string, description: "The Game News Archive's channel id. Required." },
-                    author_id: { type: :string, description: "The author's Discord user id. Required." },
-                    author_name: { type: :string, maxLength: 100,
-                                   description: "The author's display name now (for a member who left, the " \
-                                                'name Discord still shows). Required.' },
-                    comment: { type: :string, nullable: true,
-                               description: 'The message text as a reader sees it, without the link address.' },
-                    posted_at: { type: :string, format: 'date-time',
-                                 description: 'When it was originally posted. Required.' },
-                    edited_at: { type: :string, format: 'date-time', nullable: true },
-                    link: {
-                      type: :object, nullable: true,
-                      description: "The message's first link and Discord's preview of it; null for none.",
-                      properties: {
-                        url: { type: :string },
-                        title: { type: :string, nullable: true },
-                        site_name: { type: :string, nullable: true },
-                        description: { type: :string, nullable: true },
-                        image_url: { type: :string, nullable: true }
-                      },
-                      required: %w[url]
-                    },
-                    images: {
-                      type: :array,
-                      description: 'Every image attachment, in order, with its Discord address and expiry.',
-                      items: {
-                        type: :object,
-                        properties: {
-                          url: { type: :string },
-                          expires_at: { type: :string, format: 'date-time', nullable: true,
-                                        description: "When that address expires (the `ex` parameter of " \
-                                                     "Discord's signed URL); null when the address has no " \
-                                                     '`ex` parameter, so it does not expire.' }
-                        },
-                        required: %w[url expires_at]
-                      }
-                    }
-                  },
-                  required: %w[message_id channel_id author_id author_name posted_at]
-                }
-              }
-            },
-            required: %w[items]
-          }
-        },
-        required: %w[data]
-      }
-
-      response '200', 'the batch was applied; counts and per-message rejections' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/NewsImportBatchResult' } },
-          required: %w[data]
-      end
-
-      response '400', 'missing `data.items`' do
-        schema '$ref' => '#/components/schemas/Error'
-      end
-
-      response '422', 'more than 100 items, `{ "error": "at most 100 items per batch" }`; nothing was recorded' do
-        schema '$ref' => '#/components/schemas/Error'
-      end
-
-      response '403', 'forbidden - caller is not the service principal' do
-        schema '$ref' => '#/components/schemas/Error'
-      end
-
-      response '401', 'unauthenticated' do
-        schema '$ref' => '#/components/schemas/Error'
-      end
-    end
-
     get 'List the unsorted imported News Items' do
       tags 'News Hub'
       description 'The imported News Items staff have not assigned a News Category yet, oldest first ' \
@@ -159,7 +61,7 @@ RSpec.describe 'api/v1/news_import', type: :request do
       description 'Applies a reviewed list of rows, each a message id and a value. A News Category key ' \
                   "(#{NewsCategory.keys.join(', ')}) assigns it, which shows the item to members with its " \
                   'original author and date; assigning again changes it. `skip` deletes the item and remembers ' \
-                  'the removal, so a later scan never brings it back; `skip` for an item already removed counts ' \
+                  'the removal (counted in `removed`); `skip` for an item already removed counts ' \
                   'as removed again, so the same file can be applied twice. Values ignore case and surrounding ' \
                   'spaces. Applies to imported News Items only. Each bad row is listed in `rejections` with its ' \
                   'reason and does not stop the others: a missing or repeated message id (every occurrence is ' \
@@ -216,8 +118,7 @@ RSpec.describe 'api/v1/news_import', type: :request do
     get 'News Import counts' do
       tags 'News Hub'
       description "How many imported News Items are sorted and unsorted, how many archive messages staff " \
-                  "removed with `skip`, the oldest message imported so far (`oldest_message_id`), where " \
-                  "a re-run scan continues, and for the history copy how many News Items have a News Copy " \
+                  "removed with `skip`, and for the history copy how many News Items have a News Copy " \
                   "(`copied`) and how many with a News Category still have none (`uncopied`). #{staff}"
       produces 'application/json'
       instance_exec(&acting_query)

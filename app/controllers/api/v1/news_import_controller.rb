@@ -6,13 +6,13 @@ module Api
     # bringing the Game News Archive's history into the News Hub, hidden until
     # staff sort it.
     #
-    # The bot scans the archive and records its messages in batches with the
-    # service token (`record`). Staff then work through the bot: list the
-    # unsorted imported News Items (`unsorted`), assign News Categories or
-    # remove items with `skip` (`assign`), and read the counts (`status`).
-    # Those three require the acting member to be an Admin or Superadmin,
-    # decided here from the acting member the bot names (`acting_user_id`),
-    # as the Feature Flag endpoints do.
+    # The bot's scan recorded the archive's messages as imported News Items;
+    # it and its batch endpoint are gone (ticket #370). Staff work through
+    # the bot: list the unsorted imported News Items (`unsorted`), assign
+    # News Categories or remove items with `skip` (`assign`), and read the
+    # counts (`status`). Each requires the acting member to be an Admin or
+    # Superadmin, decided here from the acting member the bot names
+    # (`acting_user_id`), as the Feature Flag endpoints do.
     #
     # The News Import works for Admins and Superadmins while the News Hub is
     # Preview or Live, and for nobody while it is Off (docs/adr/0005: Off
@@ -22,16 +22,7 @@ module Api
     class NewsImportController < ApplicationController
       feature :news_hub
 
-      before_action :require_service!, only: :record
-      before_action :require_import_staff!, except: :record
-
-      # POST /api/v1/news_import/items
-      # Body: { "data": { "items": [ { "message_id": "...", ...News Item fields } ] } }
-      def record
-        render json: { data: NewsImport::RecordBatch.call(batch_items) }
-      rescue NewsImport::RecordBatch::TooLarge => error
-        render json: { error: error.message }, status: :unprocessable_content
-      end
+      before_action :require_import_staff!
 
       # GET /api/v1/news_import/items?acting_user_id=&page=&per=
       #
@@ -82,17 +73,6 @@ module Api
         return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?
 
         gate_or_forbid(Features::Access.staff_member?(RpgClubUser.without_images.find_by(user_id: acting_user_id)))
-      end
-
-      def batch_items
-        data = params.require(:data)
-        raise ActionController::ParameterMissing, "data (object)" unless data.respond_to?(:permit)
-
-        items = data.permit(items: [ :message_id, :channel_id, :author_id, :author_name, :comment, :posted_at,
-          :edited_at, { link: NewsItem::LINK_FIELDS, images: %i[url expires_at] } ])[:items]
-        raise ActionController::ParameterMissing, "data.items (array)" unless items.is_a?(Array)
-
-        items.map(&:to_h)
       end
 
       def assignment_rows
