@@ -214,8 +214,9 @@ RSpec.describe 'api/v1/news_import', type: :request do
     get 'News Import counts' do
       tags 'News Hub'
       description "How many imported News Items are sorted and unsorted, how many archive messages staff " \
-                  "removed with `skip`, and the oldest message imported so far (`oldest_message_id`), where " \
-                  "a re-run scan continues. #{staff}"
+                  "removed with `skip`, the oldest message imported so far (`oldest_message_id`), where " \
+                  "a re-run scan continues, and for the history copy how many News Items have a News Copy " \
+                  "(`copied`) and how many with a News Category still have none (`uncopied`). #{staff}"
       produces 'application/json'
       instance_exec(&acting_query)
 

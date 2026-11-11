@@ -69,7 +69,9 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
         "images" => [
           { "url" => "https://cdn.discordapp.com/attachments/1/2/shot.png?ex=1", "unavailable" => false }
         ],
-        "author" => { "user_id" => "2200000000000000002", "name" => "Ada", "member" => false }
+        "author" => { "user_id" => "2200000000000000002", "name" => "Ada", "member" => false },
+        "picked_category_key" => nil,
+        "news_copy" => nil
       )
       expect(feed_ids).to eq([ "3300000000000000003" ])
     end
@@ -90,6 +92,107 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
       expect(data.size).to eq(1)
       expect(data.first.dig("link", "title")).to eq("A")
       expect(feed.dig("meta", "count")).to eq(1)
+    end
+
+    describe "the News Channel's picked category and News Copy (ticket #368)" do
+      let(:copy) { { message_id: "5500000000000000005", thread_id: "6600000000000000006" } }
+
+      it "stores the category the bot picked and where the News Copy lives" do
+        record("3300000000000000003", picked_category_key: "rumours", category_key: "rumours", news_copy: copy)
+
+        expect(response).to have_http_status(:created)
+        expect(json.fetch("data")).to include(
+          "category_key" => "rumours", "picked_category_key" => "rumours",
+          "news_copy" => { "message_id" => "5500000000000000005", "thread_id" => "6600000000000000006" }
+        )
+      end
+
+      it "leaves the stored picked category and News Copy alone when a recording omits them" do
+        record("3300000000000000003", picked_category_key: "rumours", category_key: "rumours", news_copy: copy)
+
+        record("3300000000000000003", category_key: "rumours", comment: "Edited")
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include(
+          "comment" => "Edited", "picked_category_key" => "rumours",
+          "news_copy" => { "message_id" => "5500000000000000005", "thread_id" => "6600000000000000006" }
+        )
+      end
+
+      it "keeps the stored News Category when an update omits it, so an edit need not know a correction" do
+        record("3300000000000000003", category_key: "industry")
+        payload = item_payload(comment: "Edited").except(:category_key)
+
+        put "/api/v1/news_items/3300000000000000003", headers: service_headers, as: :json, params: { data: payload }
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("category_key" => "industry", "comment" => "Edited")
+      end
+
+      it "still needs a News Category to record a new live News Item" do
+        put "/api/v1/news_items/3300000000000000003", headers: service_headers, as: :json,
+          params: { data: item_payload.except(:category_key) }
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it "forgets the News Copy when the bot reports none" do
+        record("3300000000000000003", news_copy: copy)
+
+        record("3300000000000000003", news_copy: nil)
+
+        expect(response).to have_http_status(:ok)
+        expect(json.dig("data", "news_copy")).to be_nil
+      end
+
+      it "records only a News Copy's location on an existing News Item, changing nothing else" do
+        record("3300000000000000003", picked_category_key: "releases", edited_at: "2026-11-09T19:00:00Z")
+        before = json.fetch("data")
+
+        put "/api/v1/news_items/3300000000000000003", headers: service_headers, as: :json,
+          params: { data: { news_copy: copy } }
+
+        expect(response).to have_http_status(:ok)
+        after = json.fetch("data")
+        expect(after).to eq(before.merge(
+          "news_copy" => { "message_id" => "5500000000000000005", "thread_id" => "6600000000000000006" }
+        ))
+        expect(feed.fetch("data")).to eq([ after ])
+      end
+
+      it "records a News Copy's location on an imported News Item, which keeps its staff-assigned category" do
+        create(:news_item, message_id: "3300000000000000003", origin: "import", category_key: "industry")
+
+        put "/api/v1/news_items/3300000000000000003", headers: service_headers, as: :json,
+          params: { data: { news_copy: copy } }
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("origin" => "import", "category_key" => "industry",
+          "news_copy" => { "message_id" => "5500000000000000005", "thread_id" => "6600000000000000006" })
+      end
+
+      it "is not found when only a News Copy is reported for a message never recorded" do
+        put "/api/v1/news_items/3300000000000000003", headers: service_headers, as: :json,
+          params: { data: { news_copy: copy } }
+
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it "rejects a News Copy location that is not two Discord ids" do
+        record("3300000000000000003", news_copy: { message_id: "5500000000000000005" })
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to match(/news copy/i)
+
+        record("3300000000000000003", news_copy: { message_id: "abc", thread_id: "6600000000000000006" })
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it "rejects an unknown picked category" do
+        record("3300000000000000003", picked_category_key: "piracy")
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to match(/picked category/i)
+      end
     end
 
     it "records an image-only News Item and keeps its images in order" do
@@ -361,6 +464,69 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
       get "/api/v1/news_items"
 
       expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "GET /api/v1/news_items/uncopied (ticket #368)" do
+    def uncopied(params = {})
+      get "/api/v1/news_items/uncopied", params: params, headers: service_headers
+      expect(response).to have_http_status(:ok)
+      json
+    end
+
+    def uncopied_ids(params = {}) = uncopied(params).fetch("data").map { |item| item.fetch("message_id") }
+
+    it "lists the News Items with a News Category but no News Copy, oldest first, live and imported alike" do
+      record("3300000000000000003", posted_at: "2026-11-03T10:00:00Z")
+      record("3300000000000000001", posted_at: "2026-11-01T10:00:00Z",
+        news_copy: { message_id: "5500000000000000005", thread_id: "6600000000000000006" })
+      create(:news_item, message_id: "3300000000000000002", origin: "import", category_key: "industry",
+        posted_at: Time.utc(2021, 5, 4, 12))
+      create(:news_item, message_id: "3300000000000000004", origin: "import", category_key: nil,
+        posted_at: Time.utc(2020, 1, 1))
+
+      expect(uncopied_ids).to eq(%w[3300000000000000002 3300000000000000003])
+      expect(uncopied.dig("meta", "count")).to eq(2)
+      expect(uncopied.fetch("data").first).to include("origin" => "import", "category_key" => "industry",
+        "posted_at" => "2021-05-04T12:00:00.000Z", "news_copy" => nil)
+    end
+
+    it "pages the standard way, keeping posting order for items posted at the same time" do
+      5.times { |i| record("330000000000000000#{i}", posted_at: "2026-11-0#{i + 1}T10:00:00Z") }
+      record("3300000000000000009", posted_at: "2026-11-01T10:00:00Z")
+
+      body = uncopied(page: 2, per: 2)
+
+      expect(body.fetch("data").map { |item| item["message_id"] }).to eq(%w[3300000000000000001 3300000000000000002])
+      expect(body.fetch("meta")).to include("page" => 2, "pages" => 3, "count" => 6, "per" => 2)
+      expect(uncopied_ids(per: 2)).to eq(%w[3300000000000000000 3300000000000000009])
+    end
+
+    it "drops an item once its News Copy is reported, and lists it again when the copy is gone" do
+      record("3300000000000000001")
+      copy = { message_id: "5500000000000000005", thread_id: "6600000000000000006" }
+
+      put "/api/v1/news_items/3300000000000000001", headers: service_headers, as: :json,
+        params: { data: { news_copy: copy } }
+      expect(uncopied_ids).to eq([])
+
+      put "/api/v1/news_items/3300000000000000001", headers: service_headers, as: :json,
+        params: { data: { news_copy: nil } }
+      expect(uncopied_ids).to eq(%w[3300000000000000001])
+    end
+
+    it "answers the bot while the News Hub is Off" do
+      set_feature_flag("news_hub", "off")
+      record("3300000000000000001")
+
+      expect(uncopied_ids).to eq(%w[3300000000000000001])
+    end
+
+    it "is service-only" do
+      [ member, create(:user, :admin) ].each do |user|
+        get "/api/v1/news_items/uncopied", headers: auth_headers_for(user)
+        expect(response).to have_http_status(:forbidden)
+      end
     end
   end
 

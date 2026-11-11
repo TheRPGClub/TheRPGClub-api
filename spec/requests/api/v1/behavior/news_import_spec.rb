@@ -331,6 +331,19 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       expect(json.fetch("data")).to include("sorted" => 1, "unsorted" => 2, "removed" => 1)
     end
 
+    it "counts the News Items with a News Copy and those members may see that have none yet (ticket #368)" do
+      create(:news_item, :copied, origin: "live")
+      create(:news_item, :copied, origin: "import", category_key: "industry")
+      create(:news_item, origin: "live")
+      create(:news_item, origin: "import", category_key: "general")
+      create(:news_item, origin: "import", category_key: nil)
+
+      get "/api/v1/news_import/status", params: { acting_user_id: admin.user_id }, headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("copied" => 2, "uncopied" => 2, "sorted" => 2, "unsorted" => 1)
+    end
+
     def oldest_message_id
       get "/api/v1/news_import/status", params: { acting_user_id: admin.user_id }, headers: service_headers
       expect(response).to have_http_status(:ok)

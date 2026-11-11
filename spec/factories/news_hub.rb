@@ -12,6 +12,12 @@ FactoryBot.define do
     origin { "live" }
     posted_at { Time.current }
     link_url { "https://example.test/news/#{SecureRandom.hex(4)}" }
+
+    # With a News Copy in its News Category's thread (ticket #368).
+    trait :copied do
+      news_copy_message_id { SecureRandom.random_number(10**18).to_s }
+      news_copy_thread_id { SecureRandom.random_number(10**18).to_s }
+    end
   end
 
   factory :member_news_category_preference do

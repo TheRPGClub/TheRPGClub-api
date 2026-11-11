@@ -12,7 +12,11 @@
 class NewsItemResource
   include BaseResource
 
-  attributes :message_id, :category_key, :origin, :comment, :posted_at, :edited_at, :link
+  # `picked_category_key` is the category the bot first picked (ticket #368),
+  # null when it picked none; `news_copy` is where the News Copy lives,
+  # { message_id, thread_id }, or null for none.
+  attributes :message_id, :category_key, :origin, :comment, :posted_at, :edited_at, :link,
+    :picked_category_key, :news_copy
 
   attribute :images do |item|
     now = params[:now] || Time.current

@@ -3540,8 +3540,28 @@ components:
           enum:
           - live
           - import
-          description: 'live: recorded from a News Category''s thread. import: brought
-            in from the Game News Archive by the News Import.'
+          description: 'live: recorded from the News Channel as it was posted. import:
+            brought in by the News Import from before the News Hub.'
+        picked_category_key:
+          type: string
+          nullable: true
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category the bot first picked for it, kept when the
+            category is corrected; null when the bot reported none (imported News
+            Items, and items recorded before the News Channel).
+        news_copy:
+          allOf:
+          - "$ref": "#/components/schemas/NewsCopy"
+          nullable: true
+          description: Where the News Copy (the bot's copy in the News Category's
+            thread) lives; null while the News Item has none.
         comment:
           type: string
           nullable: true
@@ -3580,6 +3600,23 @@ components:
       - link
       - images
       - author
+      - picked_category_key
+      - news_copy
+    NewsCopy:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: '1500000000000000005'
+          description: The News Copy's Discord message id.
+        thread_id:
+          type: string
+          example: '1600000000000000006'
+          description: The id of the News Category's thread the News Copy is posted
+            in.
+      required:
+      - message_id
+      - thread_id
     NewsItemLink:
       type: object
       properties:
@@ -3807,11 +3844,21 @@ components:
             kept or removed with `skip`; null before any. The archive is locked and
             the scan reads it newest first, so a re-run scan continues from just before
             this message.
+        copied:
+          type: integer
+          description: News Items, live and imported, that have a News Copy.
+        uncopied:
+          type: integer
+          description: 'News Items, live and imported, that have a News Category but
+            no News Copy yet: what the history copy has left (see `GET /api/v1/news_items/uncopied`).
+            Unsorted items are not counted.'
       required:
       - sorted
       - unsorted
       - removed
       - oldest_message_id
+      - copied
+      - uncopied
     SearchSynonym:
       type: object
       properties:
@@ -15729,12 +15776,14 @@ paths:
       tags:
       - News Hub
       description: 'How many imported News Items are sorted and unsorted, how many
-        archive messages staff removed with `skip`, and the oldest message imported
-        so far (`oldest_message_id`), where a re-run scan continues. The News Import
-        works for Admins and Superadmins while the News Hub is Preview or Live, and
-        for nobody while it is Off. A signed-in member is checked by their own roles;
-        the bot calls with the service token and names the acting Discord user (`acting_user_id`),
-        and the same rule applies to that member''s stored roles: 400 `acting_user_id
+        archive messages staff removed with `skip`, the oldest message imported so
+        far (`oldest_message_id`), where a re-run scan continues, and for the history
+        copy how many News Items have a News Copy (`copied`) and how many with a News
+        Category still have none (`uncopied`). The News Import works for Admins and
+        Superadmins while the News Hub is Preview or Live, and for nobody while it
+        is Off. A signed-in member is checked by their own roles; the bot calls with
+        the service token and names the acting Discord user (`acting_user_id`), and
+        the same rule applies to that member''s stored roles: 400 `acting_user_id
         required` without one, 403 when they are not an Admin or Superadmin or have
         no member record. While Off, the News Hub Feature gate answers a signed-in
         caller 404; the service token is not gated, so the bot refuses its /news-import
@@ -15878,6 +15927,63 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/news_items/uncopied":
+    get:
+      summary: News Items without a News Copy
+      tags:
+      - News Hub
+      description: 'Service-only. The News Items that have a News Category but no
+        News Copy yet, live and imported alike, oldest first (`posted_at` ascending,
+        then the order they were recorded), paged with `page`/`per`. The bot''s history
+        copy and its retries of failed copies work through them, reporting each copy
+        with `PUT /api/v1/news_items/{message_id}` and `{ "data": { "news_copy": {
+        ... } } }`; a reported item leaves the listing, so a run that copies as it
+        goes reads the first page again rather than the next. Imported News Items
+        staff have not sorted are left out. Answers whatever the Feature Flag says.'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: a page of News Items without a News Copy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsItem"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '403':
+          description: forbidden - caller is not the service principal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/news_items/{message_id}":
     parameters:
     - name: message_id
@@ -15891,16 +15997,22 @@ paths:
       tags:
       - News Hub
       description: 'Service-only. The bot records a Discord message that is a News
-        Item (posted by a member in a News Category''s thread, with a link, an image
-        attachment, or both) when it is posted and again whenever it is edited, including
-        when Discord delivers the link preview a moment later. Creates the News Item
-        (201) or updates the one with this message id (200), so repeating a call changes
-        nothing. Every field is replaced by what is sent: send the whole message each
-        time. A new News Item has origin `live`. An imported News Item (origin `import`)
-        keeps its origin and the News Category staff assigned it; `category_key` is
-        ignored for it and may be omitted. A message with neither a link nor an image
-        is not a News Item and is refused (422): when an edit removes them, DELETE
-        the News Item instead. Recording works whatever the Feature Flag says.'
+        Item (posted in the News Channel with a link, an image attachment, or both)
+        when it is posted and again whenever it is edited, including when Discord
+        delivers the link preview a moment later. Creates the News Item (201) or updates
+        the one with this message id (200), so repeating a call changes nothing. The
+        message fields are replaced by what is sent: send the whole message each time.
+        `category_key`, `picked_category_key` and `news_copy` keep their stored values
+        when omitted on an update (send `news_copy: null` to record that the News
+        Copy is gone); a new live News Item needs `category_key`. A new News Item
+        has origin `live`. An imported News Item (origin `import`) keeps its origin
+        and the News Category staff assigned it; `category_key` is ignored for it
+        and may be omitted. A message with neither a link nor an image is not a News
+        Item and is refused (422): when an edit removes them, DELETE the News Item
+        instead. A body holding only `news_copy` reports where the News Copy of a
+        recorded News Item (live or imported) lives and changes nothing else (200,
+        or 404 when the message was never recorded). Recording works whatever the
+        Feature Flag says.'
       parameters: []
       responses:
         '201':
@@ -15931,9 +16043,17 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '404':
+          description: only `news_copy` was sent and no News Item has this message
+            id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '422':
           description: not a News Item (no link and no image), an unknown or missing
-            News Category, or an invalid field
+            News Category, an unknown picked category, a `news_copy` without both
+            ids, or an invalid field
           content:
             application/json:
               schema:
@@ -15961,7 +16081,8 @@ paths:
                   properties:
                     channel_id:
                       type: string
-                      description: The thread's (channel's) snowflake. Required.
+                      description: The channel's snowflake. Required unless only `news_copy`
+                        is sent.
                     category_key:
                       type: string
                       enum:
@@ -15973,17 +16094,50 @@ paths:
                       - rumours
                       - general
                       nullable: true
-                      description: The News Category of the thread the message is
-                        in. Required for a live News Item; ignored for an imported
-                        one.
+                      description: The News Item's News Category. Required for a new
+                        live News Item; kept when omitted on an update; ignored for
+                        an imported one.
+                    picked_category_key:
+                      type: string
+                      enum:
+                      - announcements
+                      - releases
+                      - emulation
+                      - industry
+                      - hardware
+                      - rumours
+                      - general
+                      nullable: true
+                      description: The News Category the bot picked for the message.
+                        Optional; kept when omitted.
+                    news_copy:
+                      type: object
+                      nullable: true
+                      description: Where the News Copy lives, once the bot has posted
+                        it. Optional; kept when omitted; null records that the News
+                        Item has no News Copy. Sent alone, it reports the location
+                        without changing anything else.
+                      properties:
+                        message_id:
+                          type: string
+                          description: The News Copy's Discord message id.
+                        thread_id:
+                          type: string
+                          description: The id of the News Category's thread it is
+                            in.
+                      required:
+                      - message_id
+                      - thread_id
                     author_id:
                       type: string
-                      description: The author's Discord user id. Required.
+                      description: The author's Discord user id. Required unless only
+                        `news_copy` is sent.
                     author_name:
                       type: string
                       maxLength: 100
                       description: The author's display name now, kept as the name
-                        to show if they have no member record. Required.
+                        to show if they have no member record. Required unless only
+                        `news_copy` is sent.
                     comment:
                       type: string
                       nullable: true
@@ -15993,7 +16147,8 @@ paths:
                     posted_at:
                       type: string
                       format: date-time
-                      description: When it was posted. Required.
+                      description: When it was posted. Required unless only `news_copy`
+                        is sent.
                     edited_at:
                       type: string
                       format: date-time
@@ -16046,11 +16201,8 @@ paths:
                         required:
                         - url
                         - expires_at
-                  required:
-                  - channel_id
-                  - author_id
-                  - author_name
-                  - posted_at
+                  description: The whole message (`channel_id`, `author_id`, `author_name`
+                    and `posted_at` required), or only `news_copy`.
               required:
               - data
         required: true

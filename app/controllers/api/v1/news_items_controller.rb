@@ -4,12 +4,14 @@ module Api
   module V1
     # News Items (spec #355, ticket #356). The bot records and removes them
     # with the service token as members post, edit and delete messages in the
-    # News Categories' threads; members read them as a feed. Gated by the
-    # News Hub Feature (the service token is never stopped by the gate).
+    # News Channel, reports where each News Copy lives, and lists the News
+    # Items still without one (ticket #368); members read them as a feed.
+    # Gated by the News Hub Feature (the service token is never stopped by
+    # the gate).
     class NewsItemsController < ApplicationController
       feature :news_hub
 
-      before_action :require_service!, only: %i[update destroy]
+      before_action :require_service!, only: %i[uncopied update destroy]
 
       # GET /api/v1/news_items?category=releases,industry&q=zelda&page=1&per=50
       #
@@ -46,10 +48,29 @@ module Api
         }
       end
 
+      # GET /api/v1/news_items/uncopied?page=1&per=50
+      #
+      # The News Items with a News Category but no News Copy, oldest first
+      # by posting time: the bot's history copy and its retries of failed
+      # copies work through them. Imported items staff have not sorted are
+      # left out, since a News Copy goes in its News Category's thread.
+      def uncopied
+        pagy, items = pagy(NewsItem.uncopied.order(posted_at: :asc, id: :asc), **pagy_options)
+        items = items.to_a
+
+        render json: {
+          data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items) })
+            .serializable_hash,
+          meta: pagy_meta(pagy)
+        }
+      end
+
       # PUT /api/v1/news_items/:message_id
       #
       # Records the message as a News Item (201) or updates the one already
-      # recorded (200). See NewsItem.record!.
+      # recorded (200); a payload of only `news_copy` reports where the News
+      # Copy of a recorded News Item lives (200, or 404 when none is
+      # recorded). See NewsItem.record!.
       def update
         item, created = NewsItem.record!(params[:message_id], item_params)
         render json: { data: NewsItemResource.new(item, params: { authors: NewsItemResource.authors_for([ item ]) })
@@ -71,8 +92,13 @@ module Api
         data = params.require(:data)
         raise ActionController::ParameterMissing, "data (object)" unless data.respond_to?(:permit)
 
-        data.permit(:channel_id, :category_key, :author_id, :author_name, :comment, :posted_at, :edited_at,
-          link: NewsItem::LINK_FIELDS, images: %i[url expires_at]).to_h
+        item = data.permit(:channel_id, :category_key, :picked_category_key, :author_id, :author_name, :comment,
+          :posted_at, :edited_at, link: NewsItem::LINK_FIELDS, images: %i[url expires_at],
+          news_copy: %i[message_id thread_id]).to_h
+        # A null news_copy (the item has no News Copy) is not a permitted
+        # object, so permit drops it; keep it.
+        item["news_copy"] = nil if data.key?(:news_copy) && data[:news_copy].nil?
+        item
       end
 
       # The News Categories the signed-in member switched off (their News
