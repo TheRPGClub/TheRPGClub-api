@@ -189,6 +189,20 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
+    it "drops null characters from the message's text, which PostgreSQL cannot store" do
+      record("3300000000000000003",
+        author_name: "A\u0000da", comment: "Fin\u0000ally!",
+        link: item_payload[:link].merge(title: "Elden Ring\u0000 2", description: "\u0000"),
+        images: [ { url: "https://cdn.discordapp.com/a/1/2/s.png?ex=1\u0000", expires_at: nil } ])
+
+      expect(response).to have_http_status(:created)
+      data = json.fetch("data")
+      expect(data.fetch("comment")).to eq("Finally!")
+      expect(data.fetch("author").fetch("name")).to eq("Ada")
+      expect(data.fetch("link")).to include("title" => "Elden Ring 2", "description" => nil)
+      expect(data.fetch("images")).to eq([ { "url" => "https://cdn.discordapp.com/a/1/2/s.png?ex=1", "unavailable" => false } ])
+    end
+
     it "records while the News Hub is Off, since the bot runs its own feature gate" do
       set_feature_flag("news_hub", "off")
 

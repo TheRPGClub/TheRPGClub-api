@@ -55,6 +55,14 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       expect(feed_ids).to be_empty
     end
 
+    it "records a message whose text holds a null character, dropping the character" do
+      record_batch(archived("4400000000000000001", comment: "Day\u0000 one"), archived("4400000000000000002"))
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("created" => 2, "rejected" => [])
+      expect(NewsItem.find_by!(message_id: "4400000000000000001").comment).to eq("Day one")
+    end
+
     it "updates the same imported News Items when the batch is repeated, creating no duplicates" do
       record_batch(archived("4400000000000000001"), archived("4400000000000000002"))
       record_batch(archived("4400000000000000001", comment: "Changed"), archived("4400000000000000003"))
