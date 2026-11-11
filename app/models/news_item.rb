@@ -69,8 +69,19 @@ class NewsItem < ApplicationRecord
     end
   end
 
+  # Drops the null character from every string in the bot's payload. Discord
+  # lets a member type one, and PostgreSQL text and jsonb cannot store it.
+  def self.without_null_characters(value)
+    case value
+    when String then value.delete("\u0000")
+    when Hash then value.transform_values { |inner| without_null_characters(inner) }
+    when Array then value.map { |inner| without_null_characters(inner) }
+    else value
+    end
+  end
+
   def assign_payload(attrs, origin: "live")
-    attrs = attrs.to_h.stringify_keys
+    attrs = self.class.without_null_characters(attrs.to_h.stringify_keys)
     link = attrs["link"].is_a?(Hash) ? attrs["link"].stringify_keys : {}
     assign_attributes(attrs.slice("channel_id", "author_id", "author_name", "comment", "posted_at", "edited_at"))
     assign_attributes(LINK_FIELDS.to_h { |field| [ "link_#{field}", link[field] ] })
