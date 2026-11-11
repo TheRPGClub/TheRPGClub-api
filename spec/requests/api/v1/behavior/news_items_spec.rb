@@ -322,16 +322,35 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
 
       delete "/api/v1/news_items/3300000000000000003", headers: service_headers
 
-      expect(response).to have_http_status(:no_content)
+      expect(response).to have_http_status(:ok)
       expect(feed_ids).to eq([ "3300000000000000004" ])
       record("3300000000000000003")
       expect(response).to have_http_status(:created)
     end
 
+    it "answers with where the removed item's News Copy lives, so the bot can delete it" do
+      record("3300000000000000003", news_copy: { message_id: "5500000000000000005", thread_id: "6600000000000000006" })
+
+      delete "/api/v1/news_items/3300000000000000003", headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(json).to eq("data" => { "removed" => true,
+        "news_copy" => { "message_id" => "5500000000000000005", "thread_id" => "6600000000000000006" } })
+    end
+
+    it "answers with no News Copy when the removed item had none" do
+      record("3300000000000000003")
+
+      delete "/api/v1/news_items/3300000000000000003", headers: service_headers
+
+      expect(json).to eq("data" => { "removed" => true, "news_copy" => nil })
+    end
+
     it "succeeds for a message the API never recorded, so the bot need not know" do
       delete "/api/v1/news_items/404404404404404404", headers: service_headers
 
-      expect(response).to have_http_status(:no_content)
+      expect(response).to have_http_status(:ok)
+      expect(json).to eq("data" => { "removed" => false, "news_copy" => nil })
     end
 
     it "is service-only" do
@@ -513,6 +532,36 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
       put "/api/v1/news_items/3300000000000000001", headers: service_headers, as: :json,
         params: { data: { news_copy: nil } }
       expect(uncopied_ids).to eq(%w[3300000000000000001])
+    end
+
+    describe "narrowed by origin" do
+      before do
+        record("3300000000000000003", posted_at: "2026-11-03T10:00:00Z")
+        create(:news_item, message_id: "3300000000000000002", origin: "import", category_key: "industry",
+          posted_at: Time.utc(2021, 5, 4, 12))
+      end
+
+      it "lists only live News Items for origin=live, so catch-up leaves imported ones to the history copy" do
+        body = uncopied(origin: "live")
+
+        expect(body.fetch("data").map { |item| item["message_id"] }).to eq(%w[3300000000000000003])
+        expect(body.dig("meta", "count")).to eq(1)
+      end
+
+      it "lists only imported News Items for origin=import" do
+        expect(uncopied_ids(origin: "import")).to eq(%w[3300000000000000002])
+      end
+
+      it "lists both when origin is omitted" do
+        expect(uncopied_ids).to eq(%w[3300000000000000002 3300000000000000003])
+      end
+
+      it "rejects an unknown origin" do
+        get "/api/v1/news_items/uncopied", params: { origin: "forum" }, headers: service_headers
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json).to eq("error" => "unknown origin: forum (expected live or import)")
+      end
     end
 
     it "answers the bot while the News Hub is Off" do

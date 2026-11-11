@@ -3,9 +3,12 @@
 module NewsImport
   # Applies a reviewed list of (message id, value) rows to imported News
   # Items (spec #355, ticket #359). A News Category key assigns that News
-  # Category, which makes the item visible to members; `skip` deletes the
-  # item and remembers the removal (NewsImportRemoval). Values ignore case
-  # and surrounding spaces. Assigning again changes the News Category, and
+  # Category, which makes the item visible to members, and records the
+  # acting staff member and the time on each item whose News Category this
+  # changed (`category_changed_by`, `category_changed_at`; a row repeating
+  # the stored category changes nothing); `skip` deletes the item and
+  # remembers the removal (NewsImportRemoval). Values ignore case and
+  # surrounding spaces. Assigning again changes the News Category, and
   # `skip` for an item already removed counts as removed again, so the same
   # file can be applied twice.
   #
@@ -52,7 +55,7 @@ module NewsImport
         end
       end
 
-      moved = moves(assigned)
+      moved = copies_to_move(assigned)
       apply(assigned, removals)
       {
         assigned: assigned.size, removed: removals.size, rejected: rejections.size,
@@ -77,7 +80,7 @@ module NewsImport
 
     # The assigned items that have a News Copy and are changing to another
     # News Category, in row order. `assigned` is [ [ message_id, key ] ].
-    def moves(assigned)
+    def copies_to_move(assigned)
       copied = NewsItem.imported.copied.where(message_id: assigned.map(&:first))
         .pluck(:message_id, :category_key, :news_copy_message_id, :news_copy_thread_id)
         .to_h { |id, *rest| [ id, rest ] }
@@ -94,7 +97,8 @@ module NewsImport
       now = Time.current
       NewsItem.transaction do
         assigned.group_by(&:last).transform_values { |rows| rows.map(&:first) }.each do |key, ids|
-          NewsItem.imported.where(message_id: ids).update_all(category_key: key, updated_at: now)
+          NewsItem.imported.where(message_id: ids).where("category_key IS DISTINCT FROM ?", key)
+            .update_all(category_key: key, category_changed_by: @by, category_changed_at: now, updated_at: now)
         end
         fresh = removals - removed_ids.to_a
         if fresh.any?

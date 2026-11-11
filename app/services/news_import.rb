@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 # The News Import (GLOSSARY.md, "News Hub"; spec #355, ticket #359): the
-# one-time move of the Game News Archive's messages into the News Hub as
-# imported News Items, hidden until staff assign their News Categories.
+# one-time move of the messages posted in the News Channel before the News
+# Hub launched into the News Hub as imported News Items, hidden until staff
+# assign their News Categories.
 module NewsImport
   # Counts of imported News Items: sorted (with a News Category), unsorted,
   # and removed by staff with `skip`. For the history copy (ticket #368),

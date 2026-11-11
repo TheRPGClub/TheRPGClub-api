@@ -890,8 +890,8 @@ module OpenapiSchemas
                       "News Item when the message is gone. At most one is open per message, and none is queued " \
                       "within six hours of the last one for that message ending. Posts nothing.",
         message_id: str.merge(description: "The News Item's Discord message id."),
-        channel_id: str.merge(description: "The channel or thread the message is in (a News Category's thread, " \
-                                           "or the Game News Archive for an imported News Item)."),
+        channel_id: str.merge(description: "The channel or thread the message is in (the News Channel, or a " \
+                                           "News Category's thread for a News Item posted before it)."),
         feature_key: str(enum: %w[news_hub])
       ),
       NewsCatchUpJobPayload: obj(
@@ -1113,6 +1113,15 @@ module OpenapiSchemas
                        "changed); null for an imported News Item staff had not sorted."),
         _required: %w[changed previous_category_key]
       ),
+      NewsItemRemoval: obj(
+        removed: bool.merge(description: "True when a News Item was recorded for the message and is now " \
+                                         "deleted; false when none was recorded (nothing changed)."),
+        news_copy: ref("NewsCopy", nullable: true).merge(
+          description: "Where the removed News Item's News Copy lives, so the bot can delete it; null when " \
+                       "it had none, or when nothing was removed."
+        ),
+        _required: %w[removed news_copy]
+      ),
       NewsCopy: obj(
         message_id: str(example: "1500000000000000005", description: "The News Copy's Discord message id."),
         thread_id: str(example: "1600000000000000006",
@@ -1150,8 +1159,8 @@ module OpenapiSchemas
       # NewsImportItemResource: an unsorted imported News Item, as the
       # download file lists it for a classifier.
       NewsImportItem: obj(
-        message_id: str(example: "1300000000000000003", description: "The archived Discord message's snowflake."),
-        posted_at: ts.merge(description: "When the message was posted in the Game News Archive."),
+        message_id: str(example: "1300000000000000003", description: "The imported Discord message's snowflake."),
+        posted_at: ts.merge(description: "When the message was posted in the News Channel."),
         author_name: str(description: "The member's current name when they have a member record; otherwise " \
                                       "the name recorded with the message."),
         comment: str(nullable: true, description: "The member's own words; null when there are none."),
@@ -1197,7 +1206,7 @@ module OpenapiSchemas
       NewsImportStatus: obj(
         sorted: int.merge(description: "Imported News Items with a News Category (shown to members)."),
         unsorted: int.merge(description: "Imported News Items with no News Category yet (hidden)."),
-        removed: int.merge(description: "Archive messages staff removed with `skip`."),
+        removed: int.merge(description: "Imported News Items staff removed with `skip`."),
         copied: int.merge(description: "News Items, live and imported, that have a News Copy."),
         uncopied: int.merge(description: "News Items, live and imported, that have a News Category but no " \
                                          "News Copy yet: what the history copy has left (see " \

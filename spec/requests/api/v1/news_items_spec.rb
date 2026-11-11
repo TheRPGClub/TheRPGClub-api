@@ -68,8 +68,13 @@ RSpec.describe 'api/v1/news_items', type: :request do
                   'through them, reporting each copy with `PUT /api/v1/news_items/{message_id}` and ' \
                   '`{ "data": { "news_copy": { ... } } }`; a reported item leaves the listing, so a run that ' \
                   'copies as it goes reads the first page again rather than the next. Imported News Items ' \
-                  'staff have not sorted are left out. Answers whatever the Feature Flag says.'
+                  'staff have not sorted are left out. `origin` narrows to live or imported News Items (catch-up ' \
+                  'retries live ones; the history copy copies imported ones). Answers whatever the Feature Flag ' \
+                  'says.'
       produces 'application/json'
+      parameter name: :origin, in: :query, required: false, schema: { type: :string, enum: NewsItem::ORIGINS },
+        description: 'Only News Items of this origin: `live` (recorded from the News Channel as posted) or ' \
+                     '`import` (brought in by the News Import). Omit for both.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
@@ -78,6 +83,10 @@ RSpec.describe 'api/v1/news_items', type: :request do
           data: { type: :array, items: { '$ref' => '#/components/schemas/NewsItem' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }, required: %w[data meta]
+      end
+
+      response '422', 'an unknown `origin`, e.g. `{ "error": "unknown origin: forum (expected live or import)" }`' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '403', 'forbidden - caller is not the service principal' do
@@ -225,10 +234,16 @@ RSpec.describe 'api/v1/news_items', type: :request do
     delete 'Remove a News Item' do
       tags 'News Hub'
       description 'Service-only. The bot removes the News Item when its message is deleted (singly or in ' \
-                  'bulk) or edited so it no longer has a link or an image. A hard delete. Idempotent: 204 ' \
-                  'whether or not a News Item with this message id was recorded.'
+                  'bulk) or edited so it no longer has a link or an image, or when renewal finds the message ' \
+                  'gone. A hard delete. Idempotent: 200 whether or not a News Item with this message id was ' \
+                  'recorded; `removed` says which. Answers where the removed News Item\'s News Copy lives ' \
+                  '(`news_copy`, null when it had none or nothing was removed), so the bot can delete the copy ' \
+                  'without looking it up first.'
+      produces 'application/json'
 
-      response '204', 'News Item removed (or was never recorded)' do
+      response '200', 'News Item removed (or was never recorded)' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/NewsItemRemoval' } },
+          required: %w[data]
       end
 
       response '403', 'forbidden - caller is not the service principal' do
@@ -250,7 +265,8 @@ RSpec.describe 'api/v1/news_items', type: :request do
       description 'Service-only. The bot changes a News Item\'s News Category for the member who used ' \
                   '"Change news category" on it (`acting_user_id`). Allowed for the News Item\'s author and for ' \
                   'staff (Admins and Superadmins by their stored roles, as for the News Import); anyone else ' \
-                  'gets 403 `forbidden`. The News Hub Feature Flag applies to the acting member: while Off ' \
+                  'gets 403 `forbidden`. An imported News Item staff have not sorted (no News Category yet) ' \
+                  'is staff\'s alone: its author gets 403 `forbidden` too. The News Hub Feature Flag applies to the acting member: while Off ' \
                   'nobody may, staff included; while Preview only staff may; while Live the author and staff ' \
                   'may. A refusal by the flag is 403 `feature_unavailable`. Live and imported News Items ' \
                   'alike. The change records who made it and when; `picked_category_key` (the bot\'s first ' \
@@ -292,8 +308,8 @@ RSpec.describe 'api/v1/news_items', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', '`forbidden`: the acting member is neither the author nor staff, or the caller is not ' \
-                      'the service principal; `feature_unavailable`: the News Hub Feature Flag does not let ' \
+      response '403', '`forbidden`: the acting member is neither the author nor staff, is the non-staff ' \
+                      'author of an unsorted imported News Item, or the caller is not the service principal; `feature_unavailable`: the News Hub Feature Flag does not let ' \
                       'the acting member use it' do
         schema '$ref' => '#/components/schemas/Error'
       end

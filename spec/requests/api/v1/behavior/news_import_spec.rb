@@ -3,16 +3,18 @@
 require "rails_helper"
 
 # Behavior specs for the News Import (GLOSSARY.md, "News Hub"; spec #355,
-# ticket #359): the archive's messages are imported News Items with no News
-# Category, and staff list the unsorted ones, assign their News Categories
-# (or remove them with `skip`) and read the counts, through the bot. The
-# scan that recorded them, and its batch endpoint, are gone (ticket #370).
+# ticket #359): the messages posted in the News Channel before the News Hub
+# launched are imported News Items with no News Category, and staff list the
+# unsorted ones, assign their News Categories (or remove them with `skip`)
+# and read the counts, through the bot.
 RSpec.describe "api/v1/news_import behavior", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:member) { create(:user, role_member: true) }
   let(:admin) { create(:user, role_admin: true) }
 
-  # One archived Discord message, as the scan recorded it.
-  def archived(message_id, **overrides)
+  # One imported Discord message's payload.
+  def imported_message(message_id, **overrides)
     {
       message_id: message_id,
       channel_id: "1100000000000000001",
@@ -34,7 +36,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
     }.merge(overrides)
   end
 
-  # Records archived messages as imported News Items, as the scan did.
+  # Records the messages as imported News Items.
   def import(*items)
     items.each { |item| NewsItem.record!(item[:message_id], item.except(:message_id), origin: "import") }
   end
@@ -46,9 +48,9 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
   end
 
   describe "POST /api/v1/news_import/items" do
-    it "is gone with the scan (ticket #370)" do
+    it "is not an endpoint: the API records no imported News Items itself" do
       post "/api/v1/news_import/items", headers: service_headers, as: :json,
-        params: { data: { items: [ archived("4400000000000000001") ] } }
+        params: { data: { items: [ imported_message("4400000000000000001") ] } }
 
       expect(response).to have_http_status(:not_found)
       expect(NewsItem.count).to eq(0)
@@ -63,8 +65,8 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
     it "lists the unsorted imported News Items, oldest first, with the fields a classifier needs" do
       import(
-        archived("4400000000000000002", posted_at: "2022-01-01T00:00:00Z"),
-        archived("4400000000000000001", posted_at: "2021-01-01T00:00:00Z", link: nil, comment: nil, images: [
+        imported_message("4400000000000000002", posted_at: "2022-01-01T00:00:00Z"),
+        imported_message("4400000000000000001", posted_at: "2021-01-01T00:00:00Z", link: nil, comment: nil, images: [
           { url: "https://cdn.discordapp.com/attachments/1/2/a.png", expires_at: "2026-11-11T00:00:00Z" },
           { url: "https://cdn.discordapp.com/attachments/1/2/b.png", expires_at: "2026-11-11T00:00:00Z" }
         ])
@@ -92,7 +94,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
     it "names an author with a member record by their current name" do
       author = create(:user, global_name: "Renamed Member")
-      import(archived("4400000000000000001", author_id: author.user_id))
+      import(imported_message("4400000000000000001", author_id: author.user_id))
 
       unsorted
 
@@ -100,7 +102,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
     end
 
     it "pages with page and per" do
-      import(*Array.new(3) { |i| archived((4_400_000_000_000_000_000 + i).to_s) })
+      import(*Array.new(3) { |i| imported_message((4_400_000_000_000_000_000 + i).to_s) })
 
       unsorted({ page: 2, per: 2 })
 
@@ -126,7 +128,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
     end
 
     before do
-      import(*%w[4400000000000000001 4400000000000000002 4400000000000000003].map { |id| archived(id) })
+      import(*%w[4400000000000000001 4400000000000000002 4400000000000000003].map { |id| imported_message(id) })
     end
 
     it "assigns a News Category, which shows the item in the feed with its original author and date" do
@@ -187,6 +189,23 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
       expect(json.dig("data", "moved").map { |move| move.values_at("message_id", "category_key") })
         .to eq([ [ ids[0], "rumours" ], [ ids[1], "hardware" ], [ ids[2], "rumours" ] ])
+    end
+
+    it "records which staff member changed each item's category and when, leaving unchanged rows alone" do
+      other_admin = create(:user, role_admin: true)
+      first = Time.utc(2026, 11, 10, 12)
+      travel_to(first) { assign([ "4400000000000000001", "releases" ], [ "4400000000000000002", "industry" ]) }
+
+      travel_to(first + 1.hour) do
+        assign([ "4400000000000000001", "releases" ], [ "4400000000000000002", "rumours" ], acting: other_admin)
+      end
+
+      expect(NewsItem.find_by(message_id: "4400000000000000001"))
+        .to have_attributes(category_changed_by: admin.user_id, category_changed_at: first)
+      expect(NewsItem.find_by(message_id: "4400000000000000002"))
+        .to have_attributes(category_changed_by: other_admin.user_id, category_changed_at: first + 1.hour)
+      expect(NewsItem.find_by(message_id: "4400000000000000003"))
+        .to have_attributes(category_changed_by: nil, category_changed_at: nil)
     end
 
     it "does not report a changed item that has no News Copy" do
@@ -277,7 +296,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
   describe "GET /api/v1/news_import/status" do
     it "counts imported items that are sorted, unsorted and removed, leaving live items out" do
-      import(*Array.new(4) { |i| archived((4_400_000_000_000_000_000 + i).to_s) })
+      import(*Array.new(4) { |i| imported_message((4_400_000_000_000_000_000 + i).to_s) })
       create(:news_item, origin: "live")
       post "/api/v1/news_import/assignments", headers: service_headers, as: :json, params: { data: {
         acting_user_id: admin.user_id,
@@ -303,8 +322,8 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       expect(json.fetch("data")).to include("copied" => 2, "uncopied" => 2, "sorted" => 2, "unsorted" => 1)
     end
 
-    it "reports the counts and nothing else, now the scan is gone (ticket #370)" do
-      import(archived("999999999999999999"))
+    it "reports the counts and nothing else" do
+      import(imported_message("999999999999999999"))
 
       get "/api/v1/news_import/status", params: { acting_user_id: admin.user_id }, headers: service_headers
 

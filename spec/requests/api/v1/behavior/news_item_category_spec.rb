@@ -5,7 +5,8 @@ require "rails_helper"
 # Behavior specs for changing a News Item's News Category (spec #367,
 # ticket #369): the bot, acting for a member who used "Change news
 # category", asks the API to move the item to another News Category. The
-# item's author and staff may; anyone else is refused.
+# item's author and staff may; anyone else is refused. Only staff may give
+# an unsorted imported News Item its first category.
 RSpec.describe "api/v1/news_items/:message_id/category behavior", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
@@ -129,6 +130,26 @@ RSpec.describe "api/v1/news_items/:message_id/category behavior", type: :request
     expect(response).to have_http_status(:ok)
     expect(json.fetch("data")).to include("origin" => "import", "category_key" => "emulation",
       "picked_category_key" => nil)
+  end
+
+  describe "an imported News Item staff have not sorted" do
+    let(:unsorted) { create(:news_item, author_id: author.user_id, origin: "import", category_key: nil) }
+
+    it "refuses its author, since only staff sort the News Import, and changes nothing" do
+      change_category(unsorted.message_id, "releases")
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json).to eq("error" => "forbidden")
+      expect(unsorted.reload).to have_attributes(category_key: nil, category_changed_by: nil)
+    end
+
+    it "lets staff give it its first category" do
+      change_category(unsorted.message_id, "releases", acting: admin)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("meta")).to eq("changed" => true, "previous_category_key" => nil)
+      expect(unsorted.reload).to have_attributes(category_key: "releases", category_changed_by: admin.user_id)
+    end
   end
 
   it "rejects an unknown News Category and changes nothing" do

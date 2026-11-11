@@ -11,6 +11,8 @@ module Api
     # Gated by the News Hub Feature (the service token is never stopped by
     # the gate).
     class NewsItemsController < ApplicationController
+      include ActingMember
+
       feature :news_hub
 
       before_action :require_service!, only: %i[uncopied update change_category destroy]
@@ -44,27 +46,32 @@ module Api
         NewsHub::BotJobs.renew_expired_images!(items, now: now) unless current_principal.service?
 
         render json: {
-          data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items), now: now })
-            .serializable_hash,
+          data: news_item_json(items, now: now),
           meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden)
         }
       end
 
-      # GET /api/v1/news_items/uncopied?page=1&per=50
+      # GET /api/v1/news_items/uncopied?origin=live&page=1&per=50
       #
       # The News Items with a News Category but no News Copy, oldest first
       # by posting time: the bot's history copy and its retries of failed
       # copies work through them. Imported items staff have not sorted are
       # left out, since a News Copy goes in its News Category's thread.
+      # `origin` (live or import) narrows to that origin, so catch-up can
+      # retry live items alone; omitted, both. An unknown origin is a 422.
       def uncopied
-        pagy, items = pagy(NewsItem.uncopied.order(posted_at: :asc, id: :asc), **pagy_options)
+        origin = params[:origin].presence&.to_s
+        if origin && NewsItem::ORIGINS.exclude?(origin)
+          return render(json: { error: "unknown origin: #{origin} (expected #{NewsItem::ORIGINS.join(' or ')})" },
+            status: :unprocessable_content)
+        end
+
+        scope = NewsItem.uncopied
+        scope = scope.where(origin: origin) if origin
+        pagy, items = pagy(scope.order(posted_at: :asc, id: :asc), **pagy_options)
         items = items.to_a
 
-        render json: {
-          data: NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(items) })
-            .serializable_hash,
-          meta: pagy_meta(pagy)
-        }
+        render json: { data: news_item_json(items), meta: pagy_meta(pagy) }
       end
 
       # PUT /api/v1/news_items/:message_id
@@ -75,8 +82,7 @@ module Api
       # recorded). See NewsItem.record!.
       def update
         item, created = NewsItem.record!(params[:message_id], item_params)
-        render json: { data: NewsItemResource.new(item, params: { authors: NewsItemResource.authors_for([ item ]) })
-          .serializable_hash }, status: created ? :created : :ok
+        render json: { data: news_item_json(item) }, status: created ? :created : :ok
       end
 
       # PUT /api/v1/news_items/:message_id/category
@@ -84,7 +90,8 @@ module Api
       #
       # Changes the News Item's News Category for the member who used the
       # bot's "Change news category" (ticket #369): its author, or staff as
-      # the News Import decides it. The service token passes the feature
+      # the News Import decides it. An imported News Item staff have not
+      # sorted is staff's alone: its author may not give it a category. The service token passes the feature
       # gate, so the News Hub Feature Flag is applied here to the acting
       # member instead (docs/adr/0005): nobody while Off, staff while
       # Preview. See NewsItem#change_category!. `meta.changed` is false when
@@ -96,45 +103,33 @@ module Api
         end
 
         item = NewsItem.find_by!(message_id: params[:message_id].to_s)
-        return unless gate_or_forbid(item.author_id == acting_user_id || acting_member_staff?)
+        return unless gate_or_forbid(acting_member_staff? || (item.author_id == acting_user_id && !item.unsorted?))
 
         changed = item.change_category!(params.require(:data).require(:category_key), by: acting_user_id)
         previous = changed ? item.category_key_previously_was : item.category_key
 
-        render json: {
-          data: NewsItemResource.new(item, params: { authors: NewsItemResource.authors_for([ item ]) })
-            .serializable_hash,
-          meta: { changed: changed, previous_category_key: previous }
-        }
+        render json: { data: news_item_json(item), meta: { changed: changed, previous_category_key: previous } }
       end
 
       # DELETE /api/v1/news_items/:message_id
       #
-      # Removes the News Item for good. 204 whether or not it was recorded,
-      # so the bot never has to know what the API holds.
+      # Removes the News Item for good. 200 whether or not it was recorded,
+      # so the bot never has to know what the API holds: `removed` says
+      # whether there was one, and `news_copy` where its News Copy lives (or
+      # null), so the bot can delete the copy without looking it up first.
       def destroy
-        NewsItem.where(message_id: params[:message_id].to_s).delete_all
-        head :no_content
+        item = NewsItem.remove!(params[:message_id])
+        render json: { data: { removed: !item.nil?, news_copy: item&.news_copy } }
       end
 
       private
 
-      # The member the bot acts for, by Discord user id (`data.acting_user_id`).
-      def acting_user_id
-        data = params[:data]
-        @acting_user_id ||= data[:acting_user_id].presence&.to_s if data.respond_to?(:permit)
+      # The News Item, or a list of them, as the API serves it, with each
+      # author's name; `options` adds serializer params (the feed's `now`).
+      def news_item_json(items, **options)
+        NewsItemResource.new(items, params: { authors: NewsItemResource.authors_for(Array(items)), **options })
+          .serializable_hash
       end
-
-      # The acting member's stored record (nil when they have none).
-      def acting_member
-        return @acting_member if defined?(@acting_member)
-
-        @acting_member = RpgClubUser.without_images.find_by(user_id: acting_user_id)
-      end
-
-      # Whether the acting member is staff (Admin or Superadmin), as the
-      # News Import decides it.
-      def acting_member_staff? = Features::Access.staff_member?(acting_member)
 
       def item_params
         data = params.require(:data)
