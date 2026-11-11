@@ -201,7 +201,7 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to eq(
-        "assigned" => 2, "removed" => 0, "rejected" => 0, "unsorted" => 1, "rejections" => []
+        "assigned" => 2, "removed" => 0, "rejected" => 0, "unsorted" => 1, "rejections" => [], "moved" => []
       )
 
       get "/api/v1/news_items", params: { category: "releases" }, headers: auth_headers_for(member)
@@ -221,6 +221,47 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
       expect(json.fetch("data")).to include("assigned" => 1)
       get "/api/v1/news_items", params: { category: "rumours" }, headers: auth_headers_for(member)
       expect(json.fetch("data").map { |item| item.fetch("message_id") }).to eq([ "4400000000000000001" ])
+    end
+
+    it "reports the items whose category changed and that have a News Copy, with where each copy lives (ticket #369)" do
+      assign([ "4400000000000000001", "releases" ], [ "4400000000000000002", "industry" ])
+      [ %w[4400000000000000001 5500000000000000001], %w[4400000000000000002 5500000000000000002] ].each do |id, copy|
+        put "/api/v1/news_items/#{id}", headers: service_headers, as: :json,
+          params: { data: { news_copy: { message_id: copy, thread_id: "6600000000000000006" } } }
+      end
+
+      assign(
+        [ "4400000000000000001", "rumours" ],
+        [ "4400000000000000002", "industry" ],
+        [ "4400000000000000003", "general" ]
+      )
+
+      expect(json.fetch("data")).to include("assigned" => 3, "moved" => [
+        { "message_id" => "4400000000000000001", "category_key" => "rumours", "previous_category_key" => "releases",
+          "news_copy" => { "message_id" => "5500000000000000001", "thread_id" => "6600000000000000006" } }
+      ])
+    end
+
+    it "reports moved items in row order" do
+      ids = %w[4400000000000000001 4400000000000000002 4400000000000000003]
+      assign(*ids.map { |id| [ id, "general" ] })
+      ids.each_with_index do |id, index|
+        put "/api/v1/news_items/#{id}", headers: service_headers, as: :json,
+          params: { data: { news_copy: { message_id: "550000000000000000#{index}", thread_id: "6600000000000000006" } } }
+      end
+
+      assign([ ids[0], "rumours" ], [ ids[1], "hardware" ], [ ids[2], "rumours" ])
+
+      expect(json.dig("data", "moved").map { |move| move.values_at("message_id", "category_key") })
+        .to eq([ [ ids[0], "rumours" ], [ ids[1], "hardware" ], [ ids[2], "rumours" ] ])
+    end
+
+    it "does not report a changed item that has no News Copy" do
+      assign([ "4400000000000000001", "releases" ])
+
+      assign([ "4400000000000000001", "rumours" ])
+
+      expect(json.fetch("data")).to include("assigned" => 1, "moved" => [])
     end
 
     it "keeps an assigned News Category when the batch is recorded again" do
@@ -285,7 +326,8 @@ RSpec.describe "api/v1/news_import behavior", type: :request do
           { "index" => 5, "message_id" => "4400000000000000001", "value" => "general",
             "reason" => "removed with skip" },
           { "index" => 6, "message_id" => "", "value" => "general", "reason" => "missing message ID" }
-        ]
+        ],
+        "moved" => []
       )
       expect(feed_ids).to contain_exactly("4400000000000000002", live.message_id)
       get "/api/v1/news_items", params: { category: "industry" }, headers: auth_headers_for(member)

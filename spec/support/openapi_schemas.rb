@@ -1105,6 +1105,14 @@ module OpenapiSchemas
         _required: %w[message_id category_key origin comment posted_at edited_at link images author
                       picked_category_key news_copy]
       ),
+      NewsCategoryChange: obj(
+        changed: bool.merge(description: "False when the News Item already had that News Category and nothing " \
+                                         "changed: the News Copy stays where it is."),
+        previous_category_key: str(enum: NewsCategory.keys, nullable: true,
+          description: "The News Category before this request (the same as `category_key` when nothing " \
+                       "changed); null for an imported News Item staff had not sorted."),
+        _required: %w[changed previous_category_key]
+      ),
       NewsCopy: obj(
         message_id: str(example: "1500000000000000005", description: "The News Copy's Discord message id."),
         thread_id: str(example: "1600000000000000006",
@@ -1179,7 +1187,20 @@ module OpenapiSchemas
         rejected: int.merge(description: "Rows rejected; listed in `rejections`."),
         unsorted: int.merge(description: "Imported News Items still unsorted after this request."),
         rejections: array_of("NewsImportAssignRejection").merge(description: "The rejected rows, in order."),
-        _required: %w[assigned removed rejected unsorted rejections]
+        moved: array_of("NewsImportMove").merge(
+          description: "The items whose News Category this request changed and that have a News Copy, in row " \
+                       "order: the bot moves each copy to the new category's thread. A first assignment to an " \
+                       "unsorted item is never listed (it has no News Copy)."
+        ),
+        _required: %w[assigned removed rejected unsorted rejections moved]
+      ),
+      NewsImportMove: obj(
+        message_id: str(example: "1300000000000000003", description: "The News Item's message snowflake."),
+        category_key: str(enum: NewsCategory.keys, description: "The News Category it now has."),
+        previous_category_key: str(enum: NewsCategory.keys, description: "The News Category it had before."),
+        news_copy: ref("NewsCopy").merge(description: "Where its News Copy lives now, in the previous " \
+                                                      "category's thread."),
+        _required: %w[message_id category_key previous_category_key news_copy]
       ),
       NewsImportAssignRejection: obj(
         index: int.merge(description: "The row's 0-based position in `rows`."),

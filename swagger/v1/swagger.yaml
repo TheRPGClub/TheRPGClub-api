@@ -3602,6 +3602,29 @@ components:
       - author
       - picked_category_key
       - news_copy
+    NewsCategoryChange:
+      type: object
+      properties:
+        changed:
+          type: boolean
+          description: 'False when the News Item already had that News Category and
+            nothing changed: the News Copy stays where it is.'
+        previous_category_key:
+          type: string
+          nullable: true
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category before this request (the same as `category_key`
+            when nothing changed); null for an imported News Item staff had not sorted.
+      required:
+      - changed
+      - previous_category_key
     NewsCopy:
       type: object
       properties:
@@ -3794,12 +3817,58 @@ components:
           items:
             "$ref": "#/components/schemas/NewsImportAssignRejection"
           description: The rejected rows, in order.
+        moved:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsImportMove"
+          description: 'The items whose News Category this request changed and that
+            have a News Copy, in row order: the bot moves each copy to the new category''s
+            thread. A first assignment to an unsorted item is never listed (it has
+            no News Copy).'
       required:
       - assigned
       - removed
       - rejected
       - unsorted
       - rejections
+      - moved
+    NewsImportMove:
+      type: object
+      properties:
+        message_id:
+          type: string
+          example: '1300000000000000003'
+          description: The News Item's message snowflake.
+        category_key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category it now has.
+        previous_category_key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The News Category it had before.
+        news_copy:
+          "$ref": "#/components/schemas/NewsCopy"
+          description: Where its News Copy lives now, in the previous category's thread.
+      required:
+      - message_id
+      - category_key
+      - previous_category_key
+      - news_copy
     NewsImportAssignRejection:
       type: object
       properties:
@@ -15685,14 +15754,17 @@ paths:
         a missing or repeated message id (every occurrence is rejected), a blank or
         invalid value, an unknown message id, a live News Item, or a News Category
         for an item removed with `skip`. Leave rows with no value out of the request.
-        Up to 5000 rows per request. The News Import works for Admins and Superadmins
-        while the News Hub is Preview or Live, and for nobody while it is Off. A signed-in
-        member is checked by their own roles; the bot calls with the service token
-        and names the acting Discord user (`acting_user_id`), and the same rule applies
-        to that member''s stored roles: 400 `acting_user_id required` without one,
-        403 when they are not an Admin or Superadmin or have no member record. While
-        Off, the News Hub Feature gate answers a signed-in caller 404; the service
-        token is not gated, so the bot refuses its /news-import commands itself.'
+        Up to 5000 rows per request. `moved` lists, in row order, the items whose
+        News Category this request changed and that have a News Copy, with where each
+        copy lives, so the bot can move those copies to their new categories'' threads.
+        The News Import works for Admins and Superadmins while the News Hub is Preview
+        or Live, and for nobody while it is Off. A signed-in member is checked by
+        their own roles; the bot calls with the service token and names the acting
+        Discord user (`acting_user_id`), and the same rule applies to that member''s
+        stored roles: 400 `acting_user_id required` without one, 403 when they are
+        not an Admin or Superadmin or have no member record. While Off, the News Hub
+        Feature gate answers a signed-in caller 404; the service token is not gated,
+        so the bot refuses its /news-import commands itself.'
       parameters: []
       responses:
         '200':
@@ -16221,6 +16293,113 @@ paths:
           description: forbidden - caller is not the service principal
         '401':
           description: unauthenticated
+  "/api/v1/news_items/{message_id}/category":
+    parameters:
+    - name: message_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The News Item's Discord message snowflake.
+    put:
+      summary: Change a News Item's News Category
+      tags:
+      - News Hub
+      description: 'Service-only. The bot changes a News Item''s News Category for
+        the member who used "Change news category" on it (`acting_user_id`). Allowed
+        for the News Item''s author and for staff (Admins and Superadmins by their
+        stored roles, as for the News Import); anyone else gets 403 `forbidden`. The
+        News Hub Feature Flag applies to the acting member: while Off nobody may,
+        staff included; while Preview only staff may; while Live the author and staff
+        may. A refusal by the flag is 403 `feature_unavailable`. Live and imported
+        News Items alike. The change records who made it and when; `picked_category_key`
+        (the bot''s first pick) and `news_copy` are left as they are. Answers the
+        News Item with its News Copy location (null when it has none) so the bot can
+        move the copy to the new category''s thread and then report the new location
+        with `PUT /api/v1/news_items/{message_id}` and `{ "data": { "news_copy": {
+        ... } } }`. Changing to the category the item already has changes nothing
+        (`meta.changed` false). Checked in this order: `acting_user_id` (400), the
+        Feature Flag (403), the News Item (404), author or staff (403), the category
+        (422).'
+      parameters: []
+      responses:
+        '200':
+          description: the News Item, changed or already in that category
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsItem"
+                  meta:
+                    "$ref": "#/components/schemas/NewsCategoryChange"
+                required:
+                - data
+                - meta
+        '400':
+          description: 'missing `data`, `data.category_key` or `data.acting_user_id`
+            (`{ "error": "acting_user_id required" }`)'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: "`forbidden`: the acting member is neither the author nor staff,
+            or the caller is not the service principal; `feature_unavailable`: the
+            News Hub Feature Flag does not let the acting member use it"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no News Item has this message id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not a News Category key
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: The Discord user id of the member who asked for
+                        the change.
+                    category_key:
+                      type: string
+                      enum:
+                      - announcements
+                      - releases
+                      - emulation
+                      - industry
+                      - hardware
+                      - rumours
+                      - general
+                      description: The News Category to move the News Item to.
+                  required:
+                  - acting_user_id
+                  - category_key
+              required:
+              - data
+        required: true
   "/api/v1/gotm_entries/{round}/nominations":
     parameters:
     - name: round

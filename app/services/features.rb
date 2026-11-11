@@ -85,10 +85,11 @@ module Features
       bot: [ "/suggestion" ],
       posts: [ "Suggestion posts" ]),
     # Spec #355. Registered after Feature Flags shipped, so it has no stored
-    # state and starts in Preview.
+    # state and starts in Preview. The News Channel's commands (spec #367,
+    # ticket #369) share it.
     define("news_hub", "News Hub", core: false,
       website: [ "News" ],
-      bot: [ "/news-import" ])
+      bot: [ "/news", "Change news category (context menu)", "/news-import" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

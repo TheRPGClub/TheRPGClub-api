@@ -5,13 +5,15 @@ module Api
     # News Items (spec #355, ticket #356). The bot records and removes them
     # with the service token as members post, edit and delete messages in the
     # News Channel, reports where each News Copy lives, and lists the News
-    # Items still without one (ticket #368); members read them as a feed.
+    # Items still without one (ticket #368), and changes a News Item's News
+    # Category for its author or staff (ticket #369); members read them as a
+    # feed.
     # Gated by the News Hub Feature (the service token is never stopped by
     # the gate).
     class NewsItemsController < ApplicationController
       feature :news_hub
 
-      before_action :require_service!, only: %i[uncopied update destroy]
+      before_action :require_service!, only: %i[uncopied update change_category destroy]
 
       # GET /api/v1/news_items?category=releases,industry&q=zelda&page=1&per=50
       #
@@ -77,6 +79,35 @@ module Api
           .serializable_hash }, status: created ? :created : :ok
       end
 
+      # PUT /api/v1/news_items/:message_id/category
+      # Body: { "data": { "acting_user_id": "...", "category_key": "rumours" } }
+      #
+      # Changes the News Item's News Category for the member who used the
+      # bot's "Change news category" (ticket #369): its author, or staff as
+      # the News Import decides it. The service token passes the feature
+      # gate, so the News Hub Feature Flag is applied here to the acting
+      # member instead (docs/adr/0005): nobody while Off, staff while
+      # Preview. See NewsItem#change_category!. `meta.changed` is false when
+      # the item was already in that News Category, and nothing changed.
+      def change_category
+        return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?
+        unless Features::Access.for_member(acting_member).can_use?(feature_key)
+          return render(json: { error: "feature_unavailable" }, status: :forbidden)
+        end
+
+        item = NewsItem.find_by!(message_id: params[:message_id].to_s)
+        return unless gate_or_forbid(item.author_id == acting_user_id || acting_member_staff?)
+
+        changed = item.change_category!(params.require(:data).require(:category_key), by: acting_user_id)
+        previous = changed ? item.category_key_previously_was : item.category_key
+
+        render json: {
+          data: NewsItemResource.new(item, params: { authors: NewsItemResource.authors_for([ item ]) })
+            .serializable_hash,
+          meta: { changed: changed, previous_category_key: previous }
+        }
+      end
+
       # DELETE /api/v1/news_items/:message_id
       #
       # Removes the News Item for good. 204 whether or not it was recorded,
@@ -87,6 +118,23 @@ module Api
       end
 
       private
+
+      # The member the bot acts for, by Discord user id (`data.acting_user_id`).
+      def acting_user_id
+        data = params[:data]
+        @acting_user_id ||= data[:acting_user_id].presence&.to_s if data.respond_to?(:permit)
+      end
+
+      # The acting member's stored record (nil when they have none).
+      def acting_member
+        return @acting_member if defined?(@acting_member)
+
+        @acting_member = RpgClubUser.without_images.find_by(user_id: acting_user_id)
+      end
+
+      # Whether the acting member is staff (Admin or Superadmin), as the
+      # News Import decides it.
+      def acting_member_staff? = Features::Access.staff_member?(acting_member)
 
       def item_params
         data = params.require(:data)

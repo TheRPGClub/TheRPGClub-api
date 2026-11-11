@@ -240,4 +240,75 @@ RSpec.describe 'api/v1/news_items', type: :request do
       end
     end
   end
+
+  path '/api/v1/news_items/{message_id}/category' do
+    parameter name: :message_id, in: :path, schema: { type: :string }, required: true,
+      description: "The News Item's Discord message snowflake."
+
+    put "Change a News Item's News Category" do
+      tags 'News Hub'
+      description 'Service-only. The bot changes a News Item\'s News Category for the member who used ' \
+                  '"Change news category" on it (`acting_user_id`). Allowed for the News Item\'s author and for ' \
+                  'staff (Admins and Superadmins by their stored roles, as for the News Import); anyone else ' \
+                  'gets 403 `forbidden`. The News Hub Feature Flag applies to the acting member: while Off ' \
+                  'nobody may, staff included; while Preview only staff may; while Live the author and staff ' \
+                  'may. A refusal by the flag is 403 `feature_unavailable`. Live and imported News Items ' \
+                  'alike. The change records who made it and when; `picked_category_key` (the bot\'s first ' \
+                  'pick) and `news_copy` are left as they are. Answers the News Item with its News Copy ' \
+                  'location (null when it has none) so the bot can move the copy to the new category\'s ' \
+                  'thread and then report the new location with `PUT /api/v1/news_items/{message_id}` and ' \
+                  '`{ "data": { "news_copy": { ... } } }`. Changing to the category the item already has ' \
+                  'changes nothing (`meta.changed` false). Checked in this order: `acting_user_id` (400), ' \
+                  'the Feature Flag (403), the News Item (404), author or staff (403), the category (422).'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              acting_user_id: { type: :string,
+                                description: 'The Discord user id of the member who asked for the change.' },
+              category_key: { type: :string, enum: NewsCategory.keys,
+                              description: 'The News Category to move the News Item to.' }
+            },
+            required: %w[acting_user_id category_key]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'the News Item, changed or already in that category' do
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/NewsItem' },
+          meta: { '$ref' => '#/components/schemas/NewsCategoryChange' }
+        }, required: %w[data meta]
+      end
+
+      response '400', 'missing `data`, `data.category_key` or `data.acting_user_id` ' \
+                      '(`{ "error": "acting_user_id required" }`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', '`forbidden`: the acting member is neither the author nor staff, or the caller is not ' \
+                      'the service principal; `feature_unavailable`: the News Hub Feature Flag does not let ' \
+                      'the acting member use it' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no News Item has this message id' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'not a News Category key' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
 end

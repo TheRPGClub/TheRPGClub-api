@@ -165,7 +165,9 @@ RSpec.describe 'api/v1/news_import', type: :request do
                   'reason and does not stop the others: a missing or repeated message id (every occurrence is ' \
                   'rejected), a blank or invalid value, an unknown message id, a live News Item, or a News ' \
                   'Category for an item removed with `skip`. Leave rows with no value out of the request. Up ' \
-                  "to 5000 rows per request. #{staff}"
+                  'to 5000 rows per request. `moved` lists, in row order, the items whose News Category this ' \
+                  'request changed and that have a News Copy, with where each copy lives, so the bot can move ' \
+                  "those copies to their new categories' threads. #{staff}"
       consumes 'application/json'
       produces 'application/json'
 

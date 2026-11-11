@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_11_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -456,6 +456,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_180000) do
   create_table "news_items", force: :cascade do |t|
     t.string "author_id", limit: 30, null: false
     t.string "author_name", limit: 100, null: false
+    t.datetime "category_changed_at"
+    t.string "category_changed_by", limit: 30
     t.string "category_key", limit: 64
     t.string "channel_id", limit: 30, null: false
     t.text "comment"
