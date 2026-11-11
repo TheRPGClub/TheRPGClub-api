@@ -416,9 +416,11 @@ Rails.application.routes.draw do
       resources :search_synonym_drafts, only: %i[index show create update destroy]
       # News Hub (spec #355): the fixed News Categories; the members' feed of
       # News Items; the bot records (PUT, an upsert) and removes News Items
-      # by their Discord message id (service-only).
+      # by their Discord message id (service-only), and lists those with no
+      # News Copy yet (service-only, ticket #368).
       get "news_categories", to: "news_categories#index"
       get    "news_items",             to: "news_items#index"
+      get    "news_items/uncopied",    to: "news_items#uncopied"
       put    "news_items/:message_id", to: "news_items#update"
       delete "news_items/:message_id", to: "news_items#destroy"
       # The News Import (ticket #359): the bot records the Game News Archive

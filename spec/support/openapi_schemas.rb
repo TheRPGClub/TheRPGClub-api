@@ -1080,8 +1080,16 @@ module OpenapiSchemas
           description: "The News Category's key. Always set in the member feed; null only for an imported " \
                        "News Item staff have not sorted yet, which members never see."),
         origin: str(enum: NewsItem::ORIGINS,
-          description: "live: recorded from a News Category's thread. import: brought in from the Game News " \
-                       "Archive by the News Import."),
+          description: "live: recorded from the News Channel as it was posted. import: brought in by the " \
+                       "News Import from before the News Hub."),
+        picked_category_key: str(enum: NewsCategory.keys, nullable: true,
+          description: "The News Category the bot first picked for it, kept when the category is corrected; " \
+                       "null when the bot reported none (imported News Items, and items recorded before the " \
+                       "News Channel)."),
+        news_copy: ref("NewsCopy", nullable: true).merge(
+          description: "Where the News Copy (the bot's copy in the News Category's thread) lives; null while " \
+                       "the News Item has none."
+        ),
         comment: str(nullable: true,
           description: "The member's own words: the message text as a reader sees it, without the link " \
                        "address. Null when there are none."),
@@ -1094,7 +1102,14 @@ module OpenapiSchemas
           description: "The message's image attachments in posted order; empty when there are none."
         ),
         author: ref("NewsItemAuthor"),
-        _required: %w[message_id category_key origin comment posted_at edited_at link images author]
+        _required: %w[message_id category_key origin comment posted_at edited_at link images author
+                      picked_category_key news_copy]
+      ),
+      NewsCopy: obj(
+        message_id: str(example: "1500000000000000005", description: "The News Copy's Discord message id."),
+        thread_id: str(example: "1600000000000000006",
+          description: "The id of the News Category's thread the News Copy is posted in."),
+        _required: %w[message_id thread_id]
       ),
       NewsItemLink: obj(
         url: str(example: "https://example.test/news/story", description: "The link's address (http or https)."),
@@ -1184,7 +1199,11 @@ module OpenapiSchemas
           description: "The oldest archive message imported so far (by snowflake), kept or removed with " \
                        "`skip`; null before any. The archive is locked and the scan reads it newest first, " \
                        "so a re-run scan continues from just before this message."),
-        _required: %w[sorted unsorted removed oldest_message_id]
+        copied: int.merge(description: "News Items, live and imported, that have a News Copy."),
+        uncopied: int.merge(description: "News Items, live and imported, that have a News Category but no " \
+                                         "News Copy yet: what the history copy has left (see " \
+                                         "`GET /api/v1/news_items/uncopied`). Unsorted items are not counted."),
+        _required: %w[sorted unsorted removed oldest_message_id copied uncopied]
       ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,

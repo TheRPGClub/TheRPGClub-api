@@ -1,4 +1,10 @@
+---
+status: superseded by ADR-0007
+---
+
 # A News Item's category comes from the thread it was posted in
+
+Superseded by [ADR 0007](0007-news-posted-in-one-channel-copied-into-category-threads.md): members post news in one channel again and the bot copies it into the category threads.
 
 The game news forum in Discord holds one permanent thread per News Category, and a News Item is a message inside one of those threads, so every News Item has exactly one News Category from a short fixed list. We rejected the shape Discord's forum tags were built for, one forum post per news item carrying several tags, because posting news had to stay as quick as dropping a link, and because per-thread follow and mute give members per-category notifications in Discord for free. Making every news item a forum post would have required a title for each one and turned the forum into thousands of posts.
 

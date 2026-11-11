@@ -59,22 +59,58 @@ RSpec.describe 'api/v1/news_items', type: :request do
     end
   end
 
+  path '/api/v1/news_items/uncopied' do
+    get 'News Items without a News Copy' do
+      tags 'News Hub'
+      description 'Service-only. The News Items that have a News Category but no News Copy yet, live and ' \
+                  'imported alike, oldest first (`posted_at` ascending, then the order they were recorded), ' \
+                  "paged with `page`/`per`. The bot's history copy and its retries of failed copies work " \
+                  'through them, reporting each copy with `PUT /api/v1/news_items/{message_id}` and ' \
+                  '`{ "data": { "news_copy": { ... } } }`; a reported item leaves the listing, so a run that ' \
+                  'copies as it goes reads the first page again rather than the next. Imported News Items ' \
+                  'staff have not sorted are left out. Answers whatever the Feature Flag says.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'a page of News Items without a News Copy' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/NewsItem' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }, required: %w[data meta]
+      end
+
+      response '403', 'forbidden - caller is not the service principal' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/news_items/{message_id}' do
     parameter name: :message_id, in: :path, schema: { type: :string }, required: true,
       description: "The Discord message's snowflake."
 
     put 'Record a News Item' do
       tags 'News Hub'
-      description 'Service-only. The bot records a Discord message that is a News Item (posted by a member in ' \
-                  "a News Category's thread, with a link, an image attachment, or both) when it is posted and " \
-                  'again whenever it is edited, including when Discord delivers the link preview a moment ' \
-                  'later. Creates the News Item (201) or updates the one with this message id (200), so ' \
-                  'repeating a call changes nothing. Every field is replaced by what is sent: send the whole ' \
-                  'message each time. A new News Item has origin `live`. An imported News Item (origin ' \
-                  '`import`) keeps its origin and the News Category staff assigned it; `category_key` is ' \
-                  'ignored for it and may be omitted. A message with neither a link nor an image is not a ' \
-                  'News Item and is refused (422): when an edit removes them, DELETE the News Item instead. ' \
-                  'Recording works whatever the Feature Flag says.'
+      description 'Service-only. The bot records a Discord message that is a News Item (posted in the News ' \
+                  'Channel with a link, an image attachment, or both) when it is posted and again whenever it ' \
+                  'is edited, including when Discord delivers the link preview a moment later. Creates the ' \
+                  'News Item (201) or updates the one with this message id (200), so repeating a call changes ' \
+                  'nothing. The message fields are replaced by what is sent: send the whole message each ' \
+                  'time. `category_key`, `picked_category_key` and `news_copy` keep their stored values when ' \
+                  'omitted on an update (send `news_copy: null` to record that the News Copy is gone); a new ' \
+                  'live News Item needs `category_key`. A new News Item has origin `live`. An imported News ' \
+                  'Item (origin `import`) keeps its origin and the News Category staff assigned it; ' \
+                  '`category_key` is ignored for it and may be omitted. A message with neither a link nor an ' \
+                  'image is not a News Item and is refused (422): when an edit removes them, DELETE the News ' \
+                  'Item instead. ' \
+                  'A body holding only `news_copy` reports where the News Copy of a recorded News Item ' \
+                  '(live or imported) lives and changes nothing else (200, or 404 when the message was never ' \
+                  'recorded). Recording works whatever the Feature Flag says.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -84,19 +120,37 @@ RSpec.describe 'api/v1/news_items', type: :request do
           data: {
             type: :object,
             properties: {
-              channel_id: { type: :string, description: "The thread's (channel's) snowflake. Required." },
+              channel_id: { type: :string, description: "The channel's snowflake. Required unless only " \
+                                                       '`news_copy` is sent.' },
               category_key: { type: :string, enum: NewsCategory.keys, nullable: true,
-                              description: "The News Category of the thread the message is in. Required for a " \
-                                           'live News Item; ignored for an imported one.' },
-              author_id: { type: :string, description: "The author's Discord user id. Required." },
+                              description: "The News Item's News Category. Required for a new live News " \
+                                           'Item; kept when omitted on an update; ignored for an imported ' \
+                                           'one.' },
+              picked_category_key: { type: :string, enum: NewsCategory.keys, nullable: true,
+                                     description: 'The News Category the bot picked for the message. Optional; ' \
+                                                  'kept when omitted.' },
+              news_copy: {
+                type: :object, nullable: true,
+                description: 'Where the News Copy lives, once the bot has posted it. Optional; kept when ' \
+                             'omitted; null records that the News Item has no News Copy. Sent alone, it ' \
+                             'reports the location without changing anything else.',
+                properties: {
+                  message_id: { type: :string, description: "The News Copy's Discord message id." },
+                  thread_id: { type: :string, description: "The id of the News Category's thread it is in." }
+                },
+                required: %w[message_id thread_id]
+              },
+              author_id: { type: :string, description: "The author's Discord user id. Required unless only " \
+                                                      '`news_copy` is sent.' },
               author_name: { type: :string, maxLength: 100,
                              description: "The author's display name now, kept as the name to show if they " \
-                                          'have no member record. Required.' },
+                                          'have no member record. Required unless only `news_copy` is sent.' },
               comment: { type: :string, nullable: true,
                          description: 'The message text as a reader sees it (mentions and custom emoji ' \
                                       'resolved to readable text), with the link address removed. Blank or ' \
                                       'null for none.' },
-              posted_at: { type: :string, format: 'date-time', description: 'When it was posted. Required.' },
+              posted_at: { type: :string, format: 'date-time',
+                           description: 'When it was posted. Required unless only `news_copy` is sent.' },
               edited_at: { type: :string, format: 'date-time', nullable: true,
                            description: 'When it was last edited; null if never.' },
               link: {
@@ -131,7 +185,8 @@ RSpec.describe 'api/v1/news_items', type: :request do
                 }
               }
             },
-            required: %w[channel_id author_id author_name posted_at]
+            description: 'The whole message (`channel_id`, `author_id`, `author_name` and `posted_at` ' \
+                         'required), or only `news_copy`.'
           }
         },
         required: %w[data]
@@ -149,8 +204,12 @@ RSpec.describe 'api/v1/news_items', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'not a News Item (no link and no image), an unknown or missing News Category, or an ' \
-                      'invalid field' do
+      response '404', 'only `news_copy` was sent and no News Item has this message id' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'not a News Item (no link and no image), an unknown or missing News Category, an unknown ' \
+                      'picked category, a `news_copy` without both ids, or an invalid field' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
