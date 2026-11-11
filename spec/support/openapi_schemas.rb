@@ -1163,24 +1163,6 @@ module OpenapiSchemas
         _required: %w[message_id posted_at author_name comment link_url link_title link_site_name
                       link_description image_count]
       ),
-      NewsImportBatchResult: obj(
-        created: int.merge(description: "Messages recorded as new imported News Items."),
-        updated: int.merge(description: "Messages already recorded, updated in place (an assigned News " \
-                                        "Category is kept)."),
-        previously_removed: int.merge(description: "Messages staff removed with `skip`, left out."),
-        rejected: array_of("NewsImportBatchRejection").merge(
-          description: "Messages not recorded, each with its reason. Empty when every message was recorded."
-        ),
-        _required: %w[created updated previously_removed rejected]
-      ),
-      NewsImportBatchRejection: obj(
-        index: int.merge(description: "The message's 0-based position in `items`."),
-        message_id: str(nullable: true, description: "The message id as sent; null when missing."),
-        reason: str(example: "A News Item needs a link or at least one image",
-          description: "Why it was not recorded: the News Item's validation errors, or `already recorded as " \
-                       "a live News Item`."),
-        _required: %w[index message_id reason]
-      ),
       NewsImportAssignResult: obj(
         assigned: int.merge(description: "Rows that assigned a News Category."),
         removed: int.merge(description: "`skip` rows (including items already removed by an earlier `skip`)."),
@@ -1216,15 +1198,11 @@ module OpenapiSchemas
         sorted: int.merge(description: "Imported News Items with a News Category (shown to members)."),
         unsorted: int.merge(description: "Imported News Items with no News Category yet (hidden)."),
         removed: int.merge(description: "Archive messages staff removed with `skip`."),
-        oldest_message_id: str(nullable: true, example: "1300000000000000003",
-          description: "The oldest archive message imported so far (by snowflake), kept or removed with " \
-                       "`skip`; null before any. The archive is locked and the scan reads it newest first, " \
-                       "so a re-run scan continues from just before this message."),
         copied: int.merge(description: "News Items, live and imported, that have a News Copy."),
         uncopied: int.merge(description: "News Items, live and imported, that have a News Category but no " \
                                          "News Copy yet: what the history copy has left (see " \
                                          "`GET /api/v1/news_items/uncopied`). Unsorted items are not counted."),
-        _required: %w[sorted unsorted removed oldest_message_id copied uncopied]
+        _required: %w[sorted unsorted removed copied uncopied]
       ),
       SearchSynonym: obj(
         term_id: int, group_id: int, term_text: str, term_norm: str,
