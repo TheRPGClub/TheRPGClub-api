@@ -2,6 +2,20 @@
 
 The club's backend: members, their games, club voting, and the Achievement Hub that mirrors members' achievements from external platforms.
 
+## Membership
+
+**Member**:
+A person in the club's Discord server who has signed in to the website. Only Members can see the members' area of the website.
+_Avoid_: User, account
+
+**Visitor**:
+Anyone on the website who is not a Member: someone not signed in, or someone signed in with Discord who is not in the club's Discord server. Visitors see the public front page and are invited to join the server.
+_Avoid_: Guest, non-member, anonymous user
+
+**Theme**:
+The look a Member chooses for the website, from colours and type to the shape of every control; the site's pages and what they do stay the same in every Theme. Visitors, and Members who have not chosen, see the club's default Theme.
+_Avoid_: Skin, style, dark mode, appearance
+
 ## Achievement Hub
 
 **Provider**:
