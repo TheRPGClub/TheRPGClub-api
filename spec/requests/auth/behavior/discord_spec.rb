@@ -25,7 +25,8 @@ RSpec.describe "auth/discord behavior", type: :request do
       with_env(
         "DISCORD_CLIENT_ID" => "123456789012345678",
         "DISCORD_OAUTH_SCOPES" => "identify email guilds guilds.members.read",
-        "DISCORD_REDIRECT_URI" => "http://localhost:3000/auth/discord/callback"
+        "DISCORD_REDIRECT_URI" => "http://localhost:3000/auth/discord/callback",
+        "DISCORD_OAUTH_SUCCESS_REDIRECT" => "https://front.test/auth/callback"
       ) { example.run }
     end
 
@@ -54,6 +55,24 @@ RSpec.describe "auth/discord behavior", type: :request do
         expect(response).to have_http_status(:unprocessable_content)
         expect(json.fetch("error")).to eq("discord_oauth_not_configured")
         expect(json.fetch("detail")).to include("DISCORD_CLIENT_ID")
+      end
+    end
+
+    {
+      "missing" => nil,
+      "relative" => "/api/v1/session",
+      "malformed" => "https://front test/auth/callback"
+    }.each do |label, setting|
+      context "when the website address is #{label}" do
+        around { |example| with_env("DISCORD_OAUTH_SUCCESS_REDIRECT" => setting) { example.run } }
+
+        it "renders the 422 configuration error instead of sending the Visitor to Discord" do
+          get "/auth/discord"
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("discord_oauth_not_configured")
+          expect(json.fetch("detail")).to include("DISCORD_OAUTH_SUCCESS_REDIRECT")
+        end
       end
     end
   end
@@ -140,6 +159,24 @@ RSpec.describe "auth/discord behavior", type: :request do
       expect(UserSessionToken.find_valid(redirect_query.fetch("token"))).to be_present
     end
 
+    context "when the success destination carries its own query" do
+      around do |example|
+        with_env("DISCORD_OAUTH_SUCCESS_REDIRECT" => "https://front.test/auth/callback?via=discord") { example.run }
+      end
+
+      it "adds the token and return-to to that query" do
+        stub_successful_oauth
+        state = begin_oauth(return_to: "/games/42")
+
+        get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+        expect(response.location).to start_with("https://front.test/auth/callback?via=discord&")
+        expect(response.location.count("?")).to eq(1)
+        expect(redirect_query).to include("via" => "discord", "return_to" => "/games/42")
+        expect(UserSessionToken.find_valid(redirect_query.fetch("token"))).to be_present
+      end
+    end
+
     {
       "protocol-relative" => "//evil.example/games",
       "absolute URL" => "https://evil.example/games",
@@ -170,13 +207,50 @@ RSpec.describe "auth/discord behavior", type: :request do
       expect(redirect_query).not_to have_key("return_to")
     end
 
-    it "keeps a non-ASCII return-to path as given" do
+    it "keeps a return-to just under the 1 KB cap" do
+      stub_successful_oauth
+      near_cap = "/games?q=#{'a' * 1000}"
+      state = begin_oauth(return_to: near_cap)
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+      expect(redirect_query.fetch("return_to")).to eq(near_cap)
+    end
+
+    {
+      "multi-byte characters" => "/#{'🎲' * 2000}",
+      "characters the session escapes" => "/#{'<' * 2000}",
+      "escaped characters within 1 KB" => "/#{'<' * 1000}"
+    }.each do |label, overlong|
+      it "discards an over-long return-to of #{label} without failing the start" do
+        stub_successful_oauth
+        state = begin_oauth(return_to: overlong)
+
+        expect(response).to have_http_status(:found)
+
+        get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+        expect(response.location).to start_with("https://front.test/auth/callback?")
+        expect(redirect_query).not_to have_key("return_to")
+      end
+    end
+
+    it "keeps a percent-encoded return-to path as given" do
       stub_successful_oauth
       state = begin_oauth(return_to: "/games/caf%C3%A9?tab=reviews")
 
       get "/auth/discord/callback", params: { code: "good-code", state: state }
 
       expect(redirect_query.fetch("return_to")).to eq("/games/caf%C3%A9?tab=reviews")
+    end
+
+    it "keeps a non-ASCII return-to path as given" do
+      stub_successful_oauth
+      state = begin_oauth(return_to: "/games/café?tab=críticas")
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+      expect(redirect_query.fetch("return_to")).to eq("/games/café?tab=críticas")
     end
 
     it "stores the Discord profile on the upserted user" do
@@ -409,6 +483,67 @@ RSpec.describe "auth/discord behavior", type: :request do
         get "/auth/discord/callback", params: { code: "good-code", state: state }
 
         expect(response.location).to eq("https://front.test/join")
+      end
+    end
+
+    # A sign-in already under way when the website address breaks (a deploy
+    # between start and callback) ends in the 422 configuration error, never a
+    # 500 or a redirect onto the API's own host.
+    context "when the website address is broken by the time Discord calls back" do
+      def call_back_with_website_address(setting, **params)
+        with_env("DISCORD_OAUTH_SUCCESS_REDIRECT" => setting) do
+          get "/auth/discord/callback", params: params
+        end
+      end
+
+      {
+        "missing" => nil,
+        "relative" => "/api/v1/session",
+        "malformed" => "https://front test/auth/callback"
+      }.each do |label, setting|
+        it "422s on success, issuing no token (#{label})" do
+          stub_successful_oauth
+          state = begin_oauth
+
+          call_back_with_website_address(setting, code: "good-code", state: state)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("discord_oauth_not_configured")
+          expect(json.fetch("detail")).to include("DISCORD_OAUTH_SUCCESS_REDIRECT")
+          expect(UserSessionToken.count).to eq(0)
+        end
+
+        it "422s when the sign-in fails (#{label})" do
+          allow(client).to receive(:exchange_code!).and_raise(StandardError, "invalid_grant")
+          state = begin_oauth
+
+          call_back_with_website_address(setting, code: "bad-code", state: state)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("discord_oauth_not_configured")
+        end
+
+        it "422s when the state does not match (#{label})" do
+          call_back_with_website_address(setting, code: "good-code", state: "forged-state")
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("discord_oauth_not_configured")
+        end
+
+        it "422s when the Visitor is not in the club's Discord server (#{label})" do
+          allow(client).to receive_messages(
+            exchange_code!: { "access_token" => "discord-access-token" },
+            fetch_user!: discord_user_payload
+          )
+          allow(client).to receive(:ensure_rpgclub_member!)
+            .and_raise(Auth::DiscordOauthClient::GuildMembershipError, "not a member")
+          state = begin_oauth(return_to: "/games/42")
+
+          call_back_with_website_address(setting, code: "good-code", state: state)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("discord_oauth_not_configured")
+        end
       end
     end
 
