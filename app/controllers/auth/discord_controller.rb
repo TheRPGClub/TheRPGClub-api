@@ -2,7 +2,11 @@
 
 module Auth
   class DiscordController < ActionController::API
-    RETURN_TO_MAX_LENGTH = 2048
+    RETURN_TO_MAX_BYTES = 1024
+
+    # Every outcome of a sign-in lands on the website, so neither step runs
+    # without a usable website address.
+    before_action :require_website_address
 
     def start
       session[:discord_oauth_state] = SecureRandom.hex(24)
@@ -13,7 +17,7 @@ module Auth
         redirect_uri: callback_url
       ), allow_other_host: true
     rescue Auth::DiscordOauthClient::ConfigurationError => e
-      render json: { error: "discord_oauth_not_configured", detail: e.message }, status: :unprocessable_entity
+      render_not_configured(e)
     end
 
     def callback
@@ -25,7 +29,7 @@ module Auth
       end
 
       session.delete(:discord_oauth_state)
-      @return_to = session.delete(:discord_oauth_return_to)
+      return_to = session.delete(:discord_oauth_return_to)
       token = oauth_client.exchange_code!(code: params.require(:code), redirect_uri: callback_url)
       access_token = token.fetch("access_token")
       discord_user = oauth_client.fetch_user!(access_token)
@@ -41,13 +45,12 @@ module Auth
         Auth::Principal.discord_user(user, discord_user, is_dev: is_dev, is_longstanding: is_longstanding)
       )
       raw_token = UserSessionToken.generate_for(user, is_dev: is_dev, is_longstanding: is_longstanding)
-      query = { token: raw_token, return_to: @return_to }.compact.to_query
-      redirect_to "#{success_redirect_url}?#{query}", allow_other_host: true
+      redirect_to success_url(token: raw_token, return_to: return_to), allow_other_host: true
     rescue Auth::DiscordOauthClient::ConfigurationError => e
-      render json: { error: "discord_oauth_not_configured", detail: e.message }, status: :unprocessable_entity
+      render_not_configured(e)
     rescue Auth::DiscordOauthClient::GuildMembershipError
-      redirect_to website_url("/join", return_to: @return_to), allow_other_host: true
-    rescue ActionController::ParameterMissing, KeyError, StandardError => e
+      redirect_to website_url("/join", return_to: return_to), allow_other_host: true
+    rescue StandardError => e
       redirect_auth_failed(e.message)
     end
 
@@ -61,28 +64,64 @@ module Auth
       ENV.fetch("DISCORD_REDIRECT_URI") { auth_discord_callback_url }
     end
 
-    def success_redirect_url
-      ENV.fetch("DISCORD_OAUTH_SUCCESS_REDIRECT", "/api/v1/session")
+    def render_not_configured(error)
+      render json: { error: "discord_oauth_not_configured", detail: error.message }, status: :unprocessable_entity
+    end
+
+    def require_website_address
+      website_address
+    rescue Auth::DiscordOauthClient::ConfigurationError => e
+      render_not_configured(e)
+    end
+
+    # The success destination, DISCORD_OAUTH_SUCCESS_REDIRECT, is the website's
+    # sign-in callback and its origin is the website. It must be an absolute
+    # http(s) URL: a missing or relative setting would land the other outcomes
+    # on the API's own host. Checked before each step (see
+    # require_website_address), so the URL helpers below never raise, even
+    # from the callback's rescue clauses.
+    def website_address
+      @website_address ||= begin
+        uri = URI.parse(ENV.fetch("DISCORD_OAUTH_SUCCESS_REDIRECT", ""))
+        raise URI::InvalidURIError unless uri.is_a?(URI::HTTP) && uri.host.present?
+
+        uri
+      rescue URI::InvalidURIError
+        raise Auth::DiscordOauthClient::ConfigurationError,
+          "DISCORD_OAUTH_SUCCESS_REDIRECT must be the website's absolute sign-in callback URL, " \
+          "for example http://localhost:3001/auth/callback"
+      end
     end
 
     # A return-to is only ever a same-origin path on the website. A single
     # leading slash rules out a scheme or host ("//host" is protocol-relative);
     # backslashes and control characters are refused because browsers read
     # "/\host" as "//host" and drop tabs and newlines ("/\t/host"). It is
-    # capped so it cannot overflow the cookie-stored session. Anything else is
-    # discarded rather than repaired.
+    # capped at 1 KB as stored, so it cannot overflow the ~4 KB cookie-stored
+    # session: the cap counts the JSON-encoded bytes because the session
+    # escapes some characters ("<" becomes "\u003c") and a multi-byte
+    # character is several bytes. Anything else is discarded rather than
+    # repaired.
     def safe_return_to(value)
-      return nil unless value.is_a?(String) && value.length <= RETURN_TO_MAX_LENGTH
+      return nil unless value.is_a?(String) && value.to_json.bytesize <= RETURN_TO_MAX_BYTES
       return nil unless value.start_with?("/") && !value.start_with?("//")
       return nil if value.include?("\\") || value.match?(/[[:cntrl:]]/)
 
       value
     end
 
+    # The success destination with the sign-in result added to any query it
+    # already carries.
+    def success_url(**query)
+      uri = website_address.dup
+      uri.query = [ uri.query.presence, query.compact.to_query.presence ].compact.join("&").presence
+      uri.to_s
+    end
+
     # Pages on the website live at the origin of the success destination, which
     # is the website's front page or its sign-in callback.
     def website_url(path, **query)
-      uri = URI.parse(success_redirect_url)
+      uri = website_address.dup
       uri.path = path
       uri.query = query.compact.to_query.presence
       uri.fragment = nil

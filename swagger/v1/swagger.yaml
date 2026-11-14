@@ -27224,11 +27224,12 @@ paths:
         in: query
         schema:
           type: string
-          maxLength: 2048
         required: false
         description: 'Website path to come back to after sign-in. Accepted only as
-          a same-origin path: a single leading slash, no scheme or host, no backslash.
-          Anything else is silently discarded.'
+          a same-origin path: a single leading slash, no scheme or host, no backslash,
+          no control characters (tabs, newlines), and at most 1 KB as stored in the
+          session (JSON-encoded bytes, so multi-byte and escaped characters count
+          for more than one). Anything else is silently discarded.'
       responses:
         '302':
           description: redirecting to Discord
@@ -27239,7 +27240,8 @@ paths:
               description: Discord authorization URL with the `state` query parameter
                 set.
         '422':
-          description: Discord OAuth not configured
+          description: Discord OAuth not configured, or `DISCORD_OAUTH_SUCCESS_REDIRECT`
+            is not an absolute URL
           content:
             application/json:
               schema:
@@ -27257,15 +27259,17 @@ paths:
         to the website's `/join` page with the `return_to`. An invalid or missing
         state, or a failed Discord exchange, redirects to the website's front page
         with `?error=auth_failed`. Website URLs use the origin of the success URL.
-        Public — does not require authentication.
+        A missing `code` (for example, consent denied on Discord) also redirects to
+        `/?error=auth_failed`. Public — does not require authentication.
       security: []
       parameters:
       - name: code
         in: query
         schema:
           type: string
-        required: true
-        description: OAuth authorization code from Discord.
+        required: false
+        description: OAuth authorization code from Discord. Absent when the Visitor
+          declined consent.
       - name: state
         in: query
         schema:
@@ -27282,7 +27286,8 @@ paths:
               schema:
                 type: string
         '422':
-          description: Discord OAuth not configured
+          description: Discord OAuth not configured, or `DISCORD_OAUTH_SUCCESS_REDIRECT`
+            is not an absolute URL
           content:
             application/json:
               schema:
