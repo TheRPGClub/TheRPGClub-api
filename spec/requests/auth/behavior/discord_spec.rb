@@ -74,7 +74,7 @@ RSpec.describe "auth/discord behavior", type: :request do
     around do |example|
       with_env(
         "DISCORD_REDIRECT_URI" => "http://localhost:3000/auth/discord/callback",
-        "DISCORD_OAUTH_SUCCESS_REDIRECT" => "https://front.test/auth/complete"
+        "DISCORD_OAUTH_SUCCESS_REDIRECT" => "https://front.test/auth/callback"
       ) { example.run }
     end
 
@@ -82,14 +82,14 @@ RSpec.describe "auth/discord behavior", type: :request do
 
     # GET /auth/discord (with the stubbed client) so the session holds a CSRF
     # state, returning the state the controller generated.
-    def begin_oauth
+    def begin_oauth(return_to: nil)
       captured_state = nil
       allow(client).to receive(:authorization_url) do |**kwargs|
         captured_state = kwargs.fetch(:state)
         "https://discord.com/oauth2/authorize?state=#{captured_state}"
       end
 
-      get "/auth/discord"
+      get "/auth/discord", params: { return_to: return_to }.compact
       captured_state
     end
 
@@ -102,8 +102,12 @@ RSpec.describe "auth/discord behavior", type: :request do
       )
     end
 
+    def redirect_query
+      Rack::Utils.parse_query(URI.parse(response.location).query)
+    end
+
     def token_from_redirect
-      Rack::Utils.parse_query(URI.parse(response.location).query).fetch("token")
+      redirect_query.fetch("token")
     end
 
     it "creates the user, issues a session token, and redirects with the token" do
@@ -116,13 +120,63 @@ RSpec.describe "auth/discord behavior", type: :request do
         .and change(UserSessionToken, :count).by(1)
 
       expect(response).to have_http_status(:found)
-      expect(response.location).to start_with("https://front.test/auth/complete?token=")
+      expect(response.location).to start_with("https://front.test/auth/callback?token=")
 
       session_token = UserSessionToken.find_valid(token_from_redirect)
       expect(session_token).to be_present
       expect(session_token.user_id).to eq(discord_id)
       expect(session_token.is_dev).to be(false)
       expect(session_token.is_longstanding).to be(false)
+    end
+
+    it "carries the return-to given at start through to the success redirect" do
+      stub_successful_oauth
+      state = begin_oauth(return_to: "/games/42?tab=reviews")
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+      expect(response.location).to start_with("https://front.test/auth/callback?")
+      expect(redirect_query.fetch("return_to")).to eq("/games/42?tab=reviews")
+      expect(UserSessionToken.find_valid(redirect_query.fetch("token"))).to be_present
+    end
+
+    {
+      "protocol-relative" => "//evil.example/games",
+      "absolute URL" => "https://evil.example/games",
+      "scheme" => "javascript:alert(1)",
+      "backslash" => "/\\evil.example/games",
+      "relative path" => "games/42",
+      "whitespace smuggling" => "/\t/evil.example"
+    }.each do |label, unsafe|
+      it "discards an unsafe return-to (#{label})" do
+        stub_successful_oauth
+        state = begin_oauth(return_to: unsafe)
+
+        get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+        expect(response.location).to start_with("https://front.test/auth/callback?")
+        expect(redirect_query).not_to have_key("return_to")
+        expect(redirect_query.fetch("token")).to be_present
+      end
+    end
+
+    it "discards an overlong return-to rather than overflowing the session cookie" do
+      stub_successful_oauth
+      state = begin_oauth(return_to: "/games?q=#{'a' * 3000}")
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+      expect(response).to have_http_status(:found)
+      expect(redirect_query).not_to have_key("return_to")
+    end
+
+    it "keeps a non-ASCII return-to path as given" do
+      stub_successful_oauth
+      state = begin_oauth(return_to: "/games/caf%C3%A9?tab=reviews")
+
+      get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+      expect(redirect_query.fetch("return_to")).to eq("/games/caf%C3%A9?tab=reviews")
     end
 
     it "stores the Discord profile on the upserted user" do
@@ -268,87 +322,94 @@ RSpec.describe "auth/discord behavior", type: :request do
       expect(session_token.is_longstanding).to be(false)
     end
 
-    it "401s with invalid_oauth_state when the callback arrives without a prior start" do
+    it "redirects to the website's auth-failed destination when the callback arrives without a prior start" do
       get "/auth/discord/callback", params: { code: "good-code", state: "forged-state" }
 
-      expect(response).to have_http_status(:unauthorized)
-      expect(json.fetch("error")).to eq("invalid_oauth_state")
+      expect(response).to redirect_to("https://front.test/?error=auth_failed")
       expect(UserSessionToken.count).to eq(0)
     end
 
-    it "401s when the state does not match the one issued at start" do
+    it "redirects to the auth-failed destination when the state does not match the one issued at start" do
       stub_successful_oauth
-      begin_oauth
+      begin_oauth(return_to: "/games/42")
 
       get "/auth/discord/callback", params: { code: "good-code", state: "tampered" }
 
-      expect(response).to have_http_status(:unauthorized)
-      expect(json.fetch("error")).to eq("invalid_oauth_state")
+      expect(response).to redirect_to("https://front.test/?error=auth_failed")
       expect(UserSessionToken.count).to eq(0)
     end
 
-    it "401s when the state parameter is missing" do
+    it "redirects to the auth-failed destination when the state parameter is missing" do
       stub_successful_oauth
       begin_oauth
 
       get "/auth/discord/callback", params: { code: "good-code" }
 
-      expect(response).to have_http_status(:unauthorized)
-      expect(json.fetch("error")).to eq("invalid_oauth_state")
+      expect(response).to redirect_to("https://front.test/?error=auth_failed")
     end
 
-    it "consumes the state on success, so replaying the callback 401s" do
+    it "consumes the state on success, so replaying the callback fails" do
       stub_successful_oauth
       state = begin_oauth
 
       get "/auth/discord/callback", params: { code: "good-code", state: state }
-      expect(response).to have_http_status(:found)
+      expect(response.location).to start_with("https://front.test/auth/callback?")
 
       get "/auth/discord/callback", params: { code: "good-code", state: state }
 
-      expect(response).to have_http_status(:unauthorized)
-      expect(json.fetch("error")).to eq("invalid_oauth_state")
+      expect(response).to redirect_to("https://front.test/?error=auth_failed")
     end
 
-    it "401s with discord_oauth_failed when the code exchange is rejected" do
+    it "redirects to the auth-failed destination when the code exchange is rejected" do
       allow(client).to receive(:exchange_code!)
         .and_raise(StandardError, 'invalid_grant: Invalid "code" in request.')
-      state = begin_oauth
+      state = begin_oauth(return_to: "/games/42")
 
       get "/auth/discord/callback", params: { code: "bad-code", state: state }
 
-      expect(response).to have_http_status(:unauthorized)
-      expect(json.fetch("error")).to eq("discord_oauth_failed")
-      expect(json.fetch("detail")).to include("invalid_grant")
+      expect(response).to redirect_to("https://front.test/?error=auth_failed")
       expect(UserSessionToken.count).to eq(0)
     end
 
-    it "401s with discord_oauth_failed when the code parameter is missing" do
+    it "redirects to the auth-failed destination when Discord sends no code (consent denied)" do
       stub_successful_oauth
       state = begin_oauth
 
-      get "/auth/discord/callback", params: { state: state }
+      get "/auth/discord/callback", params: { error: "access_denied", state: state }
 
-      expect(response).to have_http_status(:unauthorized)
-      expect(json.fetch("error")).to eq("discord_oauth_failed")
+      expect(response).to redirect_to("https://front.test/?error=auth_failed")
     end
 
-    it "403s with discord_guild_membership_required for non-members" do
-      allow(client).to receive_messages(
-        exchange_code!: { "access_token" => "discord-access-token" },
-        fetch_user!: discord_user_payload
-      )
-      allow(client).to receive(:ensure_rpgclub_member!)
-        .and_raise(Auth::DiscordOauthClient::GuildMembershipError,
-          "Discord user is not a member of TheRPGClub Discord server")
-      state = begin_oauth
+    context "when the Visitor is not in the club's Discord server" do
+      before do
+        allow(client).to receive_messages(
+          exchange_code!: { "access_token" => "discord-access-token" },
+          fetch_user!: discord_user_payload
+        )
+        allow(client).to receive(:ensure_rpgclub_member!)
+          .and_raise(Auth::DiscordOauthClient::GuildMembershipError,
+            "Discord user is not a member of TheRPGClub Discord server")
+      end
 
-      get "/auth/discord/callback", params: { code: "good-code", state: state }
+      it "redirects to the website's join page with the return-to, issuing no token" do
+        state = begin_oauth(return_to: "/games/42?tab=reviews")
 
-      expect(response).to have_http_status(:forbidden)
-      expect(json.fetch("error")).to eq("discord_guild_membership_required")
-      expect(RpgClubUser.where(user_id: discord_id)).not_to exist
-      expect(UserSessionToken.count).to eq(0)
+        get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+        expect(response).to have_http_status(:found)
+        expect(response.location).to start_with("https://front.test/join?")
+        expect(redirect_query).to eq("return_to" => "/games/42?tab=reviews")
+        expect(RpgClubUser.where(user_id: discord_id)).not_to exist
+        expect(UserSessionToken.count).to eq(0)
+      end
+
+      it "redirects to the bare join page when no return-to was given" do
+        state = begin_oauth
+
+        get "/auth/discord/callback", params: { code: "good-code", state: state }
+
+        expect(response.location).to eq("https://front.test/join")
+      end
     end
 
     it "422s with discord_oauth_not_configured when the client is misconfigured" do

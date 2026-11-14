@@ -27216,9 +27216,19 @@ paths:
       tags:
       - Auth
       description: Begins the Discord OAuth flow. The endpoint stores a CSRF `state`
-        value in the session and redirects the browser to Discord's authorization
-        URL. Public — does not require authentication.
+        value, and the optional `return_to`, in the session and redirects the browser
+        to Discord's authorization URL. Public — does not require authentication.
       security: []
+      parameters:
+      - name: return_to
+        in: query
+        schema:
+          type: string
+          maxLength: 2048
+        required: false
+        description: 'Website path to come back to after sign-in. Accepted only as
+          a same-origin path: a single leading slash, no scheme or host, no backslash.
+          Anything else is silently discarded.'
       responses:
         '302':
           description: redirecting to Discord
@@ -27241,7 +27251,12 @@ paths:
       - Auth
       description: Exchanges the OAuth `code` for tokens, verifies guild membership
         and roles, upserts the RPG Club user record, issues a `UserSessionToken`,
-        and redirects to the configured success URL with the token in the query string.
+        and redirects to the configured success URL (the website's sign-in callback)
+        with the token and the `return_to` from the start in the query string. A Discord
+        user who is not in the club's Discord server gets no token and is redirected
+        to the website's `/join` page with the `return_to`. An invalid or missing
+        state, or a failed Discord exchange, redirects to the website's front page
+        with `?error=auth_failed`. Website URLs use the origin of the success URL.
         Public — does not require authentication.
       security: []
       parameters:
@@ -27259,23 +27274,13 @@ paths:
         description: CSRF state value matching the one set at /auth/discord.
       responses:
         '302':
-          description: redirecting to the success URL with `?token=…`
+          description: redirecting to the success URL with `?token=…&return_to=…`,
+            to `/join?return_to=…` for a non-member, or to `/?error=auth_failed` when
+            sign-in failed
           headers:
             Location:
               schema:
                 type: string
-        '401':
-          description: invalid OAuth state or token exchange failed
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: caller is not a member of the RPG Club Discord guild
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
         '422':
           description: Discord OAuth not configured
           content:
