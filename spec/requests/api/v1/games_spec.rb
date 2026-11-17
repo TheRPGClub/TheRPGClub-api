@@ -102,7 +102,7 @@ RSpec.describe 'api/v1/games', type: :request do
                   'the service, whatever the Game Index Feature Flag (other Features import games). Creates a game from IGDB by `igdb_id`: fetches the full IGDB ' \
                   'payload, upserts the game row plus its taxonomy (genres, themes, perspectives, modes, ' \
                   'engines, franchises, platforms, developer/publisher companies, collection) and releases ' \
-                  '(one per platform, earliest dated; Japan-only releases are skipped; `format` is left ' \
+                  '(one per platform per region, earliest dated, Japan included; `format` is left ' \
                   'null), then imports its cover/artwork/logo images into Backblaze through the same ' \
                   'importer the jobs use. Idempotent on `igdb_id`, answering 200 instead of 201 for a game ' \
                   'already in the GameDB: an Admin, Superadmin or the service re-POSTing refreshes it from ' \
@@ -491,8 +491,8 @@ RSpec.describe 'api/v1/games', type: :request do
                   'Release is adopted (becomes `source` "igdb"), else a new IGDB Release is added. IGDB ' \
                   'Releases IGDB no longer reports are removed with their announcement; Manual Releases are ' \
                   'never changed or removed. A pending announcement follows its Release\'s moved date; a sent ' \
-                  'or skipped one is never reset. IGDB dates kept: one per platform (earliest dated; ' \
-                  'Japan-only releases skipped, undated rows dropped, `format` left null). Returns the ' \
+                  'or skipped one is never reset. IGDB dates kept: one per platform per region (earliest ' \
+                  'dated, Japan included, undated rows dropped, `format` left null). Returns the ' \
                   'rebuilt release list (same shape as GET /api/v1/games/{id}/releases), with `meta.added` ' \
                   '(how many more releases the game has than before, never negative) and `meta.total`.'
       produces 'application/json'

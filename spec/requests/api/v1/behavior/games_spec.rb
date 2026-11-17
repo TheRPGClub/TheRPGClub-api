@@ -243,12 +243,13 @@ RSpec.describe "api/v1/games behavior", type: :request do
         franchises: [],
         companies: [ { igdb_id: company_igdb_id, name: "Spec Square #{SecureRandom.hex(3)}", developer: true, publisher: true } ],
         release_dates: [
-          # Japan release is the earliest on SNES but must be skipped entirely.
+          # A Japan-first game: Japan is the earliest SNES release and is kept...
           { platform: snes_ref, region: 5, date: Time.utc(1995, 3, 11) },
-          # NA is the earliest non-JP SNES release and should win...
+          # ...beside each other region's earliest SNES release...
           { platform: snes_ref, region: 2, date: Time.utc(1995, 8, 22) },
-          # ...over the later EU release on the same platform.
           { platform: snes_ref, region: 1, date: Time.utc(1995, 12, 1) },
+          # ...while a later date in the same region loses.
+          { platform: snes_ref, region: 2, date: Time.utc(1996, 2, 1) },
           # Undated rows are dropped.
           { platform: ps_ref, region: 2, date: nil },
           # A nil region falls back to Worldwide.
@@ -298,18 +299,21 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(platform.platform_name).to eq(snes_ref[:name])
     end
 
-    it "imports one earliest non-Japanese IGDB Release per platform, format null" do
+    it "imports the earliest IGDB Release per platform per region, Japan included, format null" do
       post "/api/v1/games", params: { igdb_id: igdb_id }, headers: service_headers, as: :json
 
       game = GamedbGame.find_by!(igdb_id: igdb_id)
       releases = game.releases.includes(:platform, :region)
-      expect(releases.length).to eq(2)
+      expect(releases.length).to eq(4)
       expect(releases.map(&:source)).to all(eq("igdb"))
+      expect(releases.map(&:format)).to all(be_nil)
 
-      snes_release = releases.find { |r| r.platform.igdb_platform_id == snes_igdb_id }
-      expect(snes_release.release_date).to eq(Time.utc(1995, 8, 22))
-      expect(snes_release.region.igdb_region_id).to eq(2)
-      expect(snes_release.format).to be_nil
+      snes_releases = releases.select { |r| r.platform.igdb_platform_id == snes_igdb_id }
+      expect(snes_releases.to_h { |r| [ r.region.igdb_region_id, r.release_date ] }).to eq(
+        5 => Time.utc(1995, 3, 11),
+        2 => Time.utc(1995, 8, 22),
+        1 => Time.utc(1995, 12, 1)
+      )
 
       ps_release = releases.find { |r| r.platform.igdb_platform_id == ps_igdb_id }
       expect(ps_release.release_date).to eq(Time.utc(2001, 6, 29))
@@ -561,8 +565,8 @@ RSpec.describe "api/v1/games behavior", type: :request do
         igdb_id: igdb_id,
         name: game.title,
         release_dates: [
-          # JP-only date is skipped; the NA one lands.
-          { platform: platform_ref, region: 5, date: Time.utc(2024, 1, 1) },
+          # The earliest NA date lands; the later one loses.
+          { platform: platform_ref, region: 2, date: Time.utc(2024, 9, 1) },
           { platform: platform_ref, region: 2, date: Time.utc(2024, 6, 1) }
         ]
       }
@@ -577,6 +581,38 @@ RSpec.describe "api/v1/games behavior", type: :request do
     def announcement_ids_for(game)
       get "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
       json.fetch("data").map { |announcement| announcement.fetch("release_id") }
+    end
+
+    def refresh!
+      post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
+      expect(response).to have_http_status(:ok)
+    end
+
+    def igdb_reports(*dates)
+      allow(igdb_client).to receive(:game).with(igdb_id).and_return(
+        igdb_id: igdb_id, name: game.title,
+        release_dates: dates.map { |date| { platform: platform_ref, region: 2, date: date } }
+      )
+    end
+
+    def releases_of(game)
+      get "/api/v1/games/#{game.game_id}/releases", headers: service_headers
+      json.fetch("data")
+    end
+
+    def announcements_of(game)
+      get "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+      json.fetch("data")
+    end
+
+    def due_feed
+      get "/api/v1/release_announcements/due", headers: service_headers
+      json.fetch("data")
+    end
+
+    def sync_announcements!
+      patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+      expect(response).to have_http_status(:ok)
     end
 
     it "keeps an unmatched Manual Release and adds the IGDB Release beside it" do
@@ -614,38 +650,6 @@ RSpec.describe "api/v1/games behavior", type: :request do
       let(:igdb_platform) { GamedbPlatform.create!(igdb_platform_id: platform_ref[:igdb_id], platform_name: platform_ref[:name], platform_code: "RD#{SecureRandom.hex(4)}") }
       let(:north_america) do
         GamedbRegion.create_with(region_code: "NA", region_name: "North America").find_or_create_by!(igdb_region_id: 2)
-      end
-
-      def refresh!
-        post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
-        expect(response).to have_http_status(:ok)
-      end
-
-      def igdb_reports(*dates)
-        allow(igdb_client).to receive(:game).with(igdb_id).and_return(
-          igdb_id: igdb_id, name: game.title,
-          release_dates: dates.map { |date| { platform: platform_ref, region: 2, date: date } }
-        )
-      end
-
-      def releases_of(game)
-        get "/api/v1/games/#{game.game_id}/releases", headers: service_headers
-        json.fetch("data")
-      end
-
-      def announcements_of(game)
-        get "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
-        json.fetch("data")
-      end
-
-      def due_feed
-        get "/api/v1/release_announcements/due", headers: service_headers
-        json.fetch("data")
-      end
-
-      def sync_announcements!
-        patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
-        expect(response).to have_http_status(:ok)
       end
 
       it "updates the same IGDB Release when IGDB moves its date" do
@@ -730,6 +734,137 @@ RSpec.describe "api/v1/games behavior", type: :request do
         patch "/api/v1/release_announcements/#{offered.fetch("release_id")}",
           params: { data: { sent_at: Time.current.iso8601 } }, headers: service_headers, as: :json
 
+        refresh!
+        sync_announcements!
+
+        expect(due_feed).to eq([])
+      end
+    end
+
+    describe "Releases per platform per region, Japan included (api#391)" do
+      let(:japan) { 5 }
+      let(:north_america) { 2 }
+      let(:europe) { 1 }
+      let(:in_window_date) { 5.days.from_now.utc.beginning_of_day }
+
+      # Each pair is [IGDB region, date], all on the one platform.
+      def igdb_reports_regions(*pairs)
+        allow(igdb_client).to receive(:game).with(igdb_id).and_return(
+          igdb_id: igdb_id, name: game.title,
+          release_dates: pairs.map { |region, date| { platform: platform_ref, region: region, date: date } }
+        )
+      end
+
+      def release_id_in(region_code)
+        releases_of(game).find { |release| release.fetch("region_code") == region_code }.fetch("release_id")
+      end
+
+      def send_announcement!(release_id)
+        patch "/api/v1/release_announcements/#{release_id}",
+          params: { data: { sent_at: Time.current.iso8601 } }, headers: service_headers, as: :json
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "keeps one IGDB Release per region for NA, EU and JP dates on one platform" do
+        igdb_reports_regions(
+          [ north_america, Time.utc(2030, 6, 1) ],
+          [ europe, Time.utc(2030, 6, 5) ],
+          [ japan, Time.utc(2030, 5, 1) ],
+          [ north_america, Time.utc(2030, 7, 1) ]
+        )
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "NA", "source" => "igdb", "release_date" => "2030-06-01T00:00:00.000Z"),
+          hash_including("region_code" => "EU", "source" => "igdb", "release_date" => "2030-06-05T00:00:00.000Z"),
+          hash_including("region_code" => "JP", "source" => "igdb", "release_date" => "2030-05-01T00:00:00.000Z")
+        )
+      end
+
+      it "keeps both the Japanese and the western Releases of a Japan-first game across refreshes" do
+        igdb_reports_regions([ japan, Time.utc(2030, 3, 1) ], [ north_america, Time.utc(2030, 9, 1) ])
+        refresh!
+        before = releases_of(game).map { |release| release.fetch("release_id") }
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "JP", "release_date" => "2030-03-01T00:00:00.000Z"),
+          hash_including("region_code" => "NA", "release_date" => "2030-09-01T00:00:00.000Z")
+        )
+        expect(releases_of(game).map { |release| release.fetch("release_id") }).to match_array(before)
+      end
+
+      it "offers the earliest Release outside Japan in the due feed for a game that has both" do
+        igdb_reports_regions(
+          [ japan, in_window_date - 1.day ],
+          [ north_america, in_window_date ],
+          [ europe, in_window_date + 1.day ]
+        )
+        refresh!
+        sync_announcements!
+
+        expect(due_feed.map { |row| row.fetch("release_id") }).to eq([ release_id_in("NA") ])
+      end
+
+      it "offers the earliest Japanese Release in the due feed for a Japan-only game" do
+        igdb_reports_regions([ japan, in_window_date ])
+        refresh!
+        sync_announcements!
+
+        expect(due_feed.map { |row| row.fetch("release_id") }).to eq([ release_id_in("JP") ])
+      end
+
+      it "offers one announcement for same-day Releases in several regions" do
+        igdb_reports_regions(
+          [ japan, in_window_date ],
+          [ north_america, in_window_date ],
+          [ europe, in_window_date ]
+        )
+        refresh!
+        sync_announcements!
+
+        offered = due_feed.map { |row| row.fetch("release_id") }
+        expect(offered.length).to eq(1)
+        expect(offered).not_to include(release_id_in("JP"))
+      end
+
+      it "does not announce a game again when its announced Release moves later" do
+        igdb_reports_regions([ north_america, in_window_date ], [ europe, in_window_date ])
+        refresh!
+        sync_announcements!
+        send_announcement!(due_feed.sole.fetch("release_id"))
+
+        igdb_reports_regions([ north_america, in_window_date + 1.day ], [ europe, in_window_date ])
+        refresh!
+        sync_announcements!
+
+        expect(due_feed).to eq([])
+      end
+
+      it "does not announce a game again when IGDB drops its announced Release" do
+        igdb_reports_regions([ north_america, in_window_date ], [ europe, in_window_date + 1.day ])
+        refresh!
+        sync_announcements!
+        send_announcement!(release_id_in("NA"))
+        expect(due_feed).to eq([])
+
+        igdb_reports_regions([ europe, in_window_date + 1.day ])
+        refresh!
+        sync_announcements!
+
+        expect(releases_of(game)).to contain_exactly(hash_including("region_code" => "EU"))
+        expect(due_feed).to eq([])
+      end
+
+      it "does not announce a Japan-only game again when a western Release appears" do
+        igdb_reports_regions([ japan, in_window_date ])
+        refresh!
+        sync_announcements!
+        send_announcement!(release_id_in("JP"))
+
+        igdb_reports_regions([ japan, in_window_date ], [ north_america, in_window_date + 1.day ])
         refresh!
         sync_announcements!
 

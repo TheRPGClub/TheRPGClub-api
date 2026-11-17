@@ -397,6 +397,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_170378) do
     t.string "title", limit: 255, null: false
     t.decimal "total_rating"
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }
+    t.datetime "release_announced_at"
 
     t.unique_constraint ["igdb_id"], name: "gamedb_games_igdb_id_key"
   end

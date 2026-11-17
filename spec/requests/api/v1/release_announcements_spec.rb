@@ -52,7 +52,10 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
                   '`announce_at = release_date - 7 days` (a pending row is moved only when its time changes; rows ' \
                   'already sent/skipped are left alone); (2) clears the canonicality skip on rows that no longer ' \
                   'qualify as port-only / same-day-duplicate; and (3) skips rows that are now non-canonical ' \
-                  '(`port-only-release` for a later release date, `same-day-platform-duplicate` for a same-day tie).'
+                  '(`same-day-platform-duplicate` for a release on the canonical release\'s date, in any region, ' \
+                  '`port-only-release` for any other date). The canonical release is the game\'s earliest outside ' \
+                  'Japan, or its earliest Japanese one when it has no other, with the lowest `release_id` breaking ' \
+                  'a same-day tie.'
       produces 'application/json'
 
       response '200', 'schedule synced' do
@@ -108,8 +111,10 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
       tags 'Release Announcements'
       description 'Service-only poll feed (the bot\'s `listDueAnnouncements`). Returns the announcements ready ' \
                   'to post: not yet sent or skipped, whose `announce_at` has passed, whose release is still in ' \
-                  'the future, and which are the canonical release for their game (earliest release date; on a ' \
-                  'same-day tie the lowest `release_id`). Any pending announcement whose window has already ' \
+                  'the future, and which are the canonical release for their game (its earliest release outside ' \
+                  'Japan, or its earliest Japanese one when it has no other; on a same-day tie the lowest ' \
+                  '`release_id`). A game is announced once: no release of a game whose announcement was already ' \
+                  'sent is offered again. Any pending announcement whose window has already ' \
                   'passed (its release has shipped) is marked skipped (`release-window-missed`) server-side ' \
                   'first, so it never appears here. Unpaginated; bounded by `limit`.'
       produces 'application/json'

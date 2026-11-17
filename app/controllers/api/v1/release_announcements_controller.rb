@@ -30,24 +30,54 @@ module Api
       DEFAULT_DUE_LIMIT = 25
       MAX_DUE_LIMIT = 100
 
-      # Canonical release per game: the earliest `release_date`, and for ties on
-      # the same day the lowest `release_id`. Constant SQL (no interpolation),
-      # used as the `release_id IN (…)` filter on #due.
+      # Region whose Releases only become canonical when a game has no other
+      # (ADR 0009): announcements go out for the release most members get.
+      JAPAN_REGION_CODE = "JP"
+
+      # Every dated Release ranked for canonicality within its game. The
+      # canonical Release (`canonical_rank` 1) is the earliest outside Japan, or
+      # the earliest Japanese one when the game has nothing else, with the
+      # lowest `release_id` breaking a same-day tie. `canonical_date` is that
+      # Release's date, so the others can be told apart as same-day duplicates
+      # (any region, Japan included) or port-only Releases (any other date).
+      # Split around its WHERE clause so #sync can narrow it to one game.
+      RANKED_RELEASES_SELECT_SQL = <<~SQL.squish
+        SELECT r.release_id,
+               r.release_date,
+               FIRST_VALUE(r.release_date) OVER canonical_order AS canonical_date,
+               ROW_NUMBER() OVER canonical_order AS canonical_rank
+        FROM gamedb_releases r
+        JOIN gamedb_regions g ON g.region_id = r.region_id
+        WHERE r.release_date IS NOT NULL
+      SQL
+      RANKED_RELEASES_WINDOW_SQL = <<~SQL.squish
+        WINDOW canonical_order AS (
+          PARTITION BY r.game_id
+          ORDER BY (g.region_code = '#{JAPAN_REGION_CODE}') ASC, r.release_date ASC, r.release_id ASC
+        )
+      SQL
+
+      # Canonical release per game across every game, used as the
+      # `release_id IN (…)` filter on #due.
       CANONICAL_RELEASE_IDS_SQL = <<~SQL.squish
-        SELECT canonical.release_id
-        FROM (
-          SELECT r.release_id,
-                 r.release_date,
-                 MIN(r.release_date) OVER (PARTITION BY r.game_id) AS first_release_date,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY r.game_id, r.release_date
-                   ORDER BY r.release_id ASC
-                 ) AS same_day_rank
-          FROM gamedb_releases r
-          WHERE r.release_date IS NOT NULL
-        ) canonical
-        WHERE canonical.release_date = canonical.first_release_date
-          AND canonical.same_day_rank = 1
+        SELECT ranked.release_id
+        FROM (#{RANKED_RELEASES_SELECT_SQL} #{RANKED_RELEASES_WINDOW_SQL}) ranked
+        WHERE ranked.canonical_rank = 1
+      SQL
+
+      # A game is announced once (ADR 0009). Its sent announcement lives on the
+      # announced Release, and `gamedb_games.release_announced_at` keeps it
+      # when an IGDB refresh removes that Release. Either one keeps every other
+      # Release of the game out of #due.
+      GAME_ALREADY_ANNOUNCED_SQL = <<~SQL.squish
+        gamedb_games.release_announced_at IS NOT NULL
+        OR EXISTS (
+          SELECT 1
+          FROM gamedb_releases announced
+          JOIN gamedb_release_announcements sent ON sent.release_id = announced.release_id
+          WHERE announced.game_id = gamedb_releases.game_id
+            AND sent.sent_at IS NOT NULL
+        )
       SQL
 
       # GET /api/v1/games/:id/release_announcements
@@ -153,7 +183,8 @@ module Api
       # The due feed (unbounded). Pending (`sent_at`/`skipped_at` NULL),
       # already-announceable (`announce_at <= now`), still-upcoming
       # (`release_date > now`) announcements that are the canonical release for
-      # their game, ordered the same way the bot's `listDueAnnouncements` orders.
+      # their game, for games not already announced, ordered the same way the
+      # bot's `listDueAnnouncements` orders.
       # Projected onto the joined release/game/platform columns the bot needs.
       def due_scope(now)
         GamedbReleaseAnnouncement
@@ -164,6 +195,7 @@ module Api
           .where("gamedb_release_announcements.announce_at <= :now", now: now)
           .where("gamedb_releases.release_date > :now", now: now)
           .where("gamedb_release_announcements.release_id IN (#{CANONICAL_RELEASE_IDS_SQL})")
+          .where.not(GAME_ALREADY_ANNOUNCED_SQL)
           .select(
             "gamedb_release_announcements.release_id AS release_id",
             "gamedb_releases.game_id AS game_id",
@@ -234,19 +266,18 @@ module Api
              AND NOT EXISTS (
                SELECT 1
                FROM (#{ranked_releases_sql(game_id)}) ranked
-               WHERE (ranked.release_date > ranked.first_release_date
-                  OR (ranked.release_date = ranked.first_release_date
-                      AND ranked.same_day_rank > 1))
+               WHERE ranked.canonical_rank > 1
                  AND ranked.release_id = gamedb_release_announcements.release_id
              )
         SQL
       end
 
-      # Step 3 of #sync. Skip the game's now-non-canonical rows: `port-only-release`
-      # for a later-than-earliest release date, `same-day-platform-duplicate` for a
-      # same-day tie that lost the release_id ordering. `src` is the game's ranked
-      # non-canonical releases, so the join self-scopes to this game; only pending
-      # rows are touched.
+      # Step 3 of #sync. Skip the game's now-non-canonical rows:
+      # `same-day-platform-duplicate` for a Release on the canonical Release's
+      # date (any platform or region), `port-only-release` for any other date,
+      # including a Japanese Release earlier than a canonical one outside
+      # Japan. `src` is the game's ranked non-canonical releases, so the join
+      # self-scopes to this game; only pending rows are touched.
       def mark_non_canonical(game_id)
         exec_update(<<~SQL.squish)
           UPDATE gamedb_release_announcements a
@@ -255,13 +286,11 @@ module Api
                  updated_at = CURRENT_TIMESTAMP
             FROM (
               SELECT ranked.release_id,
-                     CASE WHEN ranked.release_date > ranked.first_release_date
-                          THEN #{quote(PORT_ONLY_RELEASE_REASON)}
-                          ELSE #{quote(SAME_DAY_DUPLICATE_REASON)} END AS skip_reason
+                     CASE WHEN ranked.release_date = ranked.canonical_date
+                          THEN #{quote(SAME_DAY_DUPLICATE_REASON)}
+                          ELSE #{quote(PORT_ONLY_RELEASE_REASON)} END AS skip_reason
               FROM (#{ranked_releases_sql(game_id)}) ranked
-              WHERE ranked.release_date > ranked.first_release_date
-                 OR (ranked.release_date = ranked.first_release_date
-                     AND ranked.same_day_rank > 1)
+              WHERE ranked.canonical_rank > 1
             ) src
            WHERE a.release_id = src.release_id
              AND a.sent_at IS NULL
@@ -289,24 +318,12 @@ module Api
         SQL
       end
 
-      # The game's releases ranked for canonicality: earliest `release_date` per
-      # game (`first_release_date`) and the same-day ordering by `release_id`
-      # (`same_day_rank`). Scoped to the game; the window partitions are by
-      # `game_id`, so restricting the rows here yields the same ranks as the bot's
-      # global query for this game.
+      # The game's releases ranked for canonicality (RANKED_RELEASES_*_SQL).
+      # Scoped to the game; the window partitions are by `game_id`, so
+      # restricting the rows here yields the same ranks as the global query
+      # #due uses for this game.
       def ranked_releases_sql(game_id)
-        <<~SQL.squish
-          SELECT r.release_id,
-                 r.release_date,
-                 MIN(r.release_date) OVER (PARTITION BY r.game_id) AS first_release_date,
-                 ROW_NUMBER() OVER (
-                   PARTITION BY r.game_id, r.release_date
-                   ORDER BY r.release_id ASC
-                 ) AS same_day_rank
-          FROM gamedb_releases r
-          WHERE r.release_date IS NOT NULL
-            AND r.game_id = #{game_id}
-        SQL
+        "#{RANKED_RELEASES_SELECT_SQL} AND r.game_id = #{Integer(game_id)} #{RANKED_RELEASES_WINDOW_SQL}"
       end
 
       def exec_update(sql)

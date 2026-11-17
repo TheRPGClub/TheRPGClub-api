@@ -9,9 +9,10 @@ module Gamedb
   # Mirrors the Discord bot's "add a game from IGDB" flow so an API-created game
   # is indistinguishable from a bot-created one: missing lookup rows (genre,
   # company, platform, …) are created on the fly keyed by their `igdb_*_id`.
-  # Releases are one-per-platform (earliest), skip Japan, and leave `format`
-  # null (IGDB carries no physical/digital signal); they are written through
-  # Gamedb::ReleaseSync, the in-place refresh shared by import and refresh.
+  # Releases are one per platform per region (the earliest, Japan included,
+  # ADR 0009) and leave `format` null (IGDB carries no physical/digital
+  # signal); they are written through Gamedb::ReleaseSync, the in-place
+  # refresh shared by import and refresh.
   class IgdbGameImporter
     class MissingIgdbGameError < StandardError; end
     class MissingIgdbIdError < StandardError; end
@@ -40,9 +41,7 @@ module Gamedb
       8 => { code: "WW", name: "Worldwide" }
     }.freeze
 
-    # Region the bot excludes from auto-created releases (JP), and the fallback
-    # region applied when a release date carries none (WW).
-    SKIPPED_RELEASE_REGION = 5
+    # The fallback region applied when a release date carries none (WW).
     DEFAULT_RELEASE_REGION = 8
 
     def initialize(client: Igdb::Client.new, image_importer: IgdbImageImporter.new)
@@ -192,7 +191,7 @@ module Gamedb
     end
 
     def sync_releases!(game, payload)
-      reported = earliest_release_per_platform(payload[:release_dates]).each_value.filter_map do |release|
+      reported = earliest_release_per_platform_and_region(payload[:release_dates]).each_value.filter_map do |release|
         platform = ensure_platform(release[:platform])
         region = ensure_region(release[:region])
         next if platform.nil? || region.nil?
@@ -205,18 +204,18 @@ module Gamedb
       ReleaseSync.call(game, reported)
     end
 
-    # IGDB returns many release_dates per game (one per region/platform). Keep
-    # the earliest dated row per platform, skipping Japan and undated rows —
-    # mirroring the bot so the same single release lands per platform.
-    def earliest_release_per_platform(release_dates)
+    # IGDB can return several release_dates for one platform and region (a
+    # re-release, an edition). Keep the earliest dated row per platform per
+    # region, Japan included (ADR 0009); undated rows are dropped. A missing
+    # region counts as Worldwide, as ensure_region stores it.
+    def earliest_release_per_platform_and_region(release_dates)
       Array(release_dates).each_with_object({}) do |release, earliest|
-        next if release[:region] == SKIPPED_RELEASE_REGION
-
         igdb_platform_id = release.dig(:platform, :igdb_id)
         next if igdb_platform_id.blank? || release[:date].nil?
 
-        current = earliest[igdb_platform_id]
-        earliest[igdb_platform_id] = release if current.nil? || release[:date] < current[:date]
+        key = [ igdb_platform_id, release[:region] || DEFAULT_RELEASE_REGION ]
+        current = earliest[key]
+        earliest[key] = release if current.nil? || release[:date] < current[:date]
       end
     end
 

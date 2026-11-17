@@ -11,8 +11,9 @@ module Gamedb
   #   IGDB Release and takes IGDB's date (any other matches stay Manual);
   # - otherwise a new IGDB Release is inserted.
   #
-  # IGDB Releases IGDB no longer reports are removed with their announcement.
-  # Manual Releases are never updated or removed.
+  # IGDB Releases IGDB no longer reports are removed with their announcement;
+  # when that announcement was sent, the game keeps `release_announced_at` so
+  # it is never announced again. Manual Releases are never updated or removed.
   #
   # Because a Release keeps its id, its announcement keeps its delivery state:
   # a pending announcement follows a moved date (`announce_at` = date - 7 days),
@@ -89,13 +90,22 @@ module Gamedb
     end
 
     # The announcement row FKs to the Release, so it goes too, whatever its
-    # state: a removed Release has nothing left to announce.
+    # state: a removed Release has nothing left to announce. A sent one is the
+    # game's announcement, so the game keeps when it went out
+    # (`release_announced_at`) and the due feed never announces it again.
     def remove!(releases)
       return if releases.empty?
 
+      keep_announced_at!(releases.filter_map { |release| release.announcement&.sent_at }.min)
       release_ids = releases.map(&:release_id)
       GamedbReleaseAnnouncement.where(release_id: release_ids).delete_all
       GamedbRelease.where(release_id: release_ids).delete_all
+    end
+
+    def keep_announced_at!(sent_at)
+      return if sent_at.nil? || @game.release_announced_at
+
+      @game.update_columns(release_announced_at: sent_at)
     end
   end
 end

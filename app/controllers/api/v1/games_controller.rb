@@ -154,8 +154,8 @@ module Api
       # from IGDB and refreshes its Releases in place (Gamedb::ReleaseSync, ADR
       # 0009): IGDB Releases are updated, added or removed, Manual Releases are
       # adopted or left alone, and announcements keep their delivery state. IGDB
-      # dates kept: one per platform (earliest dated; Japan-only releases
-      # skipped, undated rows dropped, `format` left null). Returns the rebuilt
+      # dates kept: one per platform per region (earliest dated, Japan
+      # included, undated rows dropped, `format` left null). Returns the rebuilt
       # release list, matching GET /api/v1/games/:id/releases, with
       # `meta.added` (how many more releases than before, never negative, as
       # the bot reports it) and `meta.total`.
