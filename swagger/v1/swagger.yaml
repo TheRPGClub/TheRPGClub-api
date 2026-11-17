@@ -3615,6 +3615,50 @@ components:
       - hidden
       - show_preview_features
       - features
+    BirthDate:
+      type: object
+      properties:
+        user_id:
+          type: string
+        birth_date:
+          type: string
+          nullable: true
+          format: date
+          example: '1990-05-04'
+          description: The member's Birth Date; null until they enter it.
+        changes_left_this_month:
+          type: integer
+          example: 1
+          description: How many more times the member may set or change it this calendar
+            month (US Eastern), 0 to 2. Entering it the first time counts; staff changes
+            don't.
+        next_change_on:
+          type: string
+          nullable: true
+          format: date
+          example: '2026-12-01'
+          description: When changes_left_this_month is 0, the first day of next month,
+            when the member may change it again; null otherwise.
+      required:
+      - user_id
+      - birth_date
+      - changes_left_this_month
+      - next_change_on
+    BirthDateRefusal:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Why it was refused. For the limit, names the date the member
+            may change it again.
+        next_change_on:
+          type: string
+          format: date
+          example: '2026-12-01'
+          description: 'Only when the member reached the limit: the first day of next
+            month (US Eastern).'
+      required:
+      - error
     NewsCategory:
       type: object
       properties:
@@ -6332,6 +6376,140 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/birth_date":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    get:
+      summary: Show a member's Birth Date
+      tags:
+      - Users
+      description: The member's Birth Date and how many times they may still set or
+        change it this calendar month. Only the member and staff (Moderators and above)
+        may read it; another member gets 403. The bot's service token must name the
+        member it acts for in `acting_user_id`, and the API checks that member the
+        same way.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Service token only (required): the Discord user the bot acts
+          for.'
+      responses:
+        '200':
+          description: birth date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BirthDate"
+                required:
+                - data
+        '400':
+          description: service token without acting_user_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is neither the member nor staff'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Set a member's Birth Date
+      tags:
+      - Users
+      description: Sets the member's Birth Date, or removes it with null. A member
+        may set or change their own at most twice per calendar month (US Eastern),
+        and entering it the first time counts; a third change that month gets 422
+        with `next_change_on`, the first day of next month. Setting the date it already
+        has changes nothing and doesn't count. Staff (Moderators and above) may set
+        anyone's at any time, and their changes don't use up the member's. Returns
+        the whole document, as GET does.
+      parameters: []
+      responses:
+        '200':
+          description: updated birth date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BirthDate"
+                required:
+                - data
+        '422':
+          description: the member already changed it twice this month, or birth_date
+            is missing or not a date from 1900 to today
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/BirthDateRefusal"
+        '400':
+          description: missing `data`, or service token without acting_user_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is neither the member nor staff'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: staff naming a member the API doesn't know
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    birth_date:
+                      type: string
+                      format: date
+                      nullable: true
+                      example: '1990-05-04'
+                      description: YYYY-MM-DD, from 1900 to today; null removes it.
+                    acting_user_id:
+                      type: string
+                      description: 'Service token only (required): the Discord user
+                        the bot acts for.'
+                  required:
+                  - birth_date
+              required:
+              - data
+        required: true
   "/api/v1/bot_jobs":
     get:
       summary: List bot jobs (activity list)

@@ -1082,6 +1082,29 @@ module OpenapiSchemas
         _required: %w[user_id hidden show_preview_features features]
       ),
 
+      # BirthDatesController (spec #376, ticket #380). A member's Birth Date,
+      # served only to the member and staff, and the member's changes left.
+      BirthDate: obj(
+        user_id: str,
+        birth_date: str(nullable: true, format: "date", example: "1990-05-04",
+          description: "The member's Birth Date; null until they enter it."),
+        changes_left_this_month: int.merge(
+          example: 1,
+          description: "How many more times the member may set or change it this calendar month (US Eastern), " \
+                       "0 to 2. Entering it the first time counts; staff changes don't."
+        ),
+        next_change_on: str(nullable: true, format: "date", example: "2026-12-01",
+          description: "When changes_left_this_month is 0, the first day of next month, when the member may " \
+                       "change it again; null otherwise."),
+        _required: %w[user_id birth_date changes_left_this_month next_change_on]
+      ),
+      BirthDateRefusal: obj(
+        error: str(description: "Why it was refused. For the limit, names the date the member may change it again."),
+        next_change_on: str(format: "date", example: "2026-12-01",
+          description: "Only when the member reached the limit: the first day of next month (US Eastern)."),
+        _required: %w[error]
+      ),
+
       # ---- News Hub (spec #355) --------------------------------------------
       # NewsCategory: the fixed, ordered list in code. Keys are stable.
       NewsCategory: obj(

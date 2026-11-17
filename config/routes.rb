@@ -130,6 +130,9 @@ Rails.application.routes.draw do
           patch "giveaway_settings", to: "giveaway_settings#update"
           get "feature_preferences", to: "feature_preferences#show"
           patch "feature_preferences", to: "feature_preferences#update"
+          # Challenges (ticket #380): the member's Birth Date.
+          get "birth_date", to: "birth_dates#show"
+          put "birth_date", to: "birth_dates#update"
           get "news_category_preferences", to: "news_category_preferences#show"
           patch "news_category_preferences", to: "news_category_preferences#update"
           get "game_keys", to: "game_keys#user_index"
