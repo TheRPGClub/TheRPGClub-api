@@ -83,7 +83,8 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
                   '`run_active` (with `run_id`) when the member already has an Active Run of it. A Slots Run copies ' \
                   'its first year: a birth-year one is 409 `birth_date_required` without a Birth Date and 422 ' \
                   '`no_slots` when the birth year comes after the last year, and `meta.notices` tells the member ' \
-                  'their birth year shows on the Run. The bot sends ' \
+                  'their birth year shows on the Run. An Assignment (Secret Santa) Challenge is 409 ' \
+                  '`signup_required`: its Runs come from an Edition\'s draw. The bot sends ' \
                   '`{ "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable` when the ' \
                   'Feature Flag hides the Feature from that member).'
       consumes 'application/json'
@@ -100,9 +101,10 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '409', 'challenge_closed, run_active or birth_date_required' do
+      response '409', 'challenge_closed, run_active, birth_date_required or signup_required' do
         schema type: :object, properties: {
-          error: { type: :string, enum: %w[challenge_closed run_active birth_date_required] }, message: { type: :string },
+          error: { type: :string, enum: %w[challenge_closed run_active birth_date_required signup_required] },
+          message: { type: :string },
           run_id: { type: :integer, description: 'run_active only: the member\'s Active Run.' }
         }
       end

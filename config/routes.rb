@@ -461,6 +461,12 @@ Rails.application.routes.draw do
       post   "challenge_runs/:id/abandon",   to: "challenge_runs#abandon"
       post   "challenge_runs/:id/slot_move", to: "challenge_runs#slot_move"
       delete "challenge_runs/:id",           to: "challenge_runs#destroy"
+      # Editions of an Assignment Challenge (ticket #383): list, read, and
+      # sign up for one or withdraw before its cutoff.
+      get    "challenges/:challenge_id/editions", to: "challenge_editions#index"
+      get    "challenge_editions/:id",            to: "challenge_editions#show"
+      post   "challenge_editions/:id/signup",     to: "challenge_editions#sign_up"
+      delete "challenge_editions/:id/signup",     to: "challenge_editions#withdraw"
     end
   end
 end

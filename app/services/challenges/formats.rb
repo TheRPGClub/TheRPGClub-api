@@ -27,22 +27,17 @@ module Challenges
   #                                      raises Challenges::RunRefused
   #   notices(run)                       what the member is told on start
   #
-  # Assignment (#383) registers here when it is built.
+  # Assignment (Secret Santa) runs in Editions (Challenges::Editions): its
+  # Runs come from the draw, so it refuses run_attributes.
   module Formats
-    REGISTRY = { "pool" => Formats::Pool, "slots" => Formats::Slots }.freeze
+    REGISTRY = { "pool" => Formats::Pool, "slots" => Formats::Slots, "assignment" => Formats::Assignment }.freeze
 
     def self.supported = REGISTRY.keys
 
     # The Format module for `key`; raises Challenges::Invalid for a Format
-    # that is not available yet or does not exist.
+    # that does not exist.
     def self.fetch(key)
-      REGISTRY.fetch(key.to_s) do
-        if Challenge::FORMATS.include?(key.to_s)
-          raise Invalid, "The #{key} Challenge Format is not available yet"
-        end
-
-        raise Invalid, "challenge_format must be one of #{supported.join(', ')}"
-      end
+      REGISTRY.fetch(key.to_s) { raise Invalid, "challenge_format must be one of #{supported.join(', ')}" }
     end
   end
 end

@@ -2967,7 +2967,6 @@ components:
           - slots
           - pool
           - assignment
-          description: pool or slots so far.
         hosted_by_club:
           type: boolean
           description: True when the club itself is the Host (host is null).
@@ -3025,6 +3024,10 @@ components:
         slots:
           allOf:
           - "$ref": "#/components/schemas/ChallengeSlots"
+          nullable: true
+        assignment:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeAssignment"
           nullable: true
         run_count:
           type: integer
@@ -3156,6 +3159,167 @@ components:
       - last_year
       description: 'A Slots Challenge''s range: one slot per release year (ticket
         #381).'
+    ChallengeAssignment:
+      type: object
+      properties:
+        signup_cutoff:
+          type: string
+          example: 12-01
+          description: Sign-up closes at the start of this day, and the draw happens.
+        pick_deadline:
+          type: string
+          example: 12-15
+          description: Santas pick before this day.
+        reveal:
+          type: string
+          example: 12-25
+          description: The picks are revealed, and the Edition is named by this day's
+            year.
+        edition:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeEditionSummary"
+          nullable: true
+          description: The latest Edition; null before the first one opens.
+      required:
+      - signup_cutoff
+      - pick_deadline
+      - reveal
+      description: 'An Assignment (Secret Santa) Challenge''s Edition calendar, as
+        MM-DD, coming in this order through the year (ticket #383). Defaults: 12-01,
+        12-15, 12-25.'
+    ChallengeEditionSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+          description: The year of its reveal.
+        phase:
+          type: string
+          enum:
+          - signup
+          - picking
+          - revealed
+          - ended
+          - cancelled
+        signup_opens_on:
+          type: string
+          format: date
+          description: The day after the previous reveal, or the day the Challenge
+            was created.
+        signup_cutoff_on:
+          type: string
+          format: date
+          description: Sign-up is open until the start of this day.
+        pick_deadline_on:
+          type: string
+          format: date
+        reveal_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+          description: 'The next reveal date: the year to Clear the game ends.'
+      required:
+      - id
+      - year
+      - phase
+      - signup_opens_on
+      - signup_cutoff_on
+      - pick_deadline_on
+      - reveal_on
+      - ends_on
+      description: An Edition's year, phase and dates, as the club's dates (America/New_York).
+    ChallengeEdition:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+        phase:
+          type: string
+          enum:
+          - signup
+          - picking
+          - revealed
+          - ended
+          - cancelled
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          required:
+          - id
+          - name
+        signup_opens_on:
+          type: string
+          format: date
+        signup_cutoff_on:
+          type: string
+          format: date
+        pick_deadline_on:
+          type: string
+          format: date
+        reveal_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+        signup_open:
+          type: boolean
+          description: Members may sign up and withdraw today.
+        signed_up_count:
+          type: integer
+        signed_up:
+          type: boolean
+          description: The member reading is signed up (false for the bot without
+            acting_user_id, and in bot job payloads).
+        members:
+          type: array
+          description: The members signed up, first first.
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              username:
+                type: string
+              global_name:
+                type: string
+                nullable: true
+              left_out:
+                type: boolean
+                description: 'The draw left them out: fewer than 5 games in their
+                  backlog by then.'
+            required:
+            - user_id
+            - username
+            - left_out
+        drawn_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the draw happened (or cancelled the Edition).
+      required:
+      - id
+      - year
+      - phase
+      - challenge
+      - signup_opens_on
+      - signup_cutoff_on
+      - pick_deadline_on
+      - reveal_on
+      - ends_on
+      - signup_open
+      - signed_up_count
+      - signed_up
     ChallengeRun:
       type: object
       properties:
@@ -3197,6 +3361,18 @@ components:
           required:
           - user_id
           - username
+        edition:
+          type: object
+          properties:
+            id:
+              type: integer
+            year:
+              type: integer
+          required:
+          - id
+          - year
+          nullable: true
+          description: 'Assignment only: the Edition the Run was drawn in.'
         status:
           type: string
           enum:
@@ -3226,8 +3402,8 @@ components:
           required:
           - starts_on
           description: 'When play counts toward the Run, as the club''s dates (both
-            included): the Season it belongs to, or from its start to an Always Open
-            Challenge''s end date.'
+            included): the Season it belongs to, from its start to an Always Open
+            Challenge''s end date, or an Edition''s reveal to its end.'
         progress:
           type: object
           properties:
@@ -3379,6 +3555,10 @@ components:
           - run_finished
           - run_caught_up
           - season_opened
+          - signup_opened
+          - signup_closing
+          - signup_closed
+          - edition_cancelled
         challenge:
           "$ref": "#/components/schemas/Challenge"
         run:
@@ -3388,19 +3568,38 @@ components:
         season:
           "$ref": "#/components/schemas/ChallengeSeasonDates"
           description: 'season_opened only: the Season that opened.'
+        edition:
+          "$ref": "#/components/schemas/ChallengeEdition"
+          description: 'Edition events only: the Edition as GET /api/v1/challenge_editions/{id}
+            serves it.'
+        days_left:
+          type: integer
+          example: 3
+          description: 'signup_closing only: days from today to the cutoff.'
+        joined:
+          type: integer
+          description: 'signup_closed and edition_cancelled only: the members drawn.'
+        left_out:
+          type: integer
+          description: 'signup_closed and edition_cancelled only: the members left
+            out for having fewer than 5 games in their backlog.'
         feature_key:
           type: string
           enum:
           - challenges
       required:
       - event
+      - challenge
       - feature_key
       description: 'Kind `challenge_announce`. Post in the #challenges channel, or
         the staff test channel while the Feature is in Preview. `event` says what
         to announce: `challenge_created`, a new Challenge; `run_finished`, a member''s
         Run that just Finished, or `run_caught_up`, a member''s Slots Run that just
         became Caught Up (at most once a year), both with `run`; or `season_opened`,
-        a Seasonal Challenge''s Season that just opened (with `season`).'
+        a Seasonal Challenge''s Season that just opened (with `season`). An Edition''s
+        sign-up: `signup_opened`; `signup_closing` (with `days_left`); and at the
+        draw, `signup_closed`, or `edition_cancelled` when fewer than 2 members could
+        be drawn (both with `joined` and `left_out`), all with `edition`.'
     ChallengeSeasonDates:
       type: object
       properties:
@@ -3424,6 +3623,7 @@ components:
           type: string
           enum:
           - season_ending
+          - left_out_of_draw
         user_id:
           type: string
           description: The member to DM.
@@ -3431,14 +3631,26 @@ components:
           "$ref": "#/components/schemas/Challenge"
         run:
           "$ref": "#/components/schemas/ChallengeRun"
-          description: The member's Run, as GET /api/v1/challenge_runs/{id} serves
-            it.
+          description: 'season_ending only: the member''s Run, as GET /api/v1/challenge_runs/{id}
+            serves it.'
         season:
           "$ref": "#/components/schemas/ChallengeSeasonDates"
+          description: season_ending only.
         days_left:
           type: integer
           example: 7
-          description: Days from today to the Season's last day (7 unless sent late).
+          description: 'season_ending only: days from today to the Season''s last
+            day (7 unless sent late).'
+        edition:
+          "$ref": "#/components/schemas/ChallengeEdition"
+          description: 'left_out_of_draw only: the Edition.'
+        backlog_count:
+          type: integer
+          description: 'left_out_of_draw only: the games in the member''s backlog.'
+        minimum:
+          type: integer
+          example: 5
+          description: 'left_out_of_draw only: the backlog minimum.'
         feature_key:
           type: string
           enum:
@@ -3446,12 +3658,14 @@ components:
       required:
       - event
       - user_id
-      - days_left
+      - challenge
       - feature_key
       description: 'Kind `challenge_dm`. DM the member `user_id`; post nothing publicly.
-        Sent only to members who keep Challenge DMs on. `event` says what about: `season_ending`,
-        a reminder that the Season of the member''s unFinished Run ends soon (with
-        `run`, `season` and `days_left`).'
+        `event` says what about: `season_ending`, a reminder that the Season of the
+        member''s unFinished Run ends soon (with `run`, `season` and `days_left`),
+        sent only to members who keep Challenge DMs on; `left_out_of_draw`, the draw
+        left the member out of an Edition they signed up for (with `edition`, `backlog_count`
+        and `minimum`), sent to every member still in the server.'
     BotJobClaim:
       type: object
       properties:
@@ -7313,6 +7527,230 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/challenges/{challenge_id}/editions":
+    parameters:
+    - name: challenge_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List a Challenge's Editions
+      tags:
+      - Challenges
+      description: 'Members (the `challenges` Feature). Newest first. An Edition is
+        one yearly cycle of an Assignment (Secret Santa) Challenge, named by the year
+        of its reveal. It opens by itself the day after the previous reveal (the first
+        one, when the Challenge is created), takes sign-ups until the start of its
+        cutoff day, and is then drawn: members with fewer than 5 games in their backlog
+        are left out, the rest go round one random circle and get a Run each, and
+        with fewer than 2 the Edition is cancelled. Dates are the club''s (America/New_York).
+        Who gives to whom is never served here. Editions of a hidden Challenge are
+        found only by Moderators and above and its Host. The bot may name the member
+        it reads for with `acting_user_id` (for `signed_up`).'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Editions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeEdition"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_editions/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show an Edition
+      tags:
+      - Challenges
+      description: 'Members. An Edition is one yearly cycle of an Assignment (Secret
+        Santa) Challenge, named by the year of its reveal. It opens by itself the
+        day after the previous reveal (the first one, when the Challenge is created),
+        takes sign-ups until the start of its cutoff day, and is then drawn: members
+        with fewer than 5 games in their backlog are left out, the rest go round one
+        random circle and get a Run each, and with fewer than 2 the Edition is cancelled.
+        Dates are the club''s (America/New_York). Who gives to whom is never served
+        here. Editions of a hidden Challenge are found only by Moderators and above
+        and its Host.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Edition
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeEdition"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_editions/{id}/signup":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Sign up for an Edition
+      tags:
+      - Challenges
+      description: 'Signs the acting member up, before the cutoff. Refusals carry
+        `{ error, message }` written for members: 409 `signup_closed` from the cutoff
+        on, 409 `already_signed_up`, and 422 `backlog_too_small` (with `minimum` and
+        `backlog_count`) with fewer than 5 games in their backlog. The bot sends `{
+        "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
+        when the Feature Flag hides the Feature from that member).'
+      parameters: []
+      responses:
+        '200':
+          description: the Edition, with the member signed up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeEdition"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: signup_closed or already_signed_up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - signup_closed
+                    - already_signed_up
+                  message:
+                    type: string
+        '422':
+          description: backlog_too_small
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - backlog_too_small
+                  message:
+                    type: string
+                  minimum:
+                    type: integer
+                    example: 5
+                  backlog_count:
+                    type: integer
+                    example: 3
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+    delete:
+      summary: Withdraw from an Edition
+      tags:
+      - Challenges
+      description: 'Takes the acting member off the Edition, before the cutoff: 409
+        `signup_closed` from the cutoff on, 409 `not_signed_up`. The bot sends `acting_user_id`
+        as a query parameter.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Edition, without the member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeEdition"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: signup_closed or not_signed_up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - signup_closed
+                    - not_signed_up
+                  message:
+                    type: string
   "/api/v1/users/{user_id}/challenge_runs":
     parameters:
     - name: user_id
@@ -7459,9 +7897,11 @@ paths:
         (with `run_id`) when the member already has an Active Run of it. A Slots Run
         copies its first year: a birth-year one is 409 `birth_date_required` without
         a Birth Date and 422 `no_slots` when the birth year comes after the last year,
-        and `meta.notices` tells the member their birth year shows on the Run. The
-        bot sends `{ "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
-        when the Feature Flag hides the Feature from that member).'
+        and `meta.notices` tells the member their birth year shows on the Run. An
+        Assignment (Secret Santa) Challenge is 409 `signup_required`: its Runs come
+        from an Edition''s draw. The bot sends `{ "data": { "acting_user_id": "..."
+        } }` (400 without; 403 `feature_unavailable` when the Feature Flag hides the
+        Feature from that member).'
       parameters: []
       responses:
         '201':
@@ -7495,7 +7935,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '409':
-          description: challenge_closed, run_active or birth_date_required
+          description: challenge_closed, run_active, birth_date_required or signup_required
           content:
             application/json:
               schema:
@@ -7507,6 +7947,7 @@ paths:
                     - challenge_closed
                     - run_active
                     - birth_date_required
+                    - signup_required
                   message:
                     type: string
                   run_id:
@@ -7961,8 +8402,8 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: 'invalid_challenge: a missing or invalid field, an empty or
-            unknown Pool, a slot range that ends before it starts, a Format not available
-            yet'
+            unknown Pool, a slot range that ends before it starts, an Edition calendar
+            out of order, a Seasonal or ending Assignment Challenge'
           content:
             application/json:
               schema:
@@ -7992,8 +8433,8 @@ paths:
                       - slots
                       - pool
                       - assignment
-                      description: 'pool or slots so far: assignment is 422 "not available
-                        yet". Locked once the Challenge has a Run.'
+                      description: pool, slots or assignment (Secret Santa). Locked
+                        once the Challenge has a Run.
                     schedule:
                       type: string
                       enum:
@@ -8083,6 +8524,28 @@ paths:
                           description: A fixed year, or "current_year" for a range
                             that gains a slot every 1 January. Not before a fixed
                             first year.
+                    assignment:
+                      type: object
+                      description: The Edition calendar (challenge_format assignment,
+                        Secret Santa) as MM-DD, coming in this order through the year;
+                        29 February is refused. Any day left out is the Secret Santa
+                        default (12-01, 12-15, 12-25). An Assignment Challenge is
+                        Always Open with no end date. Saving it opens the Edition
+                        whose sign-up is due today; a change moves an Edition still
+                        in sign-up that nobody has joined to the new dates, and otherwise
+                        applies from the next Edition.
+                      properties:
+                        signup_cutoff:
+                          type: string
+                          example: 12-01
+                          description: Sign-up closes at the start of this day.
+                        pick_deadline:
+                          type: string
+                          example: 12-15
+                        reveal:
+                          type: string
+                          example: 12-25
+                          description: The Edition is named by its reveal's year.
                     hosted_by_club:
                       type: boolean
                       description: Moderator and above.
@@ -8090,8 +8553,8 @@ paths:
                   - name
                   - challenge_format
                   - schedule
-                  description: 'Send the settings of the chosen Format: `pool` or
-                    `slots`.'
+                  description: 'Send the settings of the chosen Format: `pool`, `slots`
+                    or `assignment` (optional).'
               required:
               - data
         required: true
@@ -8324,8 +8787,8 @@ paths:
                       - slots
                       - pool
                       - assignment
-                      description: 'pool or slots so far: assignment is 422 "not available
-                        yet". Locked once the Challenge has a Run.'
+                      description: pool, slots or assignment (Secret Santa). Locked
+                        once the Challenge has a Run.
                     schedule:
                       type: string
                       enum:
@@ -8415,6 +8878,28 @@ paths:
                           description: A fixed year, or "current_year" for a range
                             that gains a slot every 1 January. Not before a fixed
                             first year.
+                    assignment:
+                      type: object
+                      description: The Edition calendar (challenge_format assignment,
+                        Secret Santa) as MM-DD, coming in this order through the year;
+                        29 February is refused. Any day left out is the Secret Santa
+                        default (12-01, 12-15, 12-25). An Assignment Challenge is
+                        Always Open with no end date. Saving it opens the Edition
+                        whose sign-up is due today; a change moves an Edition still
+                        in sign-up that nobody has joined to the new dates, and otherwise
+                        applies from the next Edition.
+                      properties:
+                        signup_cutoff:
+                          type: string
+                          example: 12-01
+                          description: Sign-up closes at the start of this day.
+                        pick_deadline:
+                          type: string
+                          example: 12-15
+                        reveal:
+                          type: string
+                          example: 12-25
+                          description: The Edition is named by its reveal's year.
               required:
               - data
         required: true

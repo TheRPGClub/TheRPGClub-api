@@ -128,14 +128,14 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(json.fetch("message")).to include("at least one franchise, collection or included game")
     end
 
-    it "refuses unknown franchises and Formats that are not available yet" do
+    it "refuses unknown franchises and unknown Formats" do
       create_challenge(as: regular, pool: { franchise_ids: [ 999_999_999 ], target: 1 })
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("message")).to include("Unknown franchise ids: 999999999")
 
-      create_challenge(as: regular, challenge_format: "assignment")
+      create_challenge(as: regular, challenge_format: "bingo")
       expect(response).to have_http_status(:unprocessable_content)
-      expect(json.fetch("message")).to include("not available yet")
+      expect(json.fetch("message")).to include("challenge_format must be one of pool, slots, assignment")
     end
 
     it "refuses a name over 100 characters and a missing name" do

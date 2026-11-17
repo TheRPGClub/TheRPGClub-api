@@ -12,8 +12,12 @@ module Challenges
   # "challenge_created"; "run_finished" and "run_caught_up" (Slots) with the
   # Run (as GET /api/v1/challenge_runs/{id} serves it) under `run`; and
   # "season_opened" with the Season's first and last day under `season`
-  # ({ starts_on, ends_on }). Later tickets add Edition events with their own
-  # fields.
+  # ({ starts_on, ends_on }). An Assignment Challenge's Edition events carry
+  # the Edition (as GET /api/v1/challenge_editions/{id} serves it) under
+  # `edition`: "signup_opened"; "signup_closing" with `days_left` to the
+  # cutoff; and, from the draw, "signup_closed" or "edition_cancelled" (fewer
+  # than 2 members drawn), each with `joined`, the members drawn, and
+  # `left_out`, those the backlog minimum left out.
   module Announcements
     KIND = "challenge_announce"
     FEATURE_KEY = "challenges"
@@ -30,6 +34,40 @@ module Challenges
       enqueue!("season_opened", challenge, summary: %(Announce that the Season of "#{challenge.name}" is open),
         by: nil, season: { starts_on: starts_on.iso8601, ends_on: ends_on.iso8601 })
     end
+
+    # An Edition's sign-up opened (Challenges::Lifecycle::EditionOpened).
+    def self.signup_opened!(edition)
+      edition_event!("signup_opened", edition, "Announce that sign-up for %<name>s %<year>d is open")
+    end
+
+    # An Edition's sign-up closes in `days_left` days
+    # (Challenges::Lifecycle::SignupClosing).
+    def self.signup_closing!(edition, today:)
+      edition_event!("signup_closing", edition, "Announce that sign-up for %<name>s %<year>d closes soon",
+        days_left: (edition.signup_cutoff_on - today).to_i)
+    end
+
+    # The draw (Challenges::Editions.draw!): `joined` members drawn, and
+    # `left_out` below the backlog minimum.
+    def self.signup_closed!(edition, joined:, left_out:)
+      edition_event!("signup_closed", edition, "Announce that sign-up for %<name>s %<year>d closed",
+        joined: joined, left_out: left_out)
+    end
+
+    # The draw cancelled the Edition: fewer than 2 members could be drawn.
+    def self.edition_cancelled!(edition, joined:, left_out:)
+      edition_event!("edition_cancelled", edition, "Announce that %<name>s %<year>d is cancelled",
+        joined: joined, left_out: left_out)
+    end
+
+    # The Edition steps are queued by the lifecycle job, so they have no
+    # requester.
+    def self.edition_event!(event, edition, summary, **fields)
+      challenge = ChallengeResource.preloaded(Challenge.where(id: edition.challenge_id)).first!
+      enqueue!(event, challenge, summary: format(summary, name: %("#{challenge.name}"), year: edition.year), by: nil,
+        edition: ChallengeEditionResource.serialize(edition), **fields)
+    end
+    private_class_method :edition_event!
 
     # A Run whose status changed (Challenges::Progress::Change): a Run that
     # became Finished (event "run_finished") or Caught Up (event

@@ -14,7 +14,10 @@
 # franchises and collections plus games included or excluded by hand, and
 # its target is `pool_target` Cleared games (null: every game in the Pool);
 # a Slots range runs from `slots_first_year` (null: each member's birth year)
-# to `slots_last_year` (null: the current year).
+# to `slots_last_year` (null: the current year); an Assignment's Edition
+# calendar is the sign-up cutoff, pick deadline and reveal date, each a month
+# and day (`signup_cutoff_*`, `pick_deadline_*`, `reveal_*`), and it runs in
+# yearly Editions, so it is Always Open with no end date.
 #
 # Once the Challenge has any Run its rules are locked (RULE_ATTRIBUTES and
 # the Format's settings); its name, description and end date stay editable.
@@ -34,6 +37,7 @@ class Challenge < ApplicationRecord
   has_many :pool_franchises, class_name: "ChallengePoolFranchise", dependent: nil, inverse_of: :challenge
   has_many :pool_collections, class_name: "ChallengePoolCollection", dependent: nil, inverse_of: :challenge
   has_many :pool_games, class_name: "ChallengePoolGame", dependent: nil, inverse_of: :challenge
+  has_many :editions, class_name: "ChallengeEdition", dependent: nil, inverse_of: :challenge
 
   validates :name, presence: true, length: { maximum: NAME_MAX }
   validates :description, length: { maximum: DESCRIPTION_MAX }
@@ -96,5 +100,11 @@ class Challenge < ApplicationRecord
     elsif [ season_start_month, season_start_day, season_end_month, season_end_day ].any?
       errors.add(:season, "is only for Seasonal Challenges")
     end
+    assignment_schedule_fits if challenge_format == Challenges::Formats::Assignment::KEY
+  end
+
+  def assignment_schedule_fits
+    errors.add(:base, "An Assignment Challenge runs in yearly Editions, so it is Always Open") if seasonal?
+    errors.add(:base, "An Assignment Challenge runs in yearly Editions, so it has no end date") if ends_on
   end
 end

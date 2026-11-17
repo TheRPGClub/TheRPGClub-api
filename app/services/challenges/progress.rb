@@ -74,7 +74,7 @@ module Challenges
     def self.refreshable(user_id, today)
       ChallengeRun.where(user_id: user_id)
         .where("status = 'active' OR (status = 'finished' AND (season_ends_on IS NULL OR season_ends_on >= ?))", today)
-        .preload(:entries, challenge: [ :pool_franchises, :pool_collections, :pool_games ])
+        .preload(:entries, :edition, challenge: [ :pool_franchises, :pool_collections, :pool_games ])
         .order(:id).lock.to_a
         .select { |run| run.active? || run.window.open_on?(today) }
     end

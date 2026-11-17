@@ -74,7 +74,7 @@ module Challenges
     end
 
     def self.refuse_active!(challenge, user_id)
-      active = ChallengeRun.active.find_by(challenge_id: challenge.id, user_id: user_id)
+      active = ChallengeRun.active.find_by(challenge_id: challenge.id, user_id: user_id, edition_id: nil)
       raise RunRefused.new("run_active", ACTIVE, run_id: active.id) if active
     end
     private_class_method :refuse_active!

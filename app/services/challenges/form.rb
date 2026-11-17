@@ -4,12 +4,13 @@ module Challenges
   # Creates or edits a Challenge from a request's `data` (spec #376):
   #
   #   name, description
-  #   challenge_format   "pool" or "slots" (Assignment arrives later); set on create
+  #   challenge_format   "pool", "slots" or "assignment"; set on create
   #   schedule           "always_open" or "seasonal"
   #   ends_on            an Always Open Challenge's last day (YYYY-MM-DD), or null
   #   season             a Seasonal Challenge's { start: "MM-DD", end: "MM-DD" }
   #   pool               the Pool's settings (Challenges::Formats::Pool)
   #   slots              the slot range (Challenges::Formats::Slots)
+  #   assignment         the Edition calendar (Challenges::Formats::Assignment)
   #
   # On edit, only the keys given change. Once the Challenge has any Run its
   # rules (Format, schedule, Season and the Format's settings) are locked: a
