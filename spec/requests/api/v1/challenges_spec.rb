@@ -50,6 +50,16 @@ RSpec.describe 'api/v1/challenges', type: :request do
       reveal: { type: :string, example: '12-25', description: 'The Edition is named by its reveal\'s year.' }
     }
   }
+  tint = {
+    oneOf: [ { type: :string, enum: Challenges::Tint::CURATED.keys },
+             { type: :object, required: %w[fill hi],
+               properties: { fill: { type: :string, example: '#5a2d82' }, hi: { type: :string, example: '#d9b8ff' } } } ],
+    nullable: true,
+    description: 'The Challenge tint: a curated tint by name, any `{ fill, hi }` as #rrggbb, or null for the ' \
+                 'Challenge\'s curated tint. A pair must keep type readable (4.5:1): paper #f4f4f0 on the fill, ' \
+                 'and the hi on ink #0b0b0d and #141417; otherwise 422 `invalid_challenge`. Left out on create, ' \
+                 'the Challenge gets its curated tint. Not a rule: editable after Runs exist.'
+  }
   writable = {
     acting_user_id: acting_user_id,
     name: { type: :string, maxLength: Challenge::NAME_MAX },
@@ -67,7 +77,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
               properties: { start: { type: :string, example: '12-01' }, end: { type: :string, example: '02-28' } } },
     pool: pool,
     slots: slots,
-    assignment: assignment
+    assignment: assignment,
+    tint: tint
   }
   refusal = 'Refusals carry `{ error, message }`; `message` is written for members (403 `forbidden`, 422 ' \
             '`invalid_challenge`).'
@@ -82,6 +93,9 @@ RSpec.describe 'api/v1/challenges', type: :request do
       parameter name: :open, in: :query, required: false, schema: { type: :string, enum: %w[true false] },
         description: 'Only the Challenges Open (true) or Closed (false) today, in the club\'s time zone.'
       parameter name: :challenge_format, in: :query, required: false, schema: { type: :string, enum: Challenge::FORMATS }
+      parameter name: :q, in: :query, required: false, schema: { type: :string },
+        description: 'Only the Challenges whose name contains `q`, ignoring case (surrounding spaces are ' \
+                     'dropped; empty means no filter). For the bot\'s Challenge autocomplete.'
       parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string }
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -292,6 +306,37 @@ RSpec.describe 'api/v1/challenges', type: :request do
         response '403', 'not a Moderator or above' do
           schema '$ref' => '#/components/schemas/Error'
         end
+      end
+    end
+  end
+
+  path '/api/v1/challenges/{id}/tint' do
+    parameter name: :id, in: :path, schema: { type: :integer }, required: true
+
+    put 'Change a Challenge\'s tint' do
+      tags 'Challenges'
+      description 'The Host, for their own (PATCH takes `tint` too), and a Moderator or above for any Challenge, ' \
+                  'which PATCH does not let them edit. 403 "Only the Host or a Moderator can change this ' \
+                  'Challenge\'s tint."; 422 `invalid_challenge` without `tint`, or for a tint PATCH would refuse.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: { data: { type: :object, properties: { acting_user_id: acting_user_id, tint: tint },
+                              required: %w[tint] } },
+        required: %w[data]
+      }
+
+      response '200', 'the Challenge with its new tint' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Challenge' } }
+      end
+
+      response '403', 'neither the Host nor a Moderator' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'invalid_challenge' do
+        schema '$ref' => '#/components/schemas/Error'
       end
     end
   end

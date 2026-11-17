@@ -17,7 +17,7 @@ module Api
 
       feature :challenges
 
-      WRITES = %i[create update destroy hide unhide change_host].freeze
+      WRITES = %i[create update destroy hide unhide change_host change_tint].freeze
 
       before_action :require_acting_member!, only: WRITES
 
@@ -28,10 +28,11 @@ module Api
         render json: { error: "rules_locked", message: error.message, fields: error.fields }, status: :conflict
       end
 
-      # GET /api/v1/challenges?open=true&challenge_format=pool
+      # GET /api/v1/challenges?open=true&challenge_format=pool&q=final
       #
       # Newest first. `open` (true or false) narrows to the Challenges Open or
-      # Closed today; `challenge_format` to one Challenge Format. Hidden
+      # Closed today; `challenge_format` to one Challenge Format; `q` to those
+      # whose name contains it, ignoring case (the bot's autocomplete). Hidden
       # Challenges are listed only for Moderators and above, and for their
       # Host.
       def index
@@ -41,6 +42,8 @@ module Api
 
         scope = open_filter(scope)
         return if performed?
+
+        scope = name_filter(scope)
 
         render_collection(ChallengeResource.preloaded(scope), resource: ChallengeResource,
           default_order: { created_at: :desc, id: :desc }, params: { today: Challenges.today })
@@ -130,6 +133,22 @@ module Api
         end
       end
 
+      # PUT /api/v1/challenges/:id/tint
+      # Body: { "data": { "tint": "teal" | { "fill": "#rrggbb", "hi": "#rrggbb" } | null } }
+      #
+      # The Host changes their own Challenge's tint (as PATCH can), and a
+      # Moderator or above any Challenge's, which PATCH does not let them
+      # edit. Null gives the Challenge its curated tint back.
+      def change_tint
+        data = request_data
+        challenge = find_visible
+        return forbid(Challenges::Refusals::TINT) unless actor.can_change_tint?(challenge)
+        raise Challenges::Invalid, "tint is required: a curated tint's name, { fill, hi } or null" unless data.key?("tint")
+
+        challenge.update!(tint: Challenges::Tint.parse(data["tint"]), updated_by: actor.user_id)
+        render_challenge(challenge)
+      end
+
       # POST /api/v1/challenges/pool_preview
       # Body: { "data": { franchise_ids, collection_ids, included_game_ids, excluded_game_ids } }
       #
@@ -207,6 +226,13 @@ module Api
         when "false" then scope.closed_on(Challenges.today)
         else render(json: { error: "open must be true or false" }, status: :bad_request) && nil
         end
+      end
+
+      def name_filter(scope)
+        query = params[:q].to_s.strip
+        return scope if query.empty?
+
+        scope.where("name ILIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(query)}%")
       end
 
       def pool_sources_for(query)

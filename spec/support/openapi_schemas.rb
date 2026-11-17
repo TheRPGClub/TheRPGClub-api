@@ -923,12 +923,30 @@ module OpenapiSchemas
         slots: ref("ChallengeSlots", nullable: true),
         assignment: ref("ChallengeAssignment", nullable: true),
         run_count: int(nullable: true).merge(description: "Every Run of it, whatever its status. Show only; null in lists."),
+        tint: ref("ChallengeTint"),
+        key_art_url: str(nullable: true).merge(
+          description: "The picture behind the Challenge's banner and on its posts: for a Pool Challenge, the " \
+                       "artwork of the first Pool game by title that has artwork, else the first one's cover; null " \
+                       "without either, and for Slots and Assignment Challenges (draw the Format's picture in the " \
+                       "tint instead). Show and announcements only; null in lists."
+        ),
         hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
         ended_at: ts(nullable: true).merge(
           description: "When an Always Open Challenge reached its end date and Closed for good (set the day after " \
                        "ends_on); its schedule and end date can no longer change. Null otherwise."
         ),
         created_by: str(nullable: true), updated_by: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      ChallengeTint: obj(
+        _description: "The Challenge tint: the one colour it wears on the bot's posts and the website, as a pair " \
+                      "of lowercase #rrggbb. A new Challenge gets a curated tint (Secret Santa's holly for an " \
+                      "Assignment Challenge, otherwise the other seven in turn); the Host or a Moderator may " \
+                      "change it. Curated: #{Challenges::Tint::CURATED.map { |name, pair| "#{name} #{pair.fill} / #{pair.hi}" }.join(', ')}.",
+        _required: %w[fill hi],
+        fill: str(example: "#1f6b67").merge(description: "The flyer and banner ground. Paper type (#f4f4f0) on it " \
+                                                          "clears 4.5:1; set only paper type on it."),
+        hi: str(example: "#6fd6cc").merge(description: "The same hue lifted for type and marks on ink (#0b0b0d, " \
+                                                       "#141417), where it clears 4.5:1.")
       ),
       ChallengePool: obj(
         _description: "A Pool Challenge's settings. A game is in the Pool if it belongs to a chosen franchise or " \

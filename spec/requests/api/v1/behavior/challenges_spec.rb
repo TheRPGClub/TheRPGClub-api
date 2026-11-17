@@ -244,6 +244,22 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(json.fetch("data")).to eq([])
     end
 
+    it "finds Challenges whose name contains q, ignoring case" do
+      fall = create(:challenge, name: "Fall of Final Fantasy")
+      winter = create(:challenge, name: "A FINAL Winter")
+      create(:challenge, name: "Summer of Zelda")
+      create(:challenge, name: "100% Complete")
+
+      get "/api/v1/challenges", params: { q: " final " }, headers: auth_headers_for(member)
+      expect(json.fetch("data").map { |c| c.fetch("id") }).to contain_exactly(fall.id, winter.id)
+
+      get "/api/v1/challenges", params: { q: "%" }, headers: auth_headers_for(member)
+      expect(json.fetch("data").map { |c| c.fetch("name") }).to eq([ "100% Complete" ])
+
+      get "/api/v1/challenges", params: { q: "" }, headers: auth_headers_for(member)
+      expect(json.dig("meta", "count")).to eq(4)
+    end
+
     it "400s for an unknown filter value" do
       get "/api/v1/challenges", params: { open: "maybe" }, headers: auth_headers_for(member)
       expect(response).to have_http_status(:bad_request)
@@ -377,6 +393,204 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
         expect(response).to have_http_status(:ok)
         expect(json.fetch("data")).to include("name" => "Renamed", "description" => "New words", "ends_on" => "2027-01-31")
       end
+    end
+  end
+
+  describe "the Challenge tint" do
+    # The curated fallbacks from the Challenges inks (DESIGN.md), as fill / hi.
+    curated = {
+      "teal" => %w[#1f6b67 #6fd6cc], "cobalt" => %w[#2c4f8e #9ab8f2], "umber" => %w[#7a531c #e0b56e],
+      "moss" => %w[#3b5a2b #a9cf86], "azure" => %w[#2a5ea6 #9cc2f5], "slate" => %w[#3a3a52 #b4b4d6],
+      "ochre" => %w[#8a6417 #e6c36a]
+    }
+    holly = { "fill" => "#1c6545", "hi" => "#3fbf8a" }
+    let(:curated_tints) { curated.values.map { |fill, hi| { "fill" => fill, "hi" => hi } } }
+
+    it "gives each new Challenge a curated tint, turning through the list so neighbours differ" do
+      ids = Array.new(7) do |n|
+        create_challenge(as: regular, name: "Challenge #{n}")
+        json.dig("data", "id")
+      end
+
+      tints = ids.map do |id|
+        get "/api/v1/challenges/#{id}", headers: auth_headers_for(member)
+        json.dig("data", "tint")
+      end
+      expect(tints).to match_array(curated_tints)
+    end
+
+    it "keeps a Challenge's tint when its name changes" do
+      create_challenge(as: regular)
+      id = json.dig("data", "id")
+      tint = json.dig("data", "tint")
+
+      patch "/api/v1/challenges/#{id}", params: { data: { name: "Renamed" } }, headers: auth_headers_for(regular),
+        as: :json
+
+      expect(json.dig("data", "tint")).to eq(tint)
+    end
+
+    it "gives Secret Santa (an Assignment Challenge) holly, which no other Challenge gets by default" do
+      post "/api/v1/challenges", params: { data: { name: "Secret Santa", challenge_format: "assignment",
+                                                   schedule: "always_open", hosted_by_club: true } },
+        headers: auth_headers_for(moderator), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "tint")).to eq(holly)
+    end
+
+    describe "set by the Host or staff" do
+      let(:challenge_id) do
+        create_challenge(as: regular)
+        json.dig("data", "id")
+      end
+
+      def edit(as:, **data)
+        patch "/api/v1/challenges/#{challenge_id}", params: { data: data }, headers: auth_headers_for(as), as: :json
+      end
+
+      it "lets the Host pick a curated tint by name, or any readable pair, and go back to the curated one" do
+        curated_tint = (get "/api/v1/challenges/#{challenge_id}", headers: auth_headers_for(member)) &&
+          json.dig("data", "tint")
+
+        edit(as: regular, tint: "ochre")
+        expect(json.dig("data", "tint")).to eq("fill" => "#8a6417", "hi" => "#e6c36a")
+
+        edit(as: regular, tint: { fill: "#5A2D82", hi: " #D9B8FF " })
+        expect(json.dig("data", "tint")).to eq("fill" => "#5a2d82", "hi" => "#d9b8ff")
+
+        edit(as: regular, tint: nil)
+        expect(json.dig("data", "tint")).to eq(curated_tint)
+      end
+
+      it "takes a tint on create" do
+        create_challenge(as: regular, tint: "holly")
+
+        expect(json.dig("data", "tint")).to eq(holly)
+      end
+
+      it "keeps the tint editable once the Challenge has Runs" do
+        create(:challenge_run, challenge: Challenge.find(challenge_id))
+
+        edit(as: regular, tint: "slate")
+
+        expect(response).to have_http_status(:ok)
+        expect(json.dig("data", "tint")).to eq("fill" => "#3a3a52", "hi" => "#b4b4d6")
+      end
+
+      it "refuses a tint whose type would not be readable, an unknown name and a colour that is not #rrggbb" do
+        original = (get "/api/v1/challenges/#{challenge_id}", headers: auth_headers_for(member)) &&
+          json.dig("data", "tint")
+
+        edit(as: regular, tint: { fill: "#ffd400", hi: "#ffe680" })
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("message")).to include("fill is too light for paper type")
+
+        edit(as: regular, tint: { fill: "#1f6b67", hi: "#1f6b67" })
+        expect(json.fetch("message")).to include("hi is too dark to read on ink")
+
+        edit(as: regular, tint: "crimson")
+        expect(json.fetch("message")).to include("crimson is not a curated tint")
+
+        edit(as: regular, tint: { fill: "teal", hi: "#6fd6cc" })
+        expect(json.fetch("message")).to include("#rrggbb")
+
+        get "/api/v1/challenges/#{challenge_id}", headers: auth_headers_for(member)
+        expect(json.dig("data", "tint")).to eq(original)
+      end
+
+      it "lets a Moderator change any Challenge's tint, and the Host their own, but no other member" do
+        put "/api/v1/challenges/#{challenge_id}/tint", params: { data: { tint: "azure" } },
+          headers: auth_headers_for(moderator), as: :json
+        expect(response).to have_http_status(:ok)
+        expect(json.dig("data", "tint")).to eq("fill" => "#2a5ea6", "hi" => "#9cc2f5")
+        expect(json.dig("data", "updated_by")).to eq(moderator.user_id)
+
+        put "/api/v1/challenges/#{challenge_id}/tint", params: { data: { tint: "moss" } },
+          headers: auth_headers_for(regular), as: :json
+        expect(json.dig("data", "tint")).to eq("fill" => "#3b5a2b", "hi" => "#a9cf86")
+
+        put "/api/v1/challenges/#{challenge_id}/tint", params: { data: { tint: "teal" } },
+          headers: auth_headers_for(create(:user, role_regular: true)), as: :json
+        expect(response).to have_http_status(:forbidden)
+        expect(json.fetch("message")).to eq("Only the Host or a Moderator can change this Challenge's tint.")
+
+        put "/api/v1/challenges/#{challenge_id}/tint", params: { data: { tint: "teal", acting_user_id: moderator.user_id } },
+          headers: service_headers, as: :json
+        expect(json.dig("data", "tint")).to eq("fill" => "#1f6b67", "hi" => "#6fd6cc")
+      end
+
+      it "requires tint in the body of PUT tint" do
+        put "/api/v1/challenges/#{challenge_id}/tint", params: { data: { colour: "teal" } },
+          headers: auth_headers_for(moderator), as: :json
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("message")).to eq("tint is required: a curated tint's name, { fill, hi } or null")
+      end
+    end
+  end
+
+  describe "the key art" do
+    def in_pool(title)
+      create(:game, title: title).tap { |game| GamedbGameFranchise.create!(game: game, franchise: franchise) }
+    end
+
+    def key_art_url(id)
+      get "/api/v1/challenges/#{id}", headers: auth_headers_for(member)
+      json.dig("data", "key_art_url")
+    end
+
+    it "is the artwork of the first Pool game by title that has artwork, its primary one first" do
+      create(:game_image, game: in_pool("Bravely Default"), kind: "cover")
+      create(:game_image, game: in_pool("Xenogears"), kind: "artwork")
+      okami = in_pool("Okami")
+      create(:game_image, game: okami, kind: "artwork", position: 1)
+      primary = create(:game_image, game: okami, kind: "artwork", position: 2, is_primary: true)
+      create_challenge(as: regular)
+
+      expect(key_art_url(json.dig("data", "id"))).to eq(primary.url)
+    end
+
+    it "falls back to the first Pool game's cover, and is null without either" do
+      create_challenge(as: regular)
+      id = json.dig("data", "id")
+      expect(key_art_url(id)).to be_nil
+
+      cover = create(:game_image, game: in_pool("Xenogears"), kind: "cover")
+      create(:game_image, game: in_pool("Zelda"), kind: "cover")
+
+      expect(key_art_url(id)).to eq(cover.url)
+    end
+
+    it "leaves out games excluded from the Pool" do
+      create(:game_image, game: ff7, kind: "artwork")
+      cover = create(:game_image, game: in_pool("Xenogears"), kind: "cover")
+      create_challenge(as: regular, pool: { franchise_ids: [ franchise.franchise_id ],
+                                            excluded_game_ids: [ ff7.game_id ], target: 1 })
+
+      expect(key_art_url(json.dig("data", "id"))).to eq(cover.url)
+    end
+
+    it "is null for Slots and Assignment Challenges, whose pages draw their Format's picture, and in lists" do
+      create(:game_image, game: ff7, kind: "artwork")
+      post "/api/v1/challenges", params: { data: { name: "Birth Years", challenge_format: "slots",
+                                                   schedule: "always_open",
+                                                   slots: { first_year: 1990, last_year: 1999 } } },
+        headers: auth_headers_for(regular), as: :json
+      expect(key_art_url(json.dig("data", "id"))).to be_nil
+
+      create_challenge(as: regular)
+      expect(json.dig("data", "key_art_url")).to be_present
+
+      get "/api/v1/challenges", headers: auth_headers_for(member)
+      expect(json.fetch("data").map { |challenge| challenge.fetch("key_art_url") }).to eq([ nil, nil ])
+    end
+
+    it "comes with the tint in the new Challenge's post" do
+      artwork = create(:game_image, game: ff7, kind: "artwork")
+      create_challenge(as: regular)
+
+      challenge = BotJob.where(kind: "challenge_announce").last.payload.fetch("challenge")
+      expect(challenge).to include("key_art_url" => artwork.url, "tint" => json.dig("data", "tint"))
     end
   end
 

@@ -6,7 +6,8 @@
 #
 # Load Challenges through ChallengeResource.preloaded so the Host, the
 # Pool's names and an Assignment's Editions come in a few queries.
-# `params[:detail]` (the show) adds the Pool's `game_count` and `run_count`.
+# `params[:detail]` (the show) adds the Pool's `game_count`, `run_count` and
+# `key_art_url` (Challenges::KeyArt; one query, so lists leave it null).
 class ChallengeResource
   include BaseResource
 
@@ -55,8 +56,16 @@ class ChallengeResource
     format.as_json(challenge, format.load(challenge))
   end
 
+  attribute :tint do |challenge|
+    challenge.tint.as_json
+  end
+
   attribute :run_count do |challenge|
     challenge.runs.size if params[:detail]
+  end
+
+  attribute :key_art_url do |challenge|
+    Challenges::KeyArt.url(challenge) if params[:detail]
   end
 
   attributes :hidden, :ended_at, :created_by, :updated_by, :created_at, :updated_at

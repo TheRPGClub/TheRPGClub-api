@@ -48,7 +48,7 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
         "open" => true)
     end
 
-    it "carries last Season's Finishers and the Pool's first games for the post" do
+    it "carries last Season's Finishers, the Pool's first games and the key art and tint for the post" do
       challenge = seasonal("06-21..09-22")
       cover = create(:game_image, :primary)
       ChallengePoolGame.create!(challenge: challenge, game: cover.game, inclusion: "include")
@@ -70,6 +70,8 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
       expect(payload.fetch("pool_games").size).to eq(2)
       expect(payload.dig("pool_games", 0)).to eq("game_id" => cover.game_id, "title" => cover.game.title,
         "cover_url" => cover.url)
+      expect(payload.fetch("challenge")).to include("key_art_url" => cover.url,
+        "tint" => { "fill" => challenge.reload.tint_fill, "hi" => challenge.tint_hi })
     end
 
     it "carries no Finishers for a Challenge's first Season" do
