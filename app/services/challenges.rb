@@ -4,8 +4,9 @@
 # who may create and change a Challenge (Challenges::Actor), its schedule
 # (Challenges::Schedule), its Challenge Format's settings
 # (Challenges::Formats), the writes (Challenges::Form), Runs (Challenges::Runs)
-# and their progress (Challenges::Progress), and its announcements
-# (Challenges::Announcements).
+# and their progress (Challenges::Progress), its announcements
+# (Challenges::Announcements) and DMs (Challenges::DirectMessages), and its
+# timed side (Challenges::Lifecycle).
 module Challenges
   # Every Challenge date is in the club's time zone, the one voting uses.
   TIME_ZONE = Voting::Schedule::TIME_ZONE

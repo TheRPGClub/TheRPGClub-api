@@ -57,6 +57,16 @@ module Challenges
           day_in(ends, end_year, leap_fallback: Date.new(end_year, 2, 28)) ]
       end
 
+      # The first and last day of the Season in progress on `date`, or of the
+      # next one to open after it.
+      def season_through(date)
+        return season_on(date) if open_on?(date)
+
+        today = (date.month * 100) + date.day
+        start_year = today < starts.ordinal ? date.year : date.year + 1
+        season_on(day_in(starts, start_year, leap_fallback: Date.new(start_year, 3, 1)))
+      end
+
       def as_json(*)
         { schedule: "seasonal", ends_on: nil,
           season: { start: starts.to_s, end: ends.to_s, crosses_new_year: crosses_new_year? } }

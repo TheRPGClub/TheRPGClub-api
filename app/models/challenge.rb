@@ -41,6 +41,9 @@ class Challenge < ApplicationRecord
   validates :pool_target, numericality: { only_integer: true, greater_than_or_equal_to: 1 }, allow_nil: true
   validate :schedule_fits
 
+  # Its dates decide when the lifecycle job next has work.
+  after_commit { Challenges::SweepSchedule.clear }
+
   normalizes :name, with: ->(value) { value.squish }
   normalizes :description, with: ->(value) { value.strip }
 

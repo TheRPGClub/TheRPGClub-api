@@ -133,6 +133,9 @@ Rails.application.routes.draw do
           # Challenges (ticket #380): the member's Birth Date.
           get "birth_date", to: "birth_dates#show"
           put "birth_date", to: "birth_dates#update"
+          # Challenges (ticket #379): the member's Challenge DM opt-out.
+          get "challenge_settings", to: "challenge_settings#show"
+          patch "challenge_settings", to: "challenge_settings#update"
           # Challenges (ticket #378): the member's Runs, for their profile.
           get "challenge_runs", to: "challenge_runs#user_index"
           get "news_category_preferences", to: "news_category_preferences#show"

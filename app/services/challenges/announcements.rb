@@ -9,9 +9,11 @@ module Challenges
   #
   # Payload: { event, challenge, feature_key: "challenges" }. `challenge` is
   # the Challenge as GET /api/v1/challenges/{id} serves it. Events so far:
-  # "challenge_created", and "run_finished" with the Run (as
-  # GET /api/v1/challenge_runs/{id} serves it) under `run`. Later tickets add
-  # Season, Edition and Caught Up events with their own fields.
+  # "challenge_created"; "run_finished" with the Run (as
+  # GET /api/v1/challenge_runs/{id} serves it) under `run`; and
+  # "season_opened" with the Season's first and last day under `season`
+  # ({ starts_on, ends_on }). Later tickets add Edition and Caught Up events
+  # with their own fields.
   module Announcements
     KIND = "challenge_announce"
     FEATURE_KEY = "challenges"
@@ -19,6 +21,14 @@ module Challenges
     # A new Challenge, requested by the member `by` (a Discord user id).
     def self.challenge_created!(challenge, by:)
       enqueue!("challenge_created", challenge, summary: %(Announce the new Challenge "#{challenge.name}"), by: by)
+    end
+
+    # A Seasonal Challenge's Season opened (Challenges::Lifecycle::SeasonOpened),
+    # with its first and last day under `season`. Queued by the lifecycle
+    # job, so it has no requester.
+    def self.season_opened!(challenge, starts_on:, ends_on:)
+      enqueue!("season_opened", challenge, summary: %(Announce that the Season of "#{challenge.name}" is open),
+        by: nil, season: { starts_on: starts_on.iso8601, ends_on: ends_on.iso8601 })
     end
 
     # A Run whose status changed (Challenges::Progress::Change): so far a

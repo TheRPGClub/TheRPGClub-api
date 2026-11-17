@@ -46,7 +46,7 @@ class ChallengeResource
     challenge.runs.size if params[:detail]
   end
 
-  attributes :hidden, :created_by, :updated_by, :created_at, :updated_at
+  attributes :hidden, :ended_at, :created_by, :updated_by, :created_at, :updated_at
 
   PRELOADS = [ :host, { pool_franchises: :franchise, pool_collections: :collection, pool_games: :game } ].freeze
 

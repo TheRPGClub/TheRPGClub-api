@@ -922,6 +922,10 @@ module OpenapiSchemas
         pool: ref("ChallengePool", nullable: true),
         run_count: int(nullable: true).merge(description: "Every Run of it, whatever its status. Show only; null in lists."),
         hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
+        ended_at: ts(nullable: true).merge(
+          description: "When an Always Open Challenge reached its end date and Closed for good (set the day after " \
+                       "ends_on); its schedule and end date can no longer change. Null otherwise."
+        ),
         created_by: str(nullable: true), updated_by: str(nullable: true), created_at: ts, updated_at: ts
       ),
       ChallengePool: obj(
@@ -975,10 +979,29 @@ module OpenapiSchemas
       ChallengeAnnounceJobPayload: obj(
         _description: "Kind `challenge_announce`. Post in the #challenges channel, or the staff test channel " \
                       "while the Feature is in Preview. `event` says what to announce: `challenge_created`, " \
-                      "a new Challenge, or `run_finished`, a member's Run that just Finished (with `run`).",
-        event: str(enum: %w[challenge_created run_finished]),
+                      "a new Challenge; `run_finished`, a member's Run that just Finished (with `run`); or " \
+                      "`season_opened`, a Seasonal Challenge's Season that just opened (with `season`).",
+        event: str(enum: %w[challenge_created run_finished season_opened]),
         challenge: ref("Challenge"),
         run: ref("ChallengeRun").merge(description: "run_finished only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
+        season: ref("ChallengeSeasonDates").merge(description: "season_opened only: the Season that opened."),
+        feature_key: str(enum: %w[challenges])
+      ),
+      ChallengeSeasonDates: obj(
+        starts_on: str(format: "date", example: "2026-06-21"), ends_on: str(format: "date", example: "2026-09-22"),
+        _description: "One Season's first and last day, as the club's dates (America/New_York), both included."
+      ),
+      # The Challenge DM bot job payload (#379), as BotJobClaim.payload carries it.
+      ChallengeDmJobPayload: obj(
+        _description: "Kind `challenge_dm`. DM the member `user_id`; post nothing publicly. Sent only to members " \
+                      "who keep Challenge DMs on. `event` says what about: `season_ending`, a reminder that the " \
+                      "Season of the member's unFinished Run ends soon (with `run`, `season` and `days_left`).",
+        event: str(enum: %w[season_ending]),
+        user_id: str.merge(description: "The member to DM."),
+        challenge: ref("Challenge"),
+        run: ref("ChallengeRun").merge(description: "The member's Run, as GET /api/v1/challenge_runs/{id} serves it."),
+        season: ref("ChallengeSeasonDates"),
+        days_left: int.merge(example: 7, description: "Days from today to the Season's last day (7 unless sent late)."),
         feature_key: str(enum: %w[challenges])
       ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
@@ -989,7 +1012,8 @@ module OpenapiSchemas
                        "carries `feature_key`, the key of the Feature that owns the post " \
                        "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
                        "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
-                       "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload."
+                       "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
+                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
@@ -1108,6 +1132,14 @@ module OpenapiSchemas
                        "use (Live, plus Preview for staff). Empty when there is none, e.g. no hideable Feature is Live."
         ),
         _required: %w[user_id hidden show_preview_features features]
+      ),
+
+      # ChallengeSettingsController (spec #376, ticket #379): the member's
+      # Challenge DM opt-out.
+      ChallengeSettings: obj(
+        user_id: str,
+        dms: bool.merge(description: "Whether the member gets Challenge reminder DMs; true until they turn it off."),
+        _required: %w[user_id dms]
       ),
 
       # BirthDatesController (spec #376, ticket #380). A member's Birth Date,
