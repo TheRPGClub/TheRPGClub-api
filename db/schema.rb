@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -105,6 +105,61 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
     t.bigint "round_number", null: false
     t.datetime "vote_ends_at"
     t.index ["round_number"], name: "ix_bot_voting_info_round"
+  end
+
+  create_table "challenge_pool_collections", primary_key: ["challenge_id", "collection_id"], force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "collection_id", null: false
+  end
+
+  create_table "challenge_pool_franchises", primary_key: ["challenge_id", "franchise_id"], force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "franchise_id", null: false
+  end
+
+  create_table "challenge_pool_games", primary_key: ["challenge_id", "game_id"], force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "game_id", null: false
+    t.string "inclusion", limit: 8, null: false
+    t.check_constraint "inclusion::text = ANY (ARRAY['include'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
+  end
+
+  create_table "challenge_runs", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.string "status", limit: 16, default: "active", null: false
+    t.timestamptz "started_at", default: -> { "statement_timestamp()" }, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "user_id"], name: "ux_challenge_runs_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["user_id"], name: "ix_challenge_runs_user"
+    t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'finished'::character varying, 'expired'::character varying, 'abandoned'::character varying]::text[])", name: "ck_challenge_runs_status"
+  end
+
+  create_table "challenges", force: :cascade do |t|
+    t.string "name", limit: 100, null: false
+    t.text "description", default: "", null: false
+    t.string "host_user_id", limit: 30
+    t.string "challenge_format", limit: 16, null: false
+    t.string "schedule", limit: 16, null: false
+    t.date "ends_on"
+    t.integer "season_start_month", limit: 2
+    t.integer "season_start_day", limit: 2
+    t.integer "season_end_month", limit: 2
+    t.integer "season_end_day", limit: 2
+    t.integer "pool_target"
+    t.boolean "hidden", default: false, null: false
+    t.string "created_by", limit: 30
+    t.string "updated_by", limit: 30
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "lower((name)::text)", name: "ix_challenges_lower_name"
+    t.index ["host_user_id"], name: "ix_challenges_host"
+    t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
+    t.check_constraint "challenge_format::text = ANY (ARRAY['slots'::character varying, 'pool'::character varying, 'assignment'::character varying]::text[])", name: "ck_challenges_format"
+    t.check_constraint "pool_target IS NULL OR pool_target >= 1", name: "ck_challenges_pool_target"
+    t.check_constraint "schedule::text = 'always_open'::text OR ends_on IS NULL", name: "ck_challenges_ends_on"
+    t.check_constraint "schedule::text = ANY (ARRAY['always_open'::character varying, 'seasonal'::character varying]::text[])", name: "ck_challenges_schedule"
   end
 
   create_table "feature_flag_changes", force: :cascade do |t|
@@ -1254,6 +1309,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
   add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
   add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
+  add_foreign_key "challenge_pool_collections", "challenges", name: "fk_challenge_pool_collections_challenge", on_delete: :cascade
+  add_foreign_key "challenge_pool_collections", "gamedb_collections", column: "collection_id", primary_key: "collection_id", name: "fk_challenge_pool_collections_collection", on_delete: :cascade
+  add_foreign_key "challenge_pool_franchises", "challenges", name: "fk_challenge_pool_franchises_challenge", on_delete: :cascade
+  add_foreign_key "challenge_pool_franchises", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", name: "fk_challenge_pool_franchises_franchise", on_delete: :cascade
+  add_foreign_key "challenge_pool_games", "challenges", name: "fk_challenge_pool_games_challenge", on_delete: :cascade
+  add_foreign_key "challenge_pool_games", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_games_game", on_delete: :cascade
+  add_foreign_key "challenge_runs", "challenges", name: "fk_challenge_runs_challenge", on_delete: :cascade
+  add_foreign_key "challenge_runs", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_runs_user", on_delete: :cascade
+  add_foreign_key "challenges", "rpg_club_users", column: "host_user_id", primary_key: "user_id", name: "fk_challenges_host", on_delete: :nullify
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"

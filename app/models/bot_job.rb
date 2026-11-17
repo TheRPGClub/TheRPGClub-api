@@ -39,6 +39,7 @@ class BotJob < ApplicationRecord
     feature_flag_changed
     news_images_renew
     news_catch_up
+    challenge_announce
   ].freeze
   # The kinds that post, and the Feature each post belongs to (the posts in
   # Features::REGISTRY's coverage): the claim notice's claim log and the
@@ -53,7 +54,8 @@ class BotJob < ApplicationRecord
     "suggestion_outcome" => "suggestions",
     "voting_results_publish" => "voting_gotm",
     "voting_panels_repost" => "voting_gotm",
-    "voting_tie_broken" => "voting_gotm"
+    "voting_tie_broken" => "voting_gotm",
+    "challenge_announce" => "challenges"
   }.freeze
   # Kinds that post nothing but do a Feature's work, and that Feature: the
   # News Hub's image renewal and catch-up scan (ticket #358).

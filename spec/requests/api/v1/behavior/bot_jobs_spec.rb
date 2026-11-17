@@ -60,7 +60,8 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       "suggestion_outcome" => "suggestions",
       "suggestion_submitted" => "suggestions",
       "giveaway_hub_refresh" => "giveaways",
-      "giveaway_claim_notice" => "giveaways"
+      "giveaway_claim_notice" => "giveaways",
+      "challenge_announce" => "challenges"
     }.each do |kind, feature_key|
       it "gives a #{kind} job its Feature key, #{feature_key}" do
         enqueue(kind: kind, payload: { round_number: 7 })
