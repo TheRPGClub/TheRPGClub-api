@@ -1174,7 +1174,9 @@ module OpenapiSchemas
         ),
         joined: int.merge(description: "signup_closed and edition_cancelled only: the members drawn."),
         left_out: int.merge(description: "signup_closed and edition_cancelled only: the members left out for " \
-                                         "having fewer than 5 games in their backlog."),
+                                         "having fewer than `minimum` games in their backlog."),
+        minimum: int.merge(example: 5, description: "signup_closed and edition_cancelled only: the backlog " \
+                                                    "minimum to be drawn."),
         feature_key: str(enum: %w[challenges])
       ),
       ChallengePostGame: obj(

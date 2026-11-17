@@ -248,7 +248,7 @@ RSpec.describe "api/v1/challenge edition lifecycle behavior", type: :request do
       expect(dm.payload).to include("event" => "left_out_of_draw", "user_id" => shrunk.user_id,
         "feature_key" => "challenges", "backlog_count" => 3, "minimum" => 5)
       expect(dm.payload.fetch("edition")).to include("id" => edition_id, "year" => 2026)
-      expect(announcements("signup_closed").sole.payload).to include("joined" => 2, "left_out" => 1)
+      expect(announcements("signup_closed").sole.payload).to include("joined" => 2, "left_out" => 1, "minimum" => 5)
     end
 
     it "cancels an Edition with fewer than 2 members left, with no Runs, and announces it" do
@@ -263,7 +263,7 @@ RSpec.describe "api/v1/challenge edition lifecycle behavior", type: :request do
       expect(editions(santa, at: "2026-12-01 00:02").sole).to include("phase" => "cancelled")
       expect(ChallengeRun.where(challenge_id: santa)).to be_empty
       expect(announcements("signup_closed")).to be_empty
-      expect(announcements("edition_cancelled").sole.payload).to include("joined" => 1, "left_out" => 1)
+      expect(announcements("edition_cancelled").sole.payload).to include("joined" => 1, "left_out" => 1, "minimum" => 5)
       expect(dms.map { |job| job.payload["user_id"] }).to eq([ left_out.user_id ])
 
       tick("2026-12-26 00:01")

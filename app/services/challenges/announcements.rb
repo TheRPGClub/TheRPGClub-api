@@ -18,8 +18,8 @@ module Challenges
   # the Edition (as GET /api/v1/challenge_editions/{id} serves it) under
   # `edition`: "signup_opened"; "signup_closing" with `days_left` to the
   # cutoff; and, from the draw, "signup_closed" or "edition_cancelled" (fewer
-  # than 2 members drawn), each with `joined`, the members drawn, and
-  # `left_out`, those the backlog minimum left out; and "edition_revealed",
+  # than 2 members drawn), each with `joined`, the members drawn,
+  # `left_out`, those the backlog minimum left out, and that `minimum`; and "edition_revealed",
   # on the reveal date, whose Edition carries every assignment under
   # `assignments` (the Santas left out). From "signup_closing" on, each
   # Edition event also carries `signup_post`, the sign-up opening post the
@@ -62,16 +62,16 @@ module Challenges
     end
 
     # The draw (Challenges::Editions.draw!): `joined` members drawn, and
-    # `left_out` below the backlog minimum.
+    # `left_out` below the backlog `minimum`.
     def self.signup_closed!(edition, joined:, left_out:)
       edition_event!("signup_closed", edition, "Announce that sign-up for %<name>s %<year>d closed",
-        joined: joined, left_out: left_out, signup_post: edition.signup_post)
+        joined: joined, left_out: left_out, minimum: Editions::BACKLOG_MINIMUM, signup_post: edition.signup_post)
     end
 
     # The draw cancelled the Edition: fewer than 2 members could be drawn.
     def self.edition_cancelled!(edition, joined:, left_out:)
       edition_event!("edition_cancelled", edition, "Announce that %<name>s %<year>d is cancelled",
-        joined: joined, left_out: left_out, signup_post: edition.signup_post)
+        joined: joined, left_out: left_out, minimum: Editions::BACKLOG_MINIMUM, signup_post: edition.signup_post)
     end
 
     # The reveal (Challenges::Editions.reveal!): the Edition carries every
