@@ -29,7 +29,7 @@ module Gamedb
       end
     end
 
-    # IGDB `release_dates.region` enum -> local region code/name (the bot's
+    # IGDB `release_dates.release_region` id -> local region code/name (the bot's
     # IGDB_REGION_MAP). A release whose region isn't listed is dropped.
     REGION_MAP = {
       1 => { code: "EU", name: "Europe" },

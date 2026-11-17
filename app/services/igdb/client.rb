@@ -20,13 +20,6 @@ module Igdb
     # import, without the taxonomy/release detail that #game pulls.
     SEARCH_FIELDS = "id,name,slug,summary,url,total_rating,first_release_date,cover.image_id"
 
-    # IGDB's deprecated `release_dates.category` enum, read only when a release
-    # date has no `date_format`, mapped onto the `date_formats.format` strings.
-    RELEASE_DATE_CATEGORY_FORMATS = {
-      0 => "YYYYMMMMDD", 1 => "YYYYMMMM", 2 => "YYYY",
-      3 => "YYYYQ1", 4 => "YYYYQ2", 5 => "YYYYQ3", 6 => "YYYYQ4", 7 => "TBD"
-    }.freeze
-
     # A release date IGDB has not announced: Date Precision `tba`, no date.
     TBA_DATE = [ nil, "tba" ].freeze
 
@@ -125,8 +118,8 @@ module Igdb
             franchises.id,franchises.name,
             involved_companies.company.id,involved_companies.company.name,
             involved_companies.developer,involved_companies.publisher,
-            release_dates.region,release_dates.date,release_dates.y,release_dates.m,
-            release_dates.date_format.format,release_dates.category,
+            release_dates.release_region,release_dates.date,release_dates.y,release_dates.m,
+            release_dates.date_format.format,
             release_dates.platform.id,release_dates.platform.name;
           where id = #{Integer(igdb_id)};
           limit 1;
@@ -246,32 +239,34 @@ module Igdb
     end
 
     # One IGDB release date -> `{ platform:, region:, date:, date_precision: }`.
-    # `date` is a plain calendar Date at the Release's Date Precision (the first
-    # day of its month, quarter or year for a vague date, nil for TBA), so a
-    # vague date never poses as an exact day.
+    # `region` is IGDB's `release_region` id (1-8 match the importer's
+    # REGION_MAP; IGDB stopped returning the old `region` enum). `date` is a
+    # plain calendar Date at the Release's Date Precision (the first day of its
+    # month, quarter or year for a vague date, nil for TBA), so a vague date
+    # never poses as an exact day.
     def release_date_hash(release)
       platform = named_ref(release["platform"])
       return if platform.nil?
 
       date, date_precision = release_date_and_precision(release)
-      { platform: platform, region: release["region"], date: date, date_precision: date_precision }
+      { platform: platform, region: release["release_region"], date: date, date_precision: date_precision }
     end
 
-    # IGDB's release-date format (`date_format.format`, or the deprecated
-    # `category` enum when that is missing) -> Date Precision. A date with
-    # neither is read from what it carries: a timestamp is a day, a year and
+    # IGDB's release-date format (`date_format.format`: YYYYMMDD, YYYYMM, YYYY,
+    # YYYYQ1-4 or TBD, checked live in api#393) -> Date Precision. A date with
+    # no format is read from what it carries: a timestamp is a day, a year and
     # month a month, a year alone a year, nothing at all TBA.
     def release_date_and_precision(release)
       exact = unix_to_time(release["date"])&.to_date
       year = integer_or_nil(release["y"]) || exact&.year
       month = integer_or_nil(release["m"]) || exact&.month
-      format = release.dig("date_format", "format").presence || RELEASE_DATE_CATEGORY_FORMATS[release["category"]]
-      format ||= if exact then "YYYYMMMMDD" elsif year && month then "YYYYMMMM" elsif year then "YYYY" else "TBD" end
+      format = release.dig("date_format", "format").presence
+      format ||= if exact then "YYYYMMDD" elsif year && month then "YYYYMM" elsif year then "YYYY" else "TBD" end
 
       case format
-      when "YYYYMMMMDD"
+      when "YYYYMMDD"
         exact ? [ exact, "day" ] : vague_date(year, month)
-      when "YYYYMMMM" then vague_date(year, month)
+      when "YYYYMM" then vague_date(year, month)
       when /\AYYYYQ([1-4])\z/ then year ? [ Date.new(year, (Integer(Regexp.last_match(1)) * 3) - 2, 1), "quarter" ] : TBA_DATE
       when "YYYY" then vague_date(year, nil)
       else TBA_DATE
