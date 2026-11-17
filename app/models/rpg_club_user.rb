@@ -188,6 +188,13 @@ class RpgClubUser < ApplicationRecord
     role_admin? || role_dev?
   end
 
+  # Moderator, Admin or Superadmin by the member's stored roles, for callers
+  # acting for the member without their session (the bot). Session callers
+  # use StaffGates#moderator_or_above?.
+  def moderator_or_above?
+    role_moderator? || admin_or_above?
+  end
+
   def membership
     {
       admin: role_admin?,
