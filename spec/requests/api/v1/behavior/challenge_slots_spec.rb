@@ -29,18 +29,18 @@ RSpec.describe "api/v1/challenges Slots behavior", type: :request do
 
       expect(response).to have_http_status(:created)
       expect(json.fetch("data")).to include("challenge_format" => "slots", "pool" => nil,
-        "slots" => { "first_year" => "birth_year", "last_year" => "current_year" })
+        "slots" => { "first_year" => "birth_year", "last_year" => "current_year", "counts_past_play" => false })
 
       create_challenge(first_year: 1990, last_year: 1999)
 
       expect(response).to have_http_status(:created)
-      expect(json.dig("data", "slots")).to eq("first_year" => 1990, "last_year" => 1999)
+      expect(json.dig("data", "slots")).to eq("first_year" => 1990, "last_year" => 1999, "counts_past_play" => false)
 
       create_challenge(first_year: 2000, last_year: "current_year")
-      expect(json.dig("data", "slots")).to eq("first_year" => 2000, "last_year" => "current_year")
+      expect(json.dig("data", "slots")).to eq("first_year" => 2000, "last_year" => "current_year", "counts_past_play" => false)
 
       create_challenge(first_year: "birth_year", last_year: 2009)
-      expect(json.dig("data", "slots")).to eq("first_year" => "birth_year", "last_year" => 2009)
+      expect(json.dig("data", "slots")).to eq("first_year" => "birth_year", "last_year" => 2009, "counts_past_play" => false)
     end
 
     it "refuses a range that ends before it starts, a year that isn't one, and missing settings" do
@@ -72,7 +72,7 @@ RSpec.describe "api/v1/challenges Slots behavior", type: :request do
 
       patch "/api/v1/challenges/#{id}", params: { data: { slots: { last_year: 2009 } } },
         headers: auth_headers_for(regular), as: :json
-      expect(json.dig("data", "slots")).to eq("first_year" => 1990, "last_year" => 2009)
+      expect(json.dig("data", "slots")).to eq("first_year" => 1990, "last_year" => 2009, "counts_past_play" => false)
 
       create(:challenge_run, challenge: Challenge.find(id))
       patch "/api/v1/challenges/#{id}", params: { data: { slots: { first_year: "birth_year" } } },

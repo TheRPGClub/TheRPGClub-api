@@ -947,7 +947,9 @@ module OpenapiSchemas
         first_year: { oneOf: [ { type: :integer }, { type: :string, enum: %w[birth_year] } ],
                       description: "A fixed year, or \"birth_year\" for each member's birth year." },
         last_year: { oneOf: [ { type: :integer }, { type: :string, enum: %w[current_year] } ],
-                     description: "A fixed year, or \"current_year\": the range gains a slot every 1 January." }
+                     description: "A fixed year, or \"current_year\": the range gains a slot every 1 January." },
+        counts_past_play: bool.merge(description: "Counts past play (ticket #382, Always Open only): members may " \
+                                                  "pick Game Completions dated before their Run started for open slots.")
       ),
       ChallengeAssignment: obj(
         _description: "An Assignment (Secret Santa) Challenge's Edition calendar, as MM-DD, coming in this order " \
@@ -1024,7 +1026,8 @@ module OpenapiSchemas
           ),
           slot_year: int(nullable: true).merge(description: "Slots: the year this Cleared game fills; null " \
                                                            "when In Progress, waiting for an open year, or not Slots."),
-          picked_by_hand: bool.merge(description: "The member placed it there themselves (a slot move).")
+          picked_by_hand: bool.merge(description: "The member placed it there themselves (a slot move or a " \
+                                                  "past-play pick).")
         ) },
         slots: obj(
           first_year: int.merge(description: "Copied when the Run started; kept if the Birth Date changes."),

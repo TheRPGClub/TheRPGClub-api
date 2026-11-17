@@ -22,8 +22,9 @@ module Challenges
   #   summary(run, entries)   a Summary of the entries (Counted or stored)
   #
   # Slots (Challenges::Formats::Slots) keeps each game's slot year on the
-  # entry, and a game the member moved (`picked_by_hand`) stays there while
-  # it still holds.
+  # entry, and a game the member moved or picked from past play
+  # (`picked_by_hand`) stays there while it still holds. Earlier play
+  # (InWindow#earlier) never counts by itself.
   #
   # What stays the same for every Format lives here:
   # - The window (Challenges::Window) and what counts inside it

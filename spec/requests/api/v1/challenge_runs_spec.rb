@@ -25,7 +25,8 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
   progress = 'Progress fills in by itself from the member\'s Game Completions and Now Playing: a Pool game in Now ' \
              'Playing is In Progress, and a Game Completion dated inside the Run\'s window Clears it. A Slots Run\'s ' \
              'Cleared game fills the earliest open year it was released in (anywhere), one slot per game; a range ' \
-             'ending at the current year is Caught Up while every year so far is Cleared. Finished is final.'
+             'ending at the current year is Caught Up while every year so far is Cleared. Earlier play counts only ' \
+             'when picked by hand (Counts past play). Finished is final.'
   hidden = 'Runs of a hidden Challenge are listed only for Moderators and above, its Host and the Run\'s member.'
   status_filter = { type: :string, enum: ChallengeRun::STATUSES }
 
@@ -218,6 +219,89 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
       end
 
       response '422', 'not_slots, not_cleared, slot_out_of_range or slot_not_fitting' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/challenge_runs/{id}/past_pick' do
+    parameter name: :id, in: :path, schema: { type: :integer }, required: true
+
+    post 'Pick a past Game Completion for a slot' do
+      tags 'Challenges'
+      description 'The Run\'s member only (403 otherwise). With Counts past play on, puts one of the member\'s Game ' \
+                  'Completions dated before the Active Slots Run started (or undated) in an open year its game was ' \
+                  'released in. Earlier play counts only this way. The pick holds while its Game Completion ' \
+                  'exists (a Finished Run keeps it regardless). The bot adds `acting_user_id` to `data`.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object, required: %w[data], properties: {
+          data: { type: :object, required: %w[completion_id slot_year], properties: {
+            completion_id: { type: :integer }, slot_year: { type: :integer }, acting_user_id: { type: :string }
+          } }
+        }
+      }
+
+      response '200', 'the Run' do
+        schema one_run
+      end
+
+      response '400', 'completion_id or slot_year missing or not a whole number' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not the Run\'s member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'slot_filled (with the filling `game_id`) or run_not_active' do
+        schema type: :object, properties: {
+          error: { type: :string, enum: %w[slot_filled run_not_active] }, message: { type: :string },
+          game_id: { type: :integer, description: 'slot_filled only: the game filling that year.' }
+        }
+      end
+
+      response '422', 'not_slots, past_play_off, not_past_completion, already_cleared (use a slot move), ' \
+                      'slot_out_of_range or slot_not_fitting' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/challenge_runs/{id}/past_play' do
+    parameter name: :id, in: :path, schema: { type: :integer }, required: true
+
+    get 'List the past Game Completions a member can pick' do
+      tags 'Challenges'
+      description 'The Run\'s member only (403 otherwise). With Counts past play on, the member\'s Game ' \
+                  'Completions dated before their Active Slots Run started (or undated) whose game is not Cleared ' \
+                  'on the Run and fits an open year, each with those years, oldest first and undated last. ' \
+                  'For the past-pick picker and autocomplete. The bot names the member with `acting_user_id`.'
+      produces 'application/json'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Only games whose title contains this.'
+      parameter name: :acting_user_id, in: :query, schema: { type: :string }, required: false
+
+      response '200', 'the Game Completions' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { type: :object, properties: {
+            completion_id: { type: :integer }, game_id: { type: :integer }, title: { type: :string },
+            completed_at: { type: :string, format: :date, nullable: true },
+            open_years: { type: :array, items: { type: :integer }, description: 'Open years of the Run it fits.' }
+          } } }
+        }
+      end
+
+      response '403', 'not the Run\'s member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'run_not_active' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'not_slots or past_play_off' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

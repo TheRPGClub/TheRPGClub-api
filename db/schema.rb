@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_130383) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -225,10 +225,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_130383) do
     t.integer "pick_deadline_day", limit: 2
     t.integer "reveal_month", limit: 2
     t.integer "reveal_day", limit: 2
+    t.boolean "counts_past_play", default: false, null: false
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
     t.check_constraint "challenge_format::text <> 'assignment'::text OR schedule::text = 'always_open'::text AND ends_on IS NULL", name: "ck_challenges_assignment_schedule"
+    t.check_constraint "NOT counts_past_play OR schedule::text = 'always_open'::text", name: "ck_challenges_past_play_always_open"
     t.check_constraint "challenge_format::text = ANY (ARRAY['slots'::character varying, 'pool'::character varying, 'assignment'::character varying]::text[])", name: "ck_challenges_format"
     t.check_constraint "pool_target IS NULL OR pool_target >= 1", name: "ck_challenges_pool_target"
     t.check_constraint "schedule::text = 'always_open'::text OR ends_on IS NULL", name: "ck_challenges_ends_on"

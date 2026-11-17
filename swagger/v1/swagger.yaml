@@ -3154,9 +3154,14 @@ components:
             - current_year
           description: 'A fixed year, or "current_year": the range gains a slot every
             1 January.'
+        counts_past_play:
+          type: boolean
+          description: 'Counts past play (ticket #382, Always Open only): members
+            may pick Game Completions dated before their Run started for open slots.'
       required:
       - first_year
       - last_year
+      - counts_past_play
       description: 'A Slots Challenge''s range: one slot per release year (ticket
         #381).'
     ChallengeAssignment:
@@ -3458,7 +3463,8 @@ components:
                   Progress, waiting for an open year, or not Slots.'
               picked_by_hand:
                 type: boolean
-                description: The member placed it there themselves (a slot move).
+                description: The member placed it there themselves (a slot move or
+                  a past-play pick).
             required:
             - game_id
             - title
@@ -7768,9 +7774,10 @@ paths:
         is In Progress, and a Game Completion dated inside the Run''s window Clears
         it. A Slots Run''s Cleared game fills the earliest open year it was released
         in (anywhere), one slot per game; a range ending at the current year is Caught
-        Up while every year so far is Cleared. Finished is final. Runs of a hidden
-        Challenge are listed only for Moderators and above, its Host and the Run''s
-        member. The bot may name the member it reads for with `acting_user_id`.'
+        Up while every year so far is Cleared. Earlier play counts only when picked
+        by hand (Counts past play). Finished is final. Runs of a hidden Challenge
+        are listed only for Moderators and above, its Host and the Run''s member.
+        The bot may name the member it reads for with `acting_user_id`.'
       parameters:
       - name: status
         in: query
@@ -7987,8 +7994,9 @@ paths:
         dated inside the Run''s window Clears it. A Slots Run''s Cleared game fills
         the earliest open year it was released in (anywhere), one slot per game; a
         range ending at the current year is Caught Up while every year so far is Cleared.
-        Finished is final. Runs of a hidden Challenge are listed only for Moderators
-        and above, its Host and the Run''s member.'
+        Earlier play counts only when picked by hand (Counts past play). Finished
+        is final. Runs of a hidden Challenge are listed only for Moderators and above,
+        its Host and the Run''s member.'
       parameters:
       - name: acting_user_id
         in: query
@@ -8169,6 +8177,164 @@ paths:
                     acting_user_id:
                       type: string
         required: true
+  "/api/v1/challenge_runs/{id}/past_pick":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Pick a past Game Completion for a slot
+      tags:
+      - Challenges
+      description: The Run's member only (403 otherwise). With Counts past play on,
+        puts one of the member's Game Completions dated before the Active Slots Run
+        started (or undated) in an open year its game was released in. Earlier play
+        counts only this way. The pick holds while its Game Completion exists (a Finished
+        Run keeps it regardless). The bot adds `acting_user_id` to `data`.
+      parameters: []
+      responses:
+        '200':
+          description: the Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '400':
+          description: completion_id or slot_year missing or not a whole number
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: slot_filled (with the filling `game_id`) or run_not_active
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - slot_filled
+                    - run_not_active
+                  message:
+                    type: string
+                  game_id:
+                    type: integer
+                    description: 'slot_filled only: the game filling that year.'
+        '422':
+          description: not_slots, past_play_off, not_past_completion, already_cleared
+            (use a slot move), slot_out_of_range or slot_not_fitting
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - completion_id
+                  - slot_year
+                  properties:
+                    completion_id:
+                      type: integer
+                    slot_year:
+                      type: integer
+                    acting_user_id:
+                      type: string
+        required: true
+  "/api/v1/challenge_runs/{id}/past_play":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List the past Game Completions a member can pick
+      tags:
+      - Challenges
+      description: The Run's member only (403 otherwise). With Counts past play on,
+        the member's Game Completions dated before their Active Slots Run started
+        (or undated) whose game is not Cleared on the Run and fits an open year, each
+        with those years, oldest first and undated last. For the past-pick picker
+        and autocomplete. The bot names the member with `acting_user_id`.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Only games whose title contains this.
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+      responses:
+        '200':
+          description: the Game Completions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        completion_id:
+                          type: integer
+                        game_id:
+                          type: integer
+                        title:
+                          type: string
+                        completed_at:
+                          type: string
+                          format: date
+                          nullable: true
+                        open_years:
+                          type: array
+                          items:
+                            type: integer
+                          description: Open years of the Run it fits.
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: run_not_active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not_slots or past_play_off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/challenge_settings":
     parameters:
     - name: user_id
@@ -8499,8 +8665,8 @@ paths:
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot
-                        per release year. On edit, only the keys given change; both
-                        are required on create.'
+                        per release year. On edit, only the keys given change; first_year
+                        and last_year are required on create.'
                       properties:
                         first_year:
                           oneOf:
@@ -8524,6 +8690,12 @@ paths:
                           description: A fixed year, or "current_year" for a range
                             that gains a slot every 1 January. Not before a fixed
                             first year.
+                        counts_past_play:
+                          type: boolean
+                          description: 'Counts past play: members may pick Game Completions
+                            dated before their Run started for open slots. Always
+                            Open Challenges only (422 on Seasonal); false when left
+                            out on create.'
                     assignment:
                       type: object
                       description: The Edition calendar (challenge_format assignment,
@@ -8853,8 +9025,8 @@ paths:
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot
-                        per release year. On edit, only the keys given change; both
-                        are required on create.'
+                        per release year. On edit, only the keys given change; first_year
+                        and last_year are required on create.'
                       properties:
                         first_year:
                           oneOf:
@@ -8878,6 +9050,12 @@ paths:
                           description: A fixed year, or "current_year" for a range
                             that gains a slot every 1 January. Not before a fixed
                             first year.
+                        counts_past_play:
+                          type: boolean
+                          description: 'Counts past play: members may pick Game Completions
+                            dated before their Run started for open slots. Always
+                            Open Challenges only (422 on Seasonal); false when left
+                            out on create.'
                     assignment:
                       type: object
                       description: The Edition calendar (challenge_format assignment,
