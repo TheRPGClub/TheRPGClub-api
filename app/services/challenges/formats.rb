@@ -11,7 +11,8 @@ module Challenges
   #   parse(input, base:)                settings from a request's object,
   #                                      over `base` (the stored ones on edit);
   #                                      raises Challenges::Invalid
-  #   errors(settings)                   why they are not valid ([] if they are)
+  #   errors(settings, challenge)        why they are not valid ([] if they are)
+  #                                      for `challenge` as it will be saved
   #   apply!(challenge, settings)        writes them (inside the save's transaction)
   #   rules(settings)                    a comparable value: a change to it
   #                                      is a rule change, locked once Runs exist
@@ -26,6 +27,10 @@ module Challenges
   #   run_attributes(challenge, user_id, today:)  what the new Run copies;
   #                                      raises Challenges::RunRefused
   #   notices(run)                       what the member is told on start
+  #
+  # Slots alone also answers move! (slot moves), and pick! and past_play
+  # (Counts past play); Challenges::Runs refuses them as `not_slots` for a
+  # Format without them.
   #
   # Assignment (#383) registers here when it is built.
   module Formats

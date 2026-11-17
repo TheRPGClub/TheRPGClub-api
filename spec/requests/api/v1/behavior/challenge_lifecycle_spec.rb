@@ -226,6 +226,55 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
     end
   end
 
+  describe "the new year's slot" do
+    # A game first released in `first` and again in each of `also`.
+    def game(title, first, *also)
+      create(:game, title: title, initial_release_date: Time.utc(first, 6, 1)).tap do |created|
+        also.each { |year| create(:release, game: created, release_date: Time.utc(year, 3, 1)) }
+      end
+    end
+
+    def slots_of(run_id) = run_json(run_id).dig("slots", "years").to_h { |slot| slot.values_at("year", "title") }
+
+    it "fills on 1 January with a Cleared game waiting for it, Catching the Run Up again, once" do
+      challenge = travel_to(club_time("2026-10-01 12:00")) do
+        create(:challenge, challenge_format: "slots", pool_target: nil, slots_first_year: 2025, slots_last_year: nil)
+      end
+      run_id = travel_to(club_time("2026-10-02 12:00")) do
+        start_run(challenge).tap do
+          log_completion(member, game("Clair Obscur", 2025), on: "2026-10-02")
+          log_completion(member, game("Ballad of the Thirteenth", 2026), on: "2026-10-02")
+          # Out in Japan in 2026 and in the West in 2027: it waits for 2027.
+          log_completion(member, game("Lantern Isles", 2026, 2027), on: "2026-10-02")
+        end
+      end
+      expect(announcements("run_caught_up").size).to eq(1)
+
+      tick("2026-12-31 23:59")
+      tick("2027-01-01 00:01")
+      tick("2027-01-01 00:02")
+      Challenges::SweepSchedule.clear
+      tick("2027-01-01 09:00")
+
+      travel_to(club_time("2027-01-01 09:01")) do
+        expect(slots_of(run_id)).to eq(2025 => "Clair Obscur", 2026 => "Ballad of the Thirteenth",
+          2027 => "Lantern Isles")
+        expect(run_json(run_id).dig("progress", "caught_up")).to be(true)
+      end
+      expect(announcements("run_caught_up").size).to eq(2)
+    end
+
+    it "is due again only on the next 1 January" do
+      travel_to(club_time("2026-10-01 12:00")) do
+        create(:challenge, challenge_format: "slots", pool_target: nil, slots_first_year: 2025, slots_last_year: nil)
+      end
+
+      tick("2026-10-01 12:01")
+
+      expect(Challenges::Lifecycle.next_event_at(now: club_time("2026-10-01 12:02"))).to eq(club_time("2027-01-01 00:00"))
+    end
+  end
+
   def log_completion(user, game, on:)
     post "/api/v1/users/#{user.user_id}/completions",
       params: { data: { gamedb_game_id: game.game_id, completion_type: "Main Story", completed_at: on } },

@@ -23,14 +23,18 @@ RSpec.describe 'api/v1/challenges', type: :request do
   slots = {
     type: :object,
     description: 'The slot range (challenge_format slots): one slot per release year. On edit, only the keys ' \
-                 'given change; both are required on create.',
+                 'given change; first_year and last_year are required on create.',
     properties: {
       first_year: { oneOf: [ { type: :integer, minimum: 1900, maximum: 2100 }, { type: :string, enum: %w[birth_year] } ],
                     description: 'A fixed year, or "birth_year" for each member\'s birth year (a Run then needs ' \
                                  'their Birth Date, and shows the year).' },
       last_year: { oneOf: [ { type: :integer, minimum: 1900, maximum: 2100 }, { type: :string, enum: %w[current_year] } ],
                    description: 'A fixed year, or "current_year" for a range that gains a slot every 1 January. ' \
-                                'Not before a fixed first year.' }
+                                'Not before a fixed first year.' },
+      counts_past_play: { type: :boolean, description: 'Counts past play: members may pick Game Completions dated ' \
+                                                       'before their Run started for open slots. Always Open ' \
+                                                       'Challenges only (422 on Seasonal); false when left out on ' \
+                                                       'create.' }
     }
   }
   writable = {

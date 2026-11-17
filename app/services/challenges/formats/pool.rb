@@ -46,7 +46,7 @@ module Challenges
       end
       private_class_method :parse_target
 
-      def self.errors(settings) = settings.definition.errors
+      def self.errors(settings, _challenge = nil) = settings.definition.errors
 
       def self.apply!(challenge, settings)
         definition = settings.definition

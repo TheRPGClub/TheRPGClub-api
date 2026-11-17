@@ -16,6 +16,11 @@ module Challenges
   #   move!      a slot move on an Active Slots Run
   #              (Challenges::Formats::Slots.move!), then the Run's progress
   #              is refreshed, so a game waiting for the freed year fills it
+  #   pick!      a past-play pick on an Active Slots Run of a Challenge that
+  #              counts past play (Challenges::Formats::Slots.pick!), then
+  #              the Run's progress is refreshed, so it may Finish or be
+  #              Caught Up
+  #   past_play  what the member could pick now (Formats::Slots.past_play)
   module Runs
     CLOSED = "This Challenge is Closed, so no Run can start now."
     ACTIVE = "You already have an Active Run of this Challenge."
@@ -23,6 +28,8 @@ module Challenges
     DELETE_ACTIVE = "Abandon this Run before deleting it."
     MOVE_NOT_ACTIVE = "Only an Active Run's games can be moved."
     NOT_SLOTS = "Only a Slots Run has years to move games between."
+    PICK_NOT_ACTIVE = "Only an Active Run can count past play."
+    PICK_NOT_SLOTS = "Only a Slots Run has years to pick past play for."
 
     def self.start!(challenge, user_id, now: Time.current)
       today = Challenges.today(now)
@@ -72,6 +79,26 @@ module Challenges
       end
       run
     end
+
+    def self.pick!(run, completion_id:, year:)
+      run.with_lock do
+        format = past_play_format(run)
+        format.pick!(run, completion_id, year)
+        Challenges.refresh_runs!(run.user_id)
+      end
+      run
+    end
+
+    def self.past_play(run) = past_play_format(run).past_play(run)
+
+    def self.past_play_format(run)
+      format = run.challenge.format_rules
+      raise RunRefused.new("not_slots", PICK_NOT_SLOTS, status: :unprocessable_content) unless format.respond_to?(:pick!)
+      raise RunRefused.new("run_not_active", PICK_NOT_ACTIVE) unless run.active?
+
+      format
+    end
+    private_class_method :past_play_format
 
     def self.refuse_active!(challenge, user_id)
       active = ChallengeRun.active.find_by(challenge_id: challenge.id, user_id: user_id)

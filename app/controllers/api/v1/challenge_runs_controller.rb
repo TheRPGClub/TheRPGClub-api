@@ -19,7 +19,7 @@ module Api
 
       feature :challenges
 
-      before_action :require_acting_member!, only: %i[create abandon destroy slot_move]
+      before_action :require_acting_member!, only: %i[create abandon destroy slot_move past_pick past_play]
 
       rescue_from Challenges::RunRefused do |error|
         render json: { error: error.code, message: error.message, **error.details }, status: error.status
@@ -83,6 +83,47 @@ module Api
         return if performed?
 
         own_run { |run| render_run(Challenges::Runs.move!(run, game_id: game_id, year: year)) }
+      end
+
+      # POST /api/v1/challenge_runs/:id/past_pick
+      # Body: { "data": { "completion_id": 345, "slot_year": 1999 } }
+      #
+      # Counts past play: puts one of the member's Game Completions dated
+      # before their Slots Run started (or undated) in an open year its game
+      # fits. 422 `not_slots`, `past_play_off`, `not_past_completion`,
+      # `already_cleared` (use a slot move), `slot_out_of_range` or
+      # `slot_not_fitting`; 409 `slot_filled` (with the filling `game_id`) or
+      # `run_not_active`.
+      def past_pick
+        data = request_data
+        completion_id = positive_integer(data["completion_id"], "completion_id")
+        year = positive_integer(data["slot_year"], "slot_year")
+        return if performed?
+
+        own_run do |run|
+          render_run(Challenges::Runs.pick!(run, completion_id: completion_id, year: year))
+        end
+      end
+
+      # GET /api/v1/challenge_runs/:id/past_play?q=chrono
+      #
+      # The member's earlier Game Completions they could pick for their Slots
+      # Run now (past_pick), each with the open years its game fits, oldest
+      # first and undated last; `q` narrows by title. Refused like past_pick.
+      def past_play
+        own_run do |run|
+          rows = Challenges::Runs.past_play(run)
+          titles = GamedbGame.where(game_id: rows.map { |completion, _| completion.game_id }).pluck(:game_id, :title).to_h
+          query = params[:q].to_s.strip.downcase
+          data = rows.filter_map do |completion, years|
+            title = titles[completion.game_id]
+            next if query.present? && !title.to_s.downcase.include?(query)
+
+            { completion_id: completion.completion_id, game_id: completion.game_id, title: title,
+              completed_at: completion.cleared_on&.iso8601, open_years: years }
+          end
+          render json: { data: data }
+        end
       end
 
       # DELETE /api/v1/challenge_runs/:id
