@@ -24,4 +24,12 @@ class ChallengeEdition < ApplicationRecord
 
   # Whether members may sign up or withdraw on the club date `today`.
   def signup_open?(today = Challenges.today) = phase == "signup" && today < signup_cutoff_on
+
+  # Whether the draw gave its members recipients (and Runs).
+  def drawn? = %w[picking revealed ended].include?(phase)
+
+  # Whether the picks are revealed: from the reveal date on.
+  def revealed? = %w[revealed ended].include?(phase)
+
+  def ended? = phase == "ended"
 end

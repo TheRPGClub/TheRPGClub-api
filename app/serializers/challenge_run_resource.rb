@@ -27,6 +27,21 @@ class ChallengeRunResource
     edition && { id: edition.id, year: edition.year }
   end
 
+  # Assignment only (null otherwise): the game picked for the member, and
+  # whether at random, once revealed (or to staff, `params[:staff]`); and
+  # their Santa, which nobody but staff sees before the Edition ends.
+  attribute :assignment do |run|
+    edition = run.edition
+    next nil unless edition
+
+    signup = run.assignment
+    staff = params[:staff] ? true : false
+    shown = signup && (edition.revealed? || staff)
+    { game: shown && signup.picked_game ? GameSummaryResource.new(signup.picked_game).serializable_hash : nil,
+      picked_randomly: shown ? signup.picked_randomly : nil,
+      santa: signup && (staff || edition.ended?) ? ChallengeEditionResource.member(signup.user) : nil }
+  end
+
   attribute :window do |run|
     run.window.as_json
   end
@@ -47,7 +62,8 @@ class ChallengeRunResource
     Challenges::Formats::Slots.run_json(run) if run.challenge.challenge_format == Challenges::Formats::Slots::KEY
   end
 
-  PRELOADS = [ :user, :edition, { entries: :game, challenge: %i[pool_franchises pool_collections pool_games] } ].freeze
+  PRELOADS = [ :user, { edition: { signups: %i[user picked_game] }, entries: :game,
+                         challenge: %i[pool_franchises pool_collections pool_games] } ].freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)
 end

@@ -158,6 +158,10 @@ module Api
         runs
       end
 
+      # Staff (Moderators and above) see an Assignment Run's Santa before
+      # the Edition ends.
+      def resource_params = { staff: actor.moderator_or_above? }
+
       def render_runs(scope)
         status = params[:status].presence
         if status && !ChallengeRun::STATUSES.include?(status)
@@ -167,12 +171,12 @@ module Api
 
         scope = scope.where(status: status) if status
         render_collection(ChallengeRunResource.preloaded(scope), resource: ChallengeRunResource,
-          default_order: { started_at: :desc, id: :desc })
+          default_order: { started_at: :desc, id: :desc }, params: resource_params)
       end
 
       def render_run(run, status: :ok, meta: nil)
         run = ChallengeRunResource.preloaded(ChallengeRun.where(id: run.id)).first!
-        body = { data: ChallengeRunResource.new(run).serializable_hash }
+        body = { data: ChallengeRunResource.new(run, params: resource_params).serializable_hash }
         body[:meta] = meta if meta
         render json: body, status: status
       end

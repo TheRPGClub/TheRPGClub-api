@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_150384) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -115,6 +115,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
     t.string "recipient_user_id", limit: 30
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "picked_game_id"
+    t.timestamptz "picked_at"
+    t.boolean "picked_randomly", default: false, null: false
+    t.timestamptz "withdrawn_at"
     t.index ["edition_id", "recipient_user_id"], name: "ux_challenge_edition_signups_recipient", unique: true, where: "(recipient_user_id IS NOT NULL)"
     t.index ["edition_id", "user_id"], name: "ux_challenge_edition_signups_member", unique: true
     t.index ["user_id"], name: "ix_challenge_edition_signups_user"
@@ -132,6 +136,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
     t.timestamptz "drawn_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.timestamptz "picks_closed_at"
     t.index ["challenge_id", "year"], name: "ux_challenge_editions_year", unique: true
     t.index ["phase", "signup_cutoff_on"], name: "ix_challenge_editions_phase"
     t.check_constraint "phase::text = ANY (ARRAY['signup'::character varying, 'picking'::character varying, 'revealed'::character varying, 'ended'::character varying, 'cancelled'::character varying]::text[])", name: "ck_challenge_editions_phase"
@@ -1397,6 +1402,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
   add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "challenge_edition_signups", "challenge_editions", column: "edition_id", name: "fk_challenge_edition_signups_edition", on_delete: :cascade
+  add_foreign_key "challenge_edition_signups", "gamedb_games", column: "picked_game_id", primary_key: "game_id", name: "fk_challenge_edition_signups_picked_game", on_delete: :nullify
   add_foreign_key "challenge_edition_signups", "rpg_club_users", column: "recipient_user_id", primary_key: "user_id", name: "fk_challenge_edition_signups_recipient", on_delete: :nullify
   add_foreign_key "challenge_edition_signups", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_edition_signups_user", on_delete: :cascade
   add_foreign_key "challenge_editions", "challenges", name: "fk_challenge_editions_challenge", on_delete: :cascade

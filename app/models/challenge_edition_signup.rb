@@ -5,12 +5,24 @@
 # backlog by then) or gives them a recipient (`recipient_user_id`), the
 # member they are the Santa of. Nobody but staff learns who a member's Santa
 # is before the Edition ends.
+#
+# A Santa picks one game for their recipient (`picked_game_id`, ticket #384)
+# before the pick deadline; a recipient whose Santa didn't, withdrew after
+# the draw (`withdrawn_at`) or left the server gets a random pick at the
+# deadline (`picked_randomly`). The pick is revealed on the reveal date and
+# becomes the recipient's Run goal.
 class ChallengeEditionSignup < ApplicationRecord
   belongs_to :edition, class_name: "ChallengeEdition", inverse_of: :signups
   belongs_to :user, -> { without_images }, class_name: "RpgClubUser", foreign_key: :user_id, primary_key: :user_id,
     inverse_of: false
 
+  belongs_to :recipient, -> { without_images }, class_name: "RpgClubUser", foreign_key: :recipient_user_id,
+    primary_key: :user_id, optional: true, inverse_of: false
+  belongs_to :picked_game, class_name: "GamedbGame", optional: true, inverse_of: false
+
   scope :drawn, -> { where.not(recipient_user_id: nil) }
 
   def left_out? = left_out_at.present?
+
+  def withdrawn? = withdrawn_at.present?
 end

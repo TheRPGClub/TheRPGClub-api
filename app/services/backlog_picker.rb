@@ -9,6 +9,9 @@
 #   A `platform_id` filter is an exact match, so entries without a platform drop
 #   out. A game in both lists counts once, as its backlog entry. Unlike the bot
 #   there is no 200-row cap.
+# - `exclude_game_ids` drops those games too (Secret Santa's random pick
+#   leaves out the games the recipient has Cleared), and
+#   `include_now_playing: true` keeps the games on Now Playing.
 # - Selection is uniform: the candidates are stably ordered (backlog before
 #   collection, then entry_id), shuffled with `Random.new(seed)`, and walked from
 #   `position`, wrapping once. The same seed and position give the same pick, so
@@ -48,8 +51,11 @@ class BacklogPicker
     parse_hours(hltb.main) || parse_hours(hltb.single_player) || parse_hours(hltb.main_sides)
   end
 
-  def initialize(user_id:, seed:, source: "backlog", platform_id: nil, max_hours: nil, position: 0)
+  def initialize(user_id:, seed:, source: "backlog", platform_id: nil, max_hours: nil, position: 0,
+    exclude_game_ids: nil, include_now_playing: false)
     @user_id = user_id
+    @exclude_game_ids = exclude_game_ids
+    @include_now_playing = include_now_playing
     @seed = seed
     @source = source
     @platform_id = platform_id
@@ -86,8 +92,13 @@ class BacklogPicker
   end
 
   def candidates_from(model, kind, order)
-    now_playing = UserNowPlaying.where(user_id: @user_id).where.not(gamedb_game_id: nil).select(:gamedb_game_id)
-    model.where(user_id: @user_id).where.not(gamedb_game_id: now_playing).order(order)
+    scope = model.where(user_id: @user_id)
+    unless @include_now_playing
+      now_playing = UserNowPlaying.where(user_id: @user_id).where.not(gamedb_game_id: nil).select(:gamedb_game_id)
+      scope = scope.where.not(gamedb_game_id: now_playing)
+    end
+    scope = scope.where.not(gamedb_game_id: @exclude_game_ids) if @exclude_game_ids
+    scope.order(order)
       .pluck(:entry_id, :gamedb_game_id, :platform_id)
       .map { |entry_id, game_id, platform_id| Candidate.new(kind, entry_id, game_id, platform_id) }
   end

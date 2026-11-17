@@ -16,7 +16,7 @@ module Api
 
       feature :challenges
 
-      before_action :require_acting_member!, only: %i[sign_up withdraw]
+      before_action :require_acting_member!, only: %i[sign_up withdraw santa pick]
 
       rescue_from Challenges::SignupRefused do |error|
         render json: { error: error.code, message: error.message, **error.details }, status: error.status
@@ -54,14 +54,58 @@ module Api
         render_edition(Challenges::Editions.withdraw!(find_edition, actor.user_id))
       end
 
+      # GET /api/v1/challenge_editions/:id/santa?q=chrono
+      #
+      # The acting member's side as a Santa (Challenges::Picks): their
+      # recipient, their pick, the deadline, and the recipient's backlog minus
+      # the games they have Cleared, which `q` narrows by title. 403
+      # `not_a_santa` for anyone the draw didn't make a Santa (or who
+      # withdrew), so nobody else reads it.
+      def santa
+        edition = find_edition
+        render_santa(edition, Challenges::Picks.santa!(edition, actor.user_id))
+      end
+
+      # PUT /api/v1/challenge_editions/:id/santa/pick
+      # Body: { "data": { "game_id": 123 } } (the bot adds `acting_user_id`)
+      #
+      # Picks (or changes) the game, until the start of the pick deadline day:
+      # 409 `picks_closed` from then on, 422 `not_eligible` for a game not in
+      # the recipient's backlog or already Cleared by them.
+      def pick
+        game_id = Integer(request_data["game_id"].to_s, 10)
+        edition = find_edition
+        render_santa(edition, Challenges::Picks.pick!(edition, actor.user_id, game_id))
+      rescue ArgumentError
+        render json: { error: "game_id must be a whole number" }, status: :bad_request
+      end
+
       private
+
+      def render_santa(edition, signup)
+        backlog = Challenges::Picks.eligible_backlog(signup.recipient_user_id).preload(:game, :platform)
+        query = params[:q].to_s.strip
+        backlog = backlog.joins(:game).where("gamedb_games.title ILIKE ?", "%#{ApplicationRecord.sanitize_sql_like(query)}%") if query.present?
+        recipient = signup.recipient
+        picked = signup.picked_game
+        render json: { data: {
+          edition_id: edition.id, year: edition.year,
+          recipient: { user_id: recipient.user_id, username: recipient.username, global_name: recipient.global_name },
+          pick: picked && { game: GameSummaryResource.new(picked).serializable_hash,
+                            picked_at: signup.picked_at, picked_randomly: signup.picked_randomly },
+          pick_deadline_on: edition.pick_deadline_on.iso8601,
+          picks_open: Challenges::Picks.open?(edition),
+          backlog: BacklogEntryResource.new(backlog.order(:sort_order, :entry_id).to_a).serializable_hash
+        } }
+      end
+
 
       def find_edition
         challenges = visible_challenges.where(challenge_format: Challenges::Formats::Assignment::KEY)
         ChallengeEdition.where(challenge_id: challenges.select(:id)).find(params[:id])
       end
 
-      def resource_params = { user_id: actor.user_id, today: Challenges.today }
+      def resource_params = { user_id: actor.user_id, today: Challenges.today, staff: actor.moderator_or_above? }
 
       def render_edition(edition)
         edition = ChallengeEditionResource.preloaded(ChallengeEdition.where(id: edition.id)).first!
