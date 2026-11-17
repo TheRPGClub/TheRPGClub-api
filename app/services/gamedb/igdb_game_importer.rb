@@ -66,7 +66,7 @@ module Gamedb
     end
 
     # Re-fetch the game's release dates from IGDB and refresh its Releases in
-    # place (ADR 0008) through the same sync #import! uses: IGDB Releases are
+    # place (ADR 0009) through the same sync #import! uses: IGDB Releases are
     # updated, added or removed, Manual Releases are adopted or left alone, and
     # announcements keep their delivery state. Touches Releases only, never
     # images or the game's metadata/taxonomy. Returns the GamedbGame so the

@@ -609,7 +609,7 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(json.fetch("meta")).to eq("added" => 0, "total" => 1)
     end
 
-    describe "in-place refresh (ADR 0008)" do
+    describe "in-place refresh (ADR 0009)" do
       let(:in_window_date) { 5.days.from_now.utc.beginning_of_day }
       let(:igdb_platform) { GamedbPlatform.create!(igdb_platform_id: platform_ref[:igdb_id], platform_name: platform_ref[:name], platform_code: "RD#{SecureRandom.hex(4)}") }
       let(:north_america) do

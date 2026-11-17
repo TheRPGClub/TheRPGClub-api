@@ -152,7 +152,7 @@ module Api
       # Members role holders, staff and the service (#314, as the bot's
       # `/gamedb refresh-release-info`). Re-fetches the game's release dates
       # from IGDB and refreshes its Releases in place (Gamedb::ReleaseSync, ADR
-      # 0008): IGDB Releases are updated, added or removed, Manual Releases are
+      # 0009): IGDB Releases are updated, added or removed, Manual Releases are
       # adopted or left alone, and announcements keep their delivery state. IGDB
       # dates kept: one per platform (earliest dated; Japan-only releases
       # skipped, undated rows dropped, `format` left null). Returns the rebuilt
