@@ -270,6 +270,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/feature_access" => nil,
     "api/v1/features" => nil,
     "api/v1/feature_preferences" => nil,
+    # The Birth Date is the member's, not the Challenges Feature's: a birthday
+    # reminder will use it too (ticket #380).
+    "api/v1/birth_dates" => nil,
     "api/v1/user_roles" => nil,
     "api/v1/user_avatar_history" => nil,
     "api/v1/user_nick_history" => nil,

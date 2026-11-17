@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -430,6 +430,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
     t.index ["created_at"], name: "index_live_events_on_created_at"
     t.check_constraint "ends_at > starts_at", name: "ck_live_events_ends_after_start"
     t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'thread_created'::character varying, 'created'::character varying, 'failed'::character varying]::text[])", name: "ck_live_events_status"
+  end
+
+  create_table "member_birth_date_changes", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.date "birth_date", comment: "The Birth Date it was set to (null when removed)."
+    t.string "changed_by", limit: 30, comment: "Discord user id of whoever changed it; null for the bot."
+    t.boolean "by_staff", default: false, null: false, comment: "Changed by staff, which doesn't count toward the member's limit."
+    t.datetime "changed_at", null: false
+    t.index ["user_id", "changed_at"], name: "index_member_birth_date_changes_on_user_id_and_changed_at"
   end
 
   create_table "member_feature_preferences", force: :cascade do |t|
@@ -913,6 +922,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
     t.string "username", limit: 100
     t.boolean "role_dev", default: false, null: false
     t.boolean "show_preview_features", default: true, null: false, comment: "Staff setting: show Preview Features on the website (on by default)."
+    t.date "birth_date", comment: "The member's Birth Date. Only the member and staff see the full date."
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
@@ -1279,6 +1289,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_11_200000) do
   add_foreign_key "image_backfill_runs", "rpg_club_users", column: "started_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "live_events", "bot_jobs", on_delete: :nullify
   add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify
+  add_foreign_key "member_birth_date_changes", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_feature_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
