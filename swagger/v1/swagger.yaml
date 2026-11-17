@@ -2971,18 +2971,8 @@ components:
           type: boolean
           description: True when the club itself is the Host (host is null).
         host:
-          type: object
-          properties:
-            user_id:
-              type: string
-            username:
-              type: string
-            global_name:
-              type: string
-              nullable: true
-          required:
-          - user_id
-          - username
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
           nullable: true
           description: The member who is the Host; null for a club-hosted Challenge.
         schedule:
@@ -3031,8 +3021,17 @@ components:
           nullable: true
         run_count:
           type: integer
-          nullable: true
-          description: Every Run of it, whatever its status. Show only; null in lists.
+          description: Every Run of it, whatever its status.
+        finished_count:
+          type: integer
+          description: Its Runs that Finished, in any Season.
+        pool_games:
+          type: array
+          maxItems: 4
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: Up to 4 games of a Pool Challenge's Pool for its flyer, those
+            with a cover first, then by title (empty for Slots and Assignment).
         tint:
           "$ref": "#/components/schemas/ChallengeTint"
         key_art_url:
@@ -3074,6 +3073,8 @@ components:
       - hosted_by_club
       - schedule
       - open
+      - run_count
+      - finished_count
       - hidden
       - created_at
       - updated_at
@@ -3332,6 +3333,11 @@ components:
               global_name:
                 type: string
                 nullable: true
+              discord_avatar:
+                type: string
+                nullable: true
+              avatar_url:
+                type: string
               left_out:
                 type: boolean
                 description: 'The draw left them out: fewer than 5 games in their
@@ -3343,6 +3349,7 @@ components:
             required:
             - user_id
             - username
+            - avatar_url
             - left_out
             - withdrawn
         drawn_at:
@@ -3426,9 +3433,20 @@ components:
         global_name:
           type: string
           nullable: true
+        discord_avatar:
+          type: string
+          nullable: true
+          description: The member's Discord avatar hash from their last website login;
+            null if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png
+        avatar_url:
+          type: string
+          example: "/api/v1/users/123/avatar"
+          description: The API path of the avatar image the bot stores (404 when it
+            has none).
       required:
       - user_id
       - username
+      - avatar_url
     ChallengeSanta:
       type: object
       properties:
@@ -3436,6 +3454,20 @@ components:
           type: integer
         year:
           type: integer
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          required:
+          - id
+          - name
+        reveal_on:
+          type: string
+          format: date
+          description: The picks are revealed on this day.
         recipient:
           "$ref": "#/components/schemas/ChallengeMember"
         taste:
@@ -3497,12 +3529,26 @@ components:
         backlog:
           type: array
           items:
-            "$ref": "#/components/schemas/BacklogEntry"
+            allOf:
+            - "$ref": "#/components/schemas/BacklogEntry"
+            - type: object
+              properties:
+                hours:
+                  type: number
+                  nullable: true
+                  description: The HowLongToBeat time backlog#pick compares (main,
+                    single player, main + sides); null without.
+                hltb:
+                  allOf:
+                  - "$ref": "#/components/schemas/Hltb"
+                  nullable: true
           description: The recipient's backlog minus the games they have Cleared (any
             Game Completion), narrowed by `q`.
       required:
       - edition_id
       - year
+      - challenge
+      - reveal_on
       - taste
       - pick_deadline_on
       - picks_open
@@ -3530,24 +3576,22 @@ components:
               enum:
               - always_open
               - seasonal
+            counts_past_play:
+              type: boolean
+              description: Counts past play is on (Slots only; false otherwise).
+            slots:
+              allOf:
+              - "$ref": "#/components/schemas/ChallengeSlots"
+              nullable: true
+              description: 'Slots only: the Challenge''s range and Counts past play.'
           required:
           - id
           - name
           - challenge_format
           - schedule
+          - counts_past_play
         user:
-          type: object
-          properties:
-            user_id:
-              type: string
-            username:
-              type: string
-            global_name:
-              type: string
-              nullable: true
-          required:
-          - user_id
-          - username
+          "$ref": "#/components/schemas/ChallengeMember"
         edition:
           type: object
           properties:
@@ -3644,6 +3688,10 @@ components:
                 type: integer
               title:
                 type: string
+              cover_url:
+                type: string
+                nullable: true
+                description: The game's cover, null when it has none.
               state:
                 type: string
                 enum:
@@ -3667,6 +3715,14 @@ components:
                 type: boolean
                 description: The member placed it there themselves (a slot move or
                   a past-play pick).
+              release_years:
+                type: array
+                items:
+                  type: integer
+                nullable: true
+                description: 'Slots only (null otherwise): every year the game fits,
+                  its first release year and the year of each regional or platform
+                  release, oldest first; intersect with the Run''s open years.'
             required:
             - game_id
             - title
@@ -3711,11 +3767,103 @@ components:
       required:
       - id
       - challenge
-      - user
       - status
       - started_at
       - window
       - progress
+    ChallengePoolGameProgress:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        initial_release_date:
+          type: string
+          format: date-time
+          nullable: true
+        cover_url:
+          type: string
+          nullable: true
+          description: The game's cover, null when it has none.
+        cleared_by:
+          type: array
+          description: Members who Cleared it, earliest first.
+          items:
+            allOf:
+            - "$ref": "#/components/schemas/ChallengeMember"
+            - type: object
+              properties:
+                run_id:
+                  type: integer
+                cleared_on:
+                  type: string
+                  nullable: true
+                  format: date
+              required:
+              - run_id
+        in_progress:
+          type: array
+          description: Members playing it on a Run that still counts play.
+          items:
+            allOf:
+            - "$ref": "#/components/schemas/ChallengeMember"
+            - type: object
+              properties:
+                run_id:
+                  type: integer
+              required:
+              - run_id
+      required:
+      - game_id
+      - title
+      description: A Pool game with who Cleared it and who has it In Progress.
+    ChallengeOpenSignup:
+      type: object
+      properties:
+        edition_id:
+          type: integer
+        year:
+          type: integer
+        phase:
+          type: string
+          enum:
+          - signup
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          required:
+          - id
+          - name
+        signed_up_at:
+          type: string
+          format: date-time
+        signup_cutoff_on:
+          type: string
+          format: date
+          description: Sign-up closes at the start of this day, and the draw happens
+            on it.
+        pick_deadline_on:
+          type: string
+          format: date
+        reveal_on:
+          type: string
+          format: date
+      required:
+      - edition_id
+      - year
+      - phase
+      - challenge
+      - signed_up_at
+      - signup_cutoff_on
+      - pick_deadline_on
+      - reveal_on
+      description: A member's sign-up for an Edition still in sign-up (no Run until
+        the draw).
     ChallengeWarning:
       type: object
       properties:
@@ -3819,7 +3967,12 @@ components:
         left_out:
           type: integer
           description: 'signup_closed and edition_cancelled only: the members left
-            out for having fewer than 5 games in their backlog.'
+            out for having fewer than `minimum` games in their backlog.'
+        minimum:
+          type: integer
+          example: 5
+          description: 'signup_closed and edition_cancelled only: the backlog minimum
+            to be drawn.'
         feature_key:
           type: string
           enum:
@@ -8294,6 +8447,8 @@ paths:
           - finished
           - expired
           - abandoned
+          - ended
+          description: "`ended`: Finished, Expired and Abandoned."
       - name: acting_user_id
         in: query
         required: false
@@ -8326,7 +8481,17 @@ paths:
                     items:
                       "$ref": "#/components/schemas/ChallengeRun"
                   meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      properties:
+                        signups:
+                          type: array
+                          items:
+                            "$ref": "#/components/schemas/ChallengeOpenSignup"
+                          description: The member's Secret Santa sign-ups that have
+                            no Run yet (their Edition is still in sign-up), soonest
+                            draw first, whatever `status` asks for.
         '400':
           description: an unknown `status`
           content:
@@ -8358,6 +8523,8 @@ paths:
           - finished
           - expired
           - abandoned
+          - ended
+          description: "`ended`: Finished, Expired and Abandoned."
       - name: acting_user_id
         in: query
         required: false
@@ -9752,6 +9919,77 @@ paths:
                     "$ref": "#/components/schemas/Challenge"
         '403':
           description: not a Moderator or above
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/pool_progress":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Read a Pool Challenge's progress by game
+      tags:
+      - Challenges
+      description: Members. The Pool's games, oldest release first, paginated, each
+        with the members who Cleared it (on a Run of any status, each member once
+        at their earliest Clear) and who have it In Progress (on an Active Run, or
+        a Finished one whose window is open). The Runs read are those of the Season
+        running now, or of the last Season while the Challenge is Closed, and every
+        Run of an Always Open Challenge. 404 for a Challenge hidden from the caller;
+        422 `not_pool` for Slots and Assignment.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the Pool's games with their progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengePoolGameProgress"
+                  meta:
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      properties:
+                        window:
+                          "$ref": "#/components/schemas/ChallengeSeasonDates"
+                          nullable: true
+                          description: The Season read; null for an Always Open Challenge.
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not a Pool Challenge
           content:
             application/json:
               schema:
