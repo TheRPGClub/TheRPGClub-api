@@ -235,6 +235,16 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
         "completion_id" => nil)
     end
 
+    it "Finishes a Run of a hidden Challenge without announcing it" do
+      challenge = pool_challenge(target: 1)
+      run_id = start_run(challenge)
+      challenge.update!(hidden: true)
+
+      expect { log_completion(ff7, on: "2026-10-15") }.not_to(change { BotJob.where(kind: "challenge_announce").count })
+
+      expect(run_json(run_id)).to include("status" => "finished")
+    end
+
     it "keeps counting games Cleared past the target" do
       run_id = start_run(pool_challenge(target: 1))
       log_completion(ff7, on: "2026-10-15")
