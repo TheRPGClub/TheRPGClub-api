@@ -89,16 +89,22 @@ class ApplicationController < ActionController::API
   # migrated to a resource). `params` is forwarded to the resource for
   # association/conditional injection.
   #
+  # `prepare`, when given, is called with the page's records before they are
+  # serialized and returns more params for the resource, so a resource can
+  # read what every record of the page needs in one query (no N+1). `meta`
+  # is merged into the pagination meta.
+  #
   # When `cache_key` is given, the query and serialization are skipped entirely
   # on a cache hit (`Rails.cache.fetch`, 1 hour TTL) — callers are responsible
   # for invalidating the key when the underlying data changes.
   def render_collection(scope, resource: nil, default_order:, params: {}, default_per: DEFAULT_PER, max_per: MAX_PER,
-    cache_key: nil)
+    cache_key: nil, prepare: nil, meta: {})
     build_payload = proc do
       pagy, records = pagy(scope.order(default_order), **pagy_options(default_per:, max_per:))
-      data = resource ? resource.new(records, params: params).serializable_hash : records.as_json
+      page_params = prepare ? params.merge(prepare.call(records)) : params
+      data = resource ? resource.new(records, params: page_params).serializable_hash : records.as_json
 
-      { data: data, meta: pagy_meta(pagy) }
+      { data: data, meta: pagy_meta(pagy).merge(meta) }
     end
 
     payload = cache_key ? Rails.cache.fetch(cache_key, expires_in: 1.hour, &build_payload) : build_payload.call

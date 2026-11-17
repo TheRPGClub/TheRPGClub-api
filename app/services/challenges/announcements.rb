@@ -116,23 +116,13 @@ module Challenges
     private_class_method :last_season_finishers
 
     # Up to POOL_GAMES_SHOWN games of a Pool Challenge's Pool for a post's
-    # cover wall, `{ game_id, title, cover_url }` (cover_url null for a game
-    # without one), those with a cover first, then by title. Empty for the
-    # other Formats.
+    # cover wall (Challenges::PoolCovers). Empty for the other Formats.
     def self.pool_games(challenge)
       return [] unless challenge.challenge_format == "pool"
 
-      PoolDefinition.of(challenge).games.select(:game_id, :title).preload(:images)
-        .order(Arel.sql(HAS_COVER_SQL), :title, :game_id).limit(POOL_GAMES_SHOWN)
-        .map { |game| { game_id: game.game_id, title: game.title, cover_url: game.cover_url } }
+      PoolCovers.of([ challenge.id ], limit: POOL_GAMES_SHOWN).fetch(challenge.id)
     end
     private_class_method :pool_games
-
-    HAS_COVER_SQL = <<~SQL.squish.freeze
-      EXISTS (SELECT 1 FROM gamedb_game_images WHERE gamedb_game_images.game_id = gamedb_games.game_id
-        AND gamedb_game_images.kind = 'cover') DESC
-    SQL
-    private_constant :HAS_COVER_SQL
 
     def self.enqueue!(event, challenge, summary:, by:, **fields)
       BotJob.enqueue!(

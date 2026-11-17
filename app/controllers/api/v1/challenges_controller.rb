@@ -34,7 +34,8 @@ module Api
       # Closed today; `challenge_format` to one Challenge Format; `q` to those
       # whose name contains it, ignoring case (the bot's autocomplete). Hidden
       # Challenges are listed only for Moderators and above, and for their
-      # Host.
+      # Host. Each carries its Run and Finished counts and its first Pool
+      # games, read for the whole page at once (Challenges::Overview).
       def index
         scope = visible_challenges
         scope = scope.where(challenge_format: format_filter) if params[:challenge_format].present?
@@ -46,7 +47,8 @@ module Api
         scope = name_filter(scope)
 
         render_collection(ChallengeResource.preloaded(scope), resource: ChallengeResource,
-          default_order: { created_at: :desc, id: :desc }, params: { today: Challenges.today })
+          default_order: { created_at: :desc, id: :desc }, params: { today: Challenges.today },
+          prepare: ->(challenges) { { overview: Challenges::Overview.of(challenges) } })
       end
 
       # GET /api/v1/challenges/:id

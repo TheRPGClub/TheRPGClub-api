@@ -922,7 +922,11 @@ module OpenapiSchemas
         pool: ref("ChallengePool", nullable: true),
         slots: ref("ChallengeSlots", nullable: true),
         assignment: ref("ChallengeAssignment", nullable: true),
-        run_count: int(nullable: true).merge(description: "Every Run of it, whatever its status. Show only; null in lists."),
+        run_count: int.merge(description: "Every Run of it, whatever its status."),
+        finished_count: int.merge(description: "Its Runs that Finished, in any Season."),
+        pool_games: { type: :array, maxItems: 4, items: ref("ChallengePostGame"),
+                      description: "Up to 4 games of a Pool Challenge's Pool for its flyer, those with a cover " \
+                                   "first, then by title (empty for Slots and Assignment)." },
         tint: ref("ChallengeTint"),
         key_art_url: str(nullable: true).merge(
           description: "The picture behind the Challenge's banner and on its posts: for a Pool Challenge, the " \
