@@ -54,6 +54,13 @@ module Challenges
     end
   end
 
+  # A member as Challenge JSON and bot payloads serve them.
+  def self.member(user) = { user_id: user.user_id, username: user.username, global_name: user.global_name }
+
+  # The name a member goes by in job summaries: their Discord display name,
+  # else their username, else their id.
+  def self.display_name(user) = user.global_name.presence || user.username.presence || user.user_id
+
   # The club's date today.
   def self.today(now = Time.current)
     now.in_time_zone(TIME_ZONE).to_date

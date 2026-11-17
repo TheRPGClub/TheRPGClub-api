@@ -15,8 +15,7 @@ class ChallengeResource
   attribute :hosted_by_club, &:club_hosted?
 
   attribute :host do |challenge|
-    host = challenge.host
-    host && { user_id: host.user_id, username: host.username, global_name: host.global_name }
+    challenge.host && Challenges.member(challenge.host)
   end
 
   attribute :schedule do |challenge|

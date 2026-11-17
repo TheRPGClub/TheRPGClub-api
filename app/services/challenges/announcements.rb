@@ -87,9 +87,9 @@ module Challenges
 
       challenge = ChallengeResource.preloaded(Challenge.where(id: run.challenge_id)).first!
       run = ChallengeRunResource.preloaded(ChallengeRun.where(id: run.id)).first!
-      member = run.user.global_name.presence || run.user.username.presence || run.user_id
       done = change.event == "run_caught_up" ? "is Caught Up on" : "Finished"
-      enqueue!(change.event, challenge, summary: %(Announce that #{member} #{done} "#{challenge.name}"),
+      enqueue!(change.event, challenge,
+        summary: %(Announce that #{Challenges.display_name(run.user)} #{done} "#{challenge.name}"),
         by: run.user_id, run: ChallengeRunResource.new(run).serializable_hash)
     end
 

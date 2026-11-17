@@ -38,9 +38,7 @@ class ChallengeEditionResource
 
   attribute :members do |edition|
     edition.signups.sort_by(&:signed_up_at).map do |signup|
-      user = signup.user
-      { user_id: user.user_id, username: user.username, global_name: user.global_name, left_out: signup.left_out?,
-        withdrawn: signup.withdrawn? }
+      Challenges.member(signup.user).merge(left_out: signup.left_out?, withdrawn: signup.withdrawn?)
     end
   end
 
@@ -59,10 +57,10 @@ class ChallengeEditionResource
     edition.signups.select(&:recipient_user_id).sort_by { |signup| signup.recipient.username.to_s.downcase }
       .map do |signup|
         run = runs[signup.recipient_user_id]
-        { recipient: ChallengeEditionResource.member(signup.recipient),
+        { recipient: Challenges.member(signup.recipient),
           game: signup.picked_game && GameSummaryResource.new(signup.picked_game).serializable_hash,
           picked_randomly: signup.picked_randomly,
-          santa: (ChallengeEditionResource.member(signup.user) if staff || edition.ended?),
+          santa: (Challenges.member(signup.user) if staff || edition.ended?),
           run: run && { id: run.id, status: run.status, progress: Challenges::Progress.summary(run).as_json } }
       end
   end
@@ -70,8 +68,6 @@ class ChallengeEditionResource
   attributes :picks_closed_at
 
   PRELOADS = [ :challenge, { signups: %i[user recipient picked_game], runs: %i[entries challenge] } ].freeze
-
-  def self.member(user) = { user_id: user.user_id, username: user.username, global_name: user.global_name }
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)
 
