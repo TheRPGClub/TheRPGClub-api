@@ -6,6 +6,8 @@ module Challenges
   #
   #   start!     an Open Challenge, while the member has no Active Run of it;
   #              a Seasonal Run belongs to the Season it starts in, and a
+  #              member has at most one Run per Season (whatever its
+  #              status), so Finishing again means a later Season; a
   #              Slots Run copies its first year (a birth-year one needs the
   #              member's Birth Date). The new
   #              Run counts the member's play at once (a Seasonal Run counts
@@ -24,6 +26,7 @@ module Challenges
   module Runs
     CLOSED = "This Challenge is Closed, so no Run can start now."
     ACTIVE = "You already have an Active Run of this Challenge."
+    SEASON_RUN = "You already have a Run in this Season of the Challenge. You can start a new one next Season."
     NOT_ACTIVE = "Only an Active Run can be abandoned."
     DELETE_ACTIVE = "Abandon this Run before deleting it."
     MOVE_NOT_ACTIVE = "Only an Active Run's games can be moved."
@@ -38,6 +41,7 @@ module Challenges
       season = challenge.seasonal? ? challenge.schedule_rules.season_on(today) : nil
       run = ChallengeRun.transaction do
         refuse_active!(challenge, user_id)
+        refuse_season_run!(challenge, user_id, season) if season
         format_attributes = challenge.format_rules.run_attributes(challenge, user_id, today: today)
         created = ChallengeRun.create!(challenge: challenge, user_id: user_id, started_at: now,
           season_starts_on: season&.first, season_ends_on: season&.last, **format_attributes)
@@ -105,5 +109,12 @@ module Challenges
       raise RunRefused.new("run_active", ACTIVE, run_id: active.id) if active
     end
     private_class_method :refuse_active!
+
+    def self.refuse_season_run!(challenge, user_id, season)
+      taken = ChallengeRun.where(challenge_id: challenge.id, user_id: user_id, season_starts_on: season.first)
+        .order(id: :desc).first
+      raise RunRefused.new("season_run_exists", SEASON_RUN, run_id: taken.id) if taken
+    end
+    private_class_method :refuse_season_run!
   end
 end

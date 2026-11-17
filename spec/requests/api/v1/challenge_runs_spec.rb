@@ -81,7 +81,9 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
                   'starts in and counts play from earlier in that Season, so it may Finish at once (queuing a ' \
                   '`challenge_announce` `run_finished` job). An Always Open Run counts play from its start day. ' \
                   'Refusals carry `{ error, message }` written for members: 409 `challenge_closed`, and 409 ' \
-                  '`run_active` (with `run_id`) when the member already has an Active Run of it. A Slots Run copies ' \
+                  '`run_active` (with `run_id`) when the member already has an Active Run of it. A member has at ' \
+                  'most one Run of a Seasonal Challenge per Season, whatever its status: 409 `season_run_exists` ' \
+                  '(with `run_id`) until the next Season. A Slots Run copies ' \
                   'its first year: a birth-year one is 409 `birth_date_required` without a Birth Date and 422 ' \
                   '`no_slots` when the birth year comes after the last year, and `meta.notices` tells the member ' \
                   'their birth year shows on the Run. An Assignment (Secret Santa) Challenge is 409 ' \
@@ -102,11 +104,13 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '409', 'challenge_closed, run_active, birth_date_required or signup_required' do
+      response '409', 'challenge_closed, run_active, season_run_exists, birth_date_required or signup_required' do
         schema type: :object, properties: {
-          error: { type: :string, enum: %w[challenge_closed run_active birth_date_required signup_required] },
+          error: { type: :string,
+                   enum: %w[challenge_closed run_active season_run_exists birth_date_required signup_required] },
           message: { type: :string },
-          run_id: { type: :integer, description: 'run_active only: the member\'s Active Run.' }
+          run_id: { type: :integer,
+                    description: 'run_active: the member\'s Active Run; season_run_exists: their Run in this Season.' }
         }
       end
 

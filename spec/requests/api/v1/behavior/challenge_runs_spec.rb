@@ -93,6 +93,34 @@ RSpec.describe "api/v1/challenge runs behavior", type: :request do
       expect(json.dig("data", "window")).to eq("starts_on" => "2026-12-01", "ends_on" => "2027-02-28")
     end
 
+    it "allows one Run of a Seasonal Challenge per Season, Finished or Abandoned" do
+      seasonal = create(:challenge, :seasonal, season: "09-22..12-20")
+      finished = create(:challenge_run, challenge: seasonal, user: member, status: "finished",
+        season_starts_on: Date.new(2026, 9, 22), season_ends_on: Date.new(2026, 12, 20))
+
+      start_run(seasonal)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json).to include("error" => "season_run_exists", "run_id" => finished.id)
+      expect(json.fetch("message")).to include("Season")
+
+      finished.update!(status: "abandoned")
+      start_run(seasonal)
+      expect(response).to have_http_status(:conflict)
+      expect(json).to include("error" => "season_run_exists", "run_id" => finished.id)
+    end
+
+    it "allows a new Run of a Seasonal Challenge in a later Season" do
+      seasonal = create(:challenge, :seasonal, season: "09-22..12-20")
+      create(:challenge_run, challenge: seasonal, user: member, status: "finished",
+        season_starts_on: Date.new(2025, 9, 22), season_ends_on: Date.new(2025, 12, 20))
+
+      start_run(seasonal)
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "window")).to eq("starts_on" => "2026-09-22", "ends_on" => "2026-12-20")
+    end
+
     it "does not find a hidden Challenge for a member" do
       start_run(create(:challenge, hidden: true))
 
