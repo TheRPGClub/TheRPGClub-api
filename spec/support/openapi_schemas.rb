@@ -902,6 +902,57 @@ module OpenapiSchemas
         to_state: str(enum: %w[preview live]),
         feature_key: str(enum: %w[news_hub])
       ),
+      # ChallengeResource (spec #376, ticket #377): a Challenge with its
+      # Challenge Format's settings under the Format's key.
+      Challenge: obj(
+        id: int, name: str(maxLength: Challenge::NAME_MAX), description: str,
+        challenge_format: str(enum: Challenge::FORMATS).merge(description: "Only pool so far."),
+        hosted_by_club: bool.merge(description: "True when the club itself is the Host (host is null)."),
+        host: obj(user_id: str, username: str, global_name: str(nullable: true)).merge(nullable: true,
+          description: "The member who is the Host; null for a club-hosted Challenge."),
+        schedule: str(enum: Challenge::SCHEDULES),
+        ends_on: str(nullable: true, format: "date").merge(
+          description: "An Always Open Challenge's last Open day, in the club's time zone; null for none."
+        ),
+        season: obj(
+          start: str(example: "06-21"), end: str(example: "09-22"),
+          crosses_new_year: bool.merge(description: "True when the Season runs across 1 January.")
+        ).merge(nullable: true, description: "A Seasonal Challenge's Season, as MM-DD; null when Always Open."),
+        open: bool.merge(description: "Open today in the club's time zone (America/New_York)."),
+        pool: ref("ChallengePool", nullable: true),
+        run_count: int(nullable: true).merge(description: "Every Run of it, whatever its status. Show only; null in lists."),
+        hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
+        created_by: str(nullable: true), updated_by: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      ChallengePool: obj(
+        _description: "A Pool Challenge's settings. A game is in the Pool if it belongs to a chosen franchise or " \
+                      "collection and is not excluded, or if it is included by hand; it is resolved against the " \
+                      "GameDB when read.",
+        target: { oneOf: [ { type: :integer, minimum: 1 }, { type: :string, enum: %w[all] } ],
+                  description: "Cleared games needed to Finish, or \"all\" for every game in the Pool." },
+        franchises: { type: :array, items: obj(franchise_id: int, name: str) },
+        collections: { type: :array, items: obj(collection_id: int, name: str) },
+        included_games: { type: :array, items: obj(game_id: int, title: str) },
+        excluded_games: { type: :array, items: obj(game_id: int, title: str) },
+        game_count: int(nullable: true).merge(description: "Games in the Pool now. Show and announcements only.")
+      ),
+      ChallengeWarning: obj(
+        code: str(enum: %w[duplicate_name]), message: str,
+        challenge_ids: { type: :array, items: int, description: "The other Challenges with the same name." }
+      ),
+      ChallengePoolSource: obj(
+        kind: str(enum: %w[franchise collection]), id: int.merge(description: "franchise_id or collection_id."),
+        name: str, game_count: int
+      ),
+      # The Challenges bot job payload (#377), as BotJobClaim.payload carries it.
+      ChallengeAnnounceJobPayload: obj(
+        _description: "Kind `challenge_announce`. Post in the #challenges channel, or the staff test channel " \
+                      "while the Feature is in Preview. `event` says what to announce; so far only " \
+                      "`challenge_created`, a new Challenge.",
+        event: str(enum: %w[challenge_created]),
+        challenge: ref("Challenge"),
+        feature_key: str(enum: %w[challenges])
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),

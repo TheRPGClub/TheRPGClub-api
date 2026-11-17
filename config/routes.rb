@@ -434,6 +434,19 @@ Rails.application.routes.draw do
       get  "news_import/items",       to: "news_import#unsorted"
       post "news_import/assignments", to: "news_import#assign"
       get  "news_import/status",      to: "news_import#status"
+      # Challenges (spec #376, ticket #377): list, show, create, edit and
+      # delete; staff hide, unhide and change the Host; and a draft Pool's
+      # games and the franchises and collections to build one from. The
+      # fixed paths precede the resource so they are never read as an id.
+      post "challenges/pool_preview", to: "challenges#pool_preview"
+      get  "challenges/pool_sources", to: "challenges#pool_sources"
+      resources :challenges, only: %i[index show create update destroy] do
+        member do
+          post "hide"
+          post "unhide"
+          put "host", action: :change_host
+        end
+      end
     end
   end
 end

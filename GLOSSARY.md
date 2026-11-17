@@ -81,6 +81,12 @@ _Avoid_: Request, idea, ticket
 The members-only list of Suggestions, ranked by member upvotes.
 _Avoid_: Roadmap, feedback board
 
+## Members
+
+**Birth Date**:
+The date of birth a member enters on their own profile, if they choose to. Only the member and staff see the full date. Other members see the year only through a Run that starts at the member's birth year, which the member is told before starting it. A member can set or change it at most twice in a calendar month, counting the first time they enter it; staff can change it at any time.
+_Avoid_: Birthday (when meaning the full date), age, DOB
+
 ## Staff
 
 **Admin**:
@@ -154,3 +160,73 @@ _Avoid_: Mute, unfollow, filter (when meaning the saved choice)
 **News Import**:
 The one-time move of the messages posted in the News Channel before the News Hub launched into the News Hub as News Items, each keeping its original author and date. An imported News Item stays hidden until staff assign its News Category.
 _Avoid_: Backfill (that is the Achievement Hub's term), migration, re-post
+
+## Challenges
+
+**Challenge**:
+A themed goal a member sets for the club, such as playing a game from every year they have been alive or playing Final Fantasy games through the autumn. Other members take part by starting a Run. Every Challenge has exactly one Challenge Format.
+_Avoid_: Event, quest, marathon
+
+**Host**:
+The member who runs a Challenge, or the club itself for a Challenge staff run in the club's name. Only Regulars, Moderators, Admins and Superadmins can create a Challenge. A Challenge keeps its Host if the Host later loses the role or leaves, and staff can hand it to another Host.
+_Avoid_: Owner, organiser, creator
+
+**Run**:
+One member's attempt at a Challenge, with its own progress. It is shown on the Challenge's page and on the member's profile.
+_Avoid_: Entry, attempt, participation
+
+**In Progress**:
+A game that counts toward a Run because it is in the member's Now Playing. It shows the member is playing it but never fills a slot or finishes an Assignment.
+_Avoid_: Started, active
+
+**Cleared**:
+A game that counts toward a Run because the member logged a Game Completion for it. Only Cleared games fill slots and finish Assignments.
+_Avoid_: Done, beaten, completed (that is the Game Completion itself)
+
+**Finished**:
+A Run that reached its Challenge's goal: every slot of a fixed range Cleared, the Pool's target Cleared, or the assigned game Cleared. A member may Finish the same Challenge again in a later Run.
+_Avoid_: Completed, won, done
+
+**Expired**:
+A Run that was not Finished before its Season or Edition ended. It stays on the member's profile.
+_Avoid_: Failed, lapsed, timed out
+
+**Caught Up**:
+A Run of a Challenge that gains a slot every year, such as Years Alive, in which every slot up to the current year is Cleared. It stops being Caught Up when the next year's slot opens.
+_Avoid_: Finished, complete (for a Run that keeps growing)
+
+**Abandoned**:
+A Run its member chose to leave. It stays on the member's profile unless they delete it.
+_Avoid_: Failed, quit, cancelled
+
+**Always Open**:
+A Challenge members can start a Run of at any time, until its end date if the Host set one.
+_Avoid_: Permanent, evergreen, ongoing
+
+**Season**:
+The dates, repeating every year, during which a Seasonal Challenge is Open, such as 21 June to 22 September. A Run of a Seasonal Challenge starts and ends within one Season, and only play during it counts.
+_Avoid_: Window, period, edition
+
+**Seasonal**:
+A Challenge that is Open only during its Season and Closed the rest of the year. Members take part in whichever year they like, and may take part again in later years.
+_Avoid_: Yearly, annual, recurring
+
+**Edition**:
+One cycle of an Assignment Challenge: members sign up, are drawn into pairs, are assigned a game and then have until the Edition ends to Clear it.
+_Avoid_: Round (that is voting), season, instance
+
+**Challenge Format**:
+The way a Challenge decides which games count: Slots, Pool or Assignment.
+_Avoid_: Type, kind, mode
+
+**Slots**:
+The Challenge Format where a Run has one place to fill for each year in a range, such as every year from the member's birth year to now. A game can fill the slot of any year it was released in, anywhere, but only one slot in a Run. A range that ends at the current year gains a slot each new year.
+_Avoid_: Checklist, grid
+
+**Pool**:
+The Challenge Format where any game from a set the Host chose counts, such as the Final Fantasy series. The Host sets how many must be Cleared to Finish, a number or every game in the set, and a member may keep playing beyond it.
+_Avoid_: Series challenge, list
+
+**Assignment**:
+The Challenge Format where another member chooses the game a member must play, such as a Secret Santa pick from their backlog.
+_Avoid_: Gift, pick (when meaning the format)

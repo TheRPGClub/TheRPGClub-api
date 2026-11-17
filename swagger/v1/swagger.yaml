@@ -2686,6 +2686,7 @@ components:
           - feature_flag_changed
           - news_images_renew
           - news_catch_up
+          - challenge_announce
         summary:
           type: string
           maxLength: 200
@@ -2949,6 +2950,233 @@ components:
       description: 'Kind `news_catch_up`. The News Hub''s Feature Flag went from Off
         to Preview or Live: record News Channel messages posted while it was Off and
         post missing News Copies. The lease is 30 minutes.'
+    Challenge:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+        challenge_format:
+          type: string
+          enum:
+          - slots
+          - pool
+          - assignment
+          description: Only pool so far.
+        hosted_by_club:
+          type: boolean
+          description: True when the club itself is the Host (host is null).
+        host:
+          type: object
+          properties:
+            user_id:
+              type: string
+            username:
+              type: string
+            global_name:
+              type: string
+              nullable: true
+          required:
+          - user_id
+          - username
+          nullable: true
+          description: The member who is the Host; null for a club-hosted Challenge.
+        schedule:
+          type: string
+          enum:
+          - always_open
+          - seasonal
+        ends_on:
+          type: string
+          nullable: true
+          format: date
+          description: An Always Open Challenge's last Open day, in the club's time
+            zone; null for none.
+        season:
+          type: object
+          properties:
+            start:
+              type: string
+              example: 06-21
+            end:
+              type: string
+              example: '09-22'
+            crosses_new_year:
+              type: boolean
+              description: True when the Season runs across 1 January.
+          required:
+          - start
+          - end
+          - crosses_new_year
+          nullable: true
+          description: A Seasonal Challenge's Season, as MM-DD; null when Always Open.
+        open:
+          type: boolean
+          description: Open today in the club's time zone (America/New_York).
+        pool:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengePool"
+          nullable: true
+        run_count:
+          type: integer
+          nullable: true
+          description: Every Run of it, whatever its status. Show only; null in lists.
+        hidden:
+          type: boolean
+          description: 'Hidden by a Moderator: listed only for Moderators and above
+            and the Host.'
+        created_by:
+          type: string
+          nullable: true
+        updated_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - name
+      - description
+      - challenge_format
+      - hosted_by_club
+      - schedule
+      - open
+      - hidden
+      - created_at
+      - updated_at
+    ChallengePool:
+      type: object
+      properties:
+        target:
+          oneOf:
+          - type: integer
+            minimum: 1
+          - type: string
+            enum:
+            - all
+          description: Cleared games needed to Finish, or "all" for every game in
+            the Pool.
+        franchises:
+          type: array
+          items:
+            type: object
+            properties:
+              franchise_id:
+                type: integer
+              name:
+                type: string
+            required:
+            - franchise_id
+            - name
+        collections:
+          type: array
+          items:
+            type: object
+            properties:
+              collection_id:
+                type: integer
+              name:
+                type: string
+            required:
+            - collection_id
+            - name
+        included_games:
+          type: array
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - game_id
+            - title
+        excluded_games:
+          type: array
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - game_id
+            - title
+        game_count:
+          type: integer
+          nullable: true
+          description: Games in the Pool now. Show and announcements only.
+      required:
+      - target
+      description: A Pool Challenge's settings. A game is in the Pool if it belongs
+        to a chosen franchise or collection and is not excluded, or if it is included
+        by hand; it is resolved against the GameDB when read.
+    ChallengeWarning:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - duplicate_name
+        message:
+          type: string
+        challenge_ids:
+          type: array
+          items:
+            type: integer
+          description: The other Challenges with the same name.
+      required:
+      - code
+      - message
+    ChallengePoolSource:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - franchise
+          - collection
+        id:
+          type: integer
+          description: franchise_id or collection_id.
+        name:
+          type: string
+        game_count:
+          type: integer
+      required:
+      - kind
+      - id
+      - name
+      - game_count
+    ChallengeAnnounceJobPayload:
+      type: object
+      properties:
+        event:
+          type: string
+          enum:
+          - challenge_created
+        challenge:
+          "$ref": "#/components/schemas/Challenge"
+        feature_key:
+          type: string
+          enum:
+          - challenges
+      required:
+      - event
+      - feature_key
+      description: 'Kind `challenge_announce`. Post in the #challenges channel, or
+        the staff test channel while the Feature is in Preview. `event` says what
+        to announce; so far only `challenge_created`, a new Challenge.'
     BotJobClaim:
       type: object
       properties:
@@ -2975,6 +3203,7 @@ components:
           - feature_flag_changed
           - news_images_renew
           - news_catch_up
+          - challenge_announce
         summary:
           type: string
           maxLength: 200
@@ -6795,6 +7024,674 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/challenges":
+    get:
+      summary: List Challenges
+      tags:
+      - Challenges
+      description: Members (the `challenges` Feature). Newest first. Hidden Challenges
+        are listed only for Moderators and above and for their Host. The bot may name
+        the member it reads for with `acting_user_id`, without which it sees what
+        any member sees.
+      parameters:
+      - name: open
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - 'true'
+          - 'false'
+        description: Only the Challenges Open (true) or Closed (false) today, in the
+          club's time zone.
+      - name: challenge_format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - slots
+          - pool
+          - assignment
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Challenges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Challenge"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: an unknown `open` or `challenge_format`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a Challenge
+      tags:
+      - Challenges
+      description: Regulars, Moderators, Admins and Superadmins (a member without
+        the Regulars role gets 403 "You need the Regulars role to create a Challenge.").
+        The acting member becomes the Host, or the club with `hosted_by_club` (Moderator
+        and above). A name another Challenge already has is allowed and adds a `duplicate_name`
+        warning to `meta.warnings`. Queues a `challenge_announce` bot job (payload
+        ChallengeAnnounceJobPayload, event `challenge_created`). Refusals carry `{
+        error, message }`; `message` is written for members (403 `forbidden`, 422
+        `invalid_challenge`).
+      parameters: []
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+                  meta:
+                    type: object
+                    properties:
+                      warnings:
+                        type: array
+                        items:
+                          "$ref": "#/components/schemas/ChallengeWarning"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not a Regular or staff, club-hosted without Moderator, or (bot)
+            `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_challenge: a missing or invalid field, an empty or
+            unknown Pool, a Format not available yet'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                    challenge_format:
+                      type: string
+                      enum:
+                      - slots
+                      - pool
+                      - assignment
+                      description: 'Only pool so far: slots and assignment are 422
+                        "not available yet". Locked once the Challenge has a Run.'
+                    schedule:
+                      type: string
+                      enum:
+                      - always_open
+                      - seasonal
+                      description: Locked once the Challenge has a Run.
+                    ends_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: 'Always Open only: the last Open day (club time
+                        zone). Stays editable after Runs exist.'
+                    season:
+                      type: object
+                      nullable: true
+                      description: 'Seasonal only: start and end as MM-DD, repeating
+                        every year; the end may come before the start to cross the
+                        new year. Locked once the Challenge has a Run.'
+                      properties:
+                        start:
+                          type: string
+                          example: 12-01
+                        end:
+                          type: string
+                          example: 02-28
+                    pool:
+                      type: object
+                      description: The Pool (challenge_format pool). On edit, only
+                        the keys given change.
+                      properties:
+                        franchise_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB franchises whose games are in the Pool.
+                        collection_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB collections whose games are in the Pool.
+                        included_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games in the Pool whatever their franchise.
+                        excluded_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games left out of the chosen franchises and
+                            collections.
+                        target:
+                          oneOf:
+                          - type: integer
+                            minimum: 1
+                          - type: string
+                            enum:
+                            - all
+                          description: Cleared games needed to Finish, or "all" for
+                            every game in the Pool. Required on create.
+                    hosted_by_club:
+                      type: boolean
+                      description: Moderator and above.
+                  required:
+                  - name
+                  - challenge_format
+                  - schedule
+                  - pool
+              required:
+              - data
+        required: true
+  "/api/v1/challenges/pool_preview":
+    post:
+      summary: Preview the games a draft Pool resolves to
+      tags:
+      - Challenges
+      description: Members. The games a Pool definition resolves to against the GameDB
+        now, oldest release first, paginated, so the bot and the website can show
+        them before saving. 422 `invalid_challenge` for an empty definition, unknown
+        ids, or a game both included and excluded.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the Pool's games
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameSummary"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: not a Pool the GameDB can resolve
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: The Pool (challenge_format pool). On edit, only the
+                    keys given change.
+                  properties:
+                    franchise_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: GameDB franchises whose games are in the Pool.
+                    collection_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: GameDB collections whose games are in the Pool.
+                    included_game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Games in the Pool whatever their franchise.
+                    excluded_game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Games left out of the chosen franchises and collections.
+              required:
+              - data
+        required: true
+  "/api/v1/challenges/pool_sources":
+    get:
+      summary: Find franchises and collections to build a Pool from
+      tags:
+      - Challenges
+      description: Members. GameDB franchises, then collections, whose name contains
+        `q` (ignoring case), at most 25 of each, with how many games each has.
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: matching franchises and collections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengePoolSource"
+        '400':
+          description: no `q`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Challenge
+      tags:
+      - Challenges
+      description: Members. A hidden Challenge is 404 except for Moderators and above
+        and its Host. Adds the Pool's `game_count` and `run_count`.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Challenge
+      tags:
+      - Challenges
+      description: 'The Host, for their own; any Moderator or above, for a club-hosted
+        one. Only the keys given change. Once the Challenge has any Run its rules
+        are locked: a change to the Format, schedule, Season or Pool is 409 `rules_locked`
+        with the `fields` it would change (sending them unchanged is fine). Name,
+        description and end date stay editable. Refusals carry `{ error, message }`;
+        `message` is written for members (403 `forbidden`, 422 `invalid_challenge`).'
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not the Host (or, club-hosted, not a Moderator)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: rules_locked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - rules_locked
+                  message:
+                    type: string
+                  fields:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                      - challenge_format
+                      - schedule
+                      - season
+                      - pool
+        '422':
+          description: invalid_challenge
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                    challenge_format:
+                      type: string
+                      enum:
+                      - slots
+                      - pool
+                      - assignment
+                      description: 'Only pool so far: slots and assignment are 422
+                        "not available yet". Locked once the Challenge has a Run.'
+                    schedule:
+                      type: string
+                      enum:
+                      - always_open
+                      - seasonal
+                      description: Locked once the Challenge has a Run.
+                    ends_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: 'Always Open only: the last Open day (club time
+                        zone). Stays editable after Runs exist.'
+                    season:
+                      type: object
+                      nullable: true
+                      description: 'Seasonal only: start and end as MM-DD, repeating
+                        every year; the end may come before the start to cross the
+                        new year. Locked once the Challenge has a Run.'
+                      properties:
+                        start:
+                          type: string
+                          example: 12-01
+                        end:
+                          type: string
+                          example: 02-28
+                    pool:
+                      type: object
+                      description: The Pool (challenge_format pool). On edit, only
+                        the keys given change.
+                      properties:
+                        franchise_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB franchises whose games are in the Pool.
+                        collection_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB collections whose games are in the Pool.
+                        included_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games in the Pool whatever their franchise.
+                        excluded_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games left out of the chosen franchises and
+                            collections.
+                        target:
+                          oneOf:
+                          - type: integer
+                            minimum: 1
+                          - type: string
+                            enum:
+                            - all
+                          description: Cleared games needed to Finish, or "all" for
+                            every game in the Pool. Required on create.
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Challenge
+      tags:
+      - Challenges
+      description: 'The Host, while it has no Runs (409 `has_runs` after); a Moderator
+        or above removes any Challenge, its Runs included. Write: the bot sends `acting_user_id`
+        as a query parameter.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: 'has_runs: the Host cannot delete a Challenge with Runs'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/hide":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Hide a Challenge
+      tags:
+      - Challenges
+      description: 'Moderator and above. Hides it from members (not its Host). The
+        bot sends `{ "data": { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not a Moderator or above
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/unhide":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Unhide a Challenge
+      tags:
+      - Challenges
+      description: 'Moderator and above. Shows it again. The bot sends `{ "data":
+        { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not a Moderator or above
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/host":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Hand a Challenge to another Host
+      tags:
+      - Challenges
+      description: Moderator and above. Hands it to another member (who needs no role)
+        or, with `hosted_by_club`, to the club. 422 `invalid_challenge` for neither,
+        or an unknown member.
+      parameters: []
+      responses:
+        '200':
+          description: the Challenge with its new Host
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not a Moderator or above
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid_challenge
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    host_user_id:
+                      type: string
+                    hosted_by_club:
+                      type: boolean
+              required:
+              - data
+        required: true
   "/api/v1/collection_csv_import_items/{id}":
     parameters:
     - name: id
@@ -10385,6 +11282,7 @@ paths:
         - journals
         - suggestions
         - news_hub
+        - challenges
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag

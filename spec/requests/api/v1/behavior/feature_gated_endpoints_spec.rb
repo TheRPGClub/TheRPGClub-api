@@ -21,7 +21,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "giveaways" => ->(user) { "/api/v1/users/#{user.user_id}/giveaway_settings" },
     "journals" => ->(user) { "/api/v1/users/#{user.user_id}/journal" },
     "suggestions" => ->(_user) { "/api/v1/suggestions" },
-    "news_hub" => ->(_user) { "/api/v1/news_items" }
+    "news_hub" => ->(_user) { "/api/v1/news_items" },
+    "challenges" => ->(_user) { "/api/v1/challenges" }
   }
 
   it "covers every registered Feature" do
@@ -259,6 +260,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/suggestion_review_sessions" => "suggestions",
     # News Hub
     "api/v1/news_items" => "news_hub",
+    "api/v1/challenges" => "challenges",
     "api/v1/news_categories" => "news_hub",
     "api/v1/news_import" => "news_hub",
     "api/v1/news_category_preferences" => "news_hub",
