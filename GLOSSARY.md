@@ -71,6 +71,30 @@ _Avoid_: Refresh, poll
 A member's record that they finished a game, with how thoroughly (main story, main story plus side content, or completionist) and when. Distinct from an Achievement Hub Completion.
 _Avoid_: Completion (unqualified), beat, finish
 
+**Release**:
+A GameDB game coming out on one platform in one region. Its date is known to a Date Precision.
+_Avoid_: Launch, release date (when meaning the whole record)
+
+**Date Precision**:
+How exactly a Release's date is known: an exact day, a month, a quarter, a year, or not yet announced (TBA).
+_Avoid_: Date format, accuracy
+
+**IGDB Release**:
+A Release that comes from IGDB. Refreshing the game from IGDB keeps it in step: its date can move, and it can be removed.
+_Avoid_: Auto release, imported release
+
+**Manual Release**:
+A Release added by staff or by an import from another source. Refreshing from IGDB never changes or removes it.
+_Avoid_: Custom release, user release
+
+**Release Calendar**:
+The members' view of GameDB Releases ordered by date, upcoming by default, with past months available to browse. Only games in GameDB appear on it.
+_Avoid_: Release schedule, upcoming games, launch calendar, calendar (unqualified: Challenges have their own)
+
+**Upcoming Release**:
+One entry on the Release Calendar: one game together with every Release it has on the same date, across platforms and regions.
+_Avoid_: Calendar entry, event
+
 ## Community
 
 **Suggestion**:
