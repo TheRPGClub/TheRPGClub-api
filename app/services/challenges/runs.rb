@@ -73,7 +73,7 @@ module Challenges
     end
 
     def self.move!(run, game_id:, year:)
-      run.with_lock do
+      with_member_runs_locked(run) do
         format = run.challenge.format_rules
         raise RunRefused.new("not_slots", NOT_SLOTS, status: :unprocessable_content) unless format.respond_to?(:move!)
         raise RunRefused.new("run_not_active", MOVE_NOT_ACTIVE) unless run.active?
@@ -85,7 +85,7 @@ module Challenges
     end
 
     def self.pick!(run, completion_id:, year:)
-      run.with_lock do
+      with_member_runs_locked(run) do
         format = past_play_format(run)
         format.pick!(run, completion_id, year)
         Challenges.refresh_runs!(run.user_id)
@@ -94,6 +94,19 @@ module Challenges
     end
 
     def self.past_play(run) = past_play_format(run).past_play(run)
+
+    # Locks every Run of the member in id order, the order the refresh that
+    # follows (Challenges::Progress.refresh) locks them in, so a change to
+    # one Run never deadlocks with a refresh running at the same time; then
+    # reloads `run` and yields, in one transaction.
+    def self.with_member_runs_locked(run)
+      ChallengeRun.transaction do
+        ChallengeRun.where(user_id: run.user_id).order(:id).lock.ids
+        run.reload
+        yield
+      end
+    end
+    private_class_method :with_member_runs_locked
 
     def self.past_play_format(run)
       format = run.challenge.format_rules
