@@ -17,7 +17,7 @@ module Api
 
       feature :challenges
 
-      WRITES = %i[create update destroy hide unhide change_host].freeze
+      WRITES = %i[create update destroy hide unhide change_host change_tint].freeze
 
       before_action :require_acting_member!, only: WRITES
 
@@ -131,6 +131,22 @@ module Api
 
           challenge.update!(host_user_id: host_id, updated_by: actor.user_id)
         end
+      end
+
+      # PUT /api/v1/challenges/:id/tint
+      # Body: { "data": { "tint": "teal" | { "fill": "#rrggbb", "hi": "#rrggbb" } | null } }
+      #
+      # The Host changes their own Challenge's tint (as PATCH can), and a
+      # Moderator or above any Challenge's, which PATCH does not let them
+      # edit. Null gives the Challenge its curated tint back.
+      def change_tint
+        data = request_data
+        challenge = find_visible
+        return forbid(Challenges::Refusals::TINT) unless actor.can_change_tint?(challenge)
+        raise Challenges::Invalid, "tint is required: a curated tint's name, { fill, hi } or null" unless data.key?("tint")
+
+        challenge.update!(tint: Challenges::Tint.parse(data["tint"]), updated_by: actor.user_id)
+        render_challenge(challenge)
       end
 
       # POST /api/v1/challenges/pool_preview

@@ -12,6 +12,9 @@ module Challenges
   #   slots              the slot range and Counts past play
   #                      (Challenges::Formats::Slots)
   #   assignment         the Edition calendar (Challenges::Formats::Assignment)
+  #   tint               a curated tint's name, { fill, hi }, or null for the
+  #                      Challenge's curated one (Challenges::Tint); not a rule,
+  #                      so it stays editable
   #
   # On edit, only the keys given change. Once the Challenge has any Run its
   # rules (Format, schedule, Season and the Format's settings) are locked: a
@@ -42,6 +45,7 @@ module Challenges
         locked = challenge.persisted? && challenge.runs?
         before = rules if locked
         assign_text
+        assign_tint
         assign_format
         assign_schedule
         refuse_reopening if challenge.ended_at
@@ -62,6 +66,10 @@ module Challenges
 
     def assign_text
       TEXT_KEYS.each { |key| challenge.public_send(:"#{key}=", @data[key].to_s) if @data.key?(key) }
+    end
+
+    def assign_tint
+      challenge.tint = Tint.parse(@data["tint"]) if @data.key?("tint")
     end
 
     def assign_format

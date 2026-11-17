@@ -13,6 +13,7 @@ module Challenges
   #                   removes any
   #   hide, unhide, change Host
   #                   a Moderator or above
+  #   change tint     the Host, for their own; a Moderator or above, for any
   #   see hidden      a Moderator or above, and the Host
   Actor = Data.define(:user_id, :regular, :moderator) do
     def regular? = regular
@@ -30,6 +31,8 @@ module Challenges
 
     def can_moderate? = moderator_or_above?
 
+    def can_change_tint?(challenge) = moderator_or_above? || host_of?(challenge)
+
     def can_see?(challenge) = !challenge.hidden? || moderator_or_above? || host_of?(challenge)
   end
 
@@ -41,5 +44,6 @@ module Challenges
     DELETE = "Only the Host or a Moderator can delete this Challenge."
     DELETE_WITH_RUNS = "This Challenge can't be deleted because members have started Runs. A Moderator can remove it."
     MODERATE = "Only Moderators and above can do that."
+    TINT = "Only the Host or a Moderator can change this Challenge's tint."
   end
 end

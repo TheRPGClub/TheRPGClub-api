@@ -450,6 +450,7 @@ Rails.application.routes.draw do
           post "hide"
           post "unhide"
           put "host", action: :change_host
+          put "tint", action: :change_tint
         end
       end
       # Runs (ticket #378): start one of a Challenge, list a Challenge's

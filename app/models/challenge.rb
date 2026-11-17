@@ -19,6 +19,9 @@
 # and day (`signup_cutoff_*`, `pick_deadline_*`, `reveal_*`), and it runs in
 # yearly Editions, so it is Always Open with no end date.
 #
+# Its tint (Challenges::Tint) is the colour pair `tint_fill` / `tint_hi`: a
+# curated one, chosen on create unless the request set one.
+#
 # Once the Challenge has any Run its rules are locked (RULE_ATTRIBUTES and
 # the Format's settings); its name, description and end date stay editable.
 class Challenge < ApplicationRecord
@@ -45,6 +48,8 @@ class Challenge < ApplicationRecord
   validates :schedule, inclusion: { in: SCHEDULES, message: "must be always_open or seasonal" }
   validates :pool_target, numericality: { only_integer: true, greater_than_or_equal_to: 1 }, allow_nil: true
   validate :schedule_fits
+
+  before_create :assign_curated_tint, unless: :tint_fill?
 
   # Its dates decide when the lifecycle job next has work.
   after_commit { Challenges::SweepSchedule.clear }
@@ -83,6 +88,16 @@ class Challenge < ApplicationRecord
 
   def runs? = runs.exists?
 
+  def tint = Challenges::Tint::Pair.new(fill: tint_fill, hi: tint_hi)
+
+  # Sets the tint, or with nil the Challenge's curated one (on create, once
+  # it has an id).
+  def tint=(pair)
+    pair ||= (Challenges::Tint.fallback(self) if persisted?)
+    self.tint_fill = pair&.fill
+    self.tint_hi = pair&.hi
+  end
+
   # How many games a Pool Challenge's Pool holds now (the target "all").
   # Remembered on this record, which Runs loaded together share.
   def pool_game_count
@@ -90,6 +105,12 @@ class Challenge < ApplicationRecord
   end
 
   private
+
+  # The curated tint turns by id, so the id is taken from its sequence first.
+  def assign_curated_tint
+    self.id ||= self.class.connection.select_value("SELECT nextval(pg_get_serial_sequence('challenges', 'id'))")
+    self.tint = Challenges::Tint.fallback(self)
+  end
 
   def schedule_fits
     return if errors.include?(:schedule)

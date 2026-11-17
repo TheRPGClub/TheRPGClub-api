@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_160377) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_170378) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -241,6 +241,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_160377) do
     t.integer "reveal_month", limit: 2
     t.integer "reveal_day", limit: 2
     t.boolean "counts_past_play", default: false, null: false
+    t.string "tint_fill", limit: 7, null: false
+    t.string "tint_hi", limit: 7, null: false
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
@@ -251,6 +253,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_160377) do
     t.check_constraint "schedule::text = 'always_open'::text OR ends_on IS NULL", name: "ck_challenges_ends_on"
     t.check_constraint "schedule::text = ANY (ARRAY['always_open'::character varying, 'seasonal'::character varying]::text[])", name: "ck_challenges_schedule"
     t.check_constraint "slots_first_year IS NULL OR slots_last_year IS NULL OR slots_first_year <= slots_last_year", name: "ck_challenges_slots_range"
+    t.check_constraint "tint_fill::text ~ '^#[0-9a-f]{6}$'::text AND tint_hi::text ~ '^#[0-9a-f]{6}$'::text", name: "ck_challenges_tint"
   end
 
   create_table "feature_flag_changes", force: :cascade do |t|

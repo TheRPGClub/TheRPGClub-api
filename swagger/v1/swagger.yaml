@@ -3033,6 +3033,16 @@ components:
           type: integer
           nullable: true
           description: Every Run of it, whatever its status. Show only; null in lists.
+        tint:
+          "$ref": "#/components/schemas/ChallengeTint"
+        key_art_url:
+          type: string
+          nullable: true
+          description: 'The picture behind the Challenge''s banner and on its posts:
+            for a Pool Challenge, the artwork of the first Pool game by title that
+            has artwork, else the first one''s cover; null without either, and for
+            Slots and Assignment Challenges (draw the Format''s picture in the tint
+            instead). Show and announcements only; null in lists.'
         hidden:
           type: boolean
           description: 'Hidden by a Moderator: listed only for Moderators and above
@@ -3067,6 +3077,29 @@ components:
       - hidden
       - created_at
       - updated_at
+    ChallengeTint:
+      type: object
+      properties:
+        fill:
+          type: string
+          example: "#1f6b67"
+          description: The flyer and banner ground. Paper type (#f4f4f0) on it clears
+            4.5:1; set only paper type on it.
+        hi:
+          type: string
+          example: "#6fd6cc"
+          description: 'The same hue lifted for type and marks on ink (#0b0b0d, #141417),
+            where it clears 4.5:1.'
+      required:
+      - fill
+      - hi
+      description: 'The Challenge tint: the one colour it wears on the bot''s posts
+        and the website, as a pair of lowercase #rrggbb. A new Challenge gets a curated
+        tint (Secret Santa''s holly for an Assignment Challenge, otherwise the other
+        seven in turn); the Host or a Moderator may change it. Curated: teal #1f6b67
+        / #6fd6cc, cobalt #2c4f8e / #9ab8f2, holly #1c6545 / #3fbf8a, umber #7a531c
+        / #e0b56e, moss #3b5a2b / #a9cf86, azure #2a5ea6 / #9cc2f5, slate #3a3a52
+        / #b4b4d6, ochre #8a6417 / #e6c36a.'
     ChallengePool:
       type: object
       properties:
@@ -9202,6 +9235,36 @@ paths:
                           type: string
                           example: 12-25
                           description: The Edition is named by its reveal's year.
+                    tint:
+                      oneOf:
+                      - type: string
+                        enum:
+                        - teal
+                        - cobalt
+                        - holly
+                        - umber
+                        - moss
+                        - azure
+                        - slate
+                        - ochre
+                      - type: object
+                        required:
+                        - fill
+                        - hi
+                        properties:
+                          fill:
+                            type: string
+                            example: "#5a2d82"
+                          hi:
+                            type: string
+                            example: "#d9b8ff"
+                      nullable: true
+                      description: 'The Challenge tint: a curated tint by name, any
+                        `{ fill, hi }` as #rrggbb, or null for the Challenge''s curated
+                        tint. A pair must keep type readable (4.5:1): paper #f4f4f0
+                        on the fill, and the hi on ink #0b0b0d and #141417; otherwise
+                        422 `invalid_challenge`. Left out on create, the Challenge
+                        gets its curated tint. Not a rule: editable after Runs exist.'
                     hosted_by_club:
                       type: boolean
                       description: Moderator and above.
@@ -9562,6 +9625,36 @@ paths:
                           type: string
                           example: 12-25
                           description: The Edition is named by its reveal's year.
+                    tint:
+                      oneOf:
+                      - type: string
+                        enum:
+                        - teal
+                        - cobalt
+                        - holly
+                        - umber
+                        - moss
+                        - azure
+                        - slate
+                        - ochre
+                      - type: object
+                        required:
+                        - fill
+                        - hi
+                        properties:
+                          fill:
+                            type: string
+                            example: "#5a2d82"
+                          hi:
+                            type: string
+                            example: "#d9b8ff"
+                      nullable: true
+                      description: 'The Challenge tint: a curated tint by name, any
+                        `{ fill, hi }` as #rrggbb, or null for the Challenge''s curated
+                        tint. A pair must keep type readable (4.5:1): paper #f4f4f0
+                        on the fill, and the hi on ink #0b0b0d and #141417; otherwise
+                        422 `invalid_challenge`. Left out on create, the Challenge
+                        gets its curated tint. Not a rule: editable after Runs exist.'
               required:
               - data
         required: true
@@ -9663,6 +9756,93 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/tint":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Change a Challenge's tint
+      tags:
+      - Challenges
+      description: The Host, for their own (PATCH takes `tint` too), and a Moderator
+        or above for any Challenge, which PATCH does not let them edit. 403 "Only
+        the Host or a Moderator can change this Challenge's tint."; 422 `invalid_challenge`
+        without `tint`, or for a tint PATCH would refuse.
+      parameters: []
+      responses:
+        '200':
+          description: the Challenge with its new tint
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid_challenge
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    tint:
+                      oneOf:
+                      - type: string
+                        enum:
+                        - teal
+                        - cobalt
+                        - holly
+                        - umber
+                        - moss
+                        - azure
+                        - slate
+                        - ochre
+                      - type: object
+                        required:
+                        - fill
+                        - hi
+                        properties:
+                          fill:
+                            type: string
+                            example: "#5a2d82"
+                          hi:
+                            type: string
+                            example: "#d9b8ff"
+                      nullable: true
+                      description: 'The Challenge tint: a curated tint by name, any
+                        `{ fill, hi }` as #rrggbb, or null for the Challenge''s curated
+                        tint. A pair must keep type readable (4.5:1): paper #f4f4f0
+                        on the fill, and the hi on ink #0b0b0d and #141417; otherwise
+                        422 `invalid_challenge`. Left out on create, the Challenge
+                        gets its curated tint. Not a rule: editable after Runs exist.'
+                  required:
+                  - tint
+              required:
+              - data
+        required: true
   "/api/v1/challenges/{id}/host":
     parameters:
     - name: id
