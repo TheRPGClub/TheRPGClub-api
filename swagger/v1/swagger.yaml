@@ -428,6 +428,103 @@ components:
       - platform_name
       - region_code
       - region_name
+    UpcomingReleaseRelease:
+      type: object
+      properties:
+        release_id:
+          type: integer
+        platform_id:
+          type: integer
+        platform_name:
+          type: string
+        platform_abbreviation:
+          type: string
+          nullable: true
+        region_id:
+          type: integer
+        region_code:
+          type: string
+        region_name:
+          type: string
+        format:
+          type: string
+          nullable: true
+          description: Physical, Digital, or null when unknown.
+        source:
+          type: string
+          enum:
+          - igdb
+          - manual
+      required:
+      - release_id
+      - platform_id
+      - platform_name
+      - region_id
+      - region_code
+      - region_name
+      - source
+    UpcomingRelease:
+      type: object
+      properties:
+        game:
+          type: object
+          properties:
+            game_id:
+              type: integer
+            title:
+              type: string
+            cover_url:
+              type: string
+              nullable: true
+          required:
+          - game_id
+          - title
+        date:
+          type: string
+          format: date
+          nullable: true
+          description: 'Plain calendar date (YYYY-MM-DD) shared by the Releases, at
+            their Date Precision: the first day of the month or quarter, 1 January
+            of the year, null when TBA.'
+        date_precision:
+          type: string
+          enum:
+          - day
+          - month
+          - quarter
+          - year
+          - tba
+        section:
+          type: string
+          example: July 2027
+          description: 'The heading to list the entry under: the month ("July 2027")
+            for day and month entries, "Q3 2027" for a quarter, "2027" for a year,
+            "TBA".'
+        first_released_on:
+          type: string
+          format: date
+          nullable: true
+          description: The game's earliest dated Release (any platform or region,
+            earliest date, then the more precise Date Precision) when it is before
+            this entry's date, or the entry is TBA. Null otherwise, so the game's
+            first entry has none.
+        first_released_precision:
+          type: string
+          nullable: true
+          description: The Date Precision of `first_released_on` (day, month, quarter
+            or year); null with it.
+        releases:
+          type: array
+          items:
+            "$ref": "#/components/schemas/UpcomingReleaseRelease"
+      required:
+      - game
+      - date
+      - date_precision
+      - section
+      - first_released_on
+      - first_released_precision
+      - releases
     ReleaseRefreshMeta:
       type: object
       properties:
@@ -13793,6 +13890,7 @@ paths:
         - suggestions
         - news_hub
         - challenges
+        - release_calendar
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -28142,6 +28240,114 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/upcoming_releases":
+    get:
+      summary: List the Release Calendar
+      tags:
+      - Release Calendar
+      description: 'The Release Calendar (spec #389): GameDB''s Upcoming Releases
+        in calendar order. An Upcoming Release is one game''s Releases that share
+        a date and Date Precision, across platforms and regions (Japan included).
+        Placement: a `month` entry before day 1 of its month, a `day` entry on its
+        date, a `quarter` entry after its last month, a `year` entry after December
+        and that year''s Q4, `tba` last; ties break on game title, then game id. Without
+        `month` the window runs from today (UTC calendar day) forward: a `day` entry
+        counts on and after its date, `month`/`quarter`/`year` until their whole period
+        has ended, `tba` always. Any signed-in member; belongs to the Release Calendar
+        Feature, so a member who cannot use it gets 404 `not_found`; the service token
+        is not gated.'
+      parameters:
+      - name: month
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: "^\\d{4}-\\d{2}$"
+          example: 2027-07
+        description: 'A calendar month, past or future: the entries placed in it (its
+          days, the month itself, a quarter ending in it and, for December, the year).
+          Never TBA. A malformed month is a 422 `invalid_month`.'
+      - name: platform_id
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Keeps an entry when any of its Releases is on one of these platforms;
+          the entry still lists all its Releases. Repeat it (`platform_id[]=1&platform_id[]=2`)
+          or comma-separate the ids. A non-id is a 422 `invalid_platform_id`.
+      - name: game_id
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Limits the entries to these games. Repeat it (`game_id[]=1&game_id[]=2`)
+          or comma-separate the ids. A non-id is a 422 `invalid_game_id`.
+      - name: per_game
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - next
+        description: "`next` keeps only each game's earliest entry (after the other
+          filters). Any other value is a 422 `invalid_per_game`."
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 100
+        required: false
+      responses:
+        '200':
+          description: the Upcoming Releases, in calendar order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/UpcomingRelease"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the Release Calendar Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: a malformed month, id or per_game
           content:
             application/json:
               schema:
