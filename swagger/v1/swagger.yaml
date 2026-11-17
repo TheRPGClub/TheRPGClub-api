@@ -3405,6 +3405,41 @@ components:
           type: integer
         recipient:
           "$ref": "#/components/schemas/ChallengeMember"
+        taste:
+          type: object
+          properties:
+            genres:
+              type: array
+              maxItems: 3
+              items:
+                type: object
+                properties:
+                  genre_id:
+                    type: integer
+                  name:
+                    type: string
+                required:
+                - genre_id
+                - name
+              description: The recipient's top 3 genres, most played first.
+            platform:
+              type: object
+              properties:
+                platform_id:
+                  type: integer
+                platform_name:
+                  type: string
+                platform_abbreviation:
+                  type: string
+                  nullable: true
+              required:
+              - platform_id
+              - platform_name
+              nullable: true
+              description: The platform the recipient plays most on; null if none
+                recorded.
+          description: Taste hints about the recipient, worked out from the games
+            in their Game Completions and backlog (each game counted once).
         pick:
           type: object
           properties:
@@ -3435,6 +3470,7 @@ components:
       required:
       - edition_id
       - year
+      - taste
       - pick_deadline_on
       - picks_open
       description: The acting member's side as a Santa.
@@ -3708,6 +3744,20 @@ components:
         season:
           "$ref": "#/components/schemas/ChallengeSeasonDates"
           description: 'season_opened only: the Season that opened.'
+        pool_games:
+          type: array
+          maxItems: 10
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: 'challenge_created and season_opened only: up to 10 games of
+            a Pool Challenge''s Pool for a cover wall, those with a cover first, then
+            by title (empty for Slots and Assignment).'
+        last_season_finishers:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ChallengeMember"
+          description: 'season_opened only: the members whose Run of the Season before
+            Finished, in the order they Finished (show their names; no pings).'
         edition:
           "$ref": "#/components/schemas/ChallengeEdition"
           description: 'Edition events only: the Edition as GET /api/v1/challenge_editions/{id}
@@ -3716,6 +3766,20 @@ components:
           type: integer
           example: 3
           description: 'signup_closing only: days from today to the cutoff.'
+        signup_post:
+          type: object
+          properties:
+            channel_id:
+              type: string
+            message_id:
+              type: string
+          required:
+          - channel_id
+          - message_id
+          nullable: true
+          description: 'signup_closing, signup_closed, edition_cancelled and edition_revealed
+            only: the Edition''s sign-up opening post, as the bot stored it (PUT /api/v1/challenge_editions/{id}/signup_post),
+            to reply to; null if none.'
         joined:
           type: integer
           description: 'signup_closed and edition_cancelled only: the members drawn.'
@@ -3741,6 +3805,20 @@ components:
         draw, `signup_closed`, or `edition_cancelled` when fewer than 2 members could
         be drawn (both with `joined` and `left_out`), all with `edition`; and `edition_revealed`
         on the reveal date, whose `edition` carries every assignment (never the Santas).'
+    ChallengePostGame:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+          description: The game's cover, null when it has none.
+      required:
+      - game_id
+      - title
     ChallengeSeasonDates:
       type: object
       properties:
@@ -7926,10 +8004,11 @@ paths:
       summary: Show the acting member's side as a Santa
       tags:
       - Challenges
-      description: 'The Santa''s view, only for the Santa: their recipient, their
-        pick, the deadline, and the recipient''s backlog minus the games they have
-        Cleared, which `q` narrows by title. The bot sends `acting_user_id` as a query
-        parameter (400 without).'
+      description: 'The Santa''s view, only for the Santa: their recipient, taste
+        hints about them (top 3 genres and top platform), their pick, the deadline,
+        and the recipient''s backlog minus the games they have Cleared, which `q`
+        narrows by title. The bot sends `acting_user_id` as a query parameter (400
+        without).'
       parameters:
       - name: acting_user_id
         in: query
@@ -7971,6 +8050,88 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_editions/{id}/signup_post":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Store an Edition's sign-up opening post (bot only)
+      tags:
+      - Challenges
+      description: The bot stores the Discord channel and message id of the Edition's
+        sign-up opening post after posting it (the `signup_opened` post, or the `challenge_created`
+        post for an Edition that opened with its Challenge). The later Edition posts
+        (`signup_closing`, `signup_closed`, `edition_cancelled`, `edition_revealed`)
+        carry it as `signup_post` so they can reply to it. Storing again replaces
+        it. Service token only (403 otherwise).
+      parameters: []
+      responses:
+        '200':
+          description: the stored post
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      edition_id:
+                        type: integer
+                      channel_id:
+                        type: string
+                      message_id:
+                        type: string
+        '403':
+          description: not the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_signup_post: channel_id and message_id must both be
+            Discord ids'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - invalid_signup_post
+                  message:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - channel_id
+                  - message_id
+                  properties:
+                    channel_id:
+                      type: string
+                      example: '1100000000000000001'
+                    message_id:
+                      type: string
+                      example: '1200000000000000002'
+        required: true
   "/api/v1/challenge_editions/{id}/santa/pick":
     parameters:
     - name: id
