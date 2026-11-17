@@ -163,7 +163,7 @@ module Api
           if current_principal.service?
             member = acting_member
             Challenges::Actor.new(user_id: acting_user_id, regular: member&.role_regular? ? true : false,
-              moderator: member ? (member.role_moderator? || member.admin_or_above?) : false)
+              moderator: member&.moderator_or_above? ? true : false)
           else
             Challenges::Actor.new(user_id: current_principal.id.to_s, regular: regular_role?,
               moderator: moderator_or_above?)
