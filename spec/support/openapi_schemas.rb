@@ -1123,6 +1123,15 @@ module OpenapiSchemas
           years: { type: :array, items: obj(year: int, game_id: int(nullable: true), title: str(nullable: true)) }
         ).merge(nullable: true, description: "Slots only: each year so far and the game filling it (null while open).")
       ),
+      ChallengeOpenSignup: obj(
+        _description: "A member's sign-up for an Edition still in sign-up (no Run until the draw).",
+        edition_id: int, year: int, phase: str(enum: %w[signup]),
+        challenge: obj(id: int, name: str),
+        signed_up_at: ts,
+        signup_cutoff_on: str(format: "date").merge(description: "Sign-up closes at the start of this day, and " \
+                                                                 "the draw happens on it."),
+        pick_deadline_on: str(format: "date"), reveal_on: str(format: "date")
+      ),
       ChallengeWarning: obj(
         code: str(enum: %w[duplicate_name]), message: str,
         challenge_ids: { type: :array, items: int, description: "The other Challenges with the same name." }
