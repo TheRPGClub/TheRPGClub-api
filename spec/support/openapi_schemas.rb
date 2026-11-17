@@ -153,6 +153,8 @@ module OpenapiSchemas
       Release: obj(
         release_id: int, game_id: int, platform_id: int, region_id: int,
         format: str(nullable: true), release_date: ts(nullable: true), notes: str(nullable: true),
+        source: str(enum: GamedbRelease::SOURCES, description: "igdb: an IGDB Release, kept in step by the " \
+          "IGDB refresh. manual: a Manual Release (staff or another import), never changed by a refresh."),
         platform_code: str, platform_name: str, region_code: str, region_name: str
       ),
       # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.

@@ -8,9 +8,10 @@ module Gamedb
   #
   # Mirrors the Discord bot's "add a game from IGDB" flow so an API-created game
   # is indistinguishable from a bot-created one: missing lookup rows (genre,
-  # company, platform, …) are created on the fly keyed by their `igdb_*_id`, and
-  # releases are one-per-platform (earliest), skip Japan, and leave `format`
-  # null (IGDB carries no physical/digital signal).
+  # company, platform, …) are created on the fly keyed by their `igdb_*_id`.
+  # Releases are one-per-platform (earliest), skip Japan, and leave `format`
+  # null (IGDB carries no physical/digital signal); they are written through
+  # Gamedb::ReleaseSync, the in-place refresh shared by import and refresh.
   class IgdbGameImporter
     class MissingIgdbGameError < StandardError; end
     class MissingIgdbIdError < StandardError; end
@@ -64,11 +65,12 @@ module Gamedb
       Result.new(game: game, created: created, images: images)
     end
 
-    # Re-fetch the game's release dates from IGDB and rebuild its release rows
-    # (the bot's `refreshReleaseDates`): drop the existing releases plus their
-    # scheduled announcements, then re-run the same one-per-platform sync #import!
-    # uses. Touches releases only — never images or the game's metadata/taxonomy.
-    # Returns the (unchanged) GamedbGame so the caller can re-render its releases.
+    # Re-fetch the game's release dates from IGDB and refresh its Releases in
+    # place (ADR 0008) through the same sync #import! uses: IGDB Releases are
+    # updated, added or removed, Manual Releases are adopted or left alone, and
+    # announcements keep their delivery state. Touches Releases only, never
+    # images or the game's metadata/taxonomy. Returns the GamedbGame so the
+    # caller can re-render its releases.
     def refresh_releases!(game_id)
       game = GamedbGame.find(game_id)
       raise MissingIgdbIdError, "Game #{game_id} has no IGDB id" if game.igdb_id.blank?
@@ -77,10 +79,6 @@ module Gamedb
       raise MissingIgdbGameError, "IGDB game #{game.igdb_id} was not found" if payload.blank?
 
       GamedbGame.transaction do
-        clear_releases!(game)
-        # Drop any cached releases so sync_releases!'s `seen_platform_ids` lookup
-        # reads the now-empty set rather than the pre-clear association cache.
-        game.releases.reset
         sync_releases!(game, payload)
         # Bump updated_at so GamesController#relations_data's cache key (keyed
         # on it) changes -- releases live on a child table, so saving the game
@@ -92,17 +90,6 @@ module Gamedb
     end
 
     private
-
-    # Delete the game's releases and the announcements that hang off them
-    # (announcements first — they FK to release_id). Mirrors the bot's
-    # `clearReleaseDates`, which wipes both before re-inserting.
-    def clear_releases!(game)
-      release_ids = game.releases.pluck(:release_id)
-      return if release_ids.empty?
-
-      GamedbReleaseAnnouncement.where(release_id: release_ids).delete_all
-      GamedbRelease.where(release_id: release_ids).delete_all
-    end
 
     def upsert_game!(payload)
       result = GamedbGame.transaction do
@@ -205,24 +192,17 @@ module Gamedb
     end
 
     def sync_releases!(game, payload)
-      seen_platform_ids = game.releases.pluck(:platform_id).to_set
-
-      earliest_release_per_platform(payload[:release_dates]).each_value do |release|
+      reported = earliest_release_per_platform(payload[:release_dates]).each_value.filter_map do |release|
         platform = ensure_platform(release[:platform])
-        next if platform.nil? || seen_platform_ids.include?(platform.platform_id)
-
         region = ensure_region(release[:region])
-        next if region.nil?
+        next if platform.nil? || region.nil?
 
-        GamedbRelease.create!(
-          game_id: game.game_id,
-          platform_id: platform.platform_id,
-          region_id: region.region_id,
-          format: nil,
-          release_date: release[:date]
+        ReleaseSync::Reported.new(
+          platform_id: platform.platform_id, region_id: region.region_id, release_date: release[:date]
         )
-        seen_platform_ids << platform.platform_id
       end
+
+      ReleaseSync.call(game, reported)
     end
 
     # IGDB returns many release_dates per game (one per region/platform). Keep

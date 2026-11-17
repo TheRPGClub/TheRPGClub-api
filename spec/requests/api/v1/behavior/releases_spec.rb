@@ -44,6 +44,21 @@ RSpec.describe "api/v1/releases behavior", type: :request do
       expect(release.release_date).to eq(Time.utc(2024, 5, 10))
     end
 
+    it "creates a Manual Release" do
+      post "/api/v1/games/#{game.game_id}/releases", params: payload, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "source")).to eq("manual")
+    end
+
+    it "ignores a source sent in the body, so the write is always a Manual Release" do
+      post "/api/v1/games/#{game.game_id}/releases",
+        params: { data: payload[:data].merge(source: "igdb") }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "source")).to eq("manual")
+    end
+
     it "bumps the game's updated_at so the cached relations invalidate" do
       expect {
         post "/api/v1/games/#{game.game_id}/releases", params: payload, headers: service_headers, as: :json

@@ -4,6 +4,15 @@ class GamedbRelease < ApplicationRecord
   self.table_name = "gamedb_releases"
   self.primary_key = "release_id"
 
+  # Where a Release comes from (ADR 0008). An IGDB Release is kept in step by
+  # the in-place IGDB refresh (Gamedb::ReleaseSync): its date can move and it
+  # can be removed. A Manual Release (staff, the Completionator import, any
+  # other writer) is never changed or removed by a refresh, only adopted when
+  # IGDB reports the same game, platform and region.
+  SOURCES = %w[igdb manual].freeze
+
+  enum :source, SOURCES.index_with(&:itself), prefix: true, validate: true
+
   belongs_to :game,
     class_name: "GamedbGame",
     foreign_key: :game_id,

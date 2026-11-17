@@ -87,7 +87,7 @@ RSpec.describe Gamedb::IgdbGameImporter do
   end
 
   describe "#refresh_releases!" do
-    it "bumps the game's updated_at after rebuilding its release rows" do
+    it "bumps the game's updated_at after refreshing its Releases in place" do
       game = GamedbGame.create!(title: "Game A", igdb_id: 602)
       original_updated_at = game.updated_at
 

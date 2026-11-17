@@ -435,7 +435,8 @@ RSpec.describe 'api/v1/games', type: :request do
       tags 'Games'
       description 'Admin/service-only. Adds a release row for the game (the bot\'s `addReleaseInfo`). ' \
                   '`platform_id` and `region_id` are required; `format` must be `Physical`, `Digital` or ' \
-                  'null; `release_date` and `notes` are optional. A plain insert — duplicates are allowed.'
+                  'null; `release_date` and `notes` are optional. A plain insert, so duplicates are allowed. ' \
+                  'Always creates a Manual Release (`source` "manual"), which no IGDB refresh changes or removes.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -485,9 +486,12 @@ RSpec.describe 'api/v1/games', type: :request do
     post 'Refresh releases from IGDB' do
       tags 'Games'
       description 'Members role holders, staff (Moderator and above) and the service. Re-fetches the ' \
-                  'game\'s release dates from IGDB and replaces its ' \
-                  'release rows (the bot\'s `refreshReleaseDates`): clears the existing releases plus their ' \
-                  'scheduled announcements, then re-imports one release per platform (earliest dated; ' \
+                  'game\'s release dates from IGDB and refreshes its Releases in place (ADR 0008), matching ' \
+                  'on platform + region: an IGDB Release takes IGDB\'s date, else the oldest matching Manual ' \
+                  'Release is adopted (becomes `source` "igdb"), else a new IGDB Release is added. IGDB ' \
+                  'Releases IGDB no longer reports are removed with their announcement; Manual Releases are ' \
+                  'never changed or removed. A pending announcement follows its Release\'s moved date; a sent ' \
+                  'or skipped one is never reset. IGDB dates kept: one per platform (earliest dated; ' \
                   'Japan-only releases skipped, undated rows dropped, `format` left null). Returns the ' \
                   'rebuilt release list (same shape as GET /api/v1/games/{id}/releases), with `meta.added` ' \
                   '(how many more releases the game has than before, never negative) and `meta.total`.'

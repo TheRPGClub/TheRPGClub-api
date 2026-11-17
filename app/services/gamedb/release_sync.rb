@@ -1,0 +1,101 @@
+# frozen_string_literal: true
+
+module Gamedb
+  # The in-place IGDB refresh of one game's Releases (ADR 0008). Game import,
+  # POST /games/:id/refresh-releases and anything else that syncs Releases from
+  # IGDB hand it the Releases IGDB reports, and it matches each one on game +
+  # platform + region:
+  #
+  # - an existing IGDB Release takes IGDB's date;
+  # - otherwise the oldest matching Manual Release is adopted: it becomes an
+  #   IGDB Release and takes IGDB's date (any other matches stay Manual);
+  # - otherwise a new IGDB Release is inserted.
+  #
+  # IGDB Releases IGDB no longer reports are removed with their announcement.
+  # Manual Releases are never updated or removed.
+  #
+  # Because a Release keeps its id, its announcement keeps its delivery state:
+  # a pending announcement follows a moved date (`announce_at` = date - 7 days),
+  # and a sent or skipped one is never reset, so a refresh inside the 7-day
+  # window can no longer make the due feed offer the game again.
+  #
+  # Choosing which IGDB dates to report (and touching the game for the
+  # relations cache) is the caller's job.
+  class ReleaseSync
+    # The release announcement goes out this long before the Release's date
+    # (matches ReleaseAnnouncementsController#upsert_announcements).
+    ANNOUNCEMENT_LEAD = 7.days
+
+    # One Release as IGDB reports it, already resolved to local ids.
+    Reported = Data.define(:platform_id, :region_id, :release_date) do
+      def key = [ platform_id, region_id ]
+    end
+
+    def self.call(game, reported)
+      new(game).call(reported)
+    end
+
+    def initialize(game)
+      @game = game
+    end
+
+    def call(reported)
+      GamedbRelease.transaction do
+        # Serialise refreshes of the same game (the pressed refresh and the
+        # weekly job) so two runs cannot both insert the same IGDB Release.
+        @game.lock!
+        releases = GamedbRelease.where(game_id: @game.game_id).includes(:announcement).order(:release_id).to_a
+        candidates = releases.group_by { |release| [ release.platform_id, release.region_id ] }
+
+        kept = reported.uniq(&:key).map { |release| apply!(release, candidates.fetch(release.key, [])) }
+        remove!(releases.select(&:source_igdb?) - kept)
+      end
+      @game.releases.reset
+    end
+
+    private
+
+    # Releases are ordered by id, so `find` picks the existing IGDB Release
+    # first, then the oldest Manual Release.
+    def apply!(reported, matches)
+      release = matches.find(&:source_igdb?) || matches.find(&:source_manual?)
+      return insert!(reported) if release.nil?
+
+      release.source = "igdb"
+      release.release_date = reported.release_date
+      date_moved = release.release_date_changed?
+      release.save!
+      follow_date!(release.announcement, release.release_date) if date_moved
+      release
+    end
+
+    def insert!(reported)
+      GamedbRelease.create!(
+        game_id: @game.game_id,
+        platform_id: reported.platform_id,
+        region_id: reported.region_id,
+        format: nil,
+        release_date: reported.release_date,
+        source: "igdb"
+      )
+    end
+
+    # Only a pending announcement moves; the send loop owns sent/skipped rows.
+    def follow_date!(announcement, release_date)
+      return if announcement.nil? || announcement.sent_at || announcement.skipped_at
+      return announcement.destroy! if release_date.nil?
+
+      announcement.update!(announce_at: release_date - ANNOUNCEMENT_LEAD)
+    end
+
+    # The announcement row FKs to the Release, so it goes too, whatever its
+    # state: a removed Release has nothing left to announce.
+    def remove!(releases)
+      return if releases.empty?
+
+      release_ids = releases.map(&:release_id)
+      GamedbReleaseAnnouncement.where(release_id: release_ids).delete_all
+      GamedbRelease.where(release_id: release_ids).delete_all
+    end
+  end
+end

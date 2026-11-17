@@ -298,12 +298,13 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(platform.platform_name).to eq(snes_ref[:name])
     end
 
-    it "imports one earliest non-Japanese release per platform, format null" do
+    it "imports one earliest non-Japanese IGDB Release per platform, format null" do
       post "/api/v1/games", params: { igdb_id: igdb_id }, headers: service_headers, as: :json
 
       game = GamedbGame.find_by!(igdb_id: igdb_id)
       releases = game.releases.includes(:platform, :region)
       expect(releases.length).to eq(2)
+      expect(releases.map(&:source)).to all(eq("igdb"))
 
       snes_release = releases.find { |r| r.platform.igdb_platform_id == snes_igdb_id }
       expect(snes_release.release_date).to eq(Time.utc(1995, 8, 22))
@@ -573,27 +574,25 @@ RSpec.describe "api/v1/games behavior", type: :request do
       allow(igdb_client).to receive(:game).with(igdb_id).and_return(igdb_payload)
     end
 
-    it "replaces the game's releases and their announcements from IGDB" do
-      stale_release = create(:release, game: game, release_date: Time.utc(2020, 1, 1))
-      stale_announcement = create(:release_announcement, release: stale_release)
+    def announcement_ids_for(game)
+      get "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+      json.fetch("data").map { |announcement| announcement.fetch("release_id") }
+    end
+
+    it "keeps an unmatched Manual Release and adds the IGDB Release beside it" do
+      manual = create(:release, game: game, release_date: Time.utc(2020, 1, 1), notes: "hand entered")
+      announcement = create(:release_announcement, release: manual)
 
       post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
 
       expect(response).to have_http_status(:ok)
-      expect(GamedbRelease.exists?(stale_release.release_id)).to be(false)
-      expect(GamedbReleaseAnnouncement.exists?(stale_announcement.release_id)).to be(false)
-
-      releases = game.releases.reload.includes(:platform, :region)
-      expect(releases.length).to eq(1)
-      expect(releases.first.release_date).to eq(Time.utc(2024, 6, 1))
-      expect(releases.first.platform.igdb_platform_id).to eq(platform_ref[:igdb_id])
-
-      expect(json.fetch("data").length).to eq(1)
-      expect(json.fetch("data").first).to include(
-        "release_id" => releases.first.release_id,
-        "platform_name" => platform_ref[:name],
-        "format" => nil
+      expect(json.fetch("data")).to contain_exactly(
+        hash_including("release_id" => manual.release_id, "source" => "manual", "notes" => "hand entered",
+          "release_date" => "2020-01-01T00:00:00.000Z"),
+        hash_including("platform_name" => platform_ref[:name], "source" => "igdb", "format" => nil,
+          "release_date" => "2024-06-01T00:00:00.000Z")
       )
+      expect(announcement_ids_for(game)).to eq([ announcement.release_id ])
     end
 
     it "reports how many releases the refresh added" do
@@ -604,11 +603,138 @@ RSpec.describe "api/v1/games behavior", type: :request do
     end
 
     it "reports no additions when IGDB has nothing new" do
-      create(:release, game: game, release_date: Time.utc(2020, 1, 1))
-
+      post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
       post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
 
       expect(json.fetch("meta")).to eq("added" => 0, "total" => 1)
+    end
+
+    describe "in-place refresh (ADR 0008)" do
+      let(:in_window_date) { 5.days.from_now.utc.beginning_of_day }
+      let(:igdb_platform) { GamedbPlatform.create!(igdb_platform_id: platform_ref[:igdb_id], platform_name: platform_ref[:name], platform_code: "RD#{SecureRandom.hex(4)}") }
+      let(:north_america) do
+        GamedbRegion.create_with(region_code: "NA", region_name: "North America").find_or_create_by!(igdb_region_id: 2)
+      end
+
+      def refresh!
+        post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
+        expect(response).to have_http_status(:ok)
+      end
+
+      def igdb_reports(*dates)
+        allow(igdb_client).to receive(:game).with(igdb_id).and_return(
+          igdb_id: igdb_id, name: game.title,
+          release_dates: dates.map { |date| { platform: platform_ref, region: 2, date: date } }
+        )
+      end
+
+      def releases_of(game)
+        get "/api/v1/games/#{game.game_id}/releases", headers: service_headers
+        json.fetch("data")
+      end
+
+      def announcements_of(game)
+        get "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+        json.fetch("data")
+      end
+
+      def due_feed
+        get "/api/v1/release_announcements/due", headers: service_headers
+        json.fetch("data")
+      end
+
+      def sync_announcements!
+        patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "updates the same IGDB Release when IGDB moves its date" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        release_id = releases_of(game).sole.fetch("release_id")
+
+        igdb_reports(Time.utc(2030, 4, 15))
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("release_id" => release_id, "source" => "igdb", "release_date" => "2030-04-15T00:00:00.000Z")
+        )
+      end
+
+      it "adopts the oldest matching Manual Release instead of duplicating it" do
+        oldest = create(:release, game: game, platform: igdb_platform, region: north_america,
+          release_date: Time.utc(2029, 1, 1), notes: "staff entry")
+        newer = create(:release, game: game, platform: igdb_platform, region: north_america,
+          release_date: Time.utc(2029, 2, 2))
+        igdb_reports(Time.utc(2030, 3, 1))
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("release_id" => oldest.release_id, "source" => "igdb", "notes" => "staff entry",
+            "release_date" => "2030-03-01T00:00:00.000Z"),
+          hash_including("release_id" => newer.release_id, "source" => "manual",
+            "release_date" => "2029-02-02T00:00:00.000Z")
+        )
+      end
+
+      it "removes an IGDB Release that IGDB stops reporting, with its unsent announcement" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        sync_announcements!
+        expect(announcements_of(game).length).to eq(1)
+
+        igdb_reports
+        refresh!
+
+        expect(releases_of(game)).to eq([])
+        expect(announcements_of(game)).to eq([])
+      end
+
+      it "moves an unsent announcement with its Release's new date" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        sync_announcements!
+
+        igdb_reports(Time.utc(2030, 4, 15))
+        refresh!
+
+        expect(announcements_of(game)).to contain_exactly(
+          hash_including("announce_at" => "2030-04-08T00:00:00.000Z", "sent_at" => nil, "skipped_at" => nil)
+        )
+      end
+
+      it "never resets a sent announcement when the date moves" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        sync_announcements!
+        release_id = releases_of(game).sole.fetch("release_id")
+        patch "/api/v1/release_announcements/#{release_id}",
+          params: { data: { sent_at: "2030-02-22T12:00:00Z" } }, headers: service_headers, as: :json
+
+        igdb_reports(Time.utc(2030, 4, 15))
+        refresh!
+        sync_announcements!
+
+        expect(announcements_of(game)).to contain_exactly(
+          hash_including("release_id" => release_id, "announce_at" => "2030-02-22T00:00:00.000Z",
+            "sent_at" => "2030-02-22T12:00:00.000Z")
+        )
+      end
+
+      it "does not offer an announcement again after a refresh inside its 7-day window" do
+        igdb_reports(in_window_date)
+        refresh!
+        sync_announcements!
+        offered = due_feed.sole
+        patch "/api/v1/release_announcements/#{offered.fetch("release_id")}",
+          params: { data: { sent_at: Time.current.iso8601 } }, headers: service_headers, as: :json
+
+        refresh!
+        sync_announcements!
+
+        expect(due_feed).to eq([])
+      end
     end
 
     it "allows a Members role holder" do
@@ -675,7 +801,8 @@ RSpec.describe "api/v1/games behavior", type: :request do
         "platform_code" => earlier.platform.platform_code,
         "platform_name" => earlier.platform.platform_name,
         "region_code" => earlier.region.region_code,
-        "region_name" => earlier.region.region_name
+        "region_name" => earlier.region.region_name,
+        "source" => "manual"
       )
     end
 
@@ -803,7 +930,7 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(data.fetch("platforms")).to contain_exactly(
         hash_including("platform_id" => platform.platform_id, "platform_name" => platform.platform_name)
       )
-      expect(data.fetch("releases")).to contain_exactly(hash_including("release_id" => release.release_id))
+      expect(data.fetch("releases")).to contain_exactly(hash_including("release_id" => release.release_id, "source" => "manual"))
       expect(data.fetch("alternates")).to contain_exactly(hash_including("game_id" => alternate.game_id))
       expect(data.fetch("collection")).to be_nil
       expect(data.fetch("franchises")).to eq([])
