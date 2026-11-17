@@ -1066,7 +1066,10 @@ module OpenapiSchemas
       ChallengeRun: obj(
         id: int,
         challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
-          schedule: str(enum: Challenge::SCHEDULES)),
+          schedule: str(enum: Challenge::SCHEDULES),
+          counts_past_play: bool.merge(description: "Counts past play is on (Slots only; false otherwise)."),
+          slots: ref("ChallengeSlots", nullable: true).merge(description: "Slots only: the Challenge's range " \
+                                                                          "and Counts past play.")),
         user: ref("ChallengeMember"),
         edition: obj(id: int, year: int).merge(nullable: true,
           description: "Assignment only: the Edition the Run was drawn in."),
@@ -1097,7 +1100,9 @@ module OpenapiSchemas
                                              "when read, so it lapses on 1 January.")
         ),
         entries: { type: :array, description: "The games counted on the Run, Cleared first.", items: obj(
-          game_id: int, title: str, state: str(enum: ChallengeRunEntry::STATES),
+          game_id: int, title: str,
+          cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none."),
+          state: str(enum: ChallengeRunEntry::STATES),
           cleared_on: str(nullable: true, format: "date"),
           completion_id: int(nullable: true).merge(
             description: "The Game Completion that Cleared it; null on a Finished Run after it was deleted."
@@ -1105,7 +1110,11 @@ module OpenapiSchemas
           slot_year: int(nullable: true).merge(description: "Slots: the year this Cleared game fills; null " \
                                                            "when In Progress, waiting for an open year, or not Slots."),
           picked_by_hand: bool.merge(description: "The member placed it there themselves (a slot move or a " \
-                                                  "past-play pick).")
+                                                  "past-play pick)."),
+          release_years: { type: :array, items: { type: :integer }, nullable: true,
+                           description: "Slots only (null otherwise): every year the game fits, its first " \
+                                        "release year and the year of each regional or platform release, " \
+                                        "oldest first; intersect with the Run's open years." }
         ) },
         slots: obj(
           first_year: int.merge(description: "Copied when the Run started; kept if the Birth Date changes."),

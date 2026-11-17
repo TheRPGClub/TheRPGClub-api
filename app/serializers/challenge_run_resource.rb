@@ -13,8 +13,10 @@ class ChallengeRunResource
 
   attribute :challenge do |run|
     challenge = run.challenge
+    slots = challenge.challenge_format == Challenges::Formats::Slots::KEY
     { id: challenge.id, name: challenge.name, challenge_format: challenge.challenge_format,
-      schedule: challenge.schedule }
+      schedule: challenge.schedule, counts_past_play: challenge.counts_past_play,
+      slots: (Challenges::Formats::Slots.as_json(challenge, Challenges::Formats::Slots.load(challenge)) if slots) }
   end
 
   attribute :user do |run|
@@ -49,11 +51,16 @@ class ChallengeRunResource
     Challenges::Progress.summary(run).as_json
   end
 
+  # Each entry carries its game's cover, and on a Slots Run the years the
+  # game fits (Challenges::ReleaseYears; null for the other Formats).
   attribute :entries do |run|
+    slots = run.challenge.challenge_format == Challenges::Formats::Slots::KEY
     run.entries.sort_by { |entry| [ entry.cleared? ? 0 : 1, entry.cleared_on || Date.new(0), entry.game.title.to_s ] }
       .map do |entry|
-        { game_id: entry.game_id, title: entry.game.title, state: entry.state, cleared_on: entry.cleared_on&.iso8601,
-          completion_id: entry.completion_id, slot_year: entry.slot_year, picked_by_hand: entry.picked_by_hand }
+        { game_id: entry.game_id, title: entry.game.title, cover_url: entry.game.cover_url, state: entry.state,
+          cleared_on: entry.cleared_on&.iso8601, completion_id: entry.completion_id, slot_year: entry.slot_year,
+          picked_by_hand: entry.picked_by_hand,
+          release_years: (Challenges::ReleaseYears.of_game(entry.game) if slots) }
       end
   end
 
@@ -61,7 +68,7 @@ class ChallengeRunResource
     Challenges::Formats::Slots.run_json(run) if run.challenge.challenge_format == Challenges::Formats::Slots::KEY
   end
 
-  PRELOADS = [ :user, { edition: { signups: %i[user picked_game] }, entries: :game,
+  PRELOADS = [ :user, { edition: { signups: %i[user picked_game] }, entries: { game: %i[images releases] },
                          challenge: %i[pool_franchises pool_collections pool_games] } ].freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)

@@ -19,5 +19,11 @@ module Challenges
       dates.each { |id, at| years[id] |= [ at.utc.year ] }
       years.transform_values(&:sort)
     end
+
+    # The same years for one game whose `releases` are loaded (no query when
+    # they are preloaded, as ChallengeRunResource does for its entries).
+    def self.of_game(game)
+      ([ game.initial_release_date ] + game.releases.map(&:release_date)).compact.map { |at| at.utc.year }.uniq.sort
+    end
   end
 end

@@ -240,6 +240,22 @@ RSpec.describe "api/v1/challenge runs behavior", type: :request do
   end
 
   describe "reading Runs" do
+    it "gives each entry its game's title and cover, and no Slots fields on a Pool Run" do
+      covered = create(:game, title: "Chrono Trigger").tap { |game| create(:game_image, :primary, game: game) }
+      plain = create(:game, title: "Suikoden")
+      run = create(:challenge_run, challenge: challenge, user: member)
+      ChallengeRunEntry.create!(run: run, game: covered, state: "cleared", cleared_on: Date.new(2026, 10, 1))
+      ChallengeRunEntry.create!(run: run, game: plain, state: "in_progress")
+
+      get "/api/v1/users/#{member.user_id}/challenge_runs", headers: auth_headers_for(member)
+
+      listed = json.fetch("data").sole
+      expect(listed.fetch("entries").map { |entry| entry.values_at("title", "cover_url", "release_years") }).to eq([
+        [ "Chrono Trigger", covered.cover_url, nil ], [ "Suikoden", nil, nil ]
+      ])
+      expect(listed.fetch("challenge")).to include("counts_past_play" => false, "slots" => nil)
+    end
+
     it "names each member with their Discord avatar and the stored avatar image's path" do
       member.update!(discord_avatar: "a1b2c3")
       challenge.host.update!(discord_avatar: nil)
