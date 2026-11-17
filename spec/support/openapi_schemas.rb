@@ -1011,8 +1011,15 @@ module OpenapiSchemas
           user_id: str, username: str, global_name: str(nullable: true),
           discord_avatar: str(nullable: true), avatar_url: str,
           left_out: bool.merge(description: "The draw left them out: fewer than 5 games in their backlog by then."),
-          withdrawn: bool.merge(description: "They withdrew after the draw; their recipient gets a random pick.")
+          withdrawn: bool.merge(description: "They withdrew after the draw; their recipient gets a random pick."),
+          picked: bool(nullable: true).merge(description: "While Santas pick: a game is picked for them (their " \
+                                                          "Santa's pick, kept when the Santa withdraws, or the " \
+                                                          "random pick at the deadline). Null in other phases and " \
+                                                          "for members the draw left out. Never names the Santa " \
+                                                          "or the game.")
         ) },
+        picked_count: int(nullable: true).merge(description: "While Santas pick: how many members have a game " \
+                                                             "picked for them. Null in other phases."),
         drawn_at: ts(nullable: true).merge(description: "When the draw happened (or cancelled the Edition)."),
         assignments: {
           type: :array, nullable: true,
@@ -1030,7 +1037,13 @@ module OpenapiSchemas
               .merge(nullable: true, description: "The recipient's Run of the Edition.")
           )
         },
-        picks_closed_at: ts(nullable: true).merge(description: "When the random picks were made at the deadline.")
+        picks_closed_at: ts(nullable: true).merge(description: "When the random picks were made at the deadline."),
+        viewer: obj(
+          _required: %w[backlog_count eligible],
+          backlog_count: int.merge(description: "Games in the member's backlog."),
+          eligible: bool.merge(description: "backlog_count meets the 5-game minimum to sign up.")
+        ).merge(nullable: true, description: "The member reading. Null for the bot without acting_user_id, and " \
+                                             "in bot job payloads.")
       ),
       ChallengeMember: obj(
         user_id: str, username: str, global_name: str(nullable: true),

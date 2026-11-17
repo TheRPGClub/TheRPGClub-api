@@ -10,7 +10,10 @@
 # before the pick deadline; a recipient whose Santa has no pick by then
 # (missed it, withdrew after the draw (`withdrawn_at`), or left the server
 # before picking) gets a random pick at the deadline (`picked_randomly`). The pick is revealed on the reveal date and
-# becomes the recipient's Run goal.
+# becomes the recipient's Run goal. A Santa who withdraws loses their pick
+# but keeps `picked_at`, which marks the recipient picked while Santas pick
+# (ChallengeEditionResource), so that withdrawing doesn't show whose Santa
+# they were.
 class ChallengeEditionSignup < ApplicationRecord
   belongs_to :edition, class_name: "ChallengeEdition", inverse_of: :signups
   belongs_to :user, -> { without_images }, class_name: "RpgClubUser", foreign_key: :user_id, primary_key: :user_id,
