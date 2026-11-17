@@ -4,9 +4,9 @@
 # Format, schedule, whether it is Open today (in the club's time zone), and
 # its Format's settings under the Format's key (Challenges::Formats).
 #
-# Load Challenges through ChallengeResource.preloaded so the Host and the
-# Pool's names come in a few queries. `params[:detail]` (the show) adds the
-# Pool's `game_count` and `run_count`.
+# Load Challenges through ChallengeResource.preloaded so the Host, the
+# Pool's names and an Assignment's Editions come in a few queries.
+# `params[:detail]` (the show) adds the Pool's `game_count` and `run_count`.
 class ChallengeResource
   include BaseResource
 
@@ -49,13 +49,21 @@ class ChallengeResource
     format.as_json(challenge, format.load(challenge))
   end
 
+  attribute :assignment do |challenge|
+    next nil unless challenge.challenge_format == Challenges::Formats::Assignment::KEY
+
+    format = Challenges::Formats::Assignment
+    format.as_json(challenge, format.load(challenge))
+  end
+
   attribute :run_count do |challenge|
     challenge.runs.size if params[:detail]
   end
 
   attributes :hidden, :ended_at, :created_by, :updated_by, :created_at, :updated_at
 
-  PRELOADS = [ :host, { pool_franchises: :franchise, pool_collections: :collection, pool_games: :game } ].freeze
+  PRELOADS = [ :host, :editions, { pool_franchises: :franchise, pool_collections: :collection, pool_games: :game } ]
+    .freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)
 end

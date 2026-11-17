@@ -40,6 +40,10 @@ module Challenges
     end
   end
 
+  # A sign-up or withdrawal for an Edition the rules refuse
+  # (Challenges::Editions): rendered like a RunRefused.
+  class SignupRefused < RunRefused; end
+
   # Brings the member's Runs up to date with their Game Completions and Now
   # Playing (Challenges::Progress) and queues the announcements for the Runs
   # that changed, in one transaction. Called after every commit that writes

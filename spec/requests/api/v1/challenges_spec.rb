@@ -37,12 +37,25 @@ RSpec.describe 'api/v1/challenges', type: :request do
                                                        'create.' }
     }
   }
+  assignment = {
+    type: :object,
+    description: 'The Edition calendar (challenge_format assignment, Secret Santa) as MM-DD, coming in this order ' \
+                 'through the year; 29 February is refused. Any day left out is the Secret Santa default ' \
+                 '(12-01, 12-15, 12-25). An Assignment Challenge is Always Open with no end date. Saving it opens ' \
+                 'the Edition whose sign-up is due today; a change moves an Edition still in sign-up that nobody ' \
+                 'has joined to the new dates, and otherwise applies from the next Edition.',
+    properties: {
+      signup_cutoff: { type: :string, example: '12-01', description: 'Sign-up closes at the start of this day.' },
+      pick_deadline: { type: :string, example: '12-15' },
+      reveal: { type: :string, example: '12-25', description: 'The Edition is named by its reveal\'s year.' }
+    }
+  }
   writable = {
     acting_user_id: acting_user_id,
     name: { type: :string, maxLength: Challenge::NAME_MAX },
     description: { type: :string },
     challenge_format: { type: :string, enum: Challenge::FORMATS,
-                        description: 'pool or slots so far: assignment is 422 "not available yet". ' \
+                        description: 'pool, slots or assignment (Secret Santa). ' \
                                      'Locked once the Challenge has a Run.' },
     schedule: { type: :string, enum: Challenge::SCHEDULES, description: 'Locked once the Challenge has a Run.' },
     ends_on: { type: :string, format: :date, nullable: true,
@@ -53,7 +66,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
                            'the start to cross the new year. Locked once the Challenge has a Run.',
               properties: { start: { type: :string, example: '12-01' }, end: { type: :string, example: '02-28' } } },
     pool: pool,
-    slots: slots
+    slots: slots,
+    assignment: assignment
   }
   refusal = 'Refusals carry `{ error, message }`; `message` is written for members (403 `forbidden`, 422 ' \
             '`invalid_challenge`).'
@@ -105,7 +119,7 @@ RSpec.describe 'api/v1/challenges', type: :request do
             type: :object,
             properties: writable.merge(hosted_by_club: { type: :boolean, description: 'Moderator and above.' }),
             required: %w[name challenge_format schedule],
-            description: 'Send the settings of the chosen Format: `pool` or `slots`.'
+            description: 'Send the settings of the chosen Format: `pool`, `slots` or `assignment` (optional).'
           }
         },
         required: %w[data]
@@ -129,7 +143,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
       end
 
       response '422', 'invalid_challenge: a missing or invalid field, an empty or unknown Pool, a slot range that ' \
-                      'ends before it starts, a Format not available yet' do
+                      'ends before it starts, an Edition calendar out of order, a Seasonal or ending Assignment ' \
+                      'Challenge' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

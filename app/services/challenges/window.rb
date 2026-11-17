@@ -4,11 +4,14 @@ module Challenges
   # When play counts toward a Run (spec #376, "Counting rules"), as the
   # club's dates, both ends included: the Season the Run belongs to for a
   # Seasonal Challenge, and from the Run's start to the Challenge's end date
-  # (open-ended without one) for an Always Open Challenge. Assignment (#383)
-  # adds the Edition's dates.
+  # (open-ended without one) for an Always Open Challenge, and for an
+  # Assignment Run, its Edition's year to Clear: from the reveal to the
+  # Edition's end, the next reveal date.
   Window = Data.define(:starts_on, :ends_on) do
     def self.for(run)
-      if run.season_starts_on
+      if run.edition_id
+        new(starts_on: run.edition.reveal_on, ends_on: run.edition.ends_on)
+      elsif run.season_starts_on
         new(starts_on: run.season_starts_on, ends_on: run.season_ends_on)
       else
         new(starts_on: Challenges.today(run.started_at), ends_on: run.challenge.ends_on)

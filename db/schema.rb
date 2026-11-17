@@ -107,6 +107,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
     t.index ["round_number"], name: "ix_bot_voting_info_round"
   end
 
+  create_table "challenge_edition_signups", force: :cascade do |t|
+    t.bigint "edition_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.timestamptz "signed_up_at", default: -> { "statement_timestamp()" }, null: false
+    t.timestamptz "left_out_at"
+    t.string "recipient_user_id", limit: 30
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["edition_id", "recipient_user_id"], name: "ux_challenge_edition_signups_recipient", unique: true, where: "(recipient_user_id IS NOT NULL)"
+    t.index ["edition_id", "user_id"], name: "ux_challenge_edition_signups_member", unique: true
+    t.index ["user_id"], name: "ix_challenge_edition_signups_user"
+  end
+
+  create_table "challenge_editions", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.integer "year", null: false
+    t.string "phase", limit: 16, default: "signup", null: false
+    t.date "signup_opens_on", null: false
+    t.date "signup_cutoff_on", null: false
+    t.date "pick_deadline_on", null: false
+    t.date "reveal_on", null: false
+    t.date "ends_on", null: false
+    t.timestamptz "drawn_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "year"], name: "ux_challenge_editions_year", unique: true
+    t.index ["phase", "signup_cutoff_on"], name: "ix_challenge_editions_phase"
+    t.check_constraint "phase::text = ANY (ARRAY['signup'::character varying, 'picking'::character varying, 'revealed'::character varying, 'ended'::character varying, 'cancelled'::character varying]::text[])", name: "ck_challenge_editions_phase"
+    t.check_constraint "signup_opens_on < signup_cutoff_on AND signup_cutoff_on < pick_deadline_on AND pick_deadline_on < reveal_on AND reveal_on < ends_on", name: "ck_challenge_editions_dates"
+  end
+
   create_table "challenge_lifecycle_steps", force: :cascade do |t|
     t.bigint "challenge_id", null: false
     t.string "step", limit: 48, null: false
@@ -159,8 +190,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
     t.timestamptz "ended_at"
     t.integer "first_year", limit: 2
     t.integer "caught_up_announced_year", limit: 2
+    t.bigint "edition_id"
     t.index ["challenge_id", "status"], name: "ix_challenge_runs_challenge_status"
-    t.index ["challenge_id", "user_id"], name: "ux_challenge_runs_one_active", unique: true, where: "((status)::text = 'active'::text)"
+    t.index ["challenge_id", "user_id"], name: "ux_challenge_runs_one_active", unique: true, where: "(((status)::text = 'active'::text) AND (edition_id IS NULL))"
+    t.index ["edition_id", "user_id"], name: "ux_challenge_runs_edition_member", unique: true, where: "(edition_id IS NOT NULL)"
     t.index ["user_id"], name: "ix_challenge_runs_user"
     t.check_constraint "(season_starts_on IS NULL) = (season_ends_on IS NULL)", name: "ck_challenge_runs_season"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'finished'::character varying, 'expired'::character varying, 'abandoned'::character varying]::text[])", name: "ck_challenge_runs_status"
@@ -186,10 +219,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
     t.timestamptz "ended_at", comment: "When the Always Open Challenge reached its end date and Closed for good."
     t.integer "slots_first_year", limit: 2
     t.integer "slots_last_year", limit: 2
+    t.integer "signup_cutoff_month", limit: 2
+    t.integer "signup_cutoff_day", limit: 2
+    t.integer "pick_deadline_month", limit: 2
+    t.integer "pick_deadline_day", limit: 2
+    t.integer "reveal_month", limit: 2
+    t.integer "reveal_day", limit: 2
     t.boolean "counts_past_play", default: false, null: false
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
+    t.check_constraint "challenge_format::text <> 'assignment'::text OR schedule::text = 'always_open'::text AND ends_on IS NULL", name: "ck_challenges_assignment_schedule"
     t.check_constraint "NOT counts_past_play OR schedule::text = 'always_open'::text", name: "ck_challenges_past_play_always_open"
     t.check_constraint "challenge_format::text = ANY (ARRAY['slots'::character varying, 'pool'::character varying, 'assignment'::character varying]::text[])", name: "ck_challenges_format"
     t.check_constraint "pool_target IS NULL OR pool_target >= 1", name: "ck_challenges_pool_target"
@@ -1356,6 +1396,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
   add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
   add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
+  add_foreign_key "challenge_edition_signups", "challenge_editions", column: "edition_id", name: "fk_challenge_edition_signups_edition", on_delete: :cascade
+  add_foreign_key "challenge_edition_signups", "rpg_club_users", column: "recipient_user_id", primary_key: "user_id", name: "fk_challenge_edition_signups_recipient", on_delete: :nullify
+  add_foreign_key "challenge_edition_signups", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_edition_signups_user", on_delete: :cascade
+  add_foreign_key "challenge_editions", "challenges", name: "fk_challenge_editions_challenge", on_delete: :cascade
   add_foreign_key "challenge_lifecycle_steps", "challenges", name: "fk_challenge_lifecycle_steps_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_collections", "challenges", name: "fk_challenge_pool_collections_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_collections", "gamedb_collections", column: "collection_id", primary_key: "collection_id", name: "fk_challenge_pool_collections_collection", on_delete: :cascade
@@ -1366,6 +1410,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_140382) do
   add_foreign_key "challenge_run_entries", "challenge_runs", column: "run_id", name: "fk_challenge_run_entries_run", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_run_entries_game", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "user_game_completions", column: "completion_id", primary_key: "completion_id", name: "fk_challenge_run_entries_completion", on_delete: :nullify
+  add_foreign_key "challenge_runs", "challenge_editions", column: "edition_id", name: "fk_challenge_runs_edition", on_delete: :cascade
   add_foreign_key "challenge_runs", "challenges", name: "fk_challenge_runs_challenge", on_delete: :cascade
   add_foreign_key "challenge_runs", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_runs_user", on_delete: :cascade
   add_foreign_key "challenges", "rpg_club_users", column: "host_user_id", primary_key: "user_id", name: "fk_challenges_host", on_delete: :nullify

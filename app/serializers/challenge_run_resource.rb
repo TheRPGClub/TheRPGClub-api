@@ -3,7 +3,7 @@
 # A Run as the API serves it (spec #376, ticket #378): its Challenge and
 # member, status, window (the club's dates, both ends included), progress
 # (In Progress and Cleared games against the target) and the games counted
-# on it, Cleared first.
+# on it, Cleared first. An Assignment Run names the Edition it was drawn in.
 #
 # Load Runs through ChallengeRunResource.preloaded.
 class ChallengeRunResource
@@ -20,6 +20,11 @@ class ChallengeRunResource
   attribute :user do |run|
     user = run.user
     { user_id: user.user_id, username: user.username, global_name: user.global_name }
+  end
+
+  attribute :edition do |run|
+    edition = run.edition
+    edition && { id: edition.id, year: edition.year }
   end
 
   attribute :window do |run|
@@ -42,7 +47,7 @@ class ChallengeRunResource
     Challenges::Formats::Slots.run_json(run) if run.challenge.challenge_format == Challenges::Formats::Slots::KEY
   end
 
-  PRELOADS = [ :user, { entries: :game, challenge: %i[pool_franchises pool_collections pool_games] } ].freeze
+  PRELOADS = [ :user, :edition, { entries: :game, challenge: %i[pool_franchises pool_collections pool_games] } ].freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)
 end
