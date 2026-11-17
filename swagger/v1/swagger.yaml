@@ -2966,7 +2966,7 @@ components:
           - slots
           - pool
           - assignment
-          description: Only pool so far.
+          description: pool or slots so far.
         hosted_by_club:
           type: boolean
           description: True when the club itself is the Host (host is null).
@@ -3020,6 +3020,10 @@ components:
         pool:
           allOf:
           - "$ref": "#/components/schemas/ChallengePool"
+          nullable: true
+        slots:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeSlots"
           nullable: true
         run_count:
           type: integer
@@ -3121,6 +3125,29 @@ components:
       description: A Pool Challenge's settings. A game is in the Pool if it belongs
         to a chosen franchise or collection and is not excluded, or if it is included
         by hand; it is resolved against the GameDB when read.
+    ChallengeSlots:
+      type: object
+      properties:
+        first_year:
+          oneOf:
+          - type: integer
+          - type: string
+            enum:
+            - birth_year
+          description: A fixed year, or "birth_year" for each member's birth year.
+        last_year:
+          oneOf:
+          - type: integer
+          - type: string
+            enum:
+            - current_year
+          description: 'A fixed year, or "current_year": the range gains a slot every
+            1 January.'
+      required:
+      - first_year
+      - last_year
+      description: 'A Slots Challenge''s range: one slot per release year (ticket
+        #381).'
     ChallengeRun:
       type: object
       properties:
@@ -3201,10 +3228,17 @@ components:
               description: 'Games In Progress: in the member''s Now Playing.'
             cleared:
               type: integer
-              description: Games Cleared by a Game Completion dated inside the window.
+              description: Games Cleared by a Game Completion dated inside the window;
+                for Slots, the slots filled.
             target:
               type: integer
-              description: Cleared games needed to Finish.
+              description: Cleared games needed to Finish; for Slots, the Run's slots
+                so far.
+            caught_up:
+              type: boolean
+              description: 'Slots only (absent otherwise): an Active Run whose range
+                ends at the current year, with every slot so far Cleared. Worked out
+                when read, so it lapses on 1 January.'
           required:
           - in_progress
           - cleared
@@ -3233,10 +3267,55 @@ components:
                 nullable: true
                 description: The Game Completion that Cleared it; null on a Finished
                   Run after it was deleted.
+              slot_year:
+                type: integer
+                nullable: true
+                description: 'Slots: the year this Cleared game fills; null when In
+                  Progress, waiting for an open year, or not Slots.'
+              picked_by_hand:
+                type: boolean
+                description: The member placed it there themselves (a slot move).
             required:
             - game_id
             - title
             - state
+            - picked_by_hand
+        slots:
+          type: object
+          properties:
+            first_year:
+              type: integer
+              description: Copied when the Run started; kept if the Birth Date changes.
+            last_year:
+              type: integer
+              description: 'The last year so far: the current year for a range that
+                grows.'
+            growing:
+              type: boolean
+              description: The range ends at the current year and gains a slot every
+                1 January.
+            years:
+              type: array
+              items:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  game_id:
+                    type: integer
+                    nullable: true
+                  title:
+                    type: string
+                    nullable: true
+                required:
+                - year
+          required:
+          - first_year
+          - last_year
+          - growing
+          nullable: true
+          description: 'Slots only: each year so far and the game filling it (null
+            while open).'
       required:
       - id
       - challenge
@@ -3290,11 +3369,12 @@ components:
           enum:
           - challenge_created
           - run_finished
+          - run_caught_up
         challenge:
           "$ref": "#/components/schemas/Challenge"
         run:
           "$ref": "#/components/schemas/ChallengeRun"
-          description: 'run_finished only: the Run as GET /api/v1/challenge_runs/{id}
+          description: 'run_finished and run_caught_up only: the Run as GET /api/v1/challenge_runs/{id}
             serves it.'
         feature_key:
           type: string
@@ -3305,8 +3385,9 @@ components:
       - feature_key
       description: 'Kind `challenge_announce`. Post in the #challenges channel, or
         the staff test channel while the Feature is in Preview. `event` says what
-        to announce: `challenge_created`, a new Challenge, or `run_finished`, a member''s
-        Run that just Finished (with `run`).'
+        to announce: `challenge_created`, a new Challenge, `run_finished`, a member''s
+        Run that just Finished, or `run_caught_up`, a member''s Slots Run that just
+        became Caught Up (at most once a year), both with `run`.'
     BotJobClaim:
       type: object
       properties:
@@ -7169,9 +7250,11 @@ paths:
         and past, newest first, for their profile. Progress fills in by itself from
         the member''s Game Completions and Now Playing: a Pool game in Now Playing
         is In Progress, and a Game Completion dated inside the Run''s window Clears
-        it. Finished is final. Runs of a hidden Challenge are listed only for Moderators
-        and above, its Host and the Run''s member. The bot may name the member it
-        reads for with `acting_user_id`.'
+        it. A Slots Run''s Cleared game fills the earliest open year it was released
+        in (anywhere), one slot per game; a range ending at the current year is Caught
+        Up while every year so far is Cleared. Finished is final. Runs of a hidden
+        Challenge are listed only for Moderators and above, its Host and the Run''s
+        member. The bot may name the member it reads for with `acting_user_id`.'
       parameters:
       - name: status
         in: query
@@ -7295,8 +7378,11 @@ paths:
         Season, so it may Finish at once (queuing a `challenge_announce` `run_finished`
         job). An Always Open Run counts play from its start day. Refusals carry `{
         error, message }` written for members: 409 `challenge_closed`, and 409 `run_active`
-        (with `run_id`) when the member already has an Active Run of it. The bot sends
-        `{ "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
+        (with `run_id`) when the member already has an Active Run of it. A Slots Run
+        copies its first year: a birth-year one is 409 `birth_date_required` without
+        a Birth Date and 422 `no_slots` when the birth year comes after the last year,
+        and `meta.notices` tells the member their birth year shows on the Run. The
+        bot sends `{ "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
         when the Feature Flag hides the Feature from that member).'
       parameters: []
       responses:
@@ -7309,6 +7395,21 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/ChallengeRun"
+                  meta:
+                    type: object
+                    properties:
+                      notices:
+                        type: array
+                        description: What the member should know about the new Run.
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                              enum:
+                              - birth_year_shown
+                            message:
+                              type: string
         '404':
           description: not found, or hidden from the caller
           content:
@@ -7316,7 +7417,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '409':
-          description: challenge_closed or run_active
+          description: challenge_closed, run_active or birth_date_required
           content:
             application/json:
               schema:
@@ -7327,11 +7428,19 @@ paths:
                     enum:
                     - challenge_closed
                     - run_active
+                    - birth_date_required
                   message:
                     type: string
                   run_id:
                     type: integer
                     description: 'run_active only: the member''s Active Run.'
+        '422':
+          description: 'no_slots: a birth-year Slots Run whose birth year comes after
+            the last year'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
       requestBody:
         content:
           application/json:
@@ -7356,9 +7465,11 @@ paths:
       - Challenges
       description: 'Members. Progress fills in by itself from the member''s Game Completions
         and Now Playing: a Pool game in Now Playing is In Progress, and a Game Completion
-        dated inside the Run''s window Clears it. Finished is final. Runs of a hidden
-        Challenge are listed only for Moderators and above, its Host and the Run''s
-        member.'
+        dated inside the Run''s window Clears it. A Slots Run''s Cleared game fills
+        the earliest open year it was released in (anywhere), one slot per game; a
+        range ending at the current year is Caught Up while every year so far is Cleared.
+        Finished is final. Runs of a hidden Challenge are listed only for Moderators
+        and above, its Host and the Run''s member.'
       parameters:
       - name: acting_user_id
         in: query
@@ -7457,6 +7568,88 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_runs/{id}/slot_move":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Move a game to another year of a Slots Run
+      tags:
+      - Challenges
+      description: The Run's member only (403 otherwise). Puts a game Cleared on the
+        Active Slots Run in another open year it was released in (anywhere); it keeps
+        that slot while it still holds, and a Cleared game waiting for its old year
+        fills it. The bot adds `acting_user_id` to `data`.
+      parameters: []
+      responses:
+        '200':
+          description: the Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '400':
+          description: game_id or slot_year missing or not a whole number
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: slot_filled (with the filling `game_id`) or run_not_active
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - slot_filled
+                    - run_not_active
+                  message:
+                    type: string
+                  game_id:
+                    type: integer
+                    description: 'slot_filled only: the game filling that year.'
+        '422':
+          description: not_slots, not_cleared, slot_out_of_range or slot_not_fitting
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - game_id
+                  - slot_year
+                  properties:
+                    game_id:
+                      type: integer
+                    slot_year:
+                      type: integer
+                    acting_user_id:
+                      type: string
+        required: true
   "/api/v1/challenges":
     get:
       summary: List Challenges
@@ -7577,7 +7770,8 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: 'invalid_challenge: a missing or invalid field, an empty or
-            unknown Pool, a Format not available yet'
+            unknown Pool, a slot range that ends before it starts, a Format not available
+            yet'
           content:
             application/json:
               schema:
@@ -7607,8 +7801,8 @@ paths:
                       - slots
                       - pool
                       - assignment
-                      description: 'Only pool so far: slots and assignment are 422
-                        "not available yet". Locked once the Challenge has a Run.'
+                      description: 'pool or slots so far: assignment is 422 "not available
+                        yet". Locked once the Challenge has a Run.'
                     schedule:
                       type: string
                       enum:
@@ -7669,6 +7863,34 @@ paths:
                             - all
                           description: Cleared games needed to Finish, or "all" for
                             every game in the Pool. Required on create.
+                    slots:
+                      type: object
+                      description: 'The slot range (challenge_format slots): one slot
+                        per release year. On edit, only the keys given change; both
+                        are required on create.'
+                      properties:
+                        first_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - birth_year
+                          description: A fixed year, or "birth_year" for each member's
+                            birth year (a Run then needs their Birth Date, and shows
+                            the year).
+                        last_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - current_year
+                          description: A fixed year, or "current_year" for a range
+                            that gains a slot every 1 January. Not before a fixed
+                            first year.
                     hosted_by_club:
                       type: boolean
                       description: Moderator and above.
@@ -7676,7 +7898,8 @@ paths:
                   - name
                   - challenge_format
                   - schedule
-                  - pool
+                  description: 'Send the settings of the chosen Format: `pool` or
+                    `slots`.'
               required:
               - data
         required: true
@@ -7830,10 +8053,11 @@ paths:
       - Challenges
       description: 'The Host, for their own; any Moderator or above, for a club-hosted
         one. Only the keys given change. Once the Challenge has any Run its rules
-        are locked: a change to the Format, schedule, Season or Pool is 409 `rules_locked`
-        with the `fields` it would change (sending them unchanged is fine). Name,
-        description and end date stay editable. Refusals carry `{ error, message }`;
-        `message` is written for members (403 `forbidden`, 422 `invalid_challenge`).'
+        are locked: a change to the Format, schedule, Season, Pool or slot range is
+        409 `rules_locked` with the `fields` it would change (sending them unchanged
+        is fine). Name, description and end date stay editable. Refusals carry `{
+        error, message }`; `message` is written for members (403 `forbidden`, 422
+        `invalid_challenge`).'
       parameters: []
       responses:
         '200':
@@ -7873,6 +8097,7 @@ paths:
                       - schedule
                       - season
                       - pool
+                      - slots
         '422':
           description: invalid_challenge
           content:
@@ -7904,8 +8129,8 @@ paths:
                       - slots
                       - pool
                       - assignment
-                      description: 'Only pool so far: slots and assignment are 422
-                        "not available yet". Locked once the Challenge has a Run.'
+                      description: 'pool or slots so far: assignment is 422 "not available
+                        yet". Locked once the Challenge has a Run.'
                     schedule:
                       type: string
                       enum:
@@ -7966,6 +8191,34 @@ paths:
                             - all
                           description: Cleared games needed to Finish, or "all" for
                             every game in the Pool. Required on create.
+                    slots:
+                      type: object
+                      description: 'The slot range (challenge_format slots): one slot
+                        per release year. On edit, only the keys given change; both
+                        are required on create.'
+                      properties:
+                        first_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - birth_year
+                          description: A fixed year, or "birth_year" for each member's
+                            birth year (a Run then needs their Birth Date, and shows
+                            the year).
+                        last_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - current_year
+                          description: A fixed year, or "current_year" for a range
+                            that gains a slot every 1 January. Not before a fixed
+                            first year.
               required:
               - data
         required: true

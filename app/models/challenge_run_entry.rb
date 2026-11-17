@@ -2,8 +2,10 @@
 
 # A game counted on a Run (spec #376, "Run entries"): In Progress while it is
 # in the member's Now Playing, Cleared by the Game Completion `completion_id`
-# dated `cleared_on` inside the Run's window. Written only by
-# Challenges::Progress.
+# dated `cleared_on` inside the Run's window. On a Slots Run a Cleared game
+# fills the slot of `slot_year` (null while it waits for an open year), and
+# `picked_by_hand` marks a game the member moved there. Written only by
+# Challenges::Progress and a slot move (Challenges::Runs.move!).
 class ChallengeRunEntry < ApplicationRecord
   STATES = %w[in_progress cleared].freeze
 

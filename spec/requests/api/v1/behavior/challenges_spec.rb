@@ -133,7 +133,7 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("message")).to include("Unknown franchise ids: 999999999")
 
-      create_challenge(as: regular, challenge_format: "slots")
+      create_challenge(as: regular, challenge_format: "assignment")
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("message")).to include("not available yet")
     end

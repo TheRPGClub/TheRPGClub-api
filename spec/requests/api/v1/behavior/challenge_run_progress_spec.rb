@@ -94,7 +94,8 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(run.fetch("progress")).to eq("in_progress" => 0, "cleared" => 1, "target" => 2)
       expect(run.fetch("entries")).to eq([
         { "game_id" => ff7.game_id, "title" => "Final Fantasy VII", "state" => "cleared",
-          "cleared_on" => "2026-10-15", "completion_id" => completion_id }
+          "cleared_on" => "2026-10-15", "completion_id" => completion_id, "slot_year" => nil,
+          "picked_by_hand" => false }
       ])
     end
 

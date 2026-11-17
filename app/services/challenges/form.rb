@@ -4,11 +4,12 @@ module Challenges
   # Creates or edits a Challenge from a request's `data` (spec #376):
   #
   #   name, description
-  #   challenge_format   "pool" (Slots and Assignment arrive later); set on create
+  #   challenge_format   "pool" or "slots" (Assignment arrives later); set on create
   #   schedule           "always_open" or "seasonal"
   #   ends_on            an Always Open Challenge's last day (YYYY-MM-DD), or null
   #   season             a Seasonal Challenge's { start: "MM-DD", end: "MM-DD" }
   #   pool               the Pool's settings (Challenges::Formats::Pool)
+  #   slots              the slot range (Challenges::Formats::Slots)
   #
   # On edit, only the keys given change. Once the Challenge has any Run its
   # rules (Format, schedule, Season and the Format's settings) are locked: a
@@ -36,7 +37,7 @@ module Challenges
       assign_format
       assign_schedule
       format = Formats.fetch(challenge.challenge_format)
-      settings = format.parse(@data[format::KEY], base: challenge.persisted? ? format.load(challenge) : nil)
+      settings = format.parse(@data[format::KEY], base: stored_settings(format))
       refuse_invalid(format.errors(settings))
       check_unlocked(before, rules(format, settings)) if locked
 
@@ -82,6 +83,15 @@ module Challenges
           season_end_day: nil)
         challenge.ends_on = parse_date(@data["ends_on"]) if @data.key?("ends_on")
       end
+    end
+
+    # The Format's stored settings, which an edit changes only where it says;
+    # none on create or when the edit switches to another Format, which then
+    # needs its settings in full.
+    def stored_settings(format)
+      return nil if challenge.new_record? || challenge.challenge_format_changed?
+
+      format.load(challenge)
     end
 
     def parse_date(value)

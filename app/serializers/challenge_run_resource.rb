@@ -34,8 +34,12 @@ class ChallengeRunResource
     run.entries.sort_by { |entry| [ entry.cleared? ? 0 : 1, entry.cleared_on || Date.new(0), entry.game.title.to_s ] }
       .map do |entry|
         { game_id: entry.game_id, title: entry.game.title, state: entry.state, cleared_on: entry.cleared_on&.iso8601,
-          completion_id: entry.completion_id }
+          completion_id: entry.completion_id, slot_year: entry.slot_year, picked_by_hand: entry.picked_by_hand }
       end
+  end
+
+  attribute :slots do |run|
+    Challenges::Formats::Slots.run_json(run) if run.challenge.challenge_format == Challenges::Formats::Slots::KEY
   end
 
   PRELOADS = [ :user, { entries: :game, challenge: %i[pool_franchises pool_collections pool_games] } ].freeze

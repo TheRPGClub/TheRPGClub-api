@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_130381) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -132,7 +132,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
     t.date "cleared_on"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "slot_year", limit: 2
+    t.boolean "picked_by_hand", default: false, null: false
     t.index ["run_id", "game_id"], name: "ux_challenge_run_entries_game", unique: true
+    t.check_constraint "slot_year IS NULL OR state::text = 'cleared'::text", name: "ck_challenge_run_entries_slot_cleared"
     t.check_constraint "state::text = ANY (ARRAY['in_progress'::character varying, 'cleared'::character varying]::text[])", name: "ck_challenge_run_entries_state"
   end
 
@@ -146,6 +149,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
     t.date "season_starts_on"
     t.date "season_ends_on"
     t.timestamptz "ended_at"
+    t.integer "first_year", limit: 2
+    t.integer "caught_up_announced_year", limit: 2
     t.index ["challenge_id", "status"], name: "ix_challenge_runs_challenge_status"
     t.index ["challenge_id", "user_id"], name: "ux_challenge_runs_one_active", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["user_id"], name: "ix_challenge_runs_user"
@@ -170,6 +175,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
     t.string "updated_by", limit: 30
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "slots_first_year", limit: 2
+    t.integer "slots_last_year", limit: 2
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
@@ -177,6 +184,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
     t.check_constraint "pool_target IS NULL OR pool_target >= 1", name: "ck_challenges_pool_target"
     t.check_constraint "schedule::text = 'always_open'::text OR ends_on IS NULL", name: "ck_challenges_ends_on"
     t.check_constraint "schedule::text = ANY (ARRAY['always_open'::character varying, 'seasonal'::character varying]::text[])", name: "ck_challenges_schedule"
+    t.check_constraint "slots_first_year IS NULL OR slots_last_year IS NULL OR slots_first_year <= slots_last_year", name: "ck_challenges_slots_range"
   end
 
   create_table "feature_flag_changes", force: :cascade do |t|

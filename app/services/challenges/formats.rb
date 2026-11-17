@@ -20,10 +20,16 @@ module Challenges
   # and, for Run progress (Challenges::Progress, which describes them):
   #   count(run, plays)                  the games the Run counts now
   #   summary(run, entries)              In Progress, Cleared, target, goal
+  #                                      (and Caught Up, for Slots)
   #
-  # Slots (#381) and Assignment (#383) register here when they are built.
+  # and, for starting a Run (Challenges::Runs.start!):
+  #   run_attributes(challenge, user_id, today:)  what the new Run copies;
+  #                                      raises Challenges::RunRefused
+  #   notices(run)                       what the member is told on start
+  #
+  # Assignment (#383) registers here when it is built.
   module Formats
-    REGISTRY = { "pool" => Formats::Pool }.freeze
+    REGISTRY = { "pool" => Formats::Pool, "slots" => Formats::Slots }.freeze
 
     def self.supported = REGISTRY.keys
 
