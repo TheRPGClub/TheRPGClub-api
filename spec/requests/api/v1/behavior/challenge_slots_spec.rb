@@ -238,6 +238,25 @@ RSpec.describe "api/v1/challenges Slots behavior", type: :request do
     end
   end
 
+  describe "reading a Slots Run" do
+    it "gives each entry its game's release years and cover, and the Challenge's range on the Run" do
+      run_id = start_run(slots(1995, 1999, counts_past_play: true))
+      chrono = game("Chrono Trigger", 1995, 1999, 2008)
+      create(:game_image, :primary, game: chrono)
+      log_completion(chrono)
+      start_playing(game("Suikoden II", 1998))
+
+      run = run_json(run_id)
+
+      expect(run.fetch("challenge")).to include("counts_past_play" => true,
+        "slots" => { "first_year" => 1995, "last_year" => 1999, "counts_past_play" => true })
+      expect(run.fetch("entries").map { |entry| entry.values_at("title", "release_years", "cover_url") }).to eq([
+        [ "Chrono Trigger", [ 1995, 1999, 2008 ], chrono.reload.cover_url ],
+        [ "Suikoden II", [ 1998 ], nil ]
+      ])
+    end
+  end
+
   describe "moving a game to another year" do
     let(:challenge) { slots(1995, 1999) }
     let!(:run_id) { start_run(challenge) }

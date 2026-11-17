@@ -65,7 +65,8 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
 
       payload = announcements("season_opened").sole.payload
       expect(payload.fetch("last_season_finishers")).to eq([ alice, carol ].map do |user|
-        { "user_id" => user.user_id, "username" => user.username, "global_name" => user.global_name }
+        { "user_id" => user.user_id, "username" => user.username, "global_name" => user.global_name,
+          "discord_avatar" => nil, "avatar_url" => "/api/v1/users/#{user.user_id}/avatar" }
       end)
       expect(payload.fetch("pool_games").size).to eq(2)
       expect(payload.dig("pool_games", 0)).to eq("game_id" => cover.game_id, "title" => cover.game.title,

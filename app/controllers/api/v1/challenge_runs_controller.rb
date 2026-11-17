@@ -30,8 +30,13 @@ module Api
       # GET /api/v1/users/:user_id/challenge_runs?status=active
       #
       # The member's Runs, current and past, newest first, for their profile.
+      # `status=ended` lists the Finished, Expired and Abandoned ones.
+      # `meta.signups` lists the member's Secret Santa sign-ups that have no
+      # Run yet (their Edition is still in sign-up, before the draw), so
+      # my-runs and the profile need one read.
       def user_index
-        render_runs(readable_runs.where(user_id: params[:user_id].to_s))
+        user_id = params[:user_id].to_s
+        render_runs(readable_runs.where(user_id: user_id), meta: { signups: open_signups(user_id) })
       end
 
       # GET /api/v1/challenges/:challenge_id/runs?status=active
@@ -162,16 +167,37 @@ module Api
       # the Edition ends.
       def resource_params = { staff: actor.moderator_or_above? }
 
-      def render_runs(scope)
+      # `status` filters by one status, or "ended" by every status but Active
+      # (Finished, Expired, Abandoned).
+      STATUS_FILTERS = (ChallengeRun::STATUSES.to_h { |status| [ status, status ] })
+        .merge("ended" => ChallengeRun::ENDED).freeze
+
+      # The member's sign-ups for Editions still in sign-up, oldest Edition
+      # first, of Challenges the reader may see (or their own).
+      def open_signups(user_id)
+        challenges = actor.user_id.present? && actor.user_id == user_id ? Challenge.all : visible_challenges
+        ChallengeEditionSignup.where(user_id: user_id, withdrawn_at: nil)
+          .joins(:edition).merge(ChallengeEdition.in_signup.where(challenge_id: challenges.select(:id)))
+          .preload(edition: :challenge).order("challenge_editions.signup_cutoff_on", :edition_id)
+          .map do |signup|
+            edition = signup.edition
+            { edition_id: edition.id, year: edition.year, phase: edition.phase,
+              challenge: { id: edition.challenge.id, name: edition.challenge.name }, signed_up_at: signup.signed_up_at,
+              signup_cutoff_on: edition.signup_cutoff_on.iso8601, pick_deadline_on: edition.pick_deadline_on.iso8601,
+              reveal_on: edition.reveal_on.iso8601 }
+          end
+      end
+
+      def render_runs(scope, meta: {})
         status = params[:status].presence
-        if status && !ChallengeRun::STATUSES.include?(status)
-          return render(json: { error: "status must be one of #{ChallengeRun::STATUSES.join(', ')}" },
+        if status && !STATUS_FILTERS.key?(status)
+          return render(json: { error: "status must be one of #{STATUS_FILTERS.keys.join(', ')}" },
             status: :bad_request)
         end
 
-        scope = scope.where(status: status) if status
+        scope = scope.where(status: STATUS_FILTERS.fetch(status)) if status
         render_collection(ChallengeRunResource.preloaded(scope), resource: ChallengeRunResource,
-          default_order: { started_at: :desc, id: :desc }, params: resource_params)
+          default_order: { started_at: :desc, id: :desc }, params: resource_params, meta: meta)
       end
 
       def render_run(run, status: :ok, meta: nil)

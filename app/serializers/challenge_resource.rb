@@ -6,8 +6,10 @@
 #
 # Load Challenges through ChallengeResource.preloaded so the Host, the
 # Pool's names and an Assignment's Editions come in a few queries.
-# `params[:detail]` (the show) adds the Pool's `game_count`, `run_count` and
-# `key_art_url` (Challenges::KeyArt; one query, so lists leave it null).
+# `params[:detail]` (the show) adds the Pool's `game_count` and `key_art_url`
+# (Challenges::KeyArt; one query, so lists leave it null). Lists pass
+# `params[:overview]` (Challenges::Overview.of the page) for `run_count`,
+# `finished_count` and `pool_games`; a single Challenge reads its own.
 class ChallengeResource
   include BaseResource
 
@@ -61,7 +63,15 @@ class ChallengeResource
   end
 
   attribute :run_count do |challenge|
-    challenge.runs.size if params[:detail]
+    overview_of(challenge).run_count(challenge)
+  end
+
+  attribute :finished_count do |challenge|
+    overview_of(challenge).finished_count(challenge)
+  end
+
+  attribute :pool_games do |challenge|
+    overview_of(challenge).pool_games_of(challenge)
   end
 
   attribute :key_art_url do |challenge|
@@ -74,4 +84,13 @@ class ChallengeResource
     .freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)
+
+  private
+
+  def overview_of(challenge)
+    overview = params[:overview]
+    return overview if overview&.covers?(challenge)
+
+    (@overviews ||= {})[challenge.id] ||= Challenges::Overview.of([ challenge ])
+  end
 end

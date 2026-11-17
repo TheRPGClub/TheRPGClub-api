@@ -260,6 +260,55 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(json.dig("meta", "count")).to eq(4)
     end
 
+    it "gives each listed Challenge its Run and Finished counts and its first Pool covers" do
+      busy = create(:challenge)
+      quiet = create(:challenge)
+      %w[active finished finished abandoned].each { |status| create(:challenge_run, challenge: busy, status: status) }
+      covered = %w[Xenogears Chrono Okami Ys Zelda].map do |title|
+        create(:game, title: title).tap { |game| create(:game_image, :primary, game: game) }
+      end
+      uncovered = create(:game, title: "Arc")
+      (covered + [ uncovered ]).each { |game| ChallengePoolGame.create!(challenge: busy, game: game, inclusion: "include") }
+
+      get "/api/v1/challenges", headers: auth_headers_for(member)
+
+      listed = json.fetch("data").index_by { |c| c.fetch("id") }
+      expect(listed.fetch(busy.id)).to include("run_count" => 4, "finished_count" => 2)
+      expect(listed.fetch(busy.id).fetch("pool_games")).to eq(
+        [ covered[1], covered[2], covered[0], covered[3] ].map do |game|
+          { "game_id" => game.game_id, "title" => game.title, "cover_url" => game.cover_url }
+        end
+      )
+      expect(listed.fetch(quiet.id)).to include("run_count" => 0, "finished_count" => 0)
+      expect(listed.fetch(quiet.id).fetch("pool_games").size).to eq(1)
+    end
+
+    it "leaves Pool covers off Slots Challenges and reads a page in a fixed number of queries" do
+      slots = create(:challenge, challenge_format: "slots", slots_first_year: 1990, slots_last_year: 1999)
+      count_queries = lambda do
+        Features.forget_cached_states!
+        queries = 0
+        subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+          queries += 1 unless payload[:name] == "SCHEMA"
+        end
+        begin
+          get "/api/v1/challenges", headers: auth_headers_for(member)
+        ensure
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+        queries
+      end
+
+      small = count_queries.call
+      expect(json.fetch("data").find { |c| c["id"] == slots.id }).to include("pool_games" => [], "run_count" => 0)
+
+      3.times { create(:challenge).tap { |c| create(:challenge_run, challenge: c, status: "finished") } }
+      large = count_queries.call
+
+      expect(json.fetch("data").size).to eq(4)
+      expect(large).to eq(small)
+    end
+
     it "400s for an unknown filter value" do
       get "/api/v1/challenges", params: { open: "maybe" }, headers: auth_headers_for(member)
       expect(response).to have_http_status(:bad_request)

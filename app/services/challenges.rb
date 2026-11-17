@@ -54,8 +54,14 @@ module Challenges
     end
   end
 
-  # A member as Challenge JSON and bot payloads serve them.
-  def self.member(user) = { user_id: user.user_id, username: user.username, global_name: user.global_name }
+  # A member as Challenge JSON and bot payloads serve them: their names, the
+  # Discord avatar hash stored at their last login (null if unknown; with the
+  # user id it makes a Discord CDN URL), and the path of the avatar image the
+  # bot stores (GET /api/v1/users/{id}/avatar, which 404s when it has none).
+  def self.member(user)
+    { user_id: user.user_id, username: user.username, global_name: user.global_name,
+      discord_avatar: user.discord_avatar, avatar_url: "/api/v1/users/#{user.user_id}/avatar" }
+  end
 
   # The name a member goes by in job summaries: their Discord display name,
   # else their username, else their id.

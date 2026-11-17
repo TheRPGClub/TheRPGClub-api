@@ -238,4 +238,55 @@ RSpec.describe "api/v1/challenge runs behavior", type: :request do
       expect(response).to have_http_status(:ok)
     end
   end
+
+  describe "reading Runs" do
+    it "lists a member's ended Runs (Finished, Expired, Abandoned) with status=ended" do
+      runs = %w[active finished expired abandoned].to_h do |status|
+        [ status, create(:challenge_run, challenge: create(:challenge), user: member, status: status) ]
+      end
+
+      get "/api/v1/users/#{member.user_id}/challenge_runs", params: { status: "ended" }, headers: auth_headers_for(member)
+
+      expect(json.fetch("data").map { |run| run.fetch("id") })
+        .to contain_exactly(runs["finished"].id, runs["expired"].id, runs["abandoned"].id)
+
+      get "/api/v1/users/#{member.user_id}/challenge_runs", params: { status: "over" }, headers: auth_headers_for(member)
+      expect(response).to have_http_status(:bad_request)
+      expect(json.fetch("error")).to include("ended")
+    end
+
+    it "gives each entry its game's title and cover, and no Slots fields on a Pool Run" do
+      covered = create(:game, title: "Chrono Trigger").tap { |game| create(:game_image, :primary, game: game) }
+      plain = create(:game, title: "Suikoden")
+      run = create(:challenge_run, challenge: challenge, user: member)
+      ChallengeRunEntry.create!(run: run, game: covered, state: "cleared", cleared_on: Date.new(2026, 10, 1))
+      ChallengeRunEntry.create!(run: run, game: plain, state: "in_progress")
+
+      get "/api/v1/users/#{member.user_id}/challenge_runs", headers: auth_headers_for(member)
+
+      listed = json.fetch("data").sole
+      expect(listed.fetch("entries").map { |entry| entry.values_at("title", "cover_url", "release_years") }).to eq([
+        [ "Chrono Trigger", covered.cover_url, nil ], [ "Suikoden", nil, nil ]
+      ])
+      expect(listed.fetch("challenge")).to include("counts_past_play" => false, "slots" => nil)
+    end
+
+    it "names each member with their Discord avatar and the stored avatar image's path" do
+      member.update!(discord_avatar: "a1b2c3")
+      challenge.host.update!(discord_avatar: nil)
+      run = create(:challenge_run, challenge: challenge, user: member)
+
+      get "/api/v1/challenge_runs/#{run.id}", headers: auth_headers_for(member)
+
+      expect(json.dig("data", "user")).to eq(
+        "user_id" => member.user_id, "username" => member.username, "global_name" => member.global_name,
+        "discord_avatar" => "a1b2c3", "avatar_url" => "/api/v1/users/#{member.user_id}/avatar"
+      )
+
+      get "/api/v1/challenges/#{challenge.id}", headers: auth_headers_for(member)
+
+      expect(json.dig("data", "host")).to include("user_id" => challenge.host_user_id, "discord_avatar" => nil,
+        "avatar_url" => "/api/v1/users/#{challenge.host_user_id}/avatar")
+    end
+  end
 end

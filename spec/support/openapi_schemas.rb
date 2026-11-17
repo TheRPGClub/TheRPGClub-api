@@ -908,7 +908,7 @@ module OpenapiSchemas
         id: int, name: str(maxLength: Challenge::NAME_MAX), description: str,
         challenge_format: str(enum: Challenge::FORMATS),
         hosted_by_club: bool.merge(description: "True when the club itself is the Host (host is null)."),
-        host: obj(user_id: str, username: str, global_name: str(nullable: true)).merge(nullable: true,
+        host: ref("ChallengeMember", nullable: true).merge(
           description: "The member who is the Host; null for a club-hosted Challenge."),
         schedule: str(enum: Challenge::SCHEDULES),
         ends_on: str(nullable: true, format: "date").merge(
@@ -922,7 +922,11 @@ module OpenapiSchemas
         pool: ref("ChallengePool", nullable: true),
         slots: ref("ChallengeSlots", nullable: true),
         assignment: ref("ChallengeAssignment", nullable: true),
-        run_count: int(nullable: true).merge(description: "Every Run of it, whatever its status. Show only; null in lists."),
+        run_count: int.merge(description: "Every Run of it, whatever its status."),
+        finished_count: int.merge(description: "Its Runs that Finished, in any Season."),
+        pool_games: { type: :array, maxItems: 4, items: ref("ChallengePostGame"),
+                      description: "Up to 4 games of a Pool Challenge's Pool for its flyer, those with a cover " \
+                                   "first, then by title (empty for Slots and Assignment)." },
         tint: ref("ChallengeTint"),
         key_art_url: str(nullable: true).merge(
           description: "The picture behind the Challenge's banner and on its posts: for a Pool Challenge, the " \
@@ -1005,6 +1009,7 @@ module OpenapiSchemas
                                            "acting_user_id, and in bot job payloads)."),
         members: { type: :array, description: "The members signed up, first first.", items: obj(
           user_id: str, username: str, global_name: str(nullable: true),
+          discord_avatar: str(nullable: true), avatar_url: str,
           left_out: bool.merge(description: "The draw left them out: fewer than 5 games in their backlog by then."),
           withdrawn: bool.merge(description: "They withdrew after the draw; their recipient gets a random pick.")
         ) },
@@ -1027,11 +1032,22 @@ module OpenapiSchemas
         },
         picks_closed_at: ts(nullable: true).merge(description: "When the random picks were made at the deadline.")
       ),
-      ChallengeMember: obj(user_id: str, username: str, global_name: str(nullable: true)),
+      ChallengeMember: obj(
+        user_id: str, username: str, global_name: str(nullable: true),
+        discord_avatar: str(nullable: true).merge(
+          description: "The member's Discord avatar hash from their last website login; null if unknown. " \
+                       "https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png"
+        ),
+        avatar_url: str(example: "/api/v1/users/123/avatar").merge(
+          description: "The API path of the avatar image the bot stores (404 when it has none)."
+        )
+      ),
       # GET /api/v1/challenge_editions/{id}/santa (ticket #384).
       ChallengeSanta: obj(
         _description: "The acting member's side as a Santa.",
         edition_id: int, year: int,
+        challenge: obj(id: int, name: str),
+        reveal_on: str(format: "date").merge(description: "The picks are revealed on this day."),
         recipient: ref("ChallengeMember"),
         taste: obj(
           genres: { type: :array, maxItems: 3, items: obj(genre_id: int, name: str),
@@ -1044,7 +1060,11 @@ module OpenapiSchemas
           .merge(nullable: true, description: "The game picked for the recipient; null while nothing is."),
         pick_deadline_on: str(format: "date").merge(description: "Picks are open until the start of this day."),
         picks_open: bool,
-        backlog: { type: :array, items: ref("BacklogEntry"),
+        backlog: { type: :array, items: { allOf: [ ref("BacklogEntry"), obj(
+                     hours: num(nullable: true).merge(description: "The HowLongToBeat time backlog#pick compares " \
+                                                                   "(main, single player, main + sides); null without."),
+                     hltb: ref("Hltb", nullable: true)
+                   ) ] },
                    description: "The recipient's backlog minus the games they have Cleared (any Game Completion), " \
                                 "narrowed by `q`." }
       ),
@@ -1052,8 +1072,11 @@ module OpenapiSchemas
       ChallengeRun: obj(
         id: int,
         challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
-          schedule: str(enum: Challenge::SCHEDULES)),
-        user: obj(user_id: str, username: str, global_name: str(nullable: true)),
+          schedule: str(enum: Challenge::SCHEDULES),
+          counts_past_play: bool.merge(description: "Counts past play is on (Slots only; false otherwise)."),
+          slots: ref("ChallengeSlots", nullable: true).merge(description: "Slots only: the Challenge's range " \
+                                                                          "and Counts past play.")),
+        user: ref("ChallengeMember"),
         edition: obj(id: int, year: int).merge(nullable: true,
           description: "Assignment only: the Edition the Run was drawn in."),
         assignment: obj(
@@ -1083,7 +1106,9 @@ module OpenapiSchemas
                                              "when read, so it lapses on 1 January.")
         ),
         entries: { type: :array, description: "The games counted on the Run, Cleared first.", items: obj(
-          game_id: int, title: str, state: str(enum: ChallengeRunEntry::STATES),
+          game_id: int, title: str,
+          cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none."),
+          state: str(enum: ChallengeRunEntry::STATES),
           cleared_on: str(nullable: true, format: "date"),
           completion_id: int(nullable: true).merge(
             description: "The Game Completion that Cleared it; null on a Finished Run after it was deleted."
@@ -1091,7 +1116,11 @@ module OpenapiSchemas
           slot_year: int(nullable: true).merge(description: "Slots: the year this Cleared game fills; null " \
                                                            "when In Progress, waiting for an open year, or not Slots."),
           picked_by_hand: bool.merge(description: "The member placed it there themselves (a slot move or a " \
-                                                  "past-play pick).")
+                                                  "past-play pick)."),
+          release_years: { type: :array, items: { type: :integer }, nullable: true,
+                           description: "Slots only (null otherwise): every year the game fits, its first " \
+                                        "release year and the year of each regional or platform release, " \
+                                        "oldest first; intersect with the Run's open years." }
         ) },
         slots: obj(
           first_year: int.merge(description: "Copied when the Run started; kept if the Birth Date changes."),
@@ -1099,6 +1128,26 @@ module OpenapiSchemas
           growing: bool.merge(description: "The range ends at the current year and gains a slot every 1 January."),
           years: { type: :array, items: obj(year: int, game_id: int(nullable: true), title: str(nullable: true)) }
         ).merge(nullable: true, description: "Slots only: each year so far and the game filling it (null while open).")
+      ),
+      ChallengePoolGameProgress: obj(
+        _description: "A Pool game with who Cleared it and who has it In Progress.",
+        game_id: int, title: str, initial_release_date: ts(nullable: true),
+        cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none."),
+        cleared_by: { type: :array, description: "Members who Cleared it, earliest first.", items: {
+          allOf: [ ref("ChallengeMember"), obj(run_id: int, cleared_on: str(nullable: true, format: "date")) ]
+        } },
+        in_progress: { type: :array, description: "Members playing it on a Run that still counts play.", items: {
+          allOf: [ ref("ChallengeMember"), obj(run_id: int) ]
+        } }
+      ),
+      ChallengeOpenSignup: obj(
+        _description: "A member's sign-up for an Edition still in sign-up (no Run until the draw).",
+        edition_id: int, year: int, phase: str(enum: %w[signup]),
+        challenge: obj(id: int, name: str),
+        signed_up_at: ts,
+        signup_cutoff_on: str(format: "date").merge(description: "Sign-up closes at the start of this day, and " \
+                                                                 "the draw happens on it."),
+        pick_deadline_on: str(format: "date"), reveal_on: str(format: "date")
       ),
       ChallengeWarning: obj(
         code: str(enum: %w[duplicate_name]), message: str,
@@ -1142,7 +1191,9 @@ module OpenapiSchemas
         ),
         joined: int.merge(description: "signup_closed and edition_cancelled only: the members drawn."),
         left_out: int.merge(description: "signup_closed and edition_cancelled only: the members left out for " \
-                                         "having fewer than 5 games in their backlog."),
+                                         "having fewer than `minimum` games in their backlog."),
+        minimum: int.merge(example: 5, description: "signup_closed and edition_cancelled only: the backlog " \
+                                                    "minimum to be drawn."),
         feature_key: str(enum: %w[challenges])
       ),
       ChallengePostGame: obj(

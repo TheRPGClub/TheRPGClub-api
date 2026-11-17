@@ -263,6 +263,55 @@ RSpec.describe "api/v1/challenge editions behavior", type: :request do
       end
     end
 
+    it "lists a member's sign-ups that have no Run yet with their Runs, under meta.signups" do
+      with_backlog(member, 5)
+      sign_up(as: member)
+      signed_up_at = ChallengeEditionSignup.find_by!(user_id: member.user_id).signed_up_at
+
+      travel_to(club_time("2026-11-10 12:00")) do
+        get "/api/v1/users/#{member.user_id}/challenge_runs", headers: auth_headers_for(member)
+      end
+
+      expect(json.fetch("data")).to eq([])
+      expect(json.dig("meta", "signups")).to eq([ {
+        "edition_id" => edition_id, "year" => 2026, "phase" => "signup",
+        "challenge" => { "id" => santa.id, "name" => "Secret Santa" },
+        "signed_up_at" => signed_up_at.as_json, "signup_cutoff_on" => "2026-12-01",
+        "pick_deadline_on" => "2026-12-15", "reveal_on" => "2026-12-25"
+      } ])
+
+      travel_to(club_time("2026-11-10 12:00")) do
+        get "/api/v1/users/#{moderator.user_id}/challenge_runs", headers: auth_headers_for(member)
+      end
+      expect(json.dig("meta", "signups")).to eq([])
+    end
+
+    it "leaves sign-ups out once the draw gave them a Run, and a hidden Challenge's out for others" do
+      with_backlog(member, 5)
+      sign_up(as: member)
+      santa.update!(hidden: true)
+
+      travel_to(club_time("2026-11-10 12:00")) do
+        get "/api/v1/users/#{member.user_id}/challenge_runs", headers: auth_headers_for(moderator)
+        expect(json.dig("meta", "signups").size).to eq(1)
+
+        get "/api/v1/users/#{member.user_id}/challenge_runs", headers: auth_headers_for(member)
+        expect(json.dig("meta", "signups").size).to eq(1)
+
+        get "/api/v1/users/#{member.user_id}/challenge_runs", headers: auth_headers_for(create(:user, role_member: true))
+        expect(json.dig("meta", "signups")).to eq([])
+      end
+
+      santa.update!(hidden: false)
+      santa.editions.sole.update!(phase: "picking")
+      create(:challenge_run, challenge: santa, user: member, edition: santa.editions.sole)
+
+      travel_to(club_time("2026-12-02 12:00")) do
+        get "/api/v1/users/#{member.user_id}/challenge_runs", headers: auth_headers_for(member)
+      end
+      expect(json.dig("meta", "signups")).to eq([])
+    end
+
     it "hides a hidden Challenge's Editions from members" do
       santa.update!(hidden: true)
 

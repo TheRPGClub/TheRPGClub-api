@@ -9,6 +9,16 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
       meta: { '$ref' => '#/components/schemas/PaginationMeta' }
     }
   }
+  member_run_list = {
+    type: :object, properties: {
+      data: { type: :array, items: { '$ref' => '#/components/schemas/ChallengeRun' } },
+      meta: { allOf: [ { '$ref' => '#/components/schemas/PaginationMeta' }, { type: :object, properties: {
+        signups: { type: :array, items: { '$ref' => '#/components/schemas/ChallengeOpenSignup' },
+                   description: "The member's Secret Santa sign-ups that have no Run yet (their Edition is still " \
+                                'in sign-up), soonest draw first, whatever `status` asks for.' }
+      } } ] }
+    }
+  }
   one_run = { type: :object, properties: { data: { '$ref' => '#/components/schemas/ChallengeRun' } } }
   started_run = {
     type: :object, properties: {
@@ -28,7 +38,8 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
              'ending at the current year is Caught Up while every year so far is Cleared. Earlier play counts only ' \
              'when picked by hand (Counts past play). Finished is final.'
   hidden = 'Runs of a hidden Challenge are listed only for Moderators and above, its Host and the Run\'s member.'
-  status_filter = { type: :string, enum: ChallengeRun::STATUSES }
+  status_filter = { type: :string, enum: ChallengeRun::STATUSES + %w[ended],
+                    description: '`ended`: Finished, Expired and Abandoned.' }
 
   path '/api/v1/users/{user_id}/challenge_runs' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
@@ -45,7 +56,7 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
       response '200', 'Runs' do
-        schema run_list
+        schema member_run_list
       end
 
       response '400', 'an unknown `status`' do
