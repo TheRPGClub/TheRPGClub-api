@@ -7,8 +7,9 @@ module Challenges
   #   Challenges::Progress.refresh(user_id)  # => [Change]
   #
   # brings every Run of the member that can still change up to date and
-  # returns the Runs whose status changed, so the caller can queue their
-  # announcements (Challenges.refresh_runs! does both). It runs after every
+  # returns the Runs whose status changed and are to be announced, so the
+  # caller can queue those announcements (Challenges.refresh_runs! does
+  # both). It runs after every
   # commit that writes a Game Completion or Now Playing entry, whatever wrote
   # it (Challenges::CountsTowardRuns), and when a Run starts.
   #
@@ -37,7 +38,9 @@ module Challenges
   #   but until its window ends it keeps counting new play, so a member may
   #   play past a Pool's target.
   # - An Active Run whose goal is reached becomes Finished (Change event
-  #   "run_finished"). One that becomes Caught Up (Slots) is announced
+  #   "run_finished"), announced once per member per Season for a Seasonal
+  #   Challenge (ChallengeFinishAnnouncement), even if they delete the Run
+  #   and start again in that Season. One that becomes Caught Up (Slots) is announced
   #   (Change event "run_caught_up") once a year at most: Caught Up is worked
   #   out from the entries, never stored, and the Run only remembers the
   #   year it was last announced.
@@ -91,7 +94,7 @@ module Challenges
       summary = format.summary(run, counted)
       if summary.goal_reached
         run.update!(status: "finished", ended_at: now)
-        Change.new(run: run, event: "run_finished")
+        Change.new(run: run, event: "run_finished") if run.season_starts_on.nil? || ChallengeFinishAnnouncement.first?(run)
       elsif summary.caught_up && run.caught_up_announced_year != today.year
         run.update!(caught_up_announced_year: today.year)
         Change.new(run: run, event: "run_caught_up")
