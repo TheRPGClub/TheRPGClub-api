@@ -13,8 +13,10 @@ module Challenges
   # On edit, only the keys given change. Once the Challenge has any Run its
   # rules (Format, schedule, Season and the Format's settings) are locked: a
   # change to them raises Challenges::RulesLocked, while sending them
-  # unchanged is fine. Name, description and end date stay editable. Raises
-  # Challenges::Invalid for anything the rules refuse.
+  # unchanged is fine. Name, description and end date stay editable, except
+  # that an Always Open Challenge that reached its end date (`ended_at`, set
+  # by the lifecycle job) is Closed for good, so its schedule and end date no
+  # longer change. Raises Challenges::Invalid for anything the rules refuse.
   class Form
     TEXT_KEYS = %w[name description].freeze
     # The public name of each locked rule, by the column it is stored in.
@@ -35,6 +37,7 @@ module Challenges
       assign_text
       assign_format
       assign_schedule
+      refuse_reopening if challenge.ended_at
       format = Formats.fetch(challenge.challenge_format)
       settings = format.parse(@data[format::KEY], base: challenge.persisted? ? format.load(challenge) : nil)
       refuse_invalid(format.errors(settings))
@@ -82,6 +85,13 @@ module Challenges
           season_end_day: nil)
         challenge.ends_on = parse_date(@data["ends_on"]) if @data.key?("ends_on")
       end
+    end
+
+    ENDED = "This Challenge reached its end date and is Closed for good, so its schedule and end date can no " \
+            "longer change."
+
+    def refuse_reopening
+      raise Invalid, ENDED if challenge.will_save_change_to_schedule? || challenge.will_save_change_to_ends_on?
     end
 
     def parse_date(value)

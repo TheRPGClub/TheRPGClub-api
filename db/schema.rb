@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_130379) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -107,6 +107,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
     t.index ["round_number"], name: "ix_bot_voting_info_round"
   end
 
+  create_table "challenge_lifecycle_steps", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.string "step", limit: 48, null: false
+    t.date "occurs_on", null: false
+    t.timestamptz "done_at", default: -> { "statement_timestamp()" }, null: false
+    t.index ["challenge_id", "step", "occurs_on"], name: "ux_challenge_lifecycle_steps_once", unique: true
+  end
+
   create_table "challenge_pool_collections", primary_key: ["challenge_id", "collection_id"], force: :cascade do |t|
     t.bigint "challenge_id", null: false
     t.bigint "collection_id", null: false
@@ -170,6 +178,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
     t.string "updated_by", limit: 30
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.timestamptz "ended_at", comment: "When the Always Open Challenge reached its end date and Closed for good."
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
@@ -995,6 +1004,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
     t.boolean "role_dev", default: false, null: false
     t.boolean "show_preview_features", default: true, null: false, comment: "Staff setting: show Preview Features on the website (on by default)."
     t.date "birth_date", comment: "The member's Birth Date. Only the member and staff see the full date."
+    t.boolean "challenge_dms", default: true, null: false, comment: "Whether the member wants Challenge reminder DMs (on by default)."
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
@@ -1336,6 +1346,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
   add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
   add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
+  add_foreign_key "challenge_lifecycle_steps", "challenges", name: "fk_challenge_lifecycle_steps_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_collections", "challenges", name: "fk_challenge_pool_collections_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_collections", "gamedb_collections", column: "collection_id", primary_key: "collection_id", name: "fk_challenge_pool_collections_collection", on_delete: :cascade
   add_foreign_key "challenge_pool_franchises", "challenges", name: "fk_challenge_pool_franchises_challenge", on_delete: :cascade

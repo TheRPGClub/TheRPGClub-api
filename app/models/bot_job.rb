@@ -40,6 +40,7 @@ class BotJob < ApplicationRecord
     news_images_renew
     news_catch_up
     challenge_announce
+    challenge_dm
   ].freeze
   # The kinds that post, and the Feature each post belongs to (the posts in
   # Features::REGISTRY's coverage): the claim notice's claim log and the
@@ -58,10 +59,12 @@ class BotJob < ApplicationRecord
     "challenge_announce" => "challenges"
   }.freeze
   # Kinds that post nothing but do a Feature's work, and that Feature: the
-  # News Hub's image renewal and catch-up scan (ticket #358).
+  # News Hub's image renewal and catch-up scan (ticket #358), and Challenge
+  # DMs (ticket #379).
   FEATURE_WORK = {
     "news_images_renew" => "news_hub",
-    "news_catch_up" => "news_hub"
+    "news_catch_up" => "news_hub",
+    "challenge_dm" => "challenges"
   }.freeze
   FEATURE_KEYS = PUBLIC_POST_FEATURES.merge(FEATURE_WORK).freeze
   STATUSES = %w[queued claimed done failed].freeze

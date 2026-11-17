@@ -2687,6 +2687,7 @@ components:
           - news_images_renew
           - news_catch_up
           - challenge_announce
+          - challenge_dm
         summary:
           type: string
           maxLength: 200
@@ -3029,6 +3030,13 @@ components:
           type: boolean
           description: 'Hidden by a Moderator: listed only for Moderators and above
             and the Host.'
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When an Always Open Challenge reached its end date and Closed
+            for good (set the day after ends_on); its schedule and end date can no
+            longer change. Null otherwise.
         created_by:
           type: string
           nullable: true
@@ -3290,12 +3298,16 @@ components:
           enum:
           - challenge_created
           - run_finished
+          - season_opened
         challenge:
           "$ref": "#/components/schemas/Challenge"
         run:
           "$ref": "#/components/schemas/ChallengeRun"
           description: 'run_finished only: the Run as GET /api/v1/challenge_runs/{id}
             serves it.'
+        season:
+          "$ref": "#/components/schemas/ChallengeSeasonDates"
+          description: 'season_opened only: the Season that opened.'
         feature_key:
           type: string
           enum:
@@ -3305,8 +3317,60 @@ components:
       - feature_key
       description: 'Kind `challenge_announce`. Post in the #challenges channel, or
         the staff test channel while the Feature is in Preview. `event` says what
-        to announce: `challenge_created`, a new Challenge, or `run_finished`, a member''s
-        Run that just Finished (with `run`).'
+        to announce: `challenge_created`, a new Challenge; `run_finished`, a member''s
+        Run that just Finished (with `run`); or `season_opened`, a Seasonal Challenge''s
+        Season that just opened (with `season`).'
+    ChallengeSeasonDates:
+      type: object
+      properties:
+        starts_on:
+          type: string
+          format: date
+          example: '2026-06-21'
+        ends_on:
+          type: string
+          format: date
+          example: '2026-09-22'
+      required:
+      - starts_on
+      - ends_on
+      description: One Season's first and last day, as the club's dates (America/New_York),
+        both included.
+    ChallengeDmJobPayload:
+      type: object
+      properties:
+        event:
+          type: string
+          enum:
+          - season_ending
+        user_id:
+          type: string
+          description: The member to DM.
+        challenge:
+          "$ref": "#/components/schemas/Challenge"
+        run:
+          "$ref": "#/components/schemas/ChallengeRun"
+          description: The member's Run, as GET /api/v1/challenge_runs/{id} serves
+            it.
+        season:
+          "$ref": "#/components/schemas/ChallengeSeasonDates"
+        days_left:
+          type: integer
+          example: 7
+          description: Days from today to the Season's last day (7 unless sent late).
+        feature_key:
+          type: string
+          enum:
+          - challenges
+      required:
+      - event
+      - user_id
+      - days_left
+      - feature_key
+      description: 'Kind `challenge_dm`. DM the member `user_id`; post nothing publicly.
+        Sent only to members who keep Challenge DMs on. `event` says what about: `season_ending`,
+        a reminder that the Season of the member''s unFinished Run ends soon (with
+        `run`, `season` and `days_left`).'
     BotJobClaim:
       type: object
       properties:
@@ -3334,6 +3398,7 @@ components:
           - news_images_renew
           - news_catch_up
           - challenge_announce
+          - challenge_dm
         summary:
           type: string
           maxLength: 200
@@ -3344,7 +3409,8 @@ components:
             owns the post (BotJob::PUBLIC_POST_FEATURES), so the bot can route it
             by that Feature''s Flag. A kind that does a Feature''s work without posting
             carries it too (BotJob::FEATURE_WORK). Documented payloads: SayJobPayload,
-            NewsImagesRenewJobPayload, NewsCatchUpJobPayload.'
+            NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
+            ChallengeDmJobPayload.'
         status:
           type: string
           enum:
@@ -3745,6 +3811,18 @@ components:
       - hidden
       - show_preview_features
       - features
+    ChallengeSettings:
+      type: object
+      properties:
+        user_id:
+          type: string
+        dms:
+          type: boolean
+          description: Whether the member gets Challenge reminder DMs; true until
+            they turn it off.
+      required:
+      - user_id
+      - dms
     BirthDate:
       type: object
       properties:
@@ -7457,6 +7535,119 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/challenge_settings":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    get:
+      summary: Show a member's Challenge settings
+      tags:
+      - Challenges
+      description: 'The member''s Challenge DM opt-out: whether the bot may DM them
+        Challenge reminders (a Season ending soon). On until the member turns it off,
+        including for a member the API has no record of. Only the member, or the bot''s
+        service token acting for them, may read it.'
+      responses:
+        '200':
+          description: challenge settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeSettings"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Challenges Feature is unavailable to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Change a member's Challenge settings
+      tags:
+      - Challenges
+      description: Turns the member's Challenge DMs on or off. Only the member, or
+        the bot's service token acting for them, may change it. Creates the member's
+        record if the API has none yet. Returns the whole document, as GET does.
+      parameters: []
+      responses:
+        '200':
+          description: updated challenge settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeSettings"
+                required:
+                - data
+        '422':
+          description: "`dms` missing or not a boolean (error `invalid_settings`)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Challenges Feature is unavailable to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    dms:
+                      type: boolean
+                      description: Whether the member gets Challenge reminder DMs.
+                  required:
+                  - dms
+              required:
+              - data
+        required: true
   "/api/v1/challenges":
     get:
       summary: List Challenges
@@ -7620,7 +7811,8 @@ paths:
                       format: date
                       nullable: true
                       description: 'Always Open only: the last Open day (club time
-                        zone). Stays editable after Runs exist.'
+                        zone). Stays editable after Runs exist, until the day after
+                        it, when the Challenge Closes for good.'
                     season:
                       type: object
                       nullable: true
@@ -7832,8 +8024,10 @@ paths:
         one. Only the keys given change. Once the Challenge has any Run its rules
         are locked: a change to the Format, schedule, Season or Pool is 409 `rules_locked`
         with the `fields` it would change (sending them unchanged is fine). Name,
-        description and end date stay editable. Refusals carry `{ error, message }`;
-        `message` is written for members (403 `forbidden`, 422 `invalid_challenge`).'
+        description and end date stay editable, except that an Always Open Challenge
+        that reached its end date is Closed for good (`ended_at`): a change to its
+        schedule or end date is 422 `invalid_challenge`. Refusals carry `{ error,
+        message }`; `message` is written for members (403 `forbidden`, 422 `invalid_challenge`).'
       parameters: []
       responses:
         '200':
@@ -7874,7 +8068,8 @@ paths:
                       - season
                       - pool
         '422':
-          description: invalid_challenge
+          description: invalid_challenge, including a new schedule or end date for
+            a Challenge Closed for good
           content:
             application/json:
               schema:
@@ -7917,7 +8112,8 @@ paths:
                       format: date
                       nullable: true
                       description: 'Always Open only: the last Open day (club time
-                        zone). Stays editable after Runs exist.'
+                        zone). Stays editable after Runs exist, until the day after
+                        it, when the Challenge Closes for good.'
                     season:
                       type: object
                       nullable: true

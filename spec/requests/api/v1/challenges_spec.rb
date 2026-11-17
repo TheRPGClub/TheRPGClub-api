@@ -29,7 +29,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
                                      'Locked once the Challenge has a Run.' },
     schedule: { type: :string, enum: Challenge::SCHEDULES, description: 'Locked once the Challenge has a Run.' },
     ends_on: { type: :string, format: :date, nullable: true,
-               description: 'Always Open only: the last Open day (club time zone). Stays editable after Runs exist.' },
+               description: 'Always Open only: the last Open day (club time zone). Stays editable after Runs exist, ' \
+                            'until the day after it, when the Challenge Closes for good.' },
     season: { type: :object, nullable: true,
               description: 'Seasonal only: start and end as MM-DD, repeating every year; the end may come before ' \
                            'the start to cross the new year. Locked once the Challenge has a Run.',
@@ -187,7 +188,9 @@ RSpec.describe 'api/v1/challenges', type: :request do
       description 'The Host, for their own; any Moderator or above, for a club-hosted one. Only the keys given ' \
                   'change. Once the Challenge has any Run its rules are locked: a change to the Format, ' \
                   'schedule, Season or Pool is 409 `rules_locked` with the `fields` it would change (sending ' \
-                  'them unchanged is fine). Name, description and end date stay editable. ' + refusal
+                  'them unchanged is fine). Name, description and end date stay editable, except that an Always ' \
+                  'Open Challenge that reached its end date is Closed for good (`ended_at`): a change to its ' \
+                  'schedule or end date is 422 `invalid_challenge`. ' + refusal
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -209,7 +212,7 @@ RSpec.describe 'api/v1/challenges', type: :request do
         }
       end
 
-      response '422', 'invalid_challenge' do
+      response '422', 'invalid_challenge, including a new schedule or end date for a Challenge Closed for good' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
