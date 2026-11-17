@@ -3579,6 +3579,8 @@ components:
             counts_past_play:
               type: boolean
               description: Counts past play is on (Slots only; false otherwise).
+            tint:
+              "$ref": "#/components/schemas/ChallengeTint"
             slots:
               allOf:
               - "$ref": "#/components/schemas/ChallengeSlots"
@@ -8985,6 +8987,10 @@ paths:
                           type: integer
                         title:
                           type: string
+                        cover_url:
+                          type: string
+                          nullable: true
+                          description: The game's cover; null without one.
                         completed_at:
                           type: string
                           format: date

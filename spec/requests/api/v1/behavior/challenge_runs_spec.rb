@@ -271,6 +271,18 @@ RSpec.describe "api/v1/challenge runs behavior", type: :request do
       expect(listed.fetch("challenge")).to include("counts_past_play" => false, "slots" => nil)
     end
 
+    it "gives the Run's Challenge its tint, as the Challenge reads" do
+      challenge.update!(tint: Challenges::Tint::Pair.new(fill: "#2c4f8e", hi: "#9ab8f2"))
+      run = create(:challenge_run, challenge: challenge, user: member)
+
+      get "/api/v1/challenge_runs/#{run.id}", headers: auth_headers_for(member)
+
+      expect(json.dig("data", "challenge", "tint")).to eq("fill" => "#2c4f8e", "hi" => "#9ab8f2")
+
+      get "/api/v1/challenges/#{challenge.id}", headers: auth_headers_for(member)
+      expect(json.dig("data", "tint")).to eq("fill" => "#2c4f8e", "hi" => "#9ab8f2")
+    end
+
     it "names each member with their Discord avatar and the stored avatar image's path" do
       member.update!(discord_avatar: "a1b2c3")
       challenge.host.update!(discord_avatar: nil)

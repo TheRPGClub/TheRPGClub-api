@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-# A Run as the API serves it (spec #376, ticket #378): its Challenge and
-# member, status, window (the club's dates, both ends included), progress
-# (In Progress and Cleared games against the target) and the games counted
-# on it, Cleared first. An Assignment Run names the Edition it was drawn in.
+# A Run as the API serves it (spec #376, ticket #378): its Challenge (with
+# its tint) and member, status, window (the club's dates, both ends
+# included), progress (In Progress and Cleared games against the target)
+# and the games counted on it, Cleared first. An Assignment Run names the Edition it was drawn in.
 #
 # Load Runs through ChallengeRunResource.preloaded.
 class ChallengeRunResource
@@ -15,7 +15,7 @@ class ChallengeRunResource
     challenge = run.challenge
     slots = challenge.challenge_format == Challenges::Formats::Slots::KEY
     { id: challenge.id, name: challenge.name, challenge_format: challenge.challenge_format,
-      schedule: challenge.schedule, counts_past_play: challenge.counts_past_play,
+      schedule: challenge.schedule, counts_past_play: challenge.counts_past_play, tint: challenge.tint.as_json,
       slots: (Challenges::Formats::Slots.as_json(challenge, Challenges::Formats::Slots.load(challenge)) if slots) }
   end
 
