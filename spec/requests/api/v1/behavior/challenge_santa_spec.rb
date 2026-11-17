@@ -239,6 +239,88 @@ RSpec.describe "api/v1/challenge santa behavior", type: :request do
     end
   end
 
+  describe "what members see while Santas pick" do
+    let(:carol) { member_with_backlog("Ico", "Rez", "Vib-Ribbon", "Gitaroo Man", "Mr. Mosquito") }
+    let(:onlooker) { create(:user, role_member: true) }
+
+    def edition(as:, at: "2026-12-05 12:00")
+      travel_to(club_time(at)) do
+        get "/api/v1/challenge_editions/#{edition_id}", headers: auth_headers_for(as)
+        expect(response).to have_http_status(:ok)
+        json.fetch("data")
+      end
+    end
+
+    def picked_by_member(shown) = shown.fetch("members").to_h { |member| [ member.fetch("user_id"), member.fetch("picked") ] }
+
+    def recipient_of(santa) = santa_view(as: santa).then { json.dig("data", "recipient", "user_id") }
+
+    it "marks each recipient picked once their Santa picks, and counts the picks" do
+      draw(alice, bob, carol)
+      expect(edition(as: onlooker)).to include("picked_count" => 0)
+      expect(picked_by_member(edition(as: onlooker)).values).to all(be(false))
+
+      recipient = [ alice, bob, carol ].find { |user| user.user_id == recipient_of(alice) }
+      pick(UserGameBacklog.where(user_id: recipient.user_id).first.game, as: alice)
+
+      shown = edition(as: onlooker)
+      expect(shown).to include("picked_count" => 1)
+      expect(picked_by_member(shown)).to eq(alice.user_id => false, bob.user_id => false, carol.user_id => false,
+        recipient.user_id => true)
+    end
+
+    it "shows a member no Santa and no game while Santas pick" do
+      draw(alice, bob, carol)
+      recipient = [ alice, bob, carol ].find { |user| user.user_id == recipient_of(alice) }
+      game = UserGameBacklog.where(user_id: recipient.user_id).first.game
+      pick(game, as: alice)
+
+      [ onlooker, recipient, alice ].each do |reader|
+        shown = edition(as: reader)
+        expect(shown).to include("phase" => "picking", "assignments" => nil)
+        expect(shown.fetch("members")).to all(satisfy { |member|
+          member.keys.sort == %w[avatar_url discord_avatar global_name left_out picked user_id username withdrawn]
+        })
+        expect(response.body).not_to include(game.title)
+        expect(response.body).not_to match(/"(santa|recipient|game|game_id|picked_game_id)"/)
+      end
+    end
+
+    it "keeps a recipient picked when their Santa withdraws, so the withdrawal doesn't give the Santa away" do
+      draw(alice, bob, carol)
+      recipient = [ alice, bob, carol ].find { |user| user.user_id == recipient_of(alice) }
+      pick(UserGameBacklog.where(user_id: recipient.user_id).first.game, as: alice)
+      unpicked = [ alice, bob, carol ].find { |user| user.user_id == recipient_of(bob) }
+
+      travel_to(club_time("2026-12-06 12:00")) do
+        delete "/api/v1/challenge_editions/#{edition_id}/signup", headers: auth_headers_for(alice)
+        delete "/api/v1/challenge_editions/#{edition_id}/signup", headers: auth_headers_for(bob)
+      end
+
+      shown = edition(as: onlooker, at: "2026-12-06 12:00")
+      expect(shown).to include("picked_count" => 1)
+      expect(picked_by_member(shown)).to include(recipient.user_id => true, unpicked.user_id => false)
+
+      tick("2026-12-15 00:01")
+      expect(edition(as: onlooker, at: "2026-12-15 12:00")).to include("picked_count" => 3)
+    end
+
+    it "has no picked flags before the draw, for members the draw left out, or once the picks are revealed" do
+      left_out = member_with_backlog("A", "B", "C", "D", "E")
+      expect(edition(as: onlooker, at: "2026-11-10 12:00")).to include("picked_count" => nil)
+
+      draw(alice, bob, left_out) do
+        UserGameBacklog.where(user_id: left_out.user_id).first.destroy!
+      end
+      expect(picked_by_member(edition(as: onlooker))).to include(left_out.user_id => nil, alice.user_id => false)
+
+      tick("2026-12-25 00:01")
+      shown = edition(as: onlooker, at: "2026-12-25 12:00")
+      expect(shown).to include("phase" => "revealed", "picked_count" => nil)
+      expect(picked_by_member(shown).values).to all(be_nil)
+    end
+  end
+
   describe "withdrawing after the draw" do
     def withdraw(as:, at: "2026-12-05 12:00")
       travel_to(club_time(at)) do

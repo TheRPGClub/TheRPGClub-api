@@ -3346,12 +3346,24 @@ components:
                 type: boolean
                 description: They withdrew after the draw; their recipient gets a
                   random pick.
+              picked:
+                type: boolean
+                nullable: true
+                description: 'While Santas pick: a game is picked for them (their
+                  Santa''s pick, kept when the Santa withdraws, or the random pick
+                  at the deadline). Null in other phases and for members the draw
+                  left out. Never names the Santa or the game.'
             required:
             - user_id
             - username
             - avatar_url
             - left_out
             - withdrawn
+        picked_count:
+          type: integer
+          nullable: true
+          description: 'While Santas pick: how many members have a game picked for
+            them. Null in other phases.'
         drawn_at:
           type: string
           format: date-time
@@ -3410,6 +3422,21 @@ components:
           format: date-time
           nullable: true
           description: When the random picks were made at the deadline.
+        viewer:
+          type: object
+          properties:
+            backlog_count:
+              type: integer
+              description: Games in the member's backlog.
+            eligible:
+              type: boolean
+              description: backlog_count meets the 5-game minimum to sign up.
+          required:
+          - backlog_count
+          - eligible
+          nullable: true
+          description: The member reading. Null for the bot without acting_user_id,
+            and in bot job payloads.
       required:
       - id
       - year

@@ -140,7 +140,18 @@ module Api
         ChallengeEdition.where(challenge_id: challenges.select(:id)).find(params[:id])
       end
 
-      def resource_params = { user_id: actor.user_id, today: Challenges.today, staff: actor.moderator_or_above? }
+      def resource_params
+        { user_id: actor.user_id, today: Challenges.today, staff: actor.moderator_or_above?, viewer: viewer }
+      end
+
+      # The member reading's backlog size and whether it meets the sign-up
+      # minimum, read once per request; nil without a member.
+      def viewer
+        return if actor.user_id.blank?
+
+        count = Challenges::Editions.backlog_count(actor.user_id)
+        { backlog_count: count, eligible: count >= Challenges::Editions::BACKLOG_MINIMUM }
+      end
 
       def render_edition(edition)
         edition = ChallengeEditionResource.preloaded(ChallengeEdition.where(id: edition.id)).first!

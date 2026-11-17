@@ -5,7 +5,8 @@
 # draw left them out or they withdrew after it. From the reveal on it serves
 # the assignments (ticket #384), with the Santas only once the Edition ends,
 # except to staff. `params[:user_id]` is the member reading, for `signed_up`,
-# and `params[:staff]` whether they are staff (a Moderator or above).
+# `params[:staff]` whether they are staff (a Moderator or above), and
+# `params[:viewer]` their backlog size against the sign-up minimum.
 #
 # Load Editions through ChallengeEditionResource.preloaded.
 class ChallengeEditionResource
@@ -36,10 +37,19 @@ class ChallengeEditionResource
     user_id.present? && edition.signups.any? { |signup| signup.user_id == user_id }
   end
 
+  # `picked`: while Santas pick, whether a game is picked for the member
+  # (null outside the picking phase, and for members the draw left out).
   attribute :members do |edition|
+    picked = ChallengeEditionResource.picked_recipients(edition)
     edition.signups.sort_by(&:signed_up_at).map do |signup|
-      Challenges.member(signup.user).merge(left_out: signup.left_out?, withdrawn: signup.withdrawn?)
+      Challenges.member(signup.user).merge(left_out: signup.left_out?, withdrawn: signup.withdrawn?,
+        picked: picked && (picked[signup.user_id] unless signup.left_out?))
     end
+  end
+
+  # How many recipients have a game picked while Santas pick; null otherwise.
+  attribute :picked_count do |edition|
+    ChallengeEditionResource.picked_recipients(edition)&.count { |_user_id, picked| picked }
   end
 
   attributes :drawn_at
@@ -66,6 +76,25 @@ class ChallengeEditionResource
   end
 
   attributes :picks_closed_at
+
+  # The member reading (`params[:viewer]`): their backlog size and whether
+  # it meets the sign-up minimum. Null without a member, and in bot job
+  # payloads.
+  attribute :viewer do
+    params[:viewer]
+  end
+
+  # While Santas pick, each recipient's user id => whether a game is picked
+  # for them; nil in any other phase. A recipient stays picked when their
+  # Santa withdraws after picking (Challenges::Picks.withdraw! keeps
+  # `picked_at`), so the flag never changes when a Santa withdraws and
+  # nobody can tell from it whose Santa they were. Neither the Santa nor
+  # the game is served.
+  def self.picked_recipients(edition)
+    return unless edition.phase == "picking"
+
+    edition.signups.select(&:recipient_user_id).to_h { |signup| [ signup.recipient_user_id, signup.picked_at.present? ] }
+  end
 
   PRELOADS = [ :challenge, { signups: %i[user recipient picked_game], runs: %i[entries challenge] } ].freeze
 

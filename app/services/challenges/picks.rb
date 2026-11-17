@@ -100,7 +100,9 @@ module Challenges
     # A drawn member withdraws after the draw, until the pick deadline: they
     # leave the Edition, so their pick is dropped (their recipient gets a
     # random one at the deadline) and their own Run is Abandoned. The circle
-    # is not redrawn. Call inside the Edition's lock.
+    # is not redrawn. `picked_at` stays, so the recipient still shows as
+    # picked (ChallengeEditionResource) and the withdrawal doesn't give away
+    # whose Santa they were. Call inside the Edition's lock.
     def self.withdraw!(signup, now: Time.current)
       edition = signup.edition
       if signup.left_out?
@@ -111,7 +113,7 @@ module Challenges
           date: edition.pick_deadline_on.strftime("%-d %B %Y")))
       end
 
-      signup.update!(withdrawn_at: now, picked_game_id: nil, picked_at: nil, picked_randomly: false)
+      signup.update!(withdrawn_at: now, picked_game_id: nil, picked_randomly: false)
       edition.runs.active.where(user_id: signup.user_id).find_each { |run| Runs.abandon!(run, now: now) }
     end
 

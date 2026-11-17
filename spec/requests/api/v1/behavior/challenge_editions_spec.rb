@@ -312,6 +312,63 @@ RSpec.describe "api/v1/challenge editions behavior", type: :request do
       expect(json.dig("meta", "signups")).to eq([])
     end
 
+    it "tells the member reading their backlog size and whether it is enough to sign up" do
+      with_backlog(member, 4)
+      reader = with_backlog(create(:user, role_member: true), 5)
+
+      travel_to(club_time("2026-11-10 12:00")) do
+        get "/api/v1/challenge_editions/#{edition_id}", headers: auth_headers_for(member)
+        expect(json.dig("data", "viewer")).to eq("backlog_count" => 4, "eligible" => false)
+
+        get "/api/v1/challenges/#{santa.id}/editions", headers: auth_headers_for(reader)
+        expect(json.dig("data", 0, "viewer")).to eq("backlog_count" => 5, "eligible" => true)
+
+        get "/api/v1/challenge_editions/#{edition_id}", headers: service_headers, params: { acting_user_id: member.user_id }
+        expect(json.dig("data", "viewer")).to eq("backlog_count" => 4, "eligible" => false)
+
+        get "/api/v1/challenge_editions/#{edition_id}", headers: service_headers
+        expect(json.dig("data", "viewer")).to be_nil
+      end
+    end
+
+    it "reads a Challenge's Editions in a fixed number of queries" do
+      with_backlog(member, 5)
+      count_queries = lambda do
+        Features.forget_cached_states!
+        queries = 0
+        subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+          queries += 1 unless payload[:name] == "SCHEMA"
+        end
+        begin
+          get "/api/v1/challenges/#{santa.id}/editions", headers: auth_headers_for(member)
+        ensure
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+        queries
+      end
+      drawn = lambda do |year, games|
+        edition = ChallengeEdition.create!(challenge: santa, year: year, phase: "picking",
+          signup_opens_on: Date.new(year - 1, 12, 26), signup_cutoff_on: Date.new(year, 12, 1),
+          pick_deadline_on: Date.new(year, 12, 15), reveal_on: Date.new(year, 12, 25), ends_on: Date.new(year + 1, 12, 25))
+        users = create_list(:user, 2, role_member: true)
+        users.each_with_index do |user, index|
+          edition.signups.create!(user_id: user.user_id, recipient_user_id: users[1 - index].user_id,
+            picked_game: games[index], picked_at: games[index] && Time.current)
+        end
+      end
+
+      drawn.call(2024, [ create(:game), nil ])
+      small = count_queries.call
+
+      drawn.call(2023, [ create(:game), create(:game) ])
+      drawn.call(2022, [ nil, nil ])
+      large = count_queries.call
+
+      expect(json.fetch("data").size).to eq(4)
+      expect(json.fetch("data").map { |edition| edition["picked_count"] }).to eq([ nil, 1, 2, 0 ])
+      expect(large).to eq(small)
+    end
+
     it "hides a hidden Challenge's Editions from members" do
       santa.update!(hidden: true)
 
