@@ -114,18 +114,21 @@ module Api
       #
       # The member's earlier Game Completions they could pick for their Slots
       # Run now (past_pick), each with the open years its game fits, oldest
-      # first and undated last; `q` narrows by title. Refused like past_pick.
+      # first and undated last, with its game's cover; `q` narrows by title.
+      # Refused like past_pick.
       def past_play
         own_run do |run|
           rows = Challenges::Runs.past_play(run)
-          titles = GamedbGame.where(game_id: rows.map { |completion, _| completion.game_id }).pluck(:game_id, :title).to_h
+          games = GamedbGame.where(game_id: rows.map { |completion, _| completion.game_id }).preload(:images)
+            .index_by(&:game_id)
           query = params[:q].to_s.strip.downcase
           data = rows.filter_map do |completion, years|
-            title = titles[completion.game_id]
+            game = games[completion.game_id]
+            title = game&.title
             next if query.present? && !title.to_s.downcase.include?(query)
 
             { completion_id: completion.completion_id, game_id: completion.game_id, title: title,
-              completed_at: completion.cleared_on&.iso8601, open_years: years }
+              cover_url: game&.cover_url, completed_at: completion.cleared_on&.iso8601, open_years: years }
           end
           render json: { data: data }
         end

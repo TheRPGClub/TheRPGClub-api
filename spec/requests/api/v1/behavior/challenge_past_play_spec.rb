@@ -362,6 +362,39 @@ RSpec.describe "api/v1/challenges Counts past play behavior", type: :request do
       expect(json.fetch("data").map { |row| row["title"] }).to eq([ "Xenogears" ])
     end
 
+    it "gives each Game Completion its game's cover, in a fixed number of queries" do
+      chrono = game("Chrono Trigger", 1995).tap { |covered| create(:game_image, :primary, game: covered) }
+      log_completion(chrono, on: "2018-01-01")
+      run_id = start_run(slots)
+      count_queries = lambda do
+        queries = 0
+        subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+          queries += 1 unless payload[:name] == "SCHEMA"
+        end
+        begin
+          get "/api/v1/challenge_runs/#{run_id}/past_play", headers: auth_headers_for(member)
+        ensure
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+        queries
+      end
+
+      small = count_queries.call
+      expect(json.fetch("data")).to contain_exactly(
+        a_hash_including("title" => "Chrono Trigger", "cover_url" => chrono.cover_url)
+      )
+
+      xenogears = game("Xenogears", 1998).tap { |covered| create(:game_image, :primary, game: covered) }
+      log_completion(xenogears, on: "2019-03-02")
+      log_completion(game("Suikoden", 1996), on: "2019-04-02")
+      large = count_queries.call
+
+      expect(json.fetch("data").map { |row| row.values_at("title", "cover_url") }).to contain_exactly(
+        [ "Chrono Trigger", chrono.cover_url ], [ "Xenogears", xenogears.cover_url ], [ "Suikoden", nil ]
+      )
+      expect(large).to eq(small)
+    end
+
     it "lists undated Game Completions" do
       undated = undated_completion(game("Suikoden", 1995))
       run_id = start_run(slots)

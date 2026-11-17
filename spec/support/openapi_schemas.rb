@@ -1074,6 +1074,7 @@ module OpenapiSchemas
         challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
           schedule: str(enum: Challenge::SCHEDULES),
           counts_past_play: bool.merge(description: "Counts past play is on (Slots only; false otherwise)."),
+          tint: ref("ChallengeTint"),
           slots: ref("ChallengeSlots", nullable: true).merge(description: "Slots only: the Challenge's range " \
                                                                           "and Counts past play.")),
         user: ref("ChallengeMember"),

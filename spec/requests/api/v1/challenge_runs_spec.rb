@@ -302,6 +302,7 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
         schema type: :object, properties: {
           data: { type: :array, items: { type: :object, properties: {
             completion_id: { type: :integer }, game_id: { type: :integer }, title: { type: :string },
+            cover_url: { type: :string, nullable: true, description: 'The game\'s cover; null without one.' },
             completed_at: { type: :string, format: :date, nullable: true },
             open_years: { type: :array, items: { type: :integer }, description: 'Open years of the Run it fits.' }
           } } }
