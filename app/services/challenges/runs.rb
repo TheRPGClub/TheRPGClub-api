@@ -36,10 +36,14 @@ module Challenges
 
     def self.start!(challenge, user_id, now: Time.current)
       today = Challenges.today(now)
-      raise RunRefused.new("challenge_closed", CLOSED) unless challenge.open?(today)
-
-      season = challenge.seasonal? ? challenge.schedule_rules.season_on(today) : nil
       run = ChallengeRun.transaction do
+        # The Challenge stays locked until the Run is in, as for a rule edit
+        # (Challenges::Form), so its rules can't change under a first Run
+        # and two starts by one member wait for each other.
+        challenge.lock!
+        raise RunRefused.new("challenge_closed", CLOSED) unless challenge.open?(today)
+
+        season = challenge.seasonal? ? challenge.schedule_rules.season_on(today) : nil
         refuse_active!(challenge, user_id)
         refuse_season_run!(challenge, user_id, season) if season
         format_attributes = challenge.format_rules.run_attributes(challenge, user_id, today: today)
@@ -49,10 +53,6 @@ module Challenges
         created
       end
       run.reload
-    rescue ActiveRecord::RecordNotUnique
-      # Another request started one between the check and the insert.
-      refuse_active!(challenge, user_id)
-      raise
     end
 
     def self.abandon!(run, now: Time.current)

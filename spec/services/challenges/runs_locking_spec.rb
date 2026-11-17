@@ -33,22 +33,6 @@ RSpec.describe Challenges::Runs do
       .delete_all
   end
 
-  def in_thread(&block)
-    Thread.new do
-      Thread.current.report_on_exception = false
-      ActiveRecord::Base.connection_pool.with_connection(&block)
-    end
-  end
-
-  def wait_for_a_blocked_lock
-    50.times do
-      return if ActiveRecord::Base.connection.select_value("SELECT count(*) FROM pg_locks WHERE NOT granted").positive?
-
-      sleep 0.05
-    end
-    raise "nothing waited on a lock"
-  end
-
   it "moves a game while a refresh of the member's Runs is under way, without deadlocking" do
     refresh_holds_first_run = Queue.new
     move_waits = Queue.new

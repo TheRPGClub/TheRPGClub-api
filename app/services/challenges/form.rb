@@ -35,18 +35,21 @@ module Challenges
     end
 
     def save!
-      locked = challenge.persisted? && challenge.runs?
-      before = rules if locked
-      assign_text
-      assign_format
-      assign_schedule
-      refuse_reopening if challenge.ended_at
-      format = Formats.fetch(challenge.challenge_format)
-      settings = format.parse(@data[format::KEY], base: stored_settings(format))
-      refuse_invalid(format.errors(settings, challenge))
-      check_unlocked(before, rules(format, settings)) if locked
-
       Challenge.transaction do
+        # Locked as a Run starting locks it (Challenges::Runs.start!), so
+        # the rules lock below sees a first Run that is starting now.
+        Challenge.where(id: challenge.id).lock.ids if challenge.persisted?
+        locked = challenge.persisted? && challenge.runs?
+        before = rules if locked
+        assign_text
+        assign_format
+        assign_schedule
+        refuse_reopening if challenge.ended_at
+        format = Formats.fetch(challenge.challenge_format)
+        settings = format.parse(@data[format::KEY], base: stored_settings(format))
+        refuse_invalid(format.errors(settings, challenge))
+        check_unlocked(before, rules(format, settings)) if locked
+
         challenge.save!
         format.apply!(challenge, settings)
       end
