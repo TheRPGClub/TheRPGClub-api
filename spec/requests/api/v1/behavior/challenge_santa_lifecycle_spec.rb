@@ -173,7 +173,7 @@ RSpec.describe "api/v1/challenge santa lifecycle behavior", type: :request do
         "game" => include("title" => "Okami"), "santa" => include("user_id" => bob.user_id))
     end
 
-    it "picks at random for the recipients of Santas who withdrew or left the server, without redrawing" do
+    it "picks at random for the recipients of Santas who withdrew or left the server without picking, without redrawing" do
       carol = member_with_backlog("Ico", "Rez", "Vib-Ribbon", "Jet Set Radio", "Shenmue")
       members = [ alice, bob, carol ]
       draw(*members)
@@ -181,7 +181,6 @@ RSpec.describe "api/v1/challenge santa lifecycle behavior", type: :request do
       withdrawn = santa_of(alice, members)
       departed = santa_of(bob, members)
       picker = santa_of(carol, members)
-      pick(backlog_game(bob, "Torment"), as: departed)
       pick(backlog_game(carol, "Rez"), as: picker)
       travel_to(club_time("2026-12-05 12:00")) do
         delete "/api/v1/challenge_editions/#{edition_id}/signup", headers: auth_headers_for(withdrawn)
@@ -195,6 +194,18 @@ RSpec.describe "api/v1/challenge santa lifecycle behavior", type: :request do
         "santa" => include("user_id" => withdrawn.user_id))
       expect(rows.fetch(bob.user_id)).to include("picked_randomly" => true, "game" => include("title" => "Torment"))
       expect(rows.fetch(carol.user_id)).to include("picked_randomly" => false)
+    end
+
+    it "keeps the pick of a Santa who left the server after picking" do
+      draw(alice, bob)
+      pick(backlog_game(bob, "Fallout"), as: alice)
+      leave_eligible(alice, "Okami")
+      alice.update!(server_left_at: Time.current)
+
+      tick("2026-12-15 00:01")
+
+      expect(assignments.fetch(bob.user_id)).to include("picked_randomly" => false, "game" => include("title" => "Fallout"))
+      expect(assignments.fetch(alice.user_id)).to include("picked_randomly" => true, "game" => include("title" => "Okami"))
     end
 
     it "picks a game in the recipient's Now Playing when it is the only one left" do

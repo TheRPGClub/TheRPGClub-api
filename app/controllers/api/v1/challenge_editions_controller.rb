@@ -17,6 +17,9 @@ module Api
       feature :challenges
 
       before_action :require_acting_member!, only: %i[sign_up withdraw santa pick]
+      before_action :require_service!, only: :signup_post
+
+      DISCORD_ID = /\A\d{1,30}\z/
 
       rescue_from Challenges::SignupRefused do |error|
         render json: { error: error.code, message: error.message, **error.details }, status: error.status
@@ -57,8 +60,9 @@ module Api
       # GET /api/v1/challenge_editions/:id/santa?q=chrono
       #
       # The acting member's side as a Santa (Challenges::Picks): their
-      # recipient, their pick, the deadline, and the recipient's backlog minus
-      # the games they have Cleared, which `q` narrows by title. 403
+      # recipient, taste hints about them (top 3 genres, top platform), their
+      # pick, the deadline, and the recipient's backlog minus the games they
+      # have Cleared, which `q` narrows by title. 403
       # `not_a_santa` for anyone the draw didn't make a Santa (or who
       # withdrew), so nobody else reads it.
       def santa
@@ -80,6 +84,25 @@ module Api
         render json: { error: "game_id must be a whole number" }, status: :bad_request
       end
 
+      # PUT /api/v1/challenge_editions/:id/signup_post (bot only)
+      # Body: { "data": { "channel_id": "...", "message_id": "..." } }
+      #
+      # Stores the Edition's sign-up opening post after the bot posted it, so
+      # the later Edition posts carry it (`signup_post`) and reply to it.
+      # 422 `invalid_signup_post` unless both are Discord ids.
+      def signup_post
+        ids = request_data.slice("channel_id", "message_id").transform_values(&:to_s)
+        unless ids.size == 2 && ids.values.all?(DISCORD_ID)
+          return render json: { error: "invalid_signup_post", message: "channel_id and message_id must be Discord ids" },
+            status: :unprocessable_content
+        end
+
+        edition = ChallengeEdition.where(challenge_id: Challenge.where(challenge_format: Challenges::Formats::Assignment::KEY)
+          .select(:id)).find(params[:id])
+        edition.update!(signup_post_channel_id: ids["channel_id"], signup_post_message_id: ids["message_id"])
+        render json: { data: { edition_id: edition.id, **edition.signup_post } }
+      end
+
       private
 
       def render_santa(edition, signup)
@@ -90,6 +113,7 @@ module Api
         render json: { data: {
           edition_id: edition.id, year: edition.year,
           recipient: Challenges.member(signup.recipient),
+          taste: Challenges::Picks.taste(signup.recipient_user_id),
           pick: picked && { game: GameSummaryResource.new(picked).serializable_hash,
                             picked_at: signup.picked_at, picked_randomly: signup.picked_randomly },
           pick_deadline_on: edition.pick_deadline_on.iso8601,

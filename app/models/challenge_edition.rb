@@ -10,6 +10,10 @@
 #
 # Its phase: signup, picking (drawn), revealed, ended, or cancelled (fewer
 # than 2 members could be drawn).
+#
+# The bot stores its sign-up opening post (`signup_post_channel_id`,
+# `signup_post_message_id`) after posting it, and the later Edition posts
+# reply to it.
 class ChallengeEdition < ApplicationRecord
   PHASES = %w[signup picking revealed ended cancelled].freeze
 
@@ -32,4 +36,11 @@ class ChallengeEdition < ApplicationRecord
   def revealed? = %w[revealed ended].include?(phase)
 
   def ended? = phase == "ended"
+
+  # The sign-up opening post the bot stored, { channel_id, message_id }, or nil.
+  def signup_post
+    return unless signup_post_message_id
+
+    { channel_id: signup_post_channel_id, message_id: signup_post_message_id }
+  end
 end

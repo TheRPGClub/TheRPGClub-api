@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_150384) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_160377) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -137,10 +137,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_150384) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.timestamptz "picks_closed_at"
+    t.string "signup_post_channel_id", limit: 30
+    t.string "signup_post_message_id", limit: 30
     t.index ["challenge_id", "year"], name: "ux_challenge_editions_year", unique: true
     t.index ["phase", "signup_cutoff_on"], name: "ix_challenge_editions_phase"
     t.check_constraint "phase::text = ANY (ARRAY['signup'::character varying, 'picking'::character varying, 'revealed'::character varying, 'ended'::character varying, 'cancelled'::character varying]::text[])", name: "ck_challenge_editions_phase"
     t.check_constraint "signup_opens_on < signup_cutoff_on AND signup_cutoff_on < pick_deadline_on AND pick_deadline_on < reveal_on AND reveal_on < ends_on", name: "ck_challenge_editions_dates"
+    t.check_constraint "(signup_post_channel_id IS NULL) = (signup_post_message_id IS NULL)", name: "ck_challenge_editions_signup_post"
+  end
+
+  create_table "challenge_finish_announcements", primary_key: ["challenge_id", "user_id", "season_starts_on"], force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.date "season_starts_on", null: false
+    t.timestamptz "announced_at", default: -> { "statement_timestamp()" }, null: false
   end
 
   create_table "challenge_lifecycle_steps", force: :cascade do |t|
@@ -1406,6 +1416,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_150384) do
   add_foreign_key "challenge_edition_signups", "rpg_club_users", column: "recipient_user_id", primary_key: "user_id", name: "fk_challenge_edition_signups_recipient", on_delete: :nullify
   add_foreign_key "challenge_edition_signups", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_edition_signups_user", on_delete: :cascade
   add_foreign_key "challenge_editions", "challenges", name: "fk_challenge_editions_challenge", on_delete: :cascade
+  add_foreign_key "challenge_finish_announcements", "challenges", name: "fk_challenge_finish_announcements_challenge", on_delete: :cascade
+  add_foreign_key "challenge_finish_announcements", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_finish_announcements_user", on_delete: :cascade
   add_foreign_key "challenge_lifecycle_steps", "challenges", name: "fk_challenge_lifecycle_steps_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_collections", "challenges", name: "fk_challenge_pool_collections_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_collections", "gamedb_collections", column: "collection_id", primary_key: "collection_id", name: "fk_challenge_pool_collections_collection", on_delete: :cascade

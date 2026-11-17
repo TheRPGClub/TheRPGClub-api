@@ -1015,6 +1015,13 @@ module OpenapiSchemas
         _description: "The acting member's side as a Santa.",
         edition_id: int, year: int,
         recipient: ref("ChallengeMember"),
+        taste: obj(
+          genres: { type: :array, maxItems: 3, items: obj(genre_id: int, name: str),
+                    description: "The recipient's top 3 genres, most played first." },
+          platform: obj(platform_id: int, platform_name: str, platform_abbreviation: str(nullable: true))
+            .merge(nullable: true, description: "The platform the recipient plays most on; null if none recorded.")
+        ).merge(description: "Taste hints about the recipient, worked out from the games in their Game " \
+                             "Completions and backlog (each game counted once)."),
         pick: obj(game: ref("GameSummary"), picked_at: ts, picked_randomly: bool)
           .merge(nullable: true, description: "The game picked for the recipient; null while nothing is."),
         pick_deadline_on: str(format: "date").merge(description: "Picks are open until the start of this day."),
@@ -1100,13 +1107,29 @@ module OpenapiSchemas
         challenge: ref("Challenge"),
         run: ref("ChallengeRun").merge(description: "run_finished and run_caught_up only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
         season: ref("ChallengeSeasonDates").merge(description: "season_opened only: the Season that opened."),
+        pool_games: { type: :array, maxItems: 10, items: ref("ChallengePostGame"),
+                      description: "challenge_created and season_opened only: up to 10 games of a Pool " \
+                                   "Challenge's Pool for a cover wall, those with a cover first, then by title " \
+                                   "(empty for Slots and Assignment)." },
+        last_season_finishers: { type: :array, items: ref("ChallengeMember"),
+                                 description: "season_opened only: the members whose Run of the Season before " \
+                                              "Finished, in the order they Finished (show their names; no pings)." },
         edition: ref("ChallengeEdition").merge(description: "Edition events only: the Edition as GET " \
                                                              "/api/v1/challenge_editions/{id} serves it."),
         days_left: int.merge(example: 3, description: "signup_closing only: days from today to the cutoff."),
+        signup_post: obj(channel_id: str, message_id: str).merge(
+          nullable: true, description: "signup_closing, signup_closed, edition_cancelled and edition_revealed only: " \
+                                       "the Edition's sign-up opening post, as the bot stored it (PUT " \
+                                       "/api/v1/challenge_editions/{id}/signup_post), to reply to; null if none."
+        ),
         joined: int.merge(description: "signup_closed and edition_cancelled only: the members drawn."),
         left_out: int.merge(description: "signup_closed and edition_cancelled only: the members left out for " \
                                          "having fewer than 5 games in their backlog."),
         feature_key: str(enum: %w[challenges])
+      ),
+      ChallengePostGame: obj(
+        game_id: int, title: str,
+        cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none.")
       ),
       ChallengeSeasonDates: obj(
         starts_on: str(format: "date", example: "2026-06-21"), ends_on: str(format: "date", example: "2026-09-22"),

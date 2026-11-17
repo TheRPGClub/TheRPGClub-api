@@ -109,6 +109,23 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(job.payload.dig("challenge", "pool", "game_count")).to eq(1)
     end
 
+    it "carries up to 10 Pool games for the post's cover wall, those with a cover first" do
+      covered = %w[Xenogears Chrono Okami].map do |title|
+        create(:game, title: title).tap { |game| create(:game_image, :primary, game: game) }
+      end
+      (1..9).each { |n| create(:game, title: "Final Fantasy #{n}") }
+      GamedbGame.where.not(game_id: ff7.game_id).find_each { |game| GamedbGameFranchise.find_or_create_by!(game: game, franchise: franchise) }
+
+      create_challenge(as: regular)
+
+      pool_games = BotJob.where(kind: "challenge_announce").last.payload.fetch("pool_games")
+      expect(pool_games.size).to eq(10)
+      expect(pool_games.first(3).map { |game| game["title"] }).to eq(%w[Chrono Okami Xenogears])
+      expect(pool_games.first).to eq("game_id" => covered[1].game_id, "title" => "Chrono",
+        "cover_url" => covered[1].cover_url)
+      expect(pool_games.last).to include("cover_url" => nil)
+    end
+
     it "takes a target of every game in the Pool" do
       create_challenge(as: regular, pool: { franchise_ids: [ franchise.franchise_id ], target: "all" })
 

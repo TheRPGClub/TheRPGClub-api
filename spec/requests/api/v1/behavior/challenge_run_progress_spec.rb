@@ -237,6 +237,30 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       end.to change { BotJob.where(kind: "challenge_announce").count }.by(1)
     end
 
+    it "announces a member Finishing a Seasonal Challenge once per Season, even after they delete the Run" do
+      challenge = pool_challenge(target: 1, schedule: "seasonal", season_start_month: 9, season_start_day: 22,
+        season_end_month: 12, season_end_day: 20)
+      first = start_run(challenge)
+      expect { log_completion(ff7, on: "2026-10-15") }
+        .to change { BotJob.where(kind: "challenge_announce").count }.by(1)
+
+      delete "/api/v1/challenge_runs/#{first}", headers: auth_headers_for(member)
+      expect(response).to have_http_status(:ok)
+
+      expect { expect(run_json(start_run(challenge))).to include("status" => "finished") }
+        .not_to(change { BotJob.where(kind: "challenge_announce").count })
+    end
+
+    it "announces a Finished Always Open Run again after the member deletes it and Finishes a new one" do
+      challenge = pool_challenge(target: 1)
+      first = start_run(challenge)
+      log_completion(ff7, on: "2026-10-15")
+      delete "/api/v1/challenge_runs/#{first}", headers: auth_headers_for(member)
+
+      expect { expect(run_json(start_run(challenge))).to include("status" => "finished") }
+        .to change { BotJob.where(kind: "challenge_announce").count }.by(1)
+    end
+
     it "stays Finished, with its Cleared games, after a Game Completion is deleted" do
       run_id = start_run(pool_challenge(target: 1))
       completion_id = log_completion(ff7, on: "2026-10-15")

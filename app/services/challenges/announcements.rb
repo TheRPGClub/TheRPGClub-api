@@ -9,32 +9,44 @@ module Challenges
   #
   # Payload: { event, challenge, feature_key: "challenges" }. `challenge` is
   # the Challenge as GET /api/v1/challenges/{id} serves it. Events so far:
-  # "challenge_created"; "run_finished" and "run_caught_up" (Slots) with the
-  # Run (as GET /api/v1/challenge_runs/{id} serves it) under `run`; and
+  # "challenge_created" with up to 10 Pool games for a cover wall under
+  # `pool_games`; "run_finished" and "run_caught_up" (Slots) with the Run (as
+  # GET /api/v1/challenge_runs/{id} serves it) under `run`; and
   # "season_opened" with the Season's first and last day under `season`
-  # ({ starts_on, ends_on }). An Assignment Challenge's Edition events carry
+  # ({ starts_on, ends_on }), last Season's Finishers under
+  # `last_season_finishers` and `pool_games`. An Assignment Challenge's Edition events carry
   # the Edition (as GET /api/v1/challenge_editions/{id} serves it) under
   # `edition`: "signup_opened"; "signup_closing" with `days_left` to the
   # cutoff; and, from the draw, "signup_closed" or "edition_cancelled" (fewer
   # than 2 members drawn), each with `joined`, the members drawn, and
   # `left_out`, those the backlog minimum left out; and "edition_revealed",
   # on the reveal date, whose Edition carries every assignment under
-  # `assignments` (the Santas left out).
+  # `assignments` (the Santas left out). From "signup_closing" on, each
+  # Edition event also carries `signup_post`, the sign-up opening post the
+  # bot stored ({ channel_id, message_id }, null if none), to reply to.
   module Announcements
     KIND = "challenge_announce"
     FEATURE_KEY = "challenges"
 
-    # A new Challenge, requested by the member `by` (a Discord user id).
+    # How many Pool games a post carries for its cover wall.
+    POOL_GAMES_SHOWN = 10
+
+    # A new Challenge, requested by the member `by` (a Discord user id), with
+    # its first Pool games under `pool_games`.
     def self.challenge_created!(challenge, by:)
-      enqueue!("challenge_created", challenge, summary: %(Announce the new Challenge "#{challenge.name}"), by: by)
+      enqueue!("challenge_created", challenge, summary: %(Announce the new Challenge "#{challenge.name}"), by: by,
+        pool_games: pool_games(challenge))
     end
 
     # A Seasonal Challenge's Season opened (Challenges::Lifecycle::SeasonOpened),
-    # with its first and last day under `season`. Queued by the lifecycle
-    # job, so it has no requester.
+    # with its first and last day under `season`, the members who Finished
+    # the Season before under `last_season_finishers` (in the order they
+    # Finished; never pinged) and its first Pool games under `pool_games`.
+    # Queued by the lifecycle job, so it has no requester.
     def self.season_opened!(challenge, starts_on:, ends_on:)
       enqueue!("season_opened", challenge, summary: %(Announce that the Season of "#{challenge.name}" is open),
-        by: nil, season: { starts_on: starts_on.iso8601, ends_on: ends_on.iso8601 })
+        by: nil, season: { starts_on: starts_on.iso8601, ends_on: ends_on.iso8601 },
+        last_season_finishers: last_season_finishers(challenge, starts_on), pool_games: pool_games(challenge))
     end
 
     # An Edition's sign-up opened (Challenges::Lifecycle::EditionOpened).
@@ -46,26 +58,27 @@ module Challenges
     # (Challenges::Lifecycle::SignupClosing).
     def self.signup_closing!(edition, today:)
       edition_event!("signup_closing", edition, "Announce that sign-up for %<name>s %<year>d closes soon",
-        days_left: (edition.signup_cutoff_on - today).to_i)
+        days_left: (edition.signup_cutoff_on - today).to_i, signup_post: edition.signup_post)
     end
 
     # The draw (Challenges::Editions.draw!): `joined` members drawn, and
     # `left_out` below the backlog minimum.
     def self.signup_closed!(edition, joined:, left_out:)
       edition_event!("signup_closed", edition, "Announce that sign-up for %<name>s %<year>d closed",
-        joined: joined, left_out: left_out)
+        joined: joined, left_out: left_out, signup_post: edition.signup_post)
     end
 
     # The draw cancelled the Edition: fewer than 2 members could be drawn.
     def self.edition_cancelled!(edition, joined:, left_out:)
       edition_event!("edition_cancelled", edition, "Announce that %<name>s %<year>d is cancelled",
-        joined: joined, left_out: left_out)
+        joined: joined, left_out: left_out, signup_post: edition.signup_post)
     end
 
     # The reveal (Challenges::Editions.reveal!): the Edition carries every
     # assignment, without the Santas.
     def self.edition_revealed!(edition)
-      edition_event!("edition_revealed", edition, "Announce the assignments of %<name>s %<year>d")
+      edition_event!("edition_revealed", edition, "Announce the assignments of %<name>s %<year>d",
+        signup_post: edition.signup_post)
     end
 
     # The Edition steps are queued by the lifecycle job, so they have no
@@ -92,6 +105,34 @@ module Challenges
         summary: %(Announce that #{Challenges.display_name(run.user)} #{done} "#{challenge.name}"),
         by: run.user_id, run: ChallengeRunResource.new(run).serializable_hash)
     end
+
+    # The members whose Run of the Season before the one starting on
+    # `starts_on` Finished, in the order they Finished.
+    def self.last_season_finishers(challenge, starts_on)
+      last_starts_on = Schedule.for(challenge).season_on(starts_on.prev_year).first
+      challenge.runs.where(status: "finished", season_starts_on: last_starts_on).preload(:user)
+        .order(:ended_at, :id).map { |run| Challenges.member(run.user) }
+    end
+    private_class_method :last_season_finishers
+
+    # Up to POOL_GAMES_SHOWN games of a Pool Challenge's Pool for a post's
+    # cover wall, `{ game_id, title, cover_url }` (cover_url null for a game
+    # without one), those with a cover first, then by title. Empty for the
+    # other Formats.
+    def self.pool_games(challenge)
+      return [] unless challenge.challenge_format == "pool"
+
+      PoolDefinition.of(challenge).games.select(:game_id, :title).preload(:images)
+        .order(Arel.sql(HAS_COVER_SQL), :title, :game_id).limit(POOL_GAMES_SHOWN)
+        .map { |game| { game_id: game.game_id, title: game.title, cover_url: game.cover_url } }
+    end
+    private_class_method :pool_games
+
+    HAS_COVER_SQL = <<~SQL.squish.freeze
+      EXISTS (SELECT 1 FROM gamedb_game_images WHERE gamedb_game_images.game_id = gamedb_games.game_id
+        AND gamedb_game_images.kind = 'cover') DESC
+    SQL
+    private_constant :HAS_COVER_SQL
 
     def self.enqueue!(event, challenge, summary:, by:, **fields)
       BotJob.enqueue!(

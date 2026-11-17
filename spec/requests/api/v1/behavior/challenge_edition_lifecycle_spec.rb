@@ -112,6 +112,58 @@ RSpec.describe "api/v1/challenge edition lifecycle behavior", type: :request do
     end
   end
 
+  describe "the sign-up post" do
+    let!(:santa) { create_santa }
+    let(:edition_id) do
+      tick("2025-12-26 00:01")
+      editions(santa, at: "2025-12-26 00:01").sole["id"]
+    end
+    let(:post_ids) { { "channel_id" => "1100000000000000001", "message_id" => "1200000000000000002" } }
+
+    def store_signup_post(edition_id, ids, headers: service_headers)
+      put "/api/v1/challenge_editions/#{edition_id}/signup_post", headers: headers, as: :json, params: { data: ids }
+    end
+
+    it "is stored by the bot and carried by the later Edition posts so they can reply to it" do
+      store_signup_post(edition_id, post_ids)
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to eq("edition_id" => edition_id, **post_ids)
+      expect(announcements("signup_opened").sole.payload).not_to have_key("signup_post")
+
+      2.times { sign_up(edition_id, member_with_backlog(5)) }
+      tick("2026-11-28 00:01")
+      tick("2026-12-01 00:01")
+      tick("2026-12-25 00:01")
+
+      %w[signup_closing signup_closed edition_revealed].each do |event|
+        expect(announcements(event).sole.payload.fetch("signup_post")).to eq(post_ids)
+      end
+    end
+
+    it "is carried by a cancelled Edition's post, and is null while the bot stored none" do
+      sign_up(edition_id, member_with_backlog(5))
+      tick("2026-11-28 00:01")
+      expect(announcements("signup_closing").sole.payload.fetch("signup_post")).to be_nil
+
+      store_signup_post(edition_id, post_ids)
+      tick("2026-12-01 00:01")
+
+      expect(announcements("edition_cancelled").sole.payload.fetch("signup_post")).to eq(post_ids)
+    end
+
+    it "is stored by the bot alone, as Discord ids" do
+      store_signup_post(edition_id, post_ids, headers: auth_headers_for(moderator))
+      expect(response).to have_http_status(:forbidden)
+
+      store_signup_post(edition_id, post_ids.merge("message_id" => "not-an-id"))
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "invalid_signup_post")
+
+      store_signup_post(edition_id, post_ids.except("channel_id"))
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+  end
+
   describe "sign-up closing soon" do
     it "is announced once, 3 days before the cutoff" do
       santa = create_santa

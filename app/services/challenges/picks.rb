@@ -6,6 +6,7 @@ module Challenges
   #
   #   santa!(edition, user_id)            the member's own sign-up as a Santa
   #   eligible_backlog(user_id)           what a Santa may pick for them
+  #   taste(user_id)                      hints about what they like
   #   pick!(edition, user_id, game_id)    a Santa's pick, before the deadline
   #   withdraw!(signup)                   a Santa leaving after the draw
   #   close!(edition, now:, random:)      the random picks, at the deadline
@@ -13,9 +14,9 @@ module Challenges
   # A Santa sees only their recipient's backlog minus the games the recipient
   # has Cleared (any Game Completion of the game), and picks one game from it
   # privately until the start of the pick deadline day; they may change it
-  # until then. At the deadline every recipient whose Santa didn't pick,
-  # withdrew or has left the server gets a random pick from that same
-  # backlog through the backlog picker (BacklogPicker), which also passes
+  # until then. At the deadline every recipient whose Santa has no pick (they
+  # missed it, withdrew, or left the server before picking) gets a random
+  # pick from that same backlog through the backlog picker (BacklogPicker), which also passes
   # over the games in their Now Playing while it has others to choose from.
   # The circle is never redrawn.
   module Picks
@@ -41,6 +42,36 @@ module Challenges
     def self.eligible_backlog(user_id)
       UserGameBacklog.where(user_id: user_id).where.not(gamedb_game_id: cleared_game_ids(user_id))
     end
+
+    TASTE_GENRES = 3
+
+    # Taste hints for a Santa about their recipient (design picks, bot 7C
+    # "Gift tags"): the member's top 3 genres and top platform across the
+    # games in their Game Completions and backlog, each game counted once
+    # (ties by name). Only these; no other personal data.
+    #   { genres: [{ genre_id, name }], platform: { platform_id, platform_name, platform_abbreviation } | nil }
+    def self.taste(user_id)
+      games = GamedbGameGenre.where(game_id: UserGameCompletion.where(user_id: user_id).select(:gamedb_game_id))
+        .or(GamedbGameGenre.where(game_id: UserGameBacklog.where(user_id: user_id).select(:gamedb_game_id)))
+      genres = GamedbGenre.joins(:game_genres).merge(games).group(:genre_id, :name)
+        .order(Arel.sql("COUNT(*) DESC"), :name, :genre_id).limit(TASTE_GENRES).pluck(:genre_id, :name)
+      platform = GamedbPlatform.joins(ApplicationRecord.sanitize_sql_array([ PLAYED_ON_SQL, { user_id: user_id } ]))
+        .group(:platform_id).order(Arel.sql("COUNT(*) DESC"), :platform_name, :platform_id).first
+      { genres: genres.map { |genre_id, name| { genre_id: genre_id, name: name } },
+        platform: platform&.slice(:platform_id, :platform_name, :platform_abbreviation) }
+    end
+
+    # The member's (game, platform) pairs from their Game Completions and
+    # backlog, each once.
+    PLAYED_ON_SQL = <<~SQL.squish.freeze
+      JOIN (SELECT gamedb_game_id, platform_id FROM user_game_completions
+              WHERE user_id = :user_id AND platform_id IS NOT NULL
+            UNION
+            SELECT gamedb_game_id, platform_id FROM user_game_backlog
+              WHERE user_id = :user_id AND platform_id IS NOT NULL) played
+        ON played.platform_id = gamedb_platforms.platform_id
+    SQL
+    private_constant :PLAYED_ON_SQL
 
     # The games the member has Cleared: any Game Completion of them.
     def self.cleared_game_ids(user_id)
@@ -84,8 +115,9 @@ module Challenges
       edition.runs.active.where(user_id: signup.user_id).find_each { |run| Runs.abandon!(run, now: now) }
     end
 
-    # The pick deadline: every recipient whose Santa didn't pick, withdrew or
-    # has left the server gets a random pick from their eligible backlog,
+    # The pick deadline: every recipient whose Santa has no pick (missed,
+    # withdrew, or left the server before picking; a Santa who left after
+    # picking keeps their pick) gets a random pick from their eligible backlog,
     # through the backlog picker (passing over their Now Playing unless that
     # leaves nothing). A recipient with nothing eligible is left without a
     # game. Done once per Edition (`picks_closed_at`).
@@ -93,8 +125,8 @@ module Challenges
       edition.with_lock do
         next unless edition.phase == "picking" && edition.picks_closed_at.nil?
 
-        edition.signups.drawn.preload(:user).order(:id).each do |signup|
-          next if signup.picked_game_id && !signup.withdrawn? && signup.user.server_left_at.nil?
+        edition.signups.drawn.order(:id).each do |signup|
+          next if signup.picked_game_id
 
           game_id = random_pick(signup.recipient_user_id, random)
           signup.update!(picked_game_id: game_id, picked_at: game_id && now, picked_randomly: !game_id.nil?)
