@@ -9,10 +9,12 @@ module Challenges
   #
   # Payload: { event, challenge, feature_key: "challenges" }. `challenge` is
   # the Challenge as GET /api/v1/challenges/{id} serves it. Events so far:
-  # "challenge_created"; "run_finished" and "run_caught_up" (Slots) with the
-  # Run (as GET /api/v1/challenge_runs/{id} serves it) under `run`; and
+  # "challenge_created" with up to 10 Pool games for a cover wall under
+  # `pool_games`; "run_finished" and "run_caught_up" (Slots) with the Run (as
+  # GET /api/v1/challenge_runs/{id} serves it) under `run`; and
   # "season_opened" with the Season's first and last day under `season`
-  # ({ starts_on, ends_on }). An Assignment Challenge's Edition events carry
+  # ({ starts_on, ends_on }), last Season's Finishers under
+  # `last_season_finishers` and `pool_games`. An Assignment Challenge's Edition events carry
   # the Edition (as GET /api/v1/challenge_editions/{id} serves it) under
   # `edition`: "signup_opened"; "signup_closing" with `days_left` to the
   # cutoff; and, from the draw, "signup_closed" or "edition_cancelled" (fewer
@@ -24,17 +26,25 @@ module Challenges
     KIND = "challenge_announce"
     FEATURE_KEY = "challenges"
 
-    # A new Challenge, requested by the member `by` (a Discord user id).
+    # How many Pool games a post carries for its cover wall.
+    POOL_GAMES_SHOWN = 10
+
+    # A new Challenge, requested by the member `by` (a Discord user id), with
+    # its first Pool games under `pool_games`.
     def self.challenge_created!(challenge, by:)
-      enqueue!("challenge_created", challenge, summary: %(Announce the new Challenge "#{challenge.name}"), by: by)
+      enqueue!("challenge_created", challenge, summary: %(Announce the new Challenge "#{challenge.name}"), by: by,
+        pool_games: pool_games(challenge))
     end
 
     # A Seasonal Challenge's Season opened (Challenges::Lifecycle::SeasonOpened),
-    # with its first and last day under `season`. Queued by the lifecycle
-    # job, so it has no requester.
+    # with its first and last day under `season`, the members who Finished
+    # the Season before under `last_season_finishers` (in the order they
+    # Finished; never pinged) and its first Pool games under `pool_games`.
+    # Queued by the lifecycle job, so it has no requester.
     def self.season_opened!(challenge, starts_on:, ends_on:)
       enqueue!("season_opened", challenge, summary: %(Announce that the Season of "#{challenge.name}" is open),
-        by: nil, season: { starts_on: starts_on.iso8601, ends_on: ends_on.iso8601 })
+        by: nil, season: { starts_on: starts_on.iso8601, ends_on: ends_on.iso8601 },
+        last_season_finishers: last_season_finishers(challenge, starts_on), pool_games: pool_games(challenge))
     end
 
     # An Edition's sign-up opened (Challenges::Lifecycle::EditionOpened).
@@ -92,6 +102,34 @@ module Challenges
         summary: %(Announce that #{Challenges.display_name(run.user)} #{done} "#{challenge.name}"),
         by: run.user_id, run: ChallengeRunResource.new(run).serializable_hash)
     end
+
+    # The members whose Run of the Season before the one starting on
+    # `starts_on` Finished, in the order they Finished.
+    def self.last_season_finishers(challenge, starts_on)
+      last_starts_on = Schedule.for(challenge).season_on(starts_on.prev_year).first
+      challenge.runs.where(status: "finished", season_starts_on: last_starts_on).preload(:user)
+        .order(:ended_at, :id).map { |run| Challenges.member(run.user) }
+    end
+    private_class_method :last_season_finishers
+
+    # Up to POOL_GAMES_SHOWN games of a Pool Challenge's Pool for a post's
+    # cover wall, `{ game_id, title, cover_url }` (cover_url null for a game
+    # without one), those with a cover first, then by title. Empty for the
+    # other Formats.
+    def self.pool_games(challenge)
+      return [] unless challenge.challenge_format == "pool"
+
+      PoolDefinition.of(challenge).games.select(:game_id, :title).preload(:images)
+        .order(Arel.sql(HAS_COVER_SQL), :title, :game_id).limit(POOL_GAMES_SHOWN)
+        .map { |game| { game_id: game.game_id, title: game.title, cover_url: game.cover_url } }
+    end
+    private_class_method :pool_games
+
+    HAS_COVER_SQL = <<~SQL.squish.freeze
+      EXISTS (SELECT 1 FROM gamedb_game_images WHERE gamedb_game_images.game_id = gamedb_games.game_id
+        AND gamedb_game_images.kind = 'cover') DESC
+    SQL
+    private_constant :HAS_COVER_SQL
 
     def self.enqueue!(event, challenge, summary:, by:, **fields)
       BotJob.enqueue!(

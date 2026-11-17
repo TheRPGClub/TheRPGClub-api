@@ -1100,6 +1100,13 @@ module OpenapiSchemas
         challenge: ref("Challenge"),
         run: ref("ChallengeRun").merge(description: "run_finished and run_caught_up only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
         season: ref("ChallengeSeasonDates").merge(description: "season_opened only: the Season that opened."),
+        pool_games: { type: :array, maxItems: 10, items: ref("ChallengePostGame"),
+                      description: "challenge_created and season_opened only: up to 10 games of a Pool " \
+                                   "Challenge's Pool for a cover wall, those with a cover first, then by title " \
+                                   "(empty for Slots and Assignment)." },
+        last_season_finishers: { type: :array, items: ref("ChallengeMember"),
+                                 description: "season_opened only: the members whose Run of the Season before " \
+                                              "Finished, in the order they Finished (show their names; no pings)." },
         edition: ref("ChallengeEdition").merge(description: "Edition events only: the Edition as GET " \
                                                              "/api/v1/challenge_editions/{id} serves it."),
         days_left: int.merge(example: 3, description: "signup_closing only: days from today to the cutoff."),
@@ -1107,6 +1114,10 @@ module OpenapiSchemas
         left_out: int.merge(description: "signup_closed and edition_cancelled only: the members left out for " \
                                          "having fewer than 5 games in their backlog."),
         feature_key: str(enum: %w[challenges])
+      ),
+      ChallengePostGame: obj(
+        game_id: int, title: str,
+        cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none.")
       ),
       ChallengeSeasonDates: obj(
         starts_on: str(format: "date", example: "2026-06-21"), ends_on: str(format: "date", example: "2026-09-22"),

@@ -48,6 +48,38 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
         "open" => true)
     end
 
+    it "carries last Season's Finishers and the Pool's first games for the post" do
+      challenge = seasonal("06-21..09-22")
+      cover = create(:game_image, :primary)
+      ChallengePoolGame.create!(challenge: challenge, game: cover.game, inclusion: "include")
+      alice, bob, carol, dave = create_list(:user, 4, role_member: true)
+      season = ->(year) { { season_starts_on: Date.new(year, 6, 21), season_ends_on: Date.new(year, 9, 22) } }
+      create(:challenge_run, challenge: challenge, user: carol, status: "finished", ended_at: Time.utc(2026, 8, 1),
+        **season.(2026))
+      create(:challenge_run, challenge: challenge, user: alice, status: "finished", ended_at: Time.utc(2026, 7, 1),
+        **season.(2026))
+      create(:challenge_run, challenge: challenge, user: bob, status: "expired", **season.(2026))
+      create(:challenge_run, challenge: challenge, user: dave, status: "finished", **season.(2025))
+
+      tick("2027-06-21 00:01")
+
+      payload = announcements("season_opened").sole.payload
+      expect(payload.fetch("last_season_finishers")).to eq([ alice, carol ].map do |user|
+        { "user_id" => user.user_id, "username" => user.username, "global_name" => user.global_name }
+      end)
+      expect(payload.fetch("pool_games").size).to eq(2)
+      expect(payload.dig("pool_games", 0)).to eq("game_id" => cover.game_id, "title" => cover.game.title,
+        "cover_url" => cover.url)
+    end
+
+    it "carries no Finishers for a Challenge's first Season" do
+      seasonal("06-21..09-22")
+
+      tick("2026-06-21 00:01")
+
+      expect(announcements("season_opened").sole.payload.fetch("last_season_finishers")).to eq([])
+    end
+
     it "announces a Season the job missed while it is still Open, and again the next year" do
       seasonal("06-21..09-22")
 
