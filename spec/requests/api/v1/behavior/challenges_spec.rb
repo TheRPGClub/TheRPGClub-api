@@ -244,6 +244,22 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(json.fetch("data")).to eq([])
     end
 
+    it "finds Challenges whose name contains q, ignoring case" do
+      fall = create(:challenge, name: "Fall of Final Fantasy")
+      winter = create(:challenge, name: "A FINAL Winter")
+      create(:challenge, name: "Summer of Zelda")
+      create(:challenge, name: "100% Complete")
+
+      get "/api/v1/challenges", params: { q: " final " }, headers: auth_headers_for(member)
+      expect(json.fetch("data").map { |c| c.fetch("id") }).to contain_exactly(fall.id, winter.id)
+
+      get "/api/v1/challenges", params: { q: "%" }, headers: auth_headers_for(member)
+      expect(json.fetch("data").map { |c| c.fetch("name") }).to eq([ "100% Complete" ])
+
+      get "/api/v1/challenges", params: { q: "" }, headers: auth_headers_for(member)
+      expect(json.dig("meta", "count")).to eq(4)
+    end
+
     it "400s for an unknown filter value" do
       get "/api/v1/challenges", params: { open: "maybe" }, headers: auth_headers_for(member)
       expect(response).to have_http_status(:bad_request)

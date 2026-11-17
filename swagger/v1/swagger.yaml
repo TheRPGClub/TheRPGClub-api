@@ -8954,6 +8954,13 @@ paths:
           - slots
           - pool
           - assignment
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Only the Challenges whose name contains `q`, ignoring case (surrounding
+          spaces are dropped; empty means no filter). For the bot's Challenge autocomplete.
       - name: acting_user_id
         in: query
         required: false

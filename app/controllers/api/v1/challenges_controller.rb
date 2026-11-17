@@ -28,10 +28,11 @@ module Api
         render json: { error: "rules_locked", message: error.message, fields: error.fields }, status: :conflict
       end
 
-      # GET /api/v1/challenges?open=true&challenge_format=pool
+      # GET /api/v1/challenges?open=true&challenge_format=pool&q=final
       #
       # Newest first. `open` (true or false) narrows to the Challenges Open or
-      # Closed today; `challenge_format` to one Challenge Format. Hidden
+      # Closed today; `challenge_format` to one Challenge Format; `q` to those
+      # whose name contains it, ignoring case (the bot's autocomplete). Hidden
       # Challenges are listed only for Moderators and above, and for their
       # Host.
       def index
@@ -41,6 +42,8 @@ module Api
 
         scope = open_filter(scope)
         return if performed?
+
+        scope = name_filter(scope)
 
         render_collection(ChallengeResource.preloaded(scope), resource: ChallengeResource,
           default_order: { created_at: :desc, id: :desc }, params: { today: Challenges.today })
@@ -207,6 +210,13 @@ module Api
         when "false" then scope.closed_on(Challenges.today)
         else render(json: { error: "open must be true or false" }, status: :bad_request) && nil
         end
+      end
+
+      def name_filter(scope)
+        query = params[:q].to_s.strip
+        return scope if query.empty?
+
+        scope.where("name ILIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(query)}%")
       end
 
       def pool_sources_for(query)

@@ -82,6 +82,9 @@ RSpec.describe 'api/v1/challenges', type: :request do
       parameter name: :open, in: :query, required: false, schema: { type: :string, enum: %w[true false] },
         description: 'Only the Challenges Open (true) or Closed (false) today, in the club\'s time zone.'
       parameter name: :challenge_format, in: :query, required: false, schema: { type: :string, enum: Challenge::FORMATS }
+      parameter name: :q, in: :query, required: false, schema: { type: :string },
+        description: 'Only the Challenges whose name contains `q`, ignoring case (surrounding spaces are ' \
+                     'dropped; empty means no filter). For the bot\'s Challenge autocomplete.'
       parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string }
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
