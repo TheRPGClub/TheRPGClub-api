@@ -451,6 +451,7 @@ Rails.application.routes.draw do
           post "unhide"
           put "host", action: :change_host
           put "tint", action: :change_tint
+          get "pool_progress"
         end
       end
       # Runs (ticket #378): start one of a Challenge, list a Challenge's

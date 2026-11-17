@@ -17,6 +17,9 @@ module Api
 
       feature :challenges
 
+      # Pool games, oldest release first.
+      POOL_ORDER = "gamedb_games.initial_release_date ASC NULLS LAST, gamedb_games.title ASC"
+
       WRITES = %i[create update destroy hide unhide change_host change_tint].freeze
 
       before_action :require_acting_member!, only: WRITES
@@ -162,8 +165,29 @@ module Api
         raise Challenges::Invalid, errors.join(". ") if errors.any?
 
         games = definition.games.preload(:images)
-        render_collection(games, resource: GameSummaryResource,
-          default_order: Arel.sql("gamedb_games.initial_release_date ASC NULLS LAST, gamedb_games.title ASC"))
+        render_collection(games, resource: GameSummaryResource, default_order: Arel.sql(POOL_ORDER))
+      end
+
+      # GET /api/v1/challenges/:id/pool_progress
+      #
+      # A Pool Challenge's games, oldest release first, each with the members
+      # who Cleared it and who have it In Progress over the Season running
+      # now (the last one while Closed) or every Run of an Always Open
+      # Challenge (Challenges::PoolProgress). `meta.window` is that Season,
+      # null for Always Open. 422 `not_pool` for the other Formats.
+      def pool_progress
+        challenge = find_visible
+        unless challenge.challenge_format == Challenges::Formats::Pool::KEY
+          return render json: { error: "not_pool", message: "Only a Pool Challenge has progress by game." },
+            status: :unprocessable_content
+        end
+
+        today = Challenges.today
+        season = Challenges::PoolProgress.season(challenge, today)
+        render_collection(Challenges::PoolDefinition.of(challenge).games.preload(:images),
+          resource: ChallengePoolGameProgressResource, default_order: Arel.sql(POOL_ORDER),
+          prepare: ->(games) { { progress: Challenges::PoolProgress.of(challenge, games.map(&:game_id), season:, today:) } },
+          meta: { window: season && { starts_on: season.first.iso8601, ends_on: season.last.iso8601 } })
       end
 
       # GET /api/v1/challenges/pool_sources?q=final

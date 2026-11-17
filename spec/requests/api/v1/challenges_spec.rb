@@ -310,6 +310,42 @@ RSpec.describe 'api/v1/challenges', type: :request do
     end
   end
 
+  path '/api/v1/challenges/{id}/pool_progress' do
+    parameter name: :id, in: :path, schema: { type: :integer }, required: true
+
+    get "Read a Pool Challenge's progress by game" do
+      tags 'Challenges'
+      description 'Members. The Pool\'s games, oldest release first, paginated, each with the members who Cleared ' \
+                  'it (on a Run of any status, each member once at their earliest Clear) and who have it In ' \
+                  'Progress (on an Active Run, or a Finished one whose window is open). The Runs read are those ' \
+                  'of the Season running now, or of the last Season while the Challenge is Closed, and every Run ' \
+                  'of an Always Open Challenge. 404 for a Challenge hidden from the caller; 422 `not_pool` for ' \
+                  'Slots and Assignment.'
+      produces 'application/json'
+      parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string }
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'the Pool\'s games with their progress' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/ChallengePoolGameProgress' } },
+          meta: { allOf: [ { '$ref' => '#/components/schemas/PaginationMeta' }, { type: :object, properties: {
+            window: { '$ref' => '#/components/schemas/ChallengeSeasonDates', nullable: true,
+                      description: 'The Season read; null for an Always Open Challenge.' }
+          } } ] }
+        }
+      end
+
+      response '404', 'not found, or hidden from the caller' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'not a Pool Challenge' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/challenges/{id}/tint' do
     parameter name: :id, in: :path, schema: { type: :integer }, required: true
 

@@ -1129,6 +1129,17 @@ module OpenapiSchemas
           years: { type: :array, items: obj(year: int, game_id: int(nullable: true), title: str(nullable: true)) }
         ).merge(nullable: true, description: "Slots only: each year so far and the game filling it (null while open).")
       ),
+      ChallengePoolGameProgress: obj(
+        _description: "A Pool game with who Cleared it and who has it In Progress.",
+        game_id: int, title: str, initial_release_date: ts(nullable: true),
+        cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none."),
+        cleared_by: { type: :array, description: "Members who Cleared it, earliest first.", items: {
+          allOf: [ ref("ChallengeMember"), obj(run_id: int, cleared_on: str(nullable: true, format: "date")) ]
+        } },
+        in_progress: { type: :array, description: "Members playing it on a Run that still counts play.", items: {
+          allOf: [ ref("ChallengeMember"), obj(run_id: int) ]
+        } }
+      ),
       ChallengeOpenSignup: obj(
         _description: "A member's sign-up for an Edition still in sign-up (no Run until the draw).",
         edition_id: int, year: int, phase: str(enum: %w[signup]),
