@@ -1015,6 +1015,13 @@ module OpenapiSchemas
         _description: "The acting member's side as a Santa.",
         edition_id: int, year: int,
         recipient: ref("ChallengeMember"),
+        taste: obj(
+          genres: { type: :array, maxItems: 3, items: obj(genre_id: int, name: str),
+                    description: "The recipient's top 3 genres, most played first." },
+          platform: obj(platform_id: int, platform_name: str, platform_abbreviation: str(nullable: true))
+            .merge(nullable: true, description: "The platform the recipient plays most on; null if none recorded.")
+        ).merge(description: "Taste hints about the recipient, worked out from the games in their Game " \
+                             "Completions and backlog (each game counted once)."),
         pick: obj(game: ref("GameSummary"), picked_at: ts, picked_randomly: bool)
           .merge(nullable: true, description: "The game picked for the recipient; null while nothing is."),
         pick_deadline_on: str(format: "date").merge(description: "Picks are open until the start of this day."),

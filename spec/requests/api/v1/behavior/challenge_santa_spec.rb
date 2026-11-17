@@ -96,6 +96,39 @@ RSpec.describe "api/v1/challenge santa behavior", type: :request do
         .to contain_exactly("Arcanum", "Baldur's Gate", "Planescape", "Torment")
     end
 
+    it "gives the Santa taste hints: the recipient's top 3 genres and top platform from their completions and backlog" do
+      rpg, strategy, adventure, puzzle = %w[RPG Strategy Adventure Puzzle].map { |name| create(:genre, name: name) }
+      pc, switch = create(:platform, platform_name: "PC"), create(:platform, platform_name: "Switch")
+      tagged = lambda do |title, *genres|
+        create(:game, title: title).tap { |game| genres.each { |genre| GamedbGameGenre.create!(game: game, genre: genre) } }
+      end
+      draw(alice, bob) do
+        create(:completion, user: bob, game: tagged.("Ultima", rpg, strategy), platform: pc, completed_at: Time.utc(2020))
+        create(:completion, user: bob, game: tagged.("Wizardry", rpg), platform: pc, completed_at: Time.utc(2021))
+        create(:backlog_entry, user: bob, game: tagged.("Myst", adventure, puzzle), platform: switch)
+        create(:backlog_entry, user: bob, game: tagged.("Civilization", strategy, rpg))
+        create(:completion, user: alice, game: tagged.("Tetris", puzzle), platform: switch)
+      end
+
+      santa_view(as: alice)
+
+      expect(json.dig("data", "taste")).to eq(
+        "genres" => [ { "genre_id" => rpg.genre_id, "name" => "RPG" },
+                      { "genre_id" => strategy.genre_id, "name" => "Strategy" },
+                      { "genre_id" => adventure.genre_id, "name" => "Adventure" } ],
+        "platform" => { "platform_id" => pc.platform_id, "platform_name" => "PC", "platform_abbreviation" => nil }
+      )
+    end
+
+    it "gives no taste hints for a recipient with nothing to go on" do
+      draw(alice, bob)
+      UserGameBacklog.where(user_id: bob.user_id).delete_all
+
+      santa_view(as: alice)
+
+      expect(json.dig("data", "taste")).to eq("genres" => [], "platform" => nil)
+    end
+
     it "narrows the backlog by title" do
       draw(alice, bob)
 

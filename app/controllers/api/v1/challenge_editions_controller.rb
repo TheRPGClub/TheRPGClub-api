@@ -60,8 +60,9 @@ module Api
       # GET /api/v1/challenge_editions/:id/santa?q=chrono
       #
       # The acting member's side as a Santa (Challenges::Picks): their
-      # recipient, their pick, the deadline, and the recipient's backlog minus
-      # the games they have Cleared, which `q` narrows by title. 403
+      # recipient, taste hints about them (top 3 genres, top platform), their
+      # pick, the deadline, and the recipient's backlog minus the games they
+      # have Cleared, which `q` narrows by title. 403
       # `not_a_santa` for anyone the draw didn't make a Santa (or who
       # withdrew), so nobody else reads it.
       def santa
@@ -112,6 +113,7 @@ module Api
         render json: { data: {
           edition_id: edition.id, year: edition.year,
           recipient: Challenges.member(signup.recipient),
+          taste: Challenges::Picks.taste(signup.recipient_user_id),
           pick: picked && { game: GameSummaryResource.new(picked).serializable_hash,
                             picked_at: signup.picked_at, picked_randomly: signup.picked_randomly },
           pick_deadline_on: edition.pick_deadline_on.iso8601,

@@ -6,6 +6,7 @@ module Challenges
   #
   #   santa!(edition, user_id)            the member's own sign-up as a Santa
   #   eligible_backlog(user_id)           what a Santa may pick for them
+  #   taste(user_id)                      hints about what they like
   #   pick!(edition, user_id, game_id)    a Santa's pick, before the deadline
   #   withdraw!(signup)                   a Santa leaving after the draw
   #   close!(edition, now:, random:)      the random picks, at the deadline
@@ -41,6 +42,36 @@ module Challenges
     def self.eligible_backlog(user_id)
       UserGameBacklog.where(user_id: user_id).where.not(gamedb_game_id: cleared_game_ids(user_id))
     end
+
+    TASTE_GENRES = 3
+
+    # Taste hints for a Santa about their recipient (design picks, bot 7C
+    # "Gift tags"): the member's top 3 genres and top platform across the
+    # games in their Game Completions and backlog, each game counted once
+    # (ties by name). Only these; no other personal data.
+    #   { genres: [{ genre_id, name }], platform: { platform_id, platform_name, platform_abbreviation } | nil }
+    def self.taste(user_id)
+      games = GamedbGameGenre.where(game_id: UserGameCompletion.where(user_id: user_id).select(:gamedb_game_id))
+        .or(GamedbGameGenre.where(game_id: UserGameBacklog.where(user_id: user_id).select(:gamedb_game_id)))
+      genres = GamedbGenre.joins(:game_genres).merge(games).group(:genre_id, :name)
+        .order(Arel.sql("COUNT(*) DESC"), :name, :genre_id).limit(TASTE_GENRES).pluck(:genre_id, :name)
+      platform = GamedbPlatform.joins(ApplicationRecord.sanitize_sql_array([ PLAYED_ON_SQL, { user_id: user_id } ]))
+        .group(:platform_id).order(Arel.sql("COUNT(*) DESC"), :platform_name, :platform_id).first
+      { genres: genres.map { |genre_id, name| { genre_id: genre_id, name: name } },
+        platform: platform&.slice(:platform_id, :platform_name, :platform_abbreviation) }
+    end
+
+    # The member's (game, platform) pairs from their Game Completions and
+    # backlog, each once.
+    PLAYED_ON_SQL = <<~SQL.squish.freeze
+      JOIN (SELECT gamedb_game_id, platform_id FROM user_game_completions
+              WHERE user_id = :user_id AND platform_id IS NOT NULL
+            UNION
+            SELECT gamedb_game_id, platform_id FROM user_game_backlog
+              WHERE user_id = :user_id AND platform_id IS NOT NULL) played
+        ON played.platform_id = gamedb_platforms.platform_id
+    SQL
+    private_constant :PLAYED_ON_SQL
 
     # The games the member has Cleared: any Game Completion of them.
     def self.cleared_game_ids(user_id)

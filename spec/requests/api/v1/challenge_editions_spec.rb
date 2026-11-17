@@ -135,7 +135,8 @@ RSpec.describe 'api/v1/challenge_editions', type: :request do
 
     get "Show the acting member's side as a Santa" do
       tags 'Challenges'
-      description 'The Santa\'s view, only for the Santa: their recipient, their pick, the deadline, and the ' \
+      description 'The Santa\'s view, only for the Santa: their recipient, taste hints about them (top 3 genres ' \
+                  'and top platform), their pick, the deadline, and the ' \
                   'recipient\'s backlog minus the games they have Cleared, which `q` narrows by title. The bot ' \
                   'sends `acting_user_id` as a query parameter (400 without).'
       produces 'application/json'
