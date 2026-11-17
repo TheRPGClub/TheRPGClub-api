@@ -110,16 +110,28 @@ module Api
         query = params[:q].to_s.strip
         backlog = backlog.joins(:game).where("gamedb_games.title ILIKE ?", "%#{ApplicationRecord.sanitize_sql_like(query)}%") if query.present?
         picked = signup.picked_game
+        challenge = edition.challenge
         render json: { data: {
-          edition_id: edition.id, year: edition.year,
+          edition_id: edition.id, year: edition.year, challenge: { id: challenge.id, name: challenge.name },
+          reveal_on: edition.reveal_on.iso8601,
           recipient: Challenges.member(signup.recipient),
           taste: Challenges::Picks.taste(signup.recipient_user_id),
           pick: picked && { game: GameSummaryResource.new(picked).serializable_hash,
                             picked_at: signup.picked_at, picked_randomly: signup.picked_randomly },
           pick_deadline_on: edition.pick_deadline_on.iso8601,
           picks_open: Challenges::Picks.open?(edition),
-          backlog: BacklogEntryResource.new(backlog.order(:sort_order, :entry_id).to_a).serializable_hash
+          backlog: santa_backlog(backlog.order(:sort_order, :entry_id).to_a)
         } }
+      end
+
+      # The backlog entries with each game's HowLongToBeat times (`hltb`, as
+      # backlog#pick serves them, and the parsed `hours`; null without).
+      def santa_backlog(entries)
+        hltb = RpgClubHltbCache.where(gamedb_game_id: entries.map(&:gamedb_game_id)).index_by(&:gamedb_game_id)
+        BacklogEntryResource.new(entries).serializable_hash.zip(entries).map do |json, entry|
+          cache = hltb[entry.gamedb_game_id]
+          json.merge(hours: BacklogPicker.hours_for(cache), hltb: cache && HltbResource.new(cache).serializable_hash)
+        end
       end
 
 

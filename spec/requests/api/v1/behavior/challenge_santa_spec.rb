@@ -96,6 +96,21 @@ RSpec.describe "api/v1/challenge santa behavior", type: :request do
         .to contain_exactly("Arcanum", "Baldur's Gate", "Planescape", "Torment")
     end
 
+    it "gives each backlog game its HowLongToBeat times, and names the Challenge and the reveal date" do
+      draw(alice, bob)
+      RpgClubHltbCache.create!(gamedb_game_id: backlog_game(bob, "Fallout").game_id, main: "--",
+        single_player: "8½ Hours")
+
+      santa_view(as: alice)
+
+      expect(json.fetch("data")).to include("reveal_on" => "2026-12-25",
+        "challenge" => { "id" => santa_challenge, "name" => "Secret Santa" })
+      by_title = json.dig("data", "backlog").index_by { |entry| entry.dig("game", "title") }
+      expect(by_title.fetch("Fallout")).to include("hours" => 8.5,
+        "hltb" => include("main" => "--", "single_player" => "8½ Hours"))
+      expect(by_title.fetch("Arcanum")).to include("hours" => nil, "hltb" => nil)
+    end
+
     it "gives the Santa taste hints: the recipient's top 3 genres and top platform from their completions and backlog" do
       rpg, strategy, adventure, puzzle = %w[RPG Strategy Adventure Puzzle].map { |name| create(:genre, name: name) }
       pc, switch = create(:platform, platform_name: "PC"), create(:platform, platform_name: "Switch")

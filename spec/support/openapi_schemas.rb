@@ -1046,6 +1046,8 @@ module OpenapiSchemas
       ChallengeSanta: obj(
         _description: "The acting member's side as a Santa.",
         edition_id: int, year: int,
+        challenge: obj(id: int, name: str),
+        reveal_on: str(format: "date").merge(description: "The picks are revealed on this day."),
         recipient: ref("ChallengeMember"),
         taste: obj(
           genres: { type: :array, maxItems: 3, items: obj(genre_id: int, name: str),
@@ -1058,7 +1060,11 @@ module OpenapiSchemas
           .merge(nullable: true, description: "The game picked for the recipient; null while nothing is."),
         pick_deadline_on: str(format: "date").merge(description: "Picks are open until the start of this day."),
         picks_open: bool,
-        backlog: { type: :array, items: ref("BacklogEntry"),
+        backlog: { type: :array, items: { allOf: [ ref("BacklogEntry"), obj(
+                     hours: num(nullable: true).merge(description: "The HowLongToBeat time backlog#pick compares " \
+                                                                   "(main, single player, main + sides); null without."),
+                     hltb: ref("Hltb", nullable: true)
+                   ) ] },
                    description: "The recipient's backlog minus the games they have Cleared (any Game Completion), " \
                                 "narrowed by `q`." }
       ),
