@@ -13,9 +13,9 @@ module Challenges
   # A Santa sees only their recipient's backlog minus the games the recipient
   # has Cleared (any Game Completion of the game), and picks one game from it
   # privately until the start of the pick deadline day; they may change it
-  # until then. At the deadline every recipient whose Santa didn't pick,
-  # withdrew or has left the server gets a random pick from that same
-  # backlog through the backlog picker (BacklogPicker), which also passes
+  # until then. At the deadline every recipient whose Santa has no pick (they
+  # missed it, withdrew, or left the server before picking) gets a random
+  # pick from that same backlog through the backlog picker (BacklogPicker), which also passes
   # over the games in their Now Playing while it has others to choose from.
   # The circle is never redrawn.
   module Picks
@@ -84,8 +84,9 @@ module Challenges
       edition.runs.active.where(user_id: signup.user_id).find_each { |run| Runs.abandon!(run, now: now) }
     end
 
-    # The pick deadline: every recipient whose Santa didn't pick, withdrew or
-    # has left the server gets a random pick from their eligible backlog,
+    # The pick deadline: every recipient whose Santa has no pick (missed,
+    # withdrew, or left the server before picking; a Santa who left after
+    # picking keeps their pick) gets a random pick from their eligible backlog,
     # through the backlog picker (passing over their Now Playing unless that
     # leaves nothing). A recipient with nothing eligible is left without a
     # game. Done once per Edition (`picks_closed_at`).
@@ -93,8 +94,8 @@ module Challenges
       edition.with_lock do
         next unless edition.phase == "picking" && edition.picks_closed_at.nil?
 
-        edition.signups.drawn.preload(:user).order(:id).each do |signup|
-          next if signup.picked_game_id && !signup.withdrawn? && signup.user.server_left_at.nil?
+        edition.signups.drawn.order(:id).each do |signup|
+          next if signup.picked_game_id
 
           game_id = random_pick(signup.recipient_user_id, random)
           signup.update!(picked_game_id: game_id, picked_at: game_id && now, picked_randomly: !game_id.nil?)

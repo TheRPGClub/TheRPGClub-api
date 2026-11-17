@@ -7,9 +7,9 @@
 # is before the Edition ends.
 #
 # A Santa picks one game for their recipient (`picked_game_id`, ticket #384)
-# before the pick deadline; a recipient whose Santa didn't, withdrew after
-# the draw (`withdrawn_at`) or left the server gets a random pick at the
-# deadline (`picked_randomly`). The pick is revealed on the reveal date and
+# before the pick deadline; a recipient whose Santa has no pick by then
+# (missed it, withdrew after the draw (`withdrawn_at`), or left the server
+# before picking) gets a random pick at the deadline (`picked_randomly`). The pick is revealed on the reveal date and
 # becomes the recipient's Run goal.
 class ChallengeEditionSignup < ApplicationRecord
   belongs_to :edition, class_name: "ChallengeEdition", inverse_of: :signups
