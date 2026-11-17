@@ -20,10 +20,11 @@ module Challenges
   # (expiring Runs) is safe to repeat by itself. A missed tick is caught up
   # by the next one, since each step does what fell due up to `today`.
   #
-  # The Assignment Format's Edition steps (#383, #384) are added to STEPS the
+  # NewYearSlot refreshes growing Slots Runs on 1 January (#382). The
+  # Assignment Format's Edition steps (#383, #384) are added to STEPS the
   # same way.
   module Lifecycle
-    STEPS = [ SeasonOpened, SeasonEndingReminder, SeasonEnded, EndDateReached ].freeze
+    STEPS = [ SeasonOpened, SeasonEndingReminder, SeasonEnded, EndDateReached, NewYearSlot ].freeze
 
     module_function
 

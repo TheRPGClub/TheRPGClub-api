@@ -9,7 +9,8 @@ module Challenges
   #   ends_on            an Always Open Challenge's last day (YYYY-MM-DD), or null
   #   season             a Seasonal Challenge's { start: "MM-DD", end: "MM-DD" }
   #   pool               the Pool's settings (Challenges::Formats::Pool)
-  #   slots              the slot range (Challenges::Formats::Slots)
+  #   slots              the slot range and Counts past play
+  #                      (Challenges::Formats::Slots)
   #
   # On edit, only the keys given change. Once the Challenge has any Run its
   # rules (Format, schedule, Season and the Format's settings) are locked: a
@@ -41,7 +42,7 @@ module Challenges
       refuse_reopening if challenge.ended_at
       format = Formats.fetch(challenge.challenge_format)
       settings = format.parse(@data[format::KEY], base: stored_settings(format))
-      refuse_invalid(format.errors(settings))
+      refuse_invalid(format.errors(settings, challenge))
       check_unlocked(before, rules(format, settings)) if locked
 
       Challenge.transaction do
@@ -68,6 +69,9 @@ module Challenges
 
       challenge.challenge_format = @data["challenge_format"].to_s
       Formats.fetch(challenge.challenge_format)
+      # Counts past play is a Slots setting, which a switch to Slots gives
+      # in full (stored_settings), and which no other Format keeps.
+      challenge.counts_past_play = false if challenge.challenge_format_changed?
     end
 
     def assign_schedule

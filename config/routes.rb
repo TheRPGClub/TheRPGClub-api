@@ -460,6 +460,8 @@ Rails.application.routes.draw do
       get    "challenge_runs/:id",           to: "challenge_runs#show"
       post   "challenge_runs/:id/abandon",   to: "challenge_runs#abandon"
       post   "challenge_runs/:id/slot_move", to: "challenge_runs#slot_move"
+      post   "challenge_runs/:id/past_pick", to: "challenge_runs#past_pick"
+      get    "challenge_runs/:id/past_play", to: "challenge_runs#past_play"
       delete "challenge_runs/:id",           to: "challenge_runs#destroy"
     end
   end

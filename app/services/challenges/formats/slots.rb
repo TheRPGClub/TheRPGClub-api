@@ -8,22 +8,28 @@ module Challenges
     # year a fixed year or the current year (`slots_last_year` null), so that
     # range gains a slot every 1 January.
     #
+    # With Counts past play (`counts_past_play`, Always Open Challenges only),
+    # a member may also pick Game Completions dated before their Run started
+    # for open slots (pick!). Earlier play never fills a slot by itself.
+    #
     # Request and response object:
-    #   { first_year: 1990 | "birth_year", last_year: 1999 | "current_year" }
+    #   { first_year: 1990 | "birth_year", last_year: 1999 | "current_year",
+    #     counts_past_play: false }
     module Slots
       KEY = "slots"
       BIRTH_YEAR = "birth_year"
       CURRENT_YEAR = "current_year"
       YEARS = (BirthDates::EARLIEST.year..2100)
 
-      Settings = Data.define(:first_year, :last_year) do
+      Settings = Data.define(:first_year, :last_year, :counts_past_play) do
         def birth_year? = first_year.nil?
 
         def growing? = last_year.nil?
       end
 
       def self.load(challenge)
-        Settings.new(first_year: challenge.slots_first_year, last_year: challenge.slots_last_year)
+        Settings.new(first_year: challenge.slots_first_year, last_year: challenge.slots_last_year,
+          counts_past_play: challenge.counts_past_play)
       end
 
       def self.parse(input, base: nil)
@@ -38,9 +44,17 @@ module Challenges
 
         Settings.new(
           first_year: input.key?("first_year") ? parse_year(input["first_year"], "first_year", BIRTH_YEAR) : base.first_year,
-          last_year: input.key?("last_year") ? parse_year(input["last_year"], "last_year", CURRENT_YEAR) : base.last_year
+          last_year: input.key?("last_year") ? parse_year(input["last_year"], "last_year", CURRENT_YEAR) : base.last_year,
+          counts_past_play: input.key?("counts_past_play") ? parse_flag(input["counts_past_play"]) : !!base&.counts_past_play
         )
       end
+
+      def self.parse_flag(value)
+        return value if [ true, false ].include?(value)
+
+        raise Invalid, "slots counts_past_play must be true or false"
+      end
+      private_class_method :parse_flag
 
       def self.parse_year(value, field, word)
         return nil if value == word
@@ -54,7 +68,15 @@ module Challenges
       end
       private_class_method :parse_year
 
-      def self.errors(settings)
+      def self.errors(settings, challenge)
+        errors = range_errors(settings)
+        errors << PAST_PLAY_ALWAYS_OPEN if settings.counts_past_play && challenge.seasonal?
+        errors
+      end
+
+      PAST_PLAY_ALWAYS_OPEN = "Counts past play is only for Always Open Challenges"
+
+      def self.range_errors(settings)
         first = settings.first_year
         return [] if first.nil?
 
@@ -67,15 +89,18 @@ module Challenges
           []
         end
       end
+      private_class_method :range_errors
 
       def self.apply!(challenge, settings)
-        challenge.update_columns(slots_first_year: settings.first_year, slots_last_year: settings.last_year)
+        challenge.update_columns(slots_first_year: settings.first_year, slots_last_year: settings.last_year,
+          counts_past_play: settings.counts_past_play)
       end
 
       def self.rules(settings) = settings.to_h
 
       def self.as_json(_challenge, settings, **)
-        { first_year: settings.first_year || BIRTH_YEAR, last_year: settings.last_year || CURRENT_YEAR }
+        { first_year: settings.first_year || BIRTH_YEAR, last_year: settings.last_year || CURRENT_YEAR,
+          counts_past_play: settings.counts_past_play }
       end
 
       # Starting a Run (Challenges::Runs.start!): the Run copies its first
@@ -126,11 +151,15 @@ module Challenges
       #   earliest open slot it fits. One that fits no open slot stays on the
       #   Run without a slot, ready to fill one that opens.
       # - In Progress games are listed without a slot.
+      # - A past-play pick (pick!) keeps its slot the same way while its
+      #   Game Completion exists. Earlier play never fills a slot by itself,
+      #   so a pick that loses its slot leaves the Run.
       #
       # Games that fit none of the Run's years are not counted.
       def self.count(run, plays)
         years = years(run)
-        cleared = plays.cleared.dup
+        picks = past_picks(run, plays)
+        cleared = plays.cleared.merge(picks)
         stored = run.entries.select(&:cleared?)
         stored.each { |entry| cleared[entry.game_id] ||= counted_from(entry) } if run.finished?
         fits = ReleaseYears.of(cleared.keys | plays.in_progress)
@@ -146,9 +175,10 @@ module Challenges
         end
         slotted = slots.values.to_h { |game| [ game.game_id, game ] }
 
-        filled = cleared.values.sort_by { |game| [ game.cleared_on, game.completion_id || 0, game.game_id ] }
+        filled = cleared.values.sort_by { |game| [ game.cleared_on || UNDATED, game.completion_id || 0, game.game_id ] }
           .filter_map do |game|
             next slotted[game.game_id] if slotted.key?(game.game_id)
+            next if picks.key?(game.game_id) && !run.finished?
             next unless fits[game.game_id].any? || run.finished?
 
             year = fits[game.game_id].find { |fit| !slots.key?(fit) }
@@ -156,8 +186,27 @@ module Challenges
 
             slots[year] = game.with(slot_year: year)
           end
-        filled + plays.in_progress.select { |id| fits[id].any? }.map { |id| Counted.in_progress(id) }
+        filled + plays.in_progress.select { |id| fits[id].any? && !cleared.key?(id) }.map { |id| Counted.in_progress(id) }
       end
+
+      # Sorts an undated Game Completion (a past-play pick) first.
+      UNDATED = Date.new(1)
+
+      # The Run's past-play picks that still hold, by game id: entries the
+      # member picked by hand whose Game Completion is earlier play of the
+      # same game and still exists. A game Cleared inside the window counts
+      # from that instead.
+      def self.past_picks(run, plays)
+        return {} unless run.challenge.counts_past_play
+
+        run.entries.each_with_object({}) do |entry, picks|
+          next unless entry.cleared? && entry.picked_by_hand && entry.slot_year && !plays.cleared.key?(entry.game_id)
+
+          earlier = plays.earlier[entry.completion_id]
+          picks[entry.game_id] = earlier.with(slot_year: entry.slot_year, picked_by_hand: true) if earlier&.game_id == entry.game_id
+        end
+      end
+      private_class_method :past_picks
 
       def self.counted_from(entry)
         Counted.cleared(entry.game_id, entry.completion_id, entry.cleared_on)
@@ -188,6 +237,57 @@ module Challenges
         raise RunRefused.new("not_cleared", NOT_CLEARED, status: :unprocessable_content) unless entry
         return if entry.slot_year == year
 
+        refuse_slot!(run, game_id, year)
+        entry.update!(slot_year: year, picked_by_hand: true)
+      end
+
+      # A past-play pick (Counts past play): the member puts one of their
+      # Game Completions dated before the Run started, or undated, in an
+      # open year its game fits (Challenges::Runs.pick!). It is the only way
+      # earlier play counts. Raises Challenges::RunRefused.
+      def self.pick!(run, completion_id, year)
+        completion = earlier_play(run).earlier[completion_id]
+        raise RunRefused.new("not_past_completion", NOT_PAST, status: :unprocessable_content) unless completion
+
+        game_id = completion.game_id
+        if run.entries.any? { |row| row.game_id == game_id && row.cleared? }
+          raise RunRefused.new("already_cleared", format(ALREADY_CLEARED, title: title_of(game_id)),
+            status: :unprocessable_content)
+        end
+        refuse_slot!(run, game_id, year)
+
+        entry = run.entries.find { |row| row.game_id == game_id } || run.entries.build(game_id: game_id)
+        entry.update!(state: "cleared", completion_id: completion.completion_id, cleared_on: completion.cleared_on,
+          slot_year: year, picked_by_hand: true)
+      end
+
+      # The earlier Game Completions the member could pick now, each with
+      # the open years of the Run its game fits: Game Completions of games
+      # not Cleared on the Run that fit at least one open year.
+      # [[Counted, [year, ...]], ...]
+      def self.past_play(run)
+        on_run = run.entries.select(&:cleared?).map(&:game_id)
+        candidates = earlier_play(run).earlier.values.reject { |completion| on_run.include?(completion.game_id) }
+        open = years(run).to_a - run.entries.filter_map(&:slot_year)
+        fits = ReleaseYears.of(candidates.map(&:game_id).uniq)
+        candidates.filter_map do |completion|
+          years = fits.fetch(completion.game_id) & open
+          [ completion, years ] if years.any?
+        end
+      end
+
+      # The member's plays around the Run's window; refuses a Challenge that
+      # doesn't count past play.
+      def self.earlier_play(run)
+        raise RunRefused.new("past_play_off", PAST_PLAY_OFF, status: :unprocessable_content) unless run.challenge.counts_past_play
+
+        Plays.of(run.user_id).within(run.window)
+      end
+      private_class_method :earlier_play
+
+      # Refuses `year` for `game_id` on the Run: outside its years, not a
+      # year the game fits, or filled by another game.
+      def self.refuse_slot!(run, game_id, year)
         years = years(run)
         unless years.cover?(year)
           raise RunRefused.new("slot_out_of_range", format(OUT_OF_RANGE, year: year, first: years.first, last: years.last),
@@ -198,13 +298,12 @@ module Challenges
             status: :unprocessable_content)
         end
         holder = run.entries.find { |row| row.slot_year == year }
-        if holder
-          raise RunRefused.new("slot_filled", format(FILLED, year: year, title: title_of(holder.game_id)),
-            game_id: holder.game_id)
-        end
+        return unless holder
 
-        entry.update!(slot_year: year, picked_by_hand: true)
+        raise RunRefused.new("slot_filled", format(FILLED, year: year, title: title_of(holder.game_id)),
+          game_id: holder.game_id)
       end
+      private_class_method :refuse_slot!
 
       def self.title_of(game_id) = GamedbGame.where(game_id: game_id).pick(:title)
       private_class_method :title_of
@@ -213,6 +312,9 @@ module Challenges
       OUT_OF_RANGE = "%<year>d is not one of this Run's years (%<first>d to %<last>d)."
       NOT_FITTING = "%<title>s wasn't released in %<year>d, so it can't fill that year."
       FILLED = "%<year>d is already filled by %<title>s."
+      PAST_PLAY_OFF = "This Challenge doesn't count past play, so only games Cleared since your Run started count."
+      NOT_PAST = "Only one of your Game Completions dated before this Run started can be picked."
+      ALREADY_CLEARED = "%<title>s is already Cleared on this Run. Use a slot move to change its year."
 
       # The Run's slots as the API serves them: each year so far with the
       # game filling it (null while open).
