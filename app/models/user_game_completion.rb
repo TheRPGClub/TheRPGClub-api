@@ -4,6 +4,9 @@ class UserGameCompletion < ApplicationRecord
   self.table_name = "user_game_completions"
   self.primary_key = "completion_id"
 
+  # Run progress follows every commit (Challenges::CountsTowardRuns).
+  include Challenges::CountsTowardRuns
+
   belongs_to :user,
     class_name: "RpgClubUser",
     foreign_key: :user_id,

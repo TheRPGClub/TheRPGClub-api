@@ -3121,6 +3121,130 @@ components:
       description: A Pool Challenge's settings. A game is in the Pool if it belongs
         to a chosen franchise or collection and is not excluded, or if it is included
         by hand; it is resolved against the GameDB when read.
+    ChallengeRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            challenge_format:
+              type: string
+              enum:
+              - slots
+              - pool
+              - assignment
+            schedule:
+              type: string
+              enum:
+              - always_open
+              - seasonal
+          required:
+          - id
+          - name
+          - challenge_format
+          - schedule
+        user:
+          type: object
+          properties:
+            user_id:
+              type: string
+            username:
+              type: string
+            global_name:
+              type: string
+              nullable: true
+          required:
+          - user_id
+          - username
+        status:
+          type: string
+          enum:
+          - active
+          - finished
+          - expired
+          - abandoned
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it became Finished, Expired or Abandoned.
+        window:
+          type: object
+          properties:
+            starts_on:
+              type: string
+              format: date
+            ends_on:
+              type: string
+              nullable: true
+              format: date
+              description: Null while it has no end.
+          required:
+          - starts_on
+          description: 'When play counts toward the Run, as the club''s dates (both
+            included): the Season it belongs to, or from its start to an Always Open
+            Challenge''s end date.'
+        progress:
+          type: object
+          properties:
+            in_progress:
+              type: integer
+              description: 'Games In Progress: in the member''s Now Playing.'
+            cleared:
+              type: integer
+              description: Games Cleared by a Game Completion dated inside the window.
+            target:
+              type: integer
+              description: Cleared games needed to Finish.
+          required:
+          - in_progress
+          - cleared
+          - target
+        entries:
+          type: array
+          description: The games counted on the Run, Cleared first.
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              state:
+                type: string
+                enum:
+                - in_progress
+                - cleared
+              cleared_on:
+                type: string
+                nullable: true
+                format: date
+              completion_id:
+                type: integer
+                nullable: true
+                description: The Game Completion that Cleared it; null on a Finished
+                  Run after it was deleted.
+            required:
+            - game_id
+            - title
+            - state
+      required:
+      - id
+      - challenge
+      - user
+      - status
+      - started_at
+      - window
+      - progress
     ChallengeWarning:
       type: object
       properties:
@@ -3165,8 +3289,13 @@ components:
           type: string
           enum:
           - challenge_created
+          - run_finished
         challenge:
           "$ref": "#/components/schemas/Challenge"
+        run:
+          "$ref": "#/components/schemas/ChallengeRun"
+          description: 'run_finished only: the Run as GET /api/v1/challenge_runs/{id}
+            serves it.'
         feature_key:
           type: string
           enum:
@@ -3176,7 +3305,8 @@ components:
       - feature_key
       description: 'Kind `challenge_announce`. Post in the #challenges channel, or
         the staff test channel while the Feature is in Preview. `event` says what
-        to announce; so far only `challenge_created`, a new Challenge.'
+        to announce: `challenge_created`, a new Challenge, or `run_finished`, a member''s
+        Run that just Finished (with `run`).'
     BotJobClaim:
       type: object
       properties:
@@ -7024,6 +7154,309 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/challenge_runs":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a member's Runs
+      tags:
+      - Challenges
+      description: 'Members (the `challenges` Feature). The member''s Runs, current
+        and past, newest first, for their profile. Progress fills in by itself from
+        the member''s Game Completions and Now Playing: a Pool game in Now Playing
+        is In Progress, and a Game Completion dated inside the Run''s window Clears
+        it. Finished is final. Runs of a hidden Challenge are listed only for Moderators
+        and above, its Host and the Run''s member. The bot may name the member it
+        reads for with `acting_user_id`.'
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - active
+          - finished
+          - expired
+          - abandoned
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeRun"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: an unknown `status`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{challenge_id}/runs":
+    parameters:
+    - name: challenge_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List a Challenge's Runs
+      tags:
+      - Challenges
+      description: Members. Newest first, with progress. 404 for a Challenge hidden
+        from the caller. Runs of a hidden Challenge are listed only for Moderators
+        and above, its Host and the Run's member.
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - active
+          - finished
+          - expired
+          - abandoned
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeRun"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Start a Run
+      tags:
+      - Challenges
+      description: 'Starts the acting member''s Run of an Open Challenge. A Seasonal
+        Run belongs to the Season it starts in and counts play from earlier in that
+        Season, so it may Finish at once (queuing a `challenge_announce` `run_finished`
+        job). An Always Open Run counts play from its start day. Refusals carry `{
+        error, message }` written for members: 409 `challenge_closed`, and 409 `run_active`
+        (with `run_id`) when the member already has an Active Run of it. The bot sends
+        `{ "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
+        when the Feature Flag hides the Feature from that member).'
+      parameters: []
+      responses:
+        '201':
+          description: the new Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: challenge_closed or run_active
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - challenge_closed
+                    - run_active
+                  message:
+                    type: string
+                  run_id:
+                    type: integer
+                    description: 'run_active only: the member''s Active Run.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+  "/api/v1/challenge_runs/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Run
+      tags:
+      - Challenges
+      description: 'Members. Progress fills in by itself from the member''s Game Completions
+        and Now Playing: a Pool game in Now Playing is In Progress, and a Game Completion
+        dated inside the Run''s window Clears it. Finished is final. Runs of a hidden
+        Challenge are listed only for Moderators and above, its Host and the Run''s
+        member.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Delete a Run
+      tags:
+      - Challenges
+      description: 'The Run''s member only (403 otherwise): a Finished, Expired or
+        Abandoned Run. An Active Run is 409 `run_active` until abandoned. The bot
+        sends `acting_user_id` as a query parameter.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: run_active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_runs/{id}/abandon":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Abandon a Run
+      tags:
+      - Challenges
+      description: 'The Run''s member only (403 otherwise). The Run stays on their
+        profile, Abandoned, until they delete it. 409 `run_not_active` unless it is
+        Active. The bot sends `{ "data": { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Abandoned Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: run_not_active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/challenges":
     get:
       summary: List Challenges

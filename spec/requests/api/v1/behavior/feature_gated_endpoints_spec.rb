@@ -261,6 +261,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     # News Hub
     "api/v1/news_items" => "news_hub",
     "api/v1/challenges" => "challenges",
+    "api/v1/challenge_runs" => "challenges",
     "api/v1/news_categories" => "news_hub",
     "api/v1/news_import" => "news_hub",
     "api/v1/news_category_preferences" => "news_hub",

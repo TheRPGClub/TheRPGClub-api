@@ -13,7 +13,7 @@ module Api
     # applies the Feature Flag to them, since the service passes the feature
     # gate (docs/adr/0005). A write without an acting member is a 400.
     class ChallengesController < ApplicationController
-      include ActingMember
+      include ChallengeActing
 
       feature :challenges
 
@@ -35,7 +35,7 @@ module Api
       # Challenges are listed only for Moderators and above, and for their
       # Host.
       def index
-        scope = visible_scope
+        scope = visible_challenges
         scope = scope.where(challenge_format: format_filter) if params[:challenge_format].present?
         return if performed?
 
@@ -158,41 +158,6 @@ module Api
 
       private
 
-      def actor
-        @actor ||=
-          if current_principal.service?
-            member = acting_member
-            Challenges::Actor.new(user_id: acting_user_id, regular: member&.role_regular? ? true : false,
-              moderator: member&.moderator_or_above? ? true : false)
-          else
-            Challenges::Actor.new(user_id: current_principal.id.to_s, regular: regular_role?,
-              moderator: moderator_or_above?)
-          end
-      end
-
-      # A DELETE carries no body, so there the bot names its member in the
-      # query (ActingMember reads `data.acting_user_id` on other writes).
-      def acting_user_id
-        return @acting_user_id if defined?(@acting_user_id)
-        return super unless current_principal.service? && request.delete?
-
-        @acting_user_id = params[:acting_user_id].presence&.to_s
-      end
-
-      # The bot names the member it writes for, and the Feature Flag applies
-      # to them as the gate applies it to a signed-in member.
-      def require_acting_member!
-        return true unless current_principal.service?
-        return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?
-        return true if Features::Access.for_member(acting_member).can_use?(feature_key)
-
-        render json: { error: "feature_unavailable" }, status: :forbidden
-      end
-
-      def forbid(message)
-        render json: { error: "forbidden", message: message }, status: :forbidden
-      end
-
       def moderate
         challenge = find_visible
         return forbid(Challenges::Refusals::MODERATE) unless actor.can_moderate?
@@ -201,16 +166,9 @@ module Api
         render_challenge(challenge)
       end
 
-      def visible_scope
-        return Challenge.all if actor.moderator_or_above?
-        return Challenge.visible if actor.user_id.blank?
-
-        Challenge.visible.or(Challenge.where(host_user_id: actor.user_id))
-      end
-
       # A Challenge the actor may see; a hidden one is not found for others.
       def find_visible
-        visible_scope.find(params[:id])
+        visible_challenges.find(params[:id])
       end
 
       def reload(challenge)
@@ -226,7 +184,7 @@ module Api
 
       # Other Challenges the actor can see with the same name, ignoring case.
       def duplicate_warnings(challenge)
-        same = visible_scope.where.not(id: challenge.id).where("lower(name) = lower(?)", challenge.name)
+        same = visible_challenges.where.not(id: challenge.id).where("lower(name) = lower(?)", challenge.name)
           .order(:id).pluck(:id)
         return [] if same.empty?
 

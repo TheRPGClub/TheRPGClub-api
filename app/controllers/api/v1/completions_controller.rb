@@ -114,6 +114,8 @@ module Api
         record, announce_job = UserGameCompletion.transaction do
           completion = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
           if logged_for_another_member?
+            # Skips callbacks; the completion's own commit refreshes the
+            # member's Runs (Challenges::CountsTowardRuns) after this too.
             UserNowPlaying.where(user_id: completion.user_id, gamedb_game_id: completion.gamedb_game_id).delete_all
           end
           [ completion, (enqueue_announce(completion) if announce) ]

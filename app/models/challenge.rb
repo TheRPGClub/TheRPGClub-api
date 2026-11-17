@@ -75,6 +75,12 @@ class Challenge < ApplicationRecord
 
   def runs? = runs.exists?
 
+  # How many games a Pool Challenge's Pool holds now (the target "all").
+  # Remembered on this record, which Runs loaded together share.
+  def pool_game_count
+    @pool_game_count ||= Challenges::PoolDefinition.of(self).games.count
+  end
+
   private
 
   def schedule_fits

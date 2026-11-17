@@ -936,6 +936,33 @@ module OpenapiSchemas
         excluded_games: { type: :array, items: obj(game_id: int, title: str) },
         game_count: int(nullable: true).merge(description: "Games in the Pool now. Show and announcements only.")
       ),
+      # ChallengeRunResource (spec #376, ticket #378): a Run with its progress.
+      ChallengeRun: obj(
+        id: int,
+        challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
+          schedule: str(enum: Challenge::SCHEDULES)),
+        user: obj(user_id: str, username: str, global_name: str(nullable: true)),
+        status: str(enum: ChallengeRun::STATUSES),
+        started_at: ts,
+        ended_at: ts(nullable: true).merge(description: "When it became Finished, Expired or Abandoned."),
+        window: obj(
+          starts_on: str(format: "date"),
+          ends_on: str(nullable: true, format: "date").merge(description: "Null while it has no end.")
+        ).merge(description: "When play counts toward the Run, as the club's dates (both included): the Season " \
+                             "it belongs to, or from its start to an Always Open Challenge's end date."),
+        progress: obj(
+          in_progress: int.merge(description: "Games In Progress: in the member's Now Playing."),
+          cleared: int.merge(description: "Games Cleared by a Game Completion dated inside the window."),
+          target: int.merge(description: "Cleared games needed to Finish.")
+        ),
+        entries: { type: :array, description: "The games counted on the Run, Cleared first.", items: obj(
+          game_id: int, title: str, state: str(enum: ChallengeRunEntry::STATES),
+          cleared_on: str(nullable: true, format: "date"),
+          completion_id: int(nullable: true).merge(
+            description: "The Game Completion that Cleared it; null on a Finished Run after it was deleted."
+          )
+        ) }
+      ),
       ChallengeWarning: obj(
         code: str(enum: %w[duplicate_name]), message: str,
         challenge_ids: { type: :array, items: int, description: "The other Challenges with the same name." }
@@ -947,10 +974,11 @@ module OpenapiSchemas
       # The Challenges bot job payload (#377), as BotJobClaim.payload carries it.
       ChallengeAnnounceJobPayload: obj(
         _description: "Kind `challenge_announce`. Post in the #challenges channel, or the staff test channel " \
-                      "while the Feature is in Preview. `event` says what to announce; so far only " \
-                      "`challenge_created`, a new Challenge.",
-        event: str(enum: %w[challenge_created]),
+                      "while the Feature is in Preview. `event` says what to announce: `challenge_created`, " \
+                      "a new Challenge, or `run_finished`, a member's Run that just Finished (with `run`).",
+        event: str(enum: %w[challenge_created run_finished]),
         challenge: ref("Challenge"),
+        run: ref("ChallengeRun").merge(description: "run_finished only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
         feature_key: str(enum: %w[challenges])
       ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.

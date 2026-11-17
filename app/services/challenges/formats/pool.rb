@@ -67,6 +67,25 @@ module Challenges
 
       def self.rules(settings) = settings.to_h
 
+      # Run progress (Challenges::Progress): every game in the Pool the
+      # member played inside the Run's window counts, In Progress or Cleared.
+      def self.count(run, plays)
+        game_ids = plays.game_ids
+        return [] if game_ids.empty?
+
+        load(run.challenge).definition.games.where(game_id: game_ids).order(:game_id).pluck(:game_id)
+          .map { |game_id| plays.counted(game_id) }
+      end
+
+      # The Run is Finished when its Cleared games reach the target: the
+      # Challenge's number, or every game in the Pool now.
+      def self.summary(run, entries)
+        cleared = entries.count { |entry| entry.state == "cleared" }
+        target = run.challenge.pool_target || run.challenge.pool_game_count
+        Progress::Summary.new(in_progress: entries.count { |entry| entry.state == "in_progress" }, cleared: cleared,
+          target: target, goal_reached: target.positive? && cleared >= target)
+      end
+
       def self.as_json(challenge, settings, detail: false)
         definition = settings.definition
         names = names_for(challenge)
@@ -77,7 +96,7 @@ module Challenges
           included_games: definition.included_game_ids.map { |id| { game_id: id, title: names[:games][id] } },
           excluded_games: definition.excluded_game_ids.map { |id| { game_id: id, title: names[:games][id] } }
         }
-        json[:game_count] = definition.games.count if detail
+        json[:game_count] = challenge.pool_game_count if detail
         json
       end
 

@@ -17,6 +17,10 @@ module Challenges
   #                                      is a rule change, locked once Runs exist
   #   as_json(challenge, settings, detail:)  the response object
   #
+  # and, for Run progress (Challenges::Progress, which describes them):
+  #   count(run, plays)                  the games the Run counts now
+  #   summary(run, entries)              In Progress, Cleared, target, goal
+  #
   # Slots (#381) and Assignment (#383) register here when they are built.
   module Formats
     REGISTRY = { "pool" => Formats::Pool }.freeze

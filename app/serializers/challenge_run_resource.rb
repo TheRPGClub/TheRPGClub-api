@@ -1,0 +1,44 @@
+# frozen_string_literal: true
+
+# A Run as the API serves it (spec #376, ticket #378): its Challenge and
+# member, status, window (the club's dates, both ends included), progress
+# (In Progress and Cleared games against the target) and the games counted
+# on it, Cleared first.
+#
+# Load Runs through ChallengeRunResource.preloaded.
+class ChallengeRunResource
+  include BaseResource
+
+  attributes :id, :status, :started_at, :ended_at
+
+  attribute :challenge do |run|
+    challenge = run.challenge
+    { id: challenge.id, name: challenge.name, challenge_format: challenge.challenge_format,
+      schedule: challenge.schedule }
+  end
+
+  attribute :user do |run|
+    user = run.user
+    { user_id: user.user_id, username: user.username, global_name: user.global_name }
+  end
+
+  attribute :window do |run|
+    run.window.as_json
+  end
+
+  attribute :progress do |run|
+    Challenges::Progress.summary(run).as_json
+  end
+
+  attribute :entries do |run|
+    run.entries.sort_by { |entry| [ entry.cleared? ? 0 : 1, entry.cleared_on || Date.new(0), entry.game.title.to_s ] }
+      .map do |entry|
+        { game_id: entry.game_id, title: entry.game.title, state: entry.state, cleared_on: entry.cleared_on&.iso8601,
+          completion_id: entry.completion_id }
+      end
+  end
+
+  PRELOADS = [ :user, { entries: :game, challenge: %i[pool_franchises pool_collections pool_games] } ].freeze
+
+  def self.preloaded(scope) = scope.preload(*PRELOADS)
+end
