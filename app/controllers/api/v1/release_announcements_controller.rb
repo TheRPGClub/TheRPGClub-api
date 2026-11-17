@@ -34,10 +34,12 @@ module Api
       # (ADR 0009): announcements go out for the release most members get.
       JAPAN_REGION_CODE = "JP"
 
-      # Every dated Release ranked for canonicality within its game. The
-      # canonical Release (`canonical_rank` 1) is the earliest outside Japan, or
-      # the earliest Japanese one when the game has nothing else, with the
-      # lowest `release_id` breaking a same-day tie. `canonical_date` is that
+      # Every exact-day Release ranked for canonicality within its game: only
+      # Date Precision `day` is announced (api#392), so a vague or TBA Release
+      # is never a candidate, never skipped, and never shifts the canonical
+      # date. The canonical Release (`canonical_rank` 1) is the earliest outside
+      # Japan, or the earliest Japanese one when the game has nothing else, with
+      # the lowest `release_id` breaking a same-day tie. `canonical_date` is that
       # Release's date, so the others can be told apart as same-day duplicates
       # (any region, Japan included) or port-only Releases (any other date).
       # Split around its WHERE clause so #sync can narrow it to one game.
@@ -48,7 +50,7 @@ module Api
                ROW_NUMBER() OVER canonical_order AS canonical_rank
         FROM gamedb_releases r
         JOIN gamedb_regions g ON g.region_id = r.region_id
-        WHERE r.release_date IS NOT NULL
+        WHERE r.date_precision = 'day'
       SQL
       RANKED_RELEASES_WINDOW_SQL = <<~SQL.squish
         WINDOW canonical_order AS (
@@ -182,9 +184,9 @@ module Api
 
       # The due feed (unbounded). Pending (`sent_at`/`skipped_at` NULL),
       # already-announceable (`announce_at <= now`), still-upcoming
-      # (`release_date > now`) announcements that are the canonical release for
-      # their game, for games not already announced, ordered the same way the
-      # bot's `listDueAnnouncements` orders.
+      # (`release_date` after today, UTC) announcements that are the canonical
+      # release for their game, for games not already announced, ordered the
+      # same way the bot's `listDueAnnouncements` orders.
       # Projected onto the joined release/game/platform columns the bot needs.
       def due_scope(now)
         GamedbReleaseAnnouncement
@@ -193,7 +195,7 @@ module Api
           .joins("LEFT JOIN gamedb_platforms ON gamedb_platforms.platform_id = gamedb_releases.platform_id")
           .where(sent_at: nil, skipped_at: nil)
           .where("gamedb_release_announcements.announce_at <= :now", now: now)
-          .where("gamedb_releases.release_date > :now", now: now)
+          .where("gamedb_releases.release_date > :today", today: now.utc.to_date)
           .where("gamedb_release_announcements.release_id IN (#{CANONICAL_RELEASE_IDS_SQL})")
           .where.not(GAME_ALREADY_ANNOUNCED_SQL)
           .select(
@@ -226,11 +228,11 @@ module Api
         [ raw, MAX_DUE_LIMIT ].min
       end
 
-      # Step 1 of #sync. Upsert announcements for every release of the game that
-      # has a `release_date`, scheduling `announce_at = release_date - 7 days`. On
-      # conflict (release_id PK) only a pending row whose time actually changed is
-      # moved — rows the send loop already owns (`sent_at`/`skipped_at` set) are
-      # never touched.
+      # Step 1 of #sync. Upsert announcements for every exact-day (Date
+      # Precision `day`) release of the game, scheduling `announce_at =
+      # release_date - 7 days` (UTC midnight). On conflict (release_id PK) only a
+      # pending row whose time actually changed is moved — rows the send loop
+      # already owns (`sent_at`/`skipped_at` set) are never touched.
       def upsert_announcements(game_id)
         exec_update(<<~SQL.squish)
           INSERT INTO gamedb_release_announcements
@@ -238,7 +240,7 @@ module Api
           SELECT r.release_id, r.release_date - INTERVAL '7 days', NULL, NULL, NULL,
                  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM gamedb_releases r
-           WHERE r.release_date IS NOT NULL
+           WHERE r.date_precision = 'day'
              AND r.game_id = #{game_id}
           ON CONFLICT (release_id) DO UPDATE SET
             announce_at = EXCLUDED.announce_at,
@@ -313,7 +315,7 @@ module Api
              AND EXISTS (
                SELECT 1 FROM gamedb_releases r
                WHERE r.release_id = gamedb_release_announcements.release_id
-                 AND r.release_date <= #{quote(now)}
+                 AND r.release_date <= #{quote(now.utc.to_date)}
              )
         SQL
       end

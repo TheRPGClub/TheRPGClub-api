@@ -40,8 +40,26 @@ RSpec.describe "api/v1/releases behavior", type: :request do
         "region_name" => region.region_name
       )
 
-      release = GamedbRelease.find(json.dig("data", "release_id"))
-      expect(release.release_date).to eq(Time.utc(2024, 5, 10))
+      expect(json.dig("data", "release_date")).to eq("2024-05-10")
+    end
+
+    it "creates an exact-day Release, or a TBA Release when no date is given" do
+      post "/api/v1/games/#{game.game_id}/releases", params: payload, headers: service_headers, as: :json
+      expect(json.dig("data", "date_precision")).to eq("day")
+
+      post "/api/v1/games/#{game.game_id}/releases",
+        params: { data: payload[:data].merge(release_date: nil) }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.fetch("data")).to include("release_date" => nil, "date_precision" => "tba")
+    end
+
+    it "keeps the calendar day of a timestamp sent as the release date" do
+      post "/api/v1/games/#{game.game_id}/releases",
+        params: { data: payload[:data].merge(release_date: "2024-05-10T00:00:00.000Z") }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.dig("data", "release_date")).to eq("2024-05-10")
     end
 
     it "creates a Manual Release" do

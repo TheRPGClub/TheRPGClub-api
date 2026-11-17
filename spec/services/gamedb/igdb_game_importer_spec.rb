@@ -93,7 +93,7 @@ RSpec.describe Gamedb::IgdbGameImporter do
 
       allow(client).to receive(:game).with(game.igdb_id).and_return(
         release_dates: [
-          { region: 8, platform: { igdb_id: 77, name: "PC" }, date: Time.zone.parse("2020-01-01") }
+          { region: 8, platform: { igdb_id: 77, name: "PC" }, date: Date.new(2020, 1, 1), date_precision: "day" }
         ]
       )
 

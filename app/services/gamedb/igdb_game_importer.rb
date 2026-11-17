@@ -10,7 +10,8 @@ module Gamedb
   # is indistinguishable from a bot-created one: missing lookup rows (genre,
   # company, platform, …) are created on the fly keyed by their `igdb_*_id`.
   # Releases are one per platform per region (the earliest, Japan included,
-  # ADR 0009) and leave `format` null (IGDB carries no physical/digital
+  # ADR 0009), carry IGDB's Date Precision (a TBA Release when IGDB has no
+  # date yet, api#392) and leave `format` null (IGDB carries no physical/digital
   # signal); they are written through Gamedb::ReleaseSync, the in-place
   # refresh shared by import and refresh.
   class IgdbGameImporter
@@ -197,7 +198,8 @@ module Gamedb
         next if platform.nil? || region.nil?
 
         ReleaseSync::Reported.new(
-          platform_id: platform.platform_id, region_id: region.region_id, release_date: release[:date]
+          platform_id: platform.platform_id, region_id: region.region_id,
+          release_date: release[:date], date_precision: release[:date_precision]
         )
       end
 
@@ -205,18 +207,25 @@ module Gamedb
     end
 
     # IGDB can return several release_dates for one platform and region (a
-    # re-release, an edition). Keep the earliest dated row per platform per
-    # region, Japan included (ADR 0009); undated rows are dropped. A missing
-    # region counts as Worldwide, as ensure_region stores it.
+    # re-release, an edition, a TBA placeholder). Keep the earliest per platform
+    # per region, Japan included (ADR 0009): any dated row, exact or vague,
+    # beats TBA, and on the same date the more precise row wins. A platform and
+    # region with only TBA rows keeps one TBA Release. A missing region counts
+    # as Worldwide, as ensure_region stores it.
     def earliest_release_per_platform_and_region(release_dates)
       Array(release_dates).each_with_object({}) do |release, earliest|
         igdb_platform_id = release.dig(:platform, :igdb_id)
-        next if igdb_platform_id.blank? || release[:date].nil?
+        next if igdb_platform_id.blank?
 
         key = [ igdb_platform_id, release[:region] || DEFAULT_RELEASE_REGION ]
         current = earliest[key]
-        earliest[key] = release if current.nil? || release[:date] < current[:date]
+        earliest[key] = release if current.nil? || (release_order(release) <=> release_order(current)).negative?
       end
+    end
+
+    # Sort key for "earliest": TBA (no date) last, then date, then precision.
+    def release_order(release)
+      [ release[:date] ? 0 : 1, release[:date] || Date.new(0), GamedbRelease::DATE_PRECISIONS.index(release[:date_precision]) || 0 ]
     end
 
     def ensure_platform(ref)

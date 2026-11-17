@@ -69,7 +69,19 @@ RSpec.describe "api/v1/release_announcements behavior", type: :request do
         "igdb_url" => "https://www.igdb.com/games/due-spec"
       )
       expect(row.fetch("announce_at")).to be_present
-      expect(row.fetch("release_date")).to be_present
+      # A plain calendar date the bot reads with `new Date(...)` (UTC midnight).
+      expect(row.fetch("release_date")).to eq((Date.current + 5).iso8601)
+    end
+
+    it "never offers a Release whose date is not an exact day" do
+      game = create(:game)
+      vague = create(:release, game: game, release_date: Date.current.next_month.beginning_of_month,
+        date_precision: "month")
+      create(:release_announcement, release: vague, announce_at: 1.hour.ago)
+
+      get "/api/v1/release_announcements/due", headers: service_headers
+
+      expect(json.fetch("data")).to eq([])
     end
 
     it "never offers another Release of a game whose announcement was already sent" do
