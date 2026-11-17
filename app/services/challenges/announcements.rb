@@ -21,7 +21,9 @@ module Challenges
   # than 2 members drawn), each with `joined`, the members drawn, and
   # `left_out`, those the backlog minimum left out; and "edition_revealed",
   # on the reveal date, whose Edition carries every assignment under
-  # `assignments` (the Santas left out).
+  # `assignments` (the Santas left out). From "signup_closing" on, each
+  # Edition event also carries `signup_post`, the sign-up opening post the
+  # bot stored ({ channel_id, message_id }, null if none), to reply to.
   module Announcements
     KIND = "challenge_announce"
     FEATURE_KEY = "challenges"
@@ -56,26 +58,27 @@ module Challenges
     # (Challenges::Lifecycle::SignupClosing).
     def self.signup_closing!(edition, today:)
       edition_event!("signup_closing", edition, "Announce that sign-up for %<name>s %<year>d closes soon",
-        days_left: (edition.signup_cutoff_on - today).to_i)
+        days_left: (edition.signup_cutoff_on - today).to_i, signup_post: edition.signup_post)
     end
 
     # The draw (Challenges::Editions.draw!): `joined` members drawn, and
     # `left_out` below the backlog minimum.
     def self.signup_closed!(edition, joined:, left_out:)
       edition_event!("signup_closed", edition, "Announce that sign-up for %<name>s %<year>d closed",
-        joined: joined, left_out: left_out)
+        joined: joined, left_out: left_out, signup_post: edition.signup_post)
     end
 
     # The draw cancelled the Edition: fewer than 2 members could be drawn.
     def self.edition_cancelled!(edition, joined:, left_out:)
       edition_event!("edition_cancelled", edition, "Announce that %<name>s %<year>d is cancelled",
-        joined: joined, left_out: left_out)
+        joined: joined, left_out: left_out, signup_post: edition.signup_post)
     end
 
     # The reveal (Challenges::Editions.reveal!): the Edition carries every
     # assignment, without the Santas.
     def self.edition_revealed!(edition)
-      edition_event!("edition_revealed", edition, "Announce the assignments of %<name>s %<year>d")
+      edition_event!("edition_revealed", edition, "Announce the assignments of %<name>s %<year>d",
+        signup_post: edition.signup_post)
     end
 
     # The Edition steps are queued by the lifecycle job, so they have no

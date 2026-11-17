@@ -471,6 +471,7 @@ Rails.application.routes.draw do
       delete "challenge_editions/:id/signup",     to: "challenge_editions#withdraw"
       get    "challenge_editions/:id/santa",      to: "challenge_editions#santa"
       put    "challenge_editions/:id/santa/pick", to: "challenge_editions#pick"
+      put    "challenge_editions/:id/signup_post", to: "challenge_editions#signup_post"
     end
   end
 end

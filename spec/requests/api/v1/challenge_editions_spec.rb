@@ -156,6 +156,45 @@ RSpec.describe 'api/v1/challenge_editions', type: :request do
     end
   end
 
+  path '/api/v1/challenge_editions/{id}/signup_post' do
+    parameter name: :id, in: :path, schema: { type: :integer }, required: true
+
+    put "Store an Edition's sign-up opening post (bot only)" do
+      tags 'Challenges'
+      description 'The bot stores the Discord channel and message id of the Edition\'s sign-up opening post after ' \
+                  'posting it (the `signup_opened` post, or the `challenge_created` post for an Edition that ' \
+                  'opened with its Challenge). The later Edition posts (`signup_closing`, `signup_closed`, ' \
+                  '`edition_cancelled`, `edition_revealed`) carry it as `signup_post` so they can reply to it. ' \
+                  'Storing again replaces it. Service token only (403 otherwise).'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object, required: %w[data], properties: { data: { type: :object, required: %w[channel_id message_id],
+          properties: { channel_id: { type: :string, example: '1100000000000000001' },
+                        message_id: { type: :string, example: '1200000000000000002' } } } }
+      }
+
+      response '200', 'the stored post' do
+        schema type: :object, properties: { data: { type: :object, properties: {
+          edition_id: { type: :integer }, channel_id: { type: :string }, message_id: { type: :string }
+        } } }
+      end
+
+      response '403', 'not the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'invalid_signup_post: channel_id and message_id must both be Discord ids' do
+        schema type: :object, properties: { error: { type: :string, enum: %w[invalid_signup_post] },
+                                            message: { type: :string } }
+      end
+    end
+  end
+
   path '/api/v1/challenge_editions/{id}/santa/pick' do
     parameter name: :id, in: :path, schema: { type: :integer }, required: true
 

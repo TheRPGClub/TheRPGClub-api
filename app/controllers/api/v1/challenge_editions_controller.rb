@@ -17,6 +17,9 @@ module Api
       feature :challenges
 
       before_action :require_acting_member!, only: %i[sign_up withdraw santa pick]
+      before_action :require_service!, only: :signup_post
+
+      DISCORD_ID = /\A\d{1,30}\z/
 
       rescue_from Challenges::SignupRefused do |error|
         render json: { error: error.code, message: error.message, **error.details }, status: error.status
@@ -78,6 +81,25 @@ module Api
         render_santa(edition, Challenges::Picks.pick!(edition, actor.user_id, game_id))
       rescue ArgumentError
         render json: { error: "game_id must be a whole number" }, status: :bad_request
+      end
+
+      # PUT /api/v1/challenge_editions/:id/signup_post (bot only)
+      # Body: { "data": { "channel_id": "...", "message_id": "..." } }
+      #
+      # Stores the Edition's sign-up opening post after the bot posted it, so
+      # the later Edition posts carry it (`signup_post`) and reply to it.
+      # 422 `invalid_signup_post` unless both are Discord ids.
+      def signup_post
+        ids = request_data.slice("channel_id", "message_id").transform_values(&:to_s)
+        unless ids.size == 2 && ids.values.all?(DISCORD_ID)
+          return render json: { error: "invalid_signup_post", message: "channel_id and message_id must be Discord ids" },
+            status: :unprocessable_content
+        end
+
+        edition = ChallengeEdition.where(challenge_id: Challenge.where(challenge_format: Challenges::Formats::Assignment::KEY)
+          .select(:id)).find(params[:id])
+        edition.update!(signup_post_channel_id: ids["channel_id"], signup_post_message_id: ids["message_id"])
+        render json: { data: { edition_id: edition.id, **edition.signup_post } }
       end
 
       private

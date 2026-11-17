@@ -1110,6 +1110,11 @@ module OpenapiSchemas
         edition: ref("ChallengeEdition").merge(description: "Edition events only: the Edition as GET " \
                                                              "/api/v1/challenge_editions/{id} serves it."),
         days_left: int.merge(example: 3, description: "signup_closing only: days from today to the cutoff."),
+        signup_post: obj(channel_id: str, message_id: str).merge(
+          nullable: true, description: "signup_closing, signup_closed, edition_cancelled and edition_revealed only: " \
+                                       "the Edition's sign-up opening post, as the bot stored it (PUT " \
+                                       "/api/v1/challenge_editions/{id}/signup_post), to reply to; null if none."
+        ),
         joined: int.merge(description: "signup_closed and edition_cancelled only: the members drawn."),
         left_out: int.merge(description: "signup_closed and edition_cancelled only: the members left out for " \
                                          "having fewer than 5 games in their backlog."),

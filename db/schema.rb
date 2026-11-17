@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_160376) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_160377) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -137,10 +137,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_160376) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.timestamptz "picks_closed_at"
+    t.string "signup_post_channel_id", limit: 30
+    t.string "signup_post_message_id", limit: 30
     t.index ["challenge_id", "year"], name: "ux_challenge_editions_year", unique: true
     t.index ["phase", "signup_cutoff_on"], name: "ix_challenge_editions_phase"
     t.check_constraint "phase::text = ANY (ARRAY['signup'::character varying, 'picking'::character varying, 'revealed'::character varying, 'ended'::character varying, 'cancelled'::character varying]::text[])", name: "ck_challenge_editions_phase"
     t.check_constraint "signup_opens_on < signup_cutoff_on AND signup_cutoff_on < pick_deadline_on AND pick_deadline_on < reveal_on AND reveal_on < ends_on", name: "ck_challenge_editions_dates"
+    t.check_constraint "(signup_post_channel_id IS NULL) = (signup_post_message_id IS NULL)", name: "ck_challenge_editions_signup_post"
   end
 
   create_table "challenge_finish_announcements", primary_key: ["challenge_id", "user_id", "season_starts_on"], force: :cascade do |t|
