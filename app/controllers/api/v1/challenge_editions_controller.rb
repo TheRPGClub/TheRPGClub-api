@@ -86,11 +86,10 @@ module Api
         backlog = Challenges::Picks.eligible_backlog(signup.recipient_user_id).preload(:game, :platform)
         query = params[:q].to_s.strip
         backlog = backlog.joins(:game).where("gamedb_games.title ILIKE ?", "%#{ApplicationRecord.sanitize_sql_like(query)}%") if query.present?
-        recipient = signup.recipient
         picked = signup.picked_game
         render json: { data: {
           edition_id: edition.id, year: edition.year,
-          recipient: { user_id: recipient.user_id, username: recipient.username, global_name: recipient.global_name },
+          recipient: Challenges.member(signup.recipient),
           pick: picked && { game: GameSummaryResource.new(picked).serializable_hash,
                             picked_at: signup.picked_at, picked_randomly: signup.picked_randomly },
           pick_deadline_on: edition.pick_deadline_on.iso8601,

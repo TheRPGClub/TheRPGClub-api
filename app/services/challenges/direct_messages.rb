@@ -38,9 +38,8 @@ module Challenges
       challenge_json = ChallengeResource.new(challenge, params: { detail: true }).serializable_hash
       edition_json = ChallengeEditionResource.serialize(edition)
       users.each do |user|
-        member = user.global_name.presence || user.username.presence || user.user_id
         BotJob.enqueue!(
-          kind: KIND, summary: %(Tell #{member} they were left out of "#{challenge.name}" #{edition.year}),
+          kind: KIND, summary: %(Tell #{Challenges.display_name(user)} they were left out of "#{challenge.name}" #{edition.year}),
           payload: { event: "left_out_of_draw", user_id: user.user_id, challenge: challenge_json,
                      edition: edition_json, backlog_count: backlog_counts.fetch(user.user_id),
                      minimum: Editions::BACKLOG_MINIMUM }
@@ -59,19 +58,14 @@ module Challenges
       challenge_json = ChallengeResource.new(challenge, params: { detail: true }).serializable_hash
       edition_json = ChallengeEditionResource.serialize(edition)
       signups.each do |signup|
-        recipient = signup.recipient
         BotJob.enqueue!(
-          kind: KIND, summary: %(Remind #{display_name(signup.user)} to pick for "#{challenge.name}" #{edition.year}),
+          kind: KIND, summary: %(Remind #{Challenges.display_name(signup.user)} to pick for "#{challenge.name}" #{edition.year}),
           payload: { event: "pick_reminder", user_id: signup.user_id, challenge: challenge_json, edition: edition_json,
-                     recipient: { user_id: recipient.user_id, username: recipient.username,
-                                  global_name: recipient.global_name },
+                     recipient: Challenges.member(signup.recipient),
                      days_left: (edition.pick_deadline_on - today).to_i }
         )
       end
     end
-
-    def self.display_name(user) = user.global_name.presence || user.username.presence || user.user_id
-    private_class_method :display_name
 
     # Reminds the members of `runs` (Active Runs of `challenge`'s Season)
     # that the Season ends on `ends_on`. Queued by the lifecycle job, so they
@@ -79,9 +73,8 @@ module Challenges
     def self.season_ending!(challenge, runs, starts_on:, ends_on:, today:)
       challenge_json = ChallengeResource.new(challenge, params: { detail: true }).serializable_hash
       ChallengeRunResource.preloaded(runs).find_each do |run|
-        member = run.user.global_name.presence || run.user.username.presence || run.user_id
         BotJob.enqueue!(
-          kind: KIND, summary: %(Remind #{member} that the Season of "#{challenge.name}" ends on #{ends_on.iso8601}),
+          kind: KIND, summary: %(Remind #{Challenges.display_name(run.user)} that the Season of "#{challenge.name}" ends on #{ends_on.iso8601}),
           payload: { event: "season_ending", user_id: run.user_id, challenge: challenge_json,
                      run: ChallengeRunResource.new(run).serializable_hash,
                      season: { starts_on: starts_on.iso8601, ends_on: ends_on.iso8601 },

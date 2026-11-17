@@ -80,13 +80,16 @@ module Challenges
     # A Run whose status changed (Challenges::Progress::Change): a Run that
     # became Finished (event "run_finished") or Caught Up (event
     # "run_caught_up", Slots), with the Run and its progress under `run`.
+    # Runs of hidden Challenges are not announced.
     def self.run_changed!(change)
       run = change.run
+      return if run.challenge.hidden?
+
       challenge = ChallengeResource.preloaded(Challenge.where(id: run.challenge_id)).first!
       run = ChallengeRunResource.preloaded(ChallengeRun.where(id: run.id)).first!
-      member = run.user.global_name.presence || run.user.username.presence || run.user_id
       done = change.event == "run_caught_up" ? "is Caught Up on" : "Finished"
-      enqueue!(change.event, challenge, summary: %(Announce that #{member} #{done} "#{challenge.name}"),
+      enqueue!(change.event, challenge,
+        summary: %(Announce that #{Challenges.display_name(run.user)} #{done} "#{challenge.name}"),
         by: run.user_id, run: ChallengeRunResource.new(run).serializable_hash)
     end
 

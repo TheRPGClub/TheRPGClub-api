@@ -8,8 +8,6 @@
 # their changes are recorded but never count toward the member's limit.
 # Setting the date it already has changes nothing and counts for nothing.
 module BirthDates
-  # The club's calendar runs in US Eastern, as voting does.
-  TIME_ZONE = Voting::Schedule::TIME_ZONE
   CHANGES_PER_MONTH = 2
   EARLIEST = Date.new(1900, 1, 1)
 
@@ -68,14 +66,15 @@ module BirthDates
     [ CHANGES_PER_MONTH - used, 0 ].max
   end
 
-  # The calendar month `now` falls in, in the club's time zone.
+  # The calendar month `now` falls in, in the club's time zone (the one
+  # Challenge dates use).
   def month(now)
-    local = now.in_time_zone(TIME_ZONE)
+    local = now.in_time_zone(Challenges::TIME_ZONE)
     local.beginning_of_month..local.end_of_month
   end
 
   def next_month_start(now)
-    now.in_time_zone(TIME_ZONE).to_date.next_month.beginning_of_month
+    Challenges.today(now).next_month.beginning_of_month
   end
 
   # nil removes the Birth Date; anything else must be a YYYY-MM-DD date
@@ -84,8 +83,7 @@ module BirthDates
     return nil if value.nil?
 
     date = Date.strptime(value.to_s, "%Y-%m-%d")
-    today = now.in_time_zone(TIME_ZONE).to_date
-    raise Invalid, "birth_date can't be in the future" if date > today
+    raise Invalid, "birth_date can't be in the future" if date > Challenges.today(now)
     raise Invalid, "birth_date can't be before #{EARLIEST.year}" if date < EARLIEST
 
     date

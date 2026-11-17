@@ -140,6 +140,22 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(run_json(other).dig("progress", "cleared")).to eq(1)
     end
 
+    it "leaves the member's Runs alone when only a note or completion type changes" do
+      start_run(pool_challenge)
+      completion_id = log_completion(ff7, on: "2026-10-15")
+      entry_id = start_playing(ff8)
+      allow(Challenges).to receive(:refresh_runs!).and_call_original
+
+      patch "/api/v1/completions/#{completion_id}", params: { data: { note: "Gold Saucer", completion_type: "Completionist" } },
+        headers: auth_headers_for(member), as: :json
+      expect(response).to have_http_status(:ok)
+      patch "/api/v1/now_playing/#{entry_id}", params: { data: { note: "Disc 2" } },
+        headers: auth_headers_for(member), as: :json
+      expect(response).to have_http_status(:ok)
+
+      expect(Challenges).not_to have_received(:refresh_runs!)
+    end
+
     it "leaves Runs that have ended alone" do
       run_id = start_run(pool_challenge)
       post "/api/v1/challenge_runs/#{run_id}/abandon", headers: auth_headers_for(member), as: :json
@@ -233,6 +249,16 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(run.fetch("progress")).to include("cleared" => 1)
       expect(run.dig("entries", 0)).to include("title" => "Final Fantasy VII", "state" => "cleared",
         "completion_id" => nil)
+    end
+
+    it "Finishes a Run of a hidden Challenge without announcing it" do
+      challenge = pool_challenge(target: 1)
+      run_id = start_run(challenge)
+      challenge.update!(hidden: true)
+
+      expect { log_completion(ff7, on: "2026-10-15") }.not_to(change { BotJob.where(kind: "challenge_announce").count })
+
+      expect(run_json(run_id)).to include("status" => "finished")
     end
 
     it "keeps counting games Cleared past the target" do

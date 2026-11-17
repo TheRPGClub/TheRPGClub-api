@@ -18,8 +18,7 @@ class ChallengeRunResource
   end
 
   attribute :user do |run|
-    user = run.user
-    { user_id: user.user_id, username: user.username, global_name: user.global_name }
+    Challenges.member(run.user)
   end
 
   attribute :edition do |run|
@@ -39,7 +38,7 @@ class ChallengeRunResource
     shown = signup && (edition.revealed? || staff)
     { game: shown && signup.picked_game ? GameSummaryResource.new(signup.picked_game).serializable_hash : nil,
       picked_randomly: shown ? signup.picked_randomly : nil,
-      santa: signup && (staff || edition.ended?) ? ChallengeEditionResource.member(signup.user) : nil }
+      santa: signup && (staff || edition.ended?) ? Challenges.member(signup.user) : nil }
   end
 
   attribute :window do |run|
