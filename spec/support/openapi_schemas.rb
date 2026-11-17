@@ -908,7 +908,7 @@ module OpenapiSchemas
         id: int, name: str(maxLength: Challenge::NAME_MAX), description: str,
         challenge_format: str(enum: Challenge::FORMATS),
         hosted_by_club: bool.merge(description: "True when the club itself is the Host (host is null)."),
-        host: obj(user_id: str, username: str, global_name: str(nullable: true)).merge(nullable: true,
+        host: ref("ChallengeMember", nullable: true).merge(
           description: "The member who is the Host; null for a club-hosted Challenge."),
         schedule: str(enum: Challenge::SCHEDULES),
         ends_on: str(nullable: true, format: "date").merge(
@@ -1009,6 +1009,7 @@ module OpenapiSchemas
                                            "acting_user_id, and in bot job payloads)."),
         members: { type: :array, description: "The members signed up, first first.", items: obj(
           user_id: str, username: str, global_name: str(nullable: true),
+          discord_avatar: str(nullable: true), avatar_url: str,
           left_out: bool.merge(description: "The draw left them out: fewer than 5 games in their backlog by then."),
           withdrawn: bool.merge(description: "They withdrew after the draw; their recipient gets a random pick.")
         ) },
@@ -1031,7 +1032,16 @@ module OpenapiSchemas
         },
         picks_closed_at: ts(nullable: true).merge(description: "When the random picks were made at the deadline.")
       ),
-      ChallengeMember: obj(user_id: str, username: str, global_name: str(nullable: true)),
+      ChallengeMember: obj(
+        user_id: str, username: str, global_name: str(nullable: true),
+        discord_avatar: str(nullable: true).merge(
+          description: "The member's Discord avatar hash from their last website login; null if unknown. " \
+                       "https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png"
+        ),
+        avatar_url: str(example: "/api/v1/users/123/avatar").merge(
+          description: "The API path of the avatar image the bot stores (404 when it has none)."
+        )
+      ),
       # GET /api/v1/challenge_editions/{id}/santa (ticket #384).
       ChallengeSanta: obj(
         _description: "The acting member's side as a Santa.",
@@ -1057,7 +1067,7 @@ module OpenapiSchemas
         id: int,
         challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
           schedule: str(enum: Challenge::SCHEDULES)),
-        user: obj(user_id: str, username: str, global_name: str(nullable: true)),
+        user: ref("ChallengeMember"),
         edition: obj(id: int, year: int).merge(nullable: true,
           description: "Assignment only: the Edition the Run was drawn in."),
         assignment: obj(

@@ -238,4 +238,24 @@ RSpec.describe "api/v1/challenge runs behavior", type: :request do
       expect(response).to have_http_status(:ok)
     end
   end
+
+  describe "reading Runs" do
+    it "names each member with their Discord avatar and the stored avatar image's path" do
+      member.update!(discord_avatar: "a1b2c3")
+      challenge.host.update!(discord_avatar: nil)
+      run = create(:challenge_run, challenge: challenge, user: member)
+
+      get "/api/v1/challenge_runs/#{run.id}", headers: auth_headers_for(member)
+
+      expect(json.dig("data", "user")).to eq(
+        "user_id" => member.user_id, "username" => member.username, "global_name" => member.global_name,
+        "discord_avatar" => "a1b2c3", "avatar_url" => "/api/v1/users/#{member.user_id}/avatar"
+      )
+
+      get "/api/v1/challenges/#{challenge.id}", headers: auth_headers_for(member)
+
+      expect(json.dig("data", "host")).to include("user_id" => challenge.host_user_id, "discord_avatar" => nil,
+        "avatar_url" => "/api/v1/users/#{challenge.host_user_id}/avatar")
+    end
+  end
 end
