@@ -974,8 +974,8 @@ module OpenapiSchemas
         pick_deadline_on: str(format: "date"), reveal_on: str(format: "date"),
         ends_on: str(format: "date").merge(description: "The next reveal date: the year to Clear the game ends.")
       ),
-      # ChallengeEditionResource (spec #376, ticket #383): an Edition with
-      # the members signed up. Who gives to whom is never served here.
+      # ChallengeEditionResource (spec #376, tickets #383, #384): an Edition
+      # with the members signed up and, from the reveal, the assignments.
       ChallengeEdition: obj(
         id: int, year: int, phase: str(enum: ChallengeEdition::PHASES),
         challenge: obj(id: int, name: str),
@@ -987,9 +987,41 @@ module OpenapiSchemas
                                            "acting_user_id, and in bot job payloads)."),
         members: { type: :array, description: "The members signed up, first first.", items: obj(
           user_id: str, username: str, global_name: str(nullable: true),
-          left_out: bool.merge(description: "The draw left them out: fewer than 5 games in their backlog by then.")
+          left_out: bool.merge(description: "The draw left them out: fewer than 5 games in their backlog by then."),
+          withdrawn: bool.merge(description: "They withdrew after the draw; their recipient gets a random pick.")
         ) },
-        drawn_at: ts(nullable: true).merge(description: "When the draw happened (or cancelled the Edition).")
+        drawn_at: ts(nullable: true).merge(description: "When the draw happened (or cancelled the Edition)."),
+        assignments: {
+          type: :array, nullable: true,
+          description: "Who gives what to whom, by recipient: served from the reveal on, and to staff (Moderators " \
+                       "and above) from the draw on; null otherwise.",
+          items: obj(
+            _required: %w[recipient picked_randomly],
+            recipient: ref("ChallengeMember"),
+            game: ref("GameSummary", nullable: true).merge(description: "The game picked; null while nothing is."),
+            picked_randomly: bool.merge(description: "A random pick at the deadline: the Santa didn't pick, " \
+                                                     "withdrew or left the server."),
+            santa: ref("ChallengeMember", nullable: true).merge(description: "Null before the Edition ends, " \
+                                                                             "except to staff."),
+            run: obj(id: int, status: str(enum: ChallengeRun::STATUSES), progress: json(nullable: false))
+              .merge(nullable: true, description: "The recipient's Run of the Edition.")
+          )
+        },
+        picks_closed_at: ts(nullable: true).merge(description: "When the random picks were made at the deadline.")
+      ),
+      ChallengeMember: obj(user_id: str, username: str, global_name: str(nullable: true)),
+      # GET /api/v1/challenge_editions/{id}/santa (ticket #384).
+      ChallengeSanta: obj(
+        _description: "The acting member's side as a Santa.",
+        edition_id: int, year: int,
+        recipient: ref("ChallengeMember"),
+        pick: obj(game: ref("GameSummary"), picked_at: ts, picked_randomly: bool)
+          .merge(nullable: true, description: "The game picked for the recipient; null while nothing is."),
+        pick_deadline_on: str(format: "date").merge(description: "Picks are open until the start of this day."),
+        picks_open: bool,
+        backlog: { type: :array, items: ref("BacklogEntry"),
+                   description: "The recipient's backlog minus the games they have Cleared (any Game Completion), " \
+                                "narrowed by `q`." }
       ),
       # ChallengeRunResource (spec #376, ticket #378): a Run with its progress.
       ChallengeRun: obj(
@@ -999,6 +1031,13 @@ module OpenapiSchemas
         user: obj(user_id: str, username: str, global_name: str(nullable: true)),
         edition: obj(id: int, year: int).merge(nullable: true,
           description: "Assignment only: the Edition the Run was drawn in."),
+        assignment: obj(
+          game: ref("GameSummary", nullable: true).merge(description: "The game picked for the member: null " \
+                                                                       "before the reveal (except to staff)."),
+          picked_randomly: bool(nullable: true).merge(description: "Null until the game is shown."),
+          santa: ref("ChallengeMember", nullable: true).merge(description: "Null before the Edition ends, " \
+                                                                           "except to staff.")
+        ).merge(nullable: true, description: "Assignment only: the member's assigned game and their Santa."),
         status: str(enum: ChallengeRun::STATUSES),
         started_at: ts,
         ended_at: ts(nullable: true).merge(description: "When it became Finished, Expired or Abandoned."),
@@ -1007,7 +1046,7 @@ module OpenapiSchemas
           ends_on: str(nullable: true, format: "date").merge(description: "Null while it has no end.")
         ).merge(description: "When play counts toward the Run, as the club's dates (both included): the Season " \
                              "it belongs to, from its start to an Always Open Challenge's end date, or an " \
-                             "Edition's reveal to its end."),
+                             "Edition's reveal to the day before its end."),
         progress: obj(
           _required: %w[in_progress cleared target],
           in_progress: int.merge(description: "Games In Progress: in the member's Now Playing."),
@@ -1053,10 +1092,11 @@ module OpenapiSchemas
                       "`season_opened`, a Seasonal Challenge's Season that just opened (with `season`). An " \
                       "Edition's sign-up: `signup_opened`; `signup_closing` (with `days_left`); and at the draw, " \
                       "`signup_closed`, or `edition_cancelled` when fewer than 2 members could be drawn (both " \
-                      "with `joined` and `left_out`), all with `edition`.",
+                      "with `joined` and `left_out`), all with `edition`; and `edition_revealed` on the reveal " \
+                      "date, whose `edition` carries every assignment (never the Santas).",
         _required: %w[event challenge feature_key],
         event: str(enum: %w[challenge_created run_finished run_caught_up season_opened signup_opened signup_closing
-          signup_closed edition_cancelled]),
+          signup_closed edition_cancelled edition_revealed]),
         challenge: ref("Challenge"),
         run: ref("ChallengeRun").merge(description: "run_finished and run_caught_up only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
         season: ref("ChallengeSeasonDates").merge(description: "season_opened only: the Season that opened."),
@@ -1078,17 +1118,22 @@ module OpenapiSchemas
                       "about: `season_ending`, a reminder that the Season of the member's unFinished Run ends " \
                       "soon (with `run`, `season` and `days_left`), sent only to members who keep Challenge DMs " \
                       "on; `left_out_of_draw`, the draw left the member out of an Edition they signed up for " \
-                      "(with `edition`, `backlog_count` and `minimum`), sent to every member still in the server.",
+                      "(with `edition`, `backlog_count` and `minimum`), sent to every member still in the server; " \
+                      "`pick_reminder`, 2 days before an Edition's pick deadline, a Santa who hasn't picked for " \
+                      "their `recipient` (with `edition` and `days_left`), sent only to members who keep Challenge " \
+                      "DMs on.",
         _required: %w[event user_id challenge feature_key],
-        event: str(enum: %w[season_ending left_out_of_draw]),
+        event: str(enum: %w[season_ending left_out_of_draw pick_reminder]),
         user_id: str.merge(description: "The member to DM."),
         challenge: ref("Challenge"),
         run: ref("ChallengeRun").merge(description: "season_ending only: the member's Run, as GET " \
                                                      "/api/v1/challenge_runs/{id} serves it."),
         season: ref("ChallengeSeasonDates").merge(description: "season_ending only."),
-        days_left: int.merge(example: 7, description: "season_ending only: days from today to the Season's last " \
-                                                      "day (7 unless sent late)."),
-        edition: ref("ChallengeEdition").merge(description: "left_out_of_draw only: the Edition."),
+        days_left: int.merge(example: 7, description: "season_ending: days from today to the Season's last day " \
+                                                      "(7 unless sent late); pick_reminder: days to the pick " \
+                                                      "deadline (2 unless sent late)."),
+        edition: ref("ChallengeEdition").merge(description: "left_out_of_draw and pick_reminder: the Edition."),
+        recipient: ref("ChallengeMember").merge(description: "pick_reminder only: the member the Santa picks for."),
         backlog_count: int.merge(description: "left_out_of_draw only: the games in the member's backlog."),
         minimum: int.merge(example: 5, description: "left_out_of_draw only: the backlog minimum."),
         feature_key: str(enum: %w[challenges])

@@ -17,7 +17,9 @@ module Challenges
   # days from today to its last day; and "left_out_of_draw", a member the
   # draw left out of an Edition (as GET /api/v1/challenge_editions/{id} serves
   # it, under `edition`) for having `backlog_count` games in their backlog,
-  # under the `minimum`.
+  # under the `minimum`; and "pick_reminder", a Santa who hasn't picked for
+  # their `recipient` ({ user_id, username, global_name }) 2 days before the
+  # Edition's pick deadline (`days_left`), with the Edition under `edition`.
   module DirectMessages
     KIND = "challenge_dm"
 
@@ -45,6 +47,31 @@ module Challenges
         )
       end
     end
+
+    # Reminds each Santa of `signups` (sign-ups of `edition` without a pick)
+    # to pick for their recipient before the deadline. Queued by the
+    # lifecycle job, so they have no requester.
+    def self.pick_reminder!(edition, signups, today:)
+      signups = signups.preload(:user, :recipient).to_a
+      return if signups.empty?
+
+      challenge = ChallengeResource.preloaded(Challenge.where(id: edition.challenge_id)).first!
+      challenge_json = ChallengeResource.new(challenge, params: { detail: true }).serializable_hash
+      edition_json = ChallengeEditionResource.serialize(edition)
+      signups.each do |signup|
+        recipient = signup.recipient
+        BotJob.enqueue!(
+          kind: KIND, summary: %(Remind #{display_name(signup.user)} to pick for "#{challenge.name}" #{edition.year}),
+          payload: { event: "pick_reminder", user_id: signup.user_id, challenge: challenge_json, edition: edition_json,
+                     recipient: { user_id: recipient.user_id, username: recipient.username,
+                                  global_name: recipient.global_name },
+                     days_left: (edition.pick_deadline_on - today).to_i }
+        )
+      end
+    end
+
+    def self.display_name(user) = user.global_name.presence || user.username.presence || user.user_id
+    private_class_method :display_name
 
     # Reminds the members of `runs` (Active Runs of `challenge`'s Season)
     # that the Season ends on `ends_on`. Queued by the lifecycle job, so they

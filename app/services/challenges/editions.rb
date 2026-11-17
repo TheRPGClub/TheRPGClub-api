@@ -6,8 +6,11 @@ module Challenges
   #
   #   open_due!(challenge, today)   opens the Edition whose sign-up is due
   #   sign_up!(edition, user_id)    signs a member up before the cutoff
-  #   withdraw!(edition, user_id)   withdraws them before the cutoff
+  #   withdraw!(edition, user_id)   withdraws them before the cutoff, or
+  #                                 as a Santa until the pick deadline
   #   draw!(edition, now:, random:) the draw, at the cutoff
+  #   reveal!(edition, now:)        the reveal, on the reveal date
+  #   end!(edition, now:)           the Edition's end, on the next reveal date
   #
   # Editions open by themselves: each one's sign-up opens the day after the
   # previous reveal (the first one's, the day the Challenge is created) and
@@ -81,13 +84,17 @@ module Challenges
       edition
     end
 
-    def self.withdraw!(edition, user_id, today: Challenges.today)
+    # Before the cutoff, takes the member off the Edition. After the draw,
+    # until the pick deadline, a drawn member withdraws as a Santa instead
+    # (Challenges::Picks.withdraw!).
+    def self.withdraw!(edition, user_id, now: Time.current)
+      today = Challenges.today(now)
       edition.with_lock do
-        refuse_closed!(edition, today)
-        signup = edition.signups.find_by(user_id: user_id)
+        refuse_closed!(edition, today) unless edition.phase == "picking"
+        signup = edition.signups.find_by(user_id: user_id, withdrawn_at: nil)
         raise SignupRefused.new("not_signed_up", "You aren't signed up for the #{edition.year} Edition.") unless signup
 
-        signup.destroy!
+        edition.phase == "picking" ? Picks.withdraw!(signup, now: now) : signup.destroy!
       end
       edition
     end
@@ -119,6 +126,34 @@ module Challenges
         left_out_counts = left_out.to_h { |signup| [ signup.user_id, counts.fetch(signup.user_id, 0) ] }
         DirectMessages.left_out_of_draw!(edition, left_out_counts)
         announce_draw(edition, joined: eligible.size, left_out: left_out.size)
+      end
+    end
+
+    # The reveal, on the reveal date: the random picks are made first if
+    # the deadline step hasn't (Challenges::Picks.close!), then every
+    # assignment is revealed, each recipient's Run takes its assigned game as
+    # its goal (Challenges::Progress), and the reveal is announced, unless
+    # the Challenge is hidden. Does nothing once the Edition is revealed.
+    def self.reveal!(edition, now:)
+      Picks.close!(edition, now: now)
+      edition.with_lock do
+        next unless edition.phase == "picking"
+
+        edition.update!(phase: "revealed")
+        edition.runs.active.pluck(:user_id).each { |user_id| Challenges.refresh_runs!(user_id) }
+        Announcements.edition_revealed!(edition) unless edition.challenge.hidden?
+      end
+    end
+
+    # The Edition's end, on the next reveal date: its unFinished (Active)
+    # Runs Expire, and its Santas are shown from then on. Does nothing
+    # unless the Edition is revealed.
+    def self.end!(edition, now:)
+      edition.with_lock do
+        next unless edition.phase == "revealed"
+
+        edition.runs.active.update_all(status: "expired", ended_at: now, updated_at: now)
+        edition.update!(phase: "ended")
       end
     end
 

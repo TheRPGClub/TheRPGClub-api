@@ -17,7 +17,9 @@ module Challenges
   # `edition`: "signup_opened"; "signup_closing" with `days_left` to the
   # cutoff; and, from the draw, "signup_closed" or "edition_cancelled" (fewer
   # than 2 members drawn), each with `joined`, the members drawn, and
-  # `left_out`, those the backlog minimum left out.
+  # `left_out`, those the backlog minimum left out; and "edition_revealed",
+  # on the reveal date, whose Edition carries every assignment under
+  # `assignments` (the Santas left out).
   module Announcements
     KIND = "challenge_announce"
     FEATURE_KEY = "challenges"
@@ -58,6 +60,12 @@ module Challenges
     def self.edition_cancelled!(edition, joined:, left_out:)
       edition_event!("edition_cancelled", edition, "Announce that %<name>s %<year>d is cancelled",
         joined: joined, left_out: left_out)
+    end
+
+    # The reveal (Challenges::Editions.reveal!): the Edition carries every
+    # assignment, without the Santas.
+    def self.edition_revealed!(edition)
+      edition_event!("edition_revealed", edition, "Announce the assignments of %<name>s %<year>d")
     end
 
     # The Edition steps are queued by the lifecycle job, so they have no

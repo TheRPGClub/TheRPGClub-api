@@ -2,9 +2,10 @@
 
 # An Edition as the API serves it (spec #376, ticket #383): its year, phase
 # and dates (the club's), and the members signed up, each marked when the
-# draw left them out. Who gives to whom is never served here before the
-# Edition ends (ticket #384 reveals it). `params[:user_id]` is the member
-# reading, for `signed_up`.
+# draw left them out or they withdrew after it. From the reveal on it serves
+# the assignments (ticket #384), with the Santas only once the Edition ends,
+# except to staff. `params[:user_id]` is the member reading, for `signed_up`,
+# and `params[:staff]` whether they are staff (a Moderator or above).
 #
 # Load Editions through ChallengeEditionResource.preloaded.
 class ChallengeEditionResource
@@ -38,13 +39,39 @@ class ChallengeEditionResource
   attribute :members do |edition|
     edition.signups.sort_by(&:signed_up_at).map do |signup|
       user = signup.user
-      { user_id: user.user_id, username: user.username, global_name: user.global_name, left_out: signup.left_out? }
+      { user_id: user.user_id, username: user.username, global_name: user.global_name, left_out: signup.left_out?,
+        withdrawn: signup.withdrawn? }
     end
   end
 
   attributes :drawn_at
 
-  PRELOADS = [ :challenge, { signups: :user } ].freeze
+  # Who gives what to whom (ticket #384), once the picks are revealed, and
+  # to staff (`params[:staff]`) from the draw on: each recipient, the game
+  # picked for them (null while nothing is), whether it was a random pick,
+  # their Run and its progress, and their Santa, which nobody but staff
+  # sees before the Edition ends. Null when not served.
+  attribute :assignments do |edition|
+    staff = params[:staff] ? true : false
+    next nil unless edition.revealed? || (staff && edition.drawn?)
+
+    runs = edition.runs.index_by(&:user_id)
+    edition.signups.select(&:recipient_user_id).sort_by { |signup| signup.recipient.username.to_s.downcase }
+      .map do |signup|
+        run = runs[signup.recipient_user_id]
+        { recipient: ChallengeEditionResource.member(signup.recipient),
+          game: signup.picked_game && GameSummaryResource.new(signup.picked_game).serializable_hash,
+          picked_randomly: signup.picked_randomly,
+          santa: (ChallengeEditionResource.member(signup.user) if staff || edition.ended?),
+          run: run && { id: run.id, status: run.status, progress: Challenges::Progress.summary(run).as_json } }
+      end
+  end
+
+  attributes :picks_closed_at
+
+  PRELOADS = [ :challenge, { signups: %i[user recipient picked_game], runs: %i[entries challenge] } ].freeze
+
+  def self.member(user) = { user_id: user.user_id, username: user.username, global_name: user.global_name }
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)
 

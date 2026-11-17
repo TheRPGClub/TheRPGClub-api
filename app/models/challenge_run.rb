@@ -39,4 +39,10 @@ class ChallengeRun < ApplicationRecord
   def finished? = status == "finished"
 
   def window = Challenges::Window.for(self)
+
+  # An Assignment Run's sign-up row naming the game picked for its member
+  # (ChallengeEditionSignup, the Santa's), or nil.
+  def assignment
+    edition&.signups&.find { |signup| signup.recipient_user_id == user_id }
+  end
 end

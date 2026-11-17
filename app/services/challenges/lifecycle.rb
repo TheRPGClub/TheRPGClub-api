@@ -22,11 +22,12 @@ module Challenges
   #
   # NewYearSlot refreshes growing Slots Runs on 1 January (#382). The
   # Assignment Format's Edition steps (#383: EditionOpened, SignupClosing,
-  # EditionDrawn; #384 adds the picks, the reveal and the Edition's end) are
-  # added to STEPS the same way.
+  # EditionDrawn; #384: PickReminder, PicksClosed, EditionRevealed,
+  # EditionEnded) are added to STEPS the same way, in the order they happen,
+  # so a tick that missed several catches up on them in turn.
   module Lifecycle
     STEPS = [ SeasonOpened, SeasonEndingReminder, SeasonEnded, EndDateReached, NewYearSlot, EditionOpened,
-      SignupClosing, EditionDrawn ].freeze
+      SignupClosing, EditionDrawn, PickReminder, PicksClosed, EditionRevealed, EditionEnded ].freeze
 
     module_function
 

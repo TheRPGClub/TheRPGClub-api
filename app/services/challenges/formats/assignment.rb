@@ -136,9 +136,16 @@ module Challenges
 
       def self.notices(_run) = []
 
-      # Run progress (Challenges::Progress). The assigned game arrives with
-      # the picks and the reveal (#384); until then the Run counts nothing.
-      def self.count(_run, _plays) = []
+      # Run progress (Challenges::Progress): the Run's only game is the one
+      # picked for its member, from the reveal on; until then it counts
+      # nothing, so the pick stays a surprise. The pick stands even if the
+      # game leaves their backlog.
+      def self.count(run, plays)
+        game_id = run.edition&.revealed? && run.assignment&.picked_game_id
+        return [] unless game_id
+
+        [ plays.counted(game_id) ].compact
+      end
 
       # The Run is Finished when its assigned game is Cleared.
       def self.summary(_run, entries)

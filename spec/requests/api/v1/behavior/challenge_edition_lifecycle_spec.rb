@@ -163,7 +163,7 @@ RSpec.describe "api/v1/challenge edition lifecycle behavior", type: :request do
       end
       expect(runs.map { |run| run.dig("user", "user_id") }).to match_array(members.map(&:user_id))
       expect(runs).to all(include("status" => "active", "edition" => { "id" => edition_id, "year" => 2026 },
-        "window" => { "starts_on" => "2026-12-25", "ends_on" => "2027-12-25" }))
+        "window" => { "starts_on" => "2026-12-25", "ends_on" => "2027-12-24" }))
 
       circle = ChallengeEditionSignup.where(edition_id: edition_id).pluck(:user_id, :recipient_user_id).to_h
       expect(circle.values).to match_array(circle.keys)
