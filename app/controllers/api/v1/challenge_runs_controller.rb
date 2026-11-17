@@ -19,7 +19,7 @@ module Api
 
       feature :challenges
 
-      before_action :require_acting_member!, only: %i[create abandon destroy]
+      before_action :require_acting_member!, only: %i[create abandon destroy slot_move]
 
       rescue_from Challenges::RunRefused do |error|
         render json: { error: error.code, message: error.message, **error.details }, status: error.status
@@ -52,10 +52,14 @@ module Api
       #
       # Starts the acting member's Run. 409 `challenge_closed` when the
       # Challenge is Closed, 409 `run_active` (with `run_id`) when they
-      # already have an Active Run of it.
+      # already have an Active Run of it. A Slots Run starting at the birth
+      # year: 409 `birth_date_required` without a Birth Date, 422 `no_slots`
+      # when the birth year is after the last year. `meta.notices` says what
+      # the member should know, such as their birth year showing on the Run.
       def create
         challenge = visible_challenges.find(params[:challenge_id])
-        render_run(Challenges::Runs.start!(challenge, actor.user_id), status: :created)
+        run = Challenges::Runs.start!(challenge, actor.user_id)
+        render_run(run, status: :created, meta: { notices: challenge.format_rules.notices(run) })
       end
 
       # POST /api/v1/challenge_runs/:id/abandon
@@ -63,6 +67,22 @@ module Api
       # 409 `run_not_active` unless the Run is Active.
       def abandon
         own_run { |run| render_run(Challenges::Runs.abandon!(run)) }
+      end
+
+      # POST /api/v1/challenge_runs/:id/slot_move
+      # Body: { "data": { "game_id": 12, "slot_year": 1999 } }
+      #
+      # Moves a Cleared game of the member's Slots Run to another open year
+      # it fits. 422 `not_slots`, `not_cleared`, `slot_out_of_range` or
+      # `slot_not_fitting`; 409 `slot_filled` (with the filling `game_id`)
+      # or `run_not_active`.
+      def slot_move
+        data = request_data
+        game_id = positive_integer(data["game_id"], "game_id")
+        year = positive_integer(data["slot_year"], "slot_year")
+        return if performed?
+
+        own_run { |run| render_run(Challenges::Runs.move!(run, game_id: game_id, year: year)) }
       end
 
       # DELETE /api/v1/challenge_runs/:id
@@ -84,6 +104,13 @@ module Api
         yield run
       end
 
+      def positive_integer(value, field)
+        Integer(value.to_s, 10).tap { |int| raise ArgumentError unless int.positive? }
+      rescue ArgumentError
+        render(json: { error: "#{field} must be a whole number" }, status: :bad_request) unless performed?
+        nil
+      end
+
       def readable_runs
         runs = ChallengeRun.where(challenge_id: visible_challenges.select(:id))
         runs = runs.or(ChallengeRun.where(user_id: actor.user_id)) if actor.user_id.present?
@@ -102,9 +129,11 @@ module Api
           default_order: { started_at: :desc, id: :desc })
       end
 
-      def render_run(run, status: :ok)
+      def render_run(run, status: :ok, meta: nil)
         run = ChallengeRunResource.preloaded(ChallengeRun.where(id: run.id)).first!
-        render json: { data: ChallengeRunResource.new(run).serializable_hash }, status: status
+        body = { data: ChallengeRunResource.new(run).serializable_hash }
+        body[:meta] = meta if meta
+        render json: body, status: status
       end
     end
   end

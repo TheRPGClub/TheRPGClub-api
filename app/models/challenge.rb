@@ -10,10 +10,11 @@
 # club's time zone; the timed effects belong to the lifecycle job.
 #
 # Every Challenge has exactly one Challenge Format, and each Format keeps its
-# own settings (Challenges::Formats): only Pool so far, whose definition is
-# the chosen franchises and collections plus games included or excluded by
-# hand, and whose target is `pool_target` Cleared games (null: every game in
-# the Pool).
+# own settings (Challenges::Formats): a Pool's definition is the chosen
+# franchises and collections plus games included or excluded by hand, and
+# its target is `pool_target` Cleared games (null: every game in the Pool);
+# a Slots range runs from `slots_first_year` (null: each member's birth year)
+# to `slots_last_year` (null: the current year).
 #
 # Once the Challenge has any Run its rules are locked (RULE_ATTRIBUTES and
 # the Format's settings); its name, description and end date stay editable.

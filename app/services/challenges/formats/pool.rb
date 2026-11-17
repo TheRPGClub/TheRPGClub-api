@@ -86,6 +86,12 @@ module Challenges
           target: target, goal_reached: target.positive? && cleared >= target)
       end
 
+      # A Pool Run needs nothing of its own to start, and tells the member
+      # nothing more (Challenges::Runs.start!).
+      def self.run_attributes(_challenge, _user_id, **) = {}
+
+      def self.notices(_run) = []
+
       def self.as_json(challenge, settings, detail: false)
         definition = settings.definition
         names = names_for(challenge)

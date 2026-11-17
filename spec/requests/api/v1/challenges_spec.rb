@@ -20,12 +20,25 @@ RSpec.describe 'api/v1/challenges', type: :request do
                 description: 'Cleared games needed to Finish, or "all" for every game in the Pool. Required on create.' }
     }
   }
+  slots = {
+    type: :object,
+    description: 'The slot range (challenge_format slots): one slot per release year. On edit, only the keys ' \
+                 'given change; both are required on create.',
+    properties: {
+      first_year: { oneOf: [ { type: :integer, minimum: 1900, maximum: 2100 }, { type: :string, enum: %w[birth_year] } ],
+                    description: 'A fixed year, or "birth_year" for each member\'s birth year (a Run then needs ' \
+                                 'their Birth Date, and shows the year).' },
+      last_year: { oneOf: [ { type: :integer, minimum: 1900, maximum: 2100 }, { type: :string, enum: %w[current_year] } ],
+                   description: 'A fixed year, or "current_year" for a range that gains a slot every 1 January. ' \
+                                'Not before a fixed first year.' }
+    }
+  }
   writable = {
     acting_user_id: acting_user_id,
     name: { type: :string, maxLength: Challenge::NAME_MAX },
     description: { type: :string },
     challenge_format: { type: :string, enum: Challenge::FORMATS,
-                        description: 'Only pool so far: slots and assignment are 422 "not available yet". ' \
+                        description: 'pool or slots so far: assignment is 422 "not available yet". ' \
                                      'Locked once the Challenge has a Run.' },
     schedule: { type: :string, enum: Challenge::SCHEDULES, description: 'Locked once the Challenge has a Run.' },
     ends_on: { type: :string, format: :date, nullable: true,
@@ -35,7 +48,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
               description: 'Seasonal only: start and end as MM-DD, repeating every year; the end may come before ' \
                            'the start to cross the new year. Locked once the Challenge has a Run.',
               properties: { start: { type: :string, example: '12-01' }, end: { type: :string, example: '02-28' } } },
-    pool: pool
+    pool: pool,
+    slots: slots
   }
   refusal = 'Refusals carry `{ error, message }`; `message` is written for members (403 `forbidden`, 422 ' \
             '`invalid_challenge`).'
@@ -86,7 +100,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
           data: {
             type: :object,
             properties: writable.merge(hosted_by_club: { type: :boolean, description: 'Moderator and above.' }),
-            required: %w[name challenge_format schedule pool]
+            required: %w[name challenge_format schedule],
+            description: 'Send the settings of the chosen Format: `pool` or `slots`.'
           }
         },
         required: %w[data]
@@ -109,7 +124,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'invalid_challenge: a missing or invalid field, an empty or unknown Pool, a Format not available yet' do
+      response '422', 'invalid_challenge: a missing or invalid field, an empty or unknown Pool, a slot range that ' \
+                      'ends before it starts, a Format not available yet' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
@@ -187,9 +203,9 @@ RSpec.describe 'api/v1/challenges', type: :request do
       tags 'Challenges'
       description 'The Host, for their own; any Moderator or above, for a club-hosted one. Only the keys given ' \
                   'change. Once the Challenge has any Run its rules are locked: a change to the Format, ' \
-                  'schedule, Season or Pool is 409 `rules_locked` with the `fields` it would change (sending ' \
-                  'them unchanged is fine). Name, description and end date stay editable, except that an Always ' \
-                  'Open Challenge that reached its end date is Closed for good (`ended_at`): a change to its ' \
+                  'schedule, Season, Pool or slot range is 409 `rules_locked` with the `fields` it would change ' \
+                  '(sending them unchanged is fine). Name, description and end date stay editable, except that an ' \
+                  'Always Open Challenge that reached its end date is Closed for good (`ended_at`): a change to its ' \
                   'schedule or end date is 422 `invalid_challenge`. ' + refusal
       consumes 'application/json'
       produces 'application/json'
@@ -208,7 +224,7 @@ RSpec.describe 'api/v1/challenges', type: :request do
       response '409', 'rules_locked' do
         schema type: :object, properties: {
           error: { type: :string, enum: %w[rules_locked] }, message: { type: :string },
-          fields: { type: :array, items: { type: :string, enum: %w[challenge_format schedule season pool] } }
+          fields: { type: :array, items: { type: :string, enum: %w[challenge_format schedule season pool slots] } }
         }
       end
 

@@ -21,6 +21,10 @@ module Challenges
   #                           Format may keep the Run's hand-made entries
   #   summary(run, entries)   a Summary of the entries (Counted or stored)
   #
+  # Slots (Challenges::Formats::Slots) keeps each game's slot year on the
+  # entry, and a game the member moved (`picked_by_hand`) stays there while
+  # it still holds.
+  #
   # What stays the same for every Format lives here:
   # - The window (Challenges::Window) and what counts inside it
   #   (Challenges::Plays).
@@ -32,12 +36,22 @@ module Challenges
   #   but until its window ends it keeps counting new play, so a member may
   #   play past a Pool's target.
   # - An Active Run whose goal is reached becomes Finished (Change event
-  #   "run_finished").
+  #   "run_finished"). One that becomes Caught Up (Slots) is announced
+  #   (Change event "run_caught_up") once a year at most: Caught Up is worked
+  #   out from the entries, never stored, and the Run only remembers the
+  #   year it was last announced.
   module Progress
     # How far a Run is: games In Progress and Cleared, against the `target`
-    # number of Cleared games, and whether the goal is reached.
-    Summary = Data.define(:in_progress, :cleared, :target, :goal_reached) do
-      def as_json(*) = { in_progress: in_progress, cleared: cleared, target: target }
+    # number of Cleared games, and whether the goal is reached. A Format
+    # whose Runs can be Caught Up (Slots) says whether this one is, and it
+    # is then served too; for the others it is nil.
+    Summary = Data.define(:in_progress, :cleared, :target, :goal_reached, :caught_up) do
+      def initialize(caught_up: nil, **) = super
+
+      def as_json(*)
+        json = { in_progress: in_progress, cleared: cleared, target: target }
+        caught_up.nil? ? json : json.merge(caught_up: caught_up)
+      end
     end
 
     # A Run whose status changed, and the announcement event for it.
@@ -48,7 +62,7 @@ module Challenges
       ChallengeRun.transaction do
         runs = refreshable(user_id, today)
         plays = Plays.of(user_id) if runs.any?
-        runs.filter_map { |run| refresh_run(run, plays, now) }
+        runs.filter_map { |run| refresh_run(run, plays, now, today) }
       end
     end
 
@@ -66,15 +80,21 @@ module Challenges
     end
     private_class_method :refreshable
 
-    def self.refresh_run(run, plays, now)
+    def self.refresh_run(run, plays, now, today)
       format = run.challenge.format_rules
       counted = format.count(run, plays.within(run.window))
       counted = keep_cleared(run, counted) if run.finished?
       write_entries(run, counted)
-      return unless run.active? && format.summary(run, counted).goal_reached
+      return unless run.active?
 
-      run.update!(status: "finished", ended_at: now)
-      Change.new(run: run, event: "run_finished")
+      summary = format.summary(run, counted)
+      if summary.goal_reached
+        run.update!(status: "finished", ended_at: now)
+        Change.new(run: run, event: "run_finished")
+      elsif summary.caught_up && run.caught_up_announced_year != today.year
+        run.update!(caught_up_announced_year: today.year)
+        Change.new(run: run, event: "run_caught_up")
+      end
     end
     private_class_method :refresh_run
 
@@ -85,6 +105,7 @@ module Challenges
         next if by_game[entry.game_id]&.cleared?
 
         by_game[entry.game_id] = Counted.cleared(entry.game_id, entry.completion_id, entry.cleared_on)
+          .with(slot_year: entry.slot_year, picked_by_hand: entry.picked_by_hand)
       end
       by_game.values
     end
@@ -99,7 +120,7 @@ module Challenges
       ChallengeRunEntry.where(run_id: run.id, game_id: gone).delete_all if gone.any?
       rows = wanted.values.reject { |entry| same?(stored[entry.game_id], entry) }.map do |entry|
         { run_id: run.id, game_id: entry.game_id, state: entry.state, completion_id: entry.completion_id,
-          cleared_on: entry.cleared_on }
+          cleared_on: entry.cleared_on, slot_year: entry.slot_year, picked_by_hand: entry.picked_by_hand }
       end
       ChallengeRunEntry.upsert_all(rows, unique_by: :ux_challenge_run_entries_game) if rows.any?
       run.entries.reset if gone.any? || rows.any?
@@ -107,7 +128,8 @@ module Challenges
     private_class_method :write_entries
 
     def self.same?(row, entry)
-      row && row.state == entry.state && row.completion_id == entry.completion_id && row.cleared_on == entry.cleared_on
+      row && row.state == entry.state && row.completion_id == entry.completion_id &&
+        row.cleared_on == entry.cleared_on && row.slot_year == entry.slot_year && row.picked_by_hand == entry.picked_by_hand
     end
     private_class_method :same?
   end

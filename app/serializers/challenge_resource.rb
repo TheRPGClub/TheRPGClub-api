@@ -42,6 +42,13 @@ class ChallengeResource
     format.as_json(challenge, format.load(challenge), detail: params[:detail] ? true : false)
   end
 
+  attribute :slots do |challenge|
+    next nil unless challenge.challenge_format == Challenges::Formats::Slots::KEY
+
+    format = Challenges::Formats::Slots
+    format.as_json(challenge, format.load(challenge))
+  end
+
   attribute :run_count do |challenge|
     challenge.runs.size if params[:detail]
   end

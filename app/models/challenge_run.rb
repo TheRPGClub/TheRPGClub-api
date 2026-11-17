@@ -9,6 +9,11 @@
 # Season it was started in for a Seasonal one (`season_starts_on` to
 # `season_ends_on`). Its entries are the games counted on it, kept up to
 # date by Challenges::Progress.
+#
+# A Slots Run copies its `first_year` when it starts (the fixed one, or the
+# member's birth year) and keeps it. Caught Up is worked out, never stored;
+# `caught_up_announced_year` is only the year it was last announced, so it is
+# announced at most once a year.
 class ChallengeRun < ApplicationRecord
   STATUSES = %w[active finished expired abandoned].freeze
   # The statuses a member may delete a Run in; an Active Run is abandoned first.

@@ -454,11 +454,13 @@ Rails.application.routes.draw do
       end
       # Runs (ticket #378): start one of a Challenge, list a Challenge's
       # Runs, read, abandon and delete one; a member's Runs are under users.
+      # A slot move (ticket #381) puts a game of a Slots Run in another year.
       get  "challenges/:challenge_id/runs", to: "challenge_runs#challenge_index"
       post "challenges/:challenge_id/runs", to: "challenge_runs#create"
-      get    "challenge_runs/:id",         to: "challenge_runs#show"
-      post   "challenge_runs/:id/abandon", to: "challenge_runs#abandon"
-      delete "challenge_runs/:id",         to: "challenge_runs#destroy"
+      get    "challenge_runs/:id",           to: "challenge_runs#show"
+      post   "challenge_runs/:id/abandon",   to: "challenge_runs#abandon"
+      post   "challenge_runs/:id/slot_move", to: "challenge_runs#slot_move"
+      delete "challenge_runs/:id",           to: "challenge_runs#destroy"
     end
   end
 end

@@ -906,7 +906,7 @@ module OpenapiSchemas
       # Challenge Format's settings under the Format's key.
       Challenge: obj(
         id: int, name: str(maxLength: Challenge::NAME_MAX), description: str,
-        challenge_format: str(enum: Challenge::FORMATS).merge(description: "Only pool so far."),
+        challenge_format: str(enum: Challenge::FORMATS).merge(description: "pool or slots so far."),
         hosted_by_club: bool.merge(description: "True when the club itself is the Host (host is null)."),
         host: obj(user_id: str, username: str, global_name: str(nullable: true)).merge(nullable: true,
           description: "The member who is the Host; null for a club-hosted Challenge."),
@@ -920,6 +920,7 @@ module OpenapiSchemas
         ).merge(nullable: true, description: "A Seasonal Challenge's Season, as MM-DD; null when Always Open."),
         open: bool.merge(description: "Open today in the club's time zone (America/New_York)."),
         pool: ref("ChallengePool", nullable: true),
+        slots: ref("ChallengeSlots", nullable: true),
         run_count: int(nullable: true).merge(description: "Every Run of it, whatever its status. Show only; null in lists."),
         hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
         ended_at: ts(nullable: true).merge(
@@ -940,6 +941,13 @@ module OpenapiSchemas
         excluded_games: { type: :array, items: obj(game_id: int, title: str) },
         game_count: int(nullable: true).merge(description: "Games in the Pool now. Show and announcements only.")
       ),
+      ChallengeSlots: obj(
+        _description: "A Slots Challenge's range: one slot per release year (ticket #381).",
+        first_year: { oneOf: [ { type: :integer }, { type: :string, enum: %w[birth_year] } ],
+                      description: "A fixed year, or \"birth_year\" for each member's birth year." },
+        last_year: { oneOf: [ { type: :integer }, { type: :string, enum: %w[current_year] } ],
+                     description: "A fixed year, or \"current_year\": the range gains a slot every 1 January." }
+      ),
       # ChallengeRunResource (spec #376, ticket #378): a Run with its progress.
       ChallengeRun: obj(
         id: int,
@@ -955,17 +963,31 @@ module OpenapiSchemas
         ).merge(description: "When play counts toward the Run, as the club's dates (both included): the Season " \
                              "it belongs to, or from its start to an Always Open Challenge's end date."),
         progress: obj(
+          _required: %w[in_progress cleared target],
           in_progress: int.merge(description: "Games In Progress: in the member's Now Playing."),
-          cleared: int.merge(description: "Games Cleared by a Game Completion dated inside the window."),
-          target: int.merge(description: "Cleared games needed to Finish.")
+          cleared: int.merge(description: "Games Cleared by a Game Completion dated inside the window; for " \
+                                           "Slots, the slots filled."),
+          target: int.merge(description: "Cleared games needed to Finish; for Slots, the Run's slots so far."),
+          caught_up: bool.merge(description: "Slots only (absent otherwise): an Active Run whose range ends at " \
+                                             "the current year, with every slot so far Cleared. Worked out " \
+                                             "when read, so it lapses on 1 January.")
         ),
         entries: { type: :array, description: "The games counted on the Run, Cleared first.", items: obj(
           game_id: int, title: str, state: str(enum: ChallengeRunEntry::STATES),
           cleared_on: str(nullable: true, format: "date"),
           completion_id: int(nullable: true).merge(
             description: "The Game Completion that Cleared it; null on a Finished Run after it was deleted."
-          )
-        ) }
+          ),
+          slot_year: int(nullable: true).merge(description: "Slots: the year this Cleared game fills; null " \
+                                                           "when In Progress, waiting for an open year, or not Slots."),
+          picked_by_hand: bool.merge(description: "The member placed it there themselves (a slot move).")
+        ) },
+        slots: obj(
+          first_year: int.merge(description: "Copied when the Run started; kept if the Birth Date changes."),
+          last_year: int.merge(description: "The last year so far: the current year for a range that grows."),
+          growing: bool.merge(description: "The range ends at the current year and gains a slot every 1 January."),
+          years: { type: :array, items: obj(year: int, game_id: int(nullable: true), title: str(nullable: true)) }
+        ).merge(nullable: true, description: "Slots only: each year so far and the game filling it (null while open).")
       ),
       ChallengeWarning: obj(
         code: str(enum: %w[duplicate_name]), message: str,
@@ -979,11 +1001,12 @@ module OpenapiSchemas
       ChallengeAnnounceJobPayload: obj(
         _description: "Kind `challenge_announce`. Post in the #challenges channel, or the staff test channel " \
                       "while the Feature is in Preview. `event` says what to announce: `challenge_created`, " \
-                      "a new Challenge; `run_finished`, a member's Run that just Finished (with `run`); or " \
+                      "a new Challenge; `run_finished`, a member's Run that just Finished, or `run_caught_up`, a " \
+                      "member's Slots Run that just became Caught Up (at most once a year), both with `run`; or " \
                       "`season_opened`, a Seasonal Challenge's Season that just opened (with `season`).",
-        event: str(enum: %w[challenge_created run_finished season_opened]),
+        event: str(enum: %w[challenge_created run_finished run_caught_up season_opened]),
         challenge: ref("Challenge"),
-        run: ref("ChallengeRun").merge(description: "run_finished only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
+        run: ref("ChallengeRun").merge(description: "run_finished and run_caught_up only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
         season: ref("ChallengeSeasonDates").merge(description: "season_opened only: the Season that opened."),
         feature_key: str(enum: %w[challenges])
       ),
