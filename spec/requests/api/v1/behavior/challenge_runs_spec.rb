@@ -240,6 +240,21 @@ RSpec.describe "api/v1/challenge runs behavior", type: :request do
   end
 
   describe "reading Runs" do
+    it "lists a member's ended Runs (Finished, Expired, Abandoned) with status=ended" do
+      runs = %w[active finished expired abandoned].to_h do |status|
+        [ status, create(:challenge_run, challenge: create(:challenge), user: member, status: status) ]
+      end
+
+      get "/api/v1/users/#{member.user_id}/challenge_runs", params: { status: "ended" }, headers: auth_headers_for(member)
+
+      expect(json.fetch("data").map { |run| run.fetch("id") })
+        .to contain_exactly(runs["finished"].id, runs["expired"].id, runs["abandoned"].id)
+
+      get "/api/v1/users/#{member.user_id}/challenge_runs", params: { status: "over" }, headers: auth_headers_for(member)
+      expect(response).to have_http_status(:bad_request)
+      expect(json.fetch("error")).to include("ended")
+    end
+
     it "gives each entry its game's title and cover, and no Slots fields on a Pool Run" do
       covered = create(:game, title: "Chrono Trigger").tap { |game| create(:game_image, :primary, game: game) }
       plain = create(:game, title: "Suikoden")

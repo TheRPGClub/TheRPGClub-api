@@ -28,7 +28,8 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
              'ending at the current year is Caught Up while every year so far is Cleared. Earlier play counts only ' \
              'when picked by hand (Counts past play). Finished is final.'
   hidden = 'Runs of a hidden Challenge are listed only for Moderators and above, its Host and the Run\'s member.'
-  status_filter = { type: :string, enum: ChallengeRun::STATUSES }
+  status_filter = { type: :string, enum: ChallengeRun::STATUSES + %w[ended],
+                    description: '`ended`: Finished, Expired and Abandoned.' }
 
   path '/api/v1/users/{user_id}/challenge_runs' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true

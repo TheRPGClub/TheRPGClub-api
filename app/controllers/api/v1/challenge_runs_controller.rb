@@ -30,6 +30,7 @@ module Api
       # GET /api/v1/users/:user_id/challenge_runs?status=active
       #
       # The member's Runs, current and past, newest first, for their profile.
+      # `status=ended` lists the Finished, Expired and Abandoned ones.
       def user_index
         render_runs(readable_runs.where(user_id: params[:user_id].to_s))
       end
@@ -162,14 +163,19 @@ module Api
       # the Edition ends.
       def resource_params = { staff: actor.moderator_or_above? }
 
+      # `status` filters by one status, or "ended" by every status but Active
+      # (Finished, Expired, Abandoned).
+      STATUS_FILTERS = (ChallengeRun::STATUSES.to_h { |status| [ status, status ] })
+        .merge("ended" => ChallengeRun::ENDED).freeze
+
       def render_runs(scope)
         status = params[:status].presence
-        if status && !ChallengeRun::STATUSES.include?(status)
-          return render(json: { error: "status must be one of #{ChallengeRun::STATUSES.join(', ')}" },
+        if status && !STATUS_FILTERS.key?(status)
+          return render(json: { error: "status must be one of #{STATUS_FILTERS.keys.join(', ')}" },
             status: :bad_request)
         end
 
-        scope = scope.where(status: status) if status
+        scope = scope.where(status: STATUS_FILTERS.fetch(status)) if status
         render_collection(ChallengeRunResource.preloaded(scope), resource: ChallengeRunResource,
           default_order: { started_at: :desc, id: :desc }, params: resource_params)
       end
