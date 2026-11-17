@@ -145,12 +145,18 @@ module Imports
       end
 
       ensure_release(game, platform_id, item)
-      completion = UserGameCompletion.create!(
-        user_id: @import.user_id, gamedb_game_id: game.game_id, completion_type:, platform_id:,
-        completed_at:, final_playtime_hrs: playtime, note: nil
-      )
-      # completed_at has a database default (today); an unknown date is NULL.
-      completion.update_columns(completed_at: nil) if completed_at.nil? && completion.reload.completed_at
+      # One transaction, so the completion's commit (which refreshes the
+      # member's Runs, Challenges::CountsTowardRuns) comes after
+      # update_columns, which skips callbacks, has cleared the date.
+      completion = UserGameCompletion.transaction do
+        UserGameCompletion.create!(
+          user_id: @import.user_id, gamedb_game_id: game.game_id, completion_type:, platform_id:,
+          completed_at:, final_playtime_hrs: playtime, note: nil
+        ).tap do |created|
+          # completed_at has a database default (today); an unknown date is NULL.
+          created.update_columns(completed_at: nil) if completed_at.nil? && created.reload.completed_at
+        end
+      end
       item.update!(status: "added", completion_id: completion.completion_id, error_text: nil)
       item
     end

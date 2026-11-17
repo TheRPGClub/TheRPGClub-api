@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_17_120378) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -124,6 +124,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_110000) do
     t.check_constraint "inclusion::text = ANY (ARRAY['include'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
   end
 
+  create_table "challenge_run_entries", force: :cascade do |t|
+    t.bigint "run_id", null: false
+    t.bigint "game_id", null: false
+    t.string "state", limit: 16, null: false
+    t.bigint "completion_id"
+    t.date "cleared_on"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["run_id", "game_id"], name: "ux_challenge_run_entries_game", unique: true
+    t.check_constraint "state::text = ANY (ARRAY['in_progress'::character varying, 'cleared'::character varying]::text[])", name: "ck_challenge_run_entries_state"
+  end
+
   create_table "challenge_runs", force: :cascade do |t|
     t.bigint "challenge_id", null: false
     t.string "user_id", limit: 30, null: false
@@ -131,8 +143,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_110000) do
     t.timestamptz "started_at", default: -> { "statement_timestamp()" }, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.date "season_starts_on"
+    t.date "season_ends_on"
+    t.timestamptz "ended_at"
+    t.index ["challenge_id", "status"], name: "ix_challenge_runs_challenge_status"
     t.index ["challenge_id", "user_id"], name: "ux_challenge_runs_one_active", unique: true, where: "((status)::text = 'active'::text)"
     t.index ["user_id"], name: "ix_challenge_runs_user"
+    t.check_constraint "(season_starts_on IS NULL) = (season_ends_on IS NULL)", name: "ck_challenge_runs_season"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying, 'finished'::character varying, 'expired'::character varying, 'abandoned'::character varying]::text[])", name: "ck_challenge_runs_status"
   end
 
@@ -1325,6 +1342,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_110000) do
   add_foreign_key "challenge_pool_franchises", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", name: "fk_challenge_pool_franchises_franchise", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "challenges", name: "fk_challenge_pool_games_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_games_game", on_delete: :cascade
+  add_foreign_key "challenge_run_entries", "challenge_runs", column: "run_id", name: "fk_challenge_run_entries_run", on_delete: :cascade
+  add_foreign_key "challenge_run_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_run_entries_game", on_delete: :cascade
+  add_foreign_key "challenge_run_entries", "user_game_completions", column: "completion_id", primary_key: "completion_id", name: "fk_challenge_run_entries_completion", on_delete: :nullify
   add_foreign_key "challenge_runs", "challenges", name: "fk_challenge_runs_challenge", on_delete: :cascade
   add_foreign_key "challenge_runs", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_runs_user", on_delete: :cascade
   add_foreign_key "challenges", "rpg_club_users", column: "host_user_id", primary_key: "user_id", name: "fk_challenges_host", on_delete: :nullify

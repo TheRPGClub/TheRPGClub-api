@@ -4,6 +4,9 @@ class UserNowPlaying < ApplicationRecord
   self.table_name = "user_now_playing"
   self.primary_key = "entry_id"
 
+  # Run progress follows every commit (Challenges::CountsTowardRuns).
+  include Challenges::CountsTowardRuns
+
   # The bot caps a user's now-playing list at 10 entries; the API enforces the
   # same ceiling on create so a migrated `/now-playing add` can't exceed it.
   MAX_ENTRIES = 10

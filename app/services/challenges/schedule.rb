@@ -46,9 +46,26 @@ module Challenges
         crosses_new_year? ? today >= starts.ordinal || today <= ends.ordinal : today.between?(starts.ordinal, ends.ordinal)
       end
 
+      # The first and last day of the Season that `date` falls in (a date the
+      # Challenge is Open on). A Season crossing the new year started the year
+      # before when `date` is in its January-to-end part. A 29 February that
+      # the year lacks starts the Season on 1 March, or ends it on 28 February.
+      def season_on(date)
+        start_year = crosses_new_year? && ((date.month * 100) + date.day) <= ends.ordinal ? date.year - 1 : date.year
+        end_year = crosses_new_year? ? start_year + 1 : start_year
+        [ day_in(starts, start_year, leap_fallback: Date.new(start_year, 3, 1)),
+          day_in(ends, end_year, leap_fallback: Date.new(end_year, 2, 28)) ]
+      end
+
       def as_json(*)
         { schedule: "seasonal", ends_on: nil,
           season: { start: starts.to_s, end: ends.to_s, crosses_new_year: crosses_new_year? } }
+      end
+
+      private
+
+      def day_in(month_day, year, leap_fallback:)
+        Date.valid_date?(year, month_day.month, month_day.day) ? Date.new(year, month_day.month, month_day.day) : leap_fallback
       end
     end
 

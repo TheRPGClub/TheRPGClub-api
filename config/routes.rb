@@ -133,6 +133,8 @@ Rails.application.routes.draw do
           # Challenges (ticket #380): the member's Birth Date.
           get "birth_date", to: "birth_dates#show"
           put "birth_date", to: "birth_dates#update"
+          # Challenges (ticket #378): the member's Runs, for their profile.
+          get "challenge_runs", to: "challenge_runs#user_index"
           get "news_category_preferences", to: "news_category_preferences#show"
           patch "news_category_preferences", to: "news_category_preferences#update"
           get "game_keys", to: "game_keys#user_index"
@@ -447,6 +449,13 @@ Rails.application.routes.draw do
           put "host", action: :change_host
         end
       end
+      # Runs (ticket #378): start one of a Challenge, list a Challenge's
+      # Runs, read, abandon and delete one; a member's Runs are under users.
+      get  "challenges/:challenge_id/runs", to: "challenge_runs#challenge_index"
+      post "challenges/:challenge_id/runs", to: "challenge_runs#create"
+      get    "challenge_runs/:id",         to: "challenge_runs#show"
+      post   "challenge_runs/:id/abandon", to: "challenge_runs#abandon"
+      delete "challenge_runs/:id",         to: "challenge_runs#destroy"
     end
   end
 end
