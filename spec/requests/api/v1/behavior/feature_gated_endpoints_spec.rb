@@ -274,6 +274,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     # Club Codex
     "api/v1/codex/fun_facts" => "club_codex",
     "api/v1/codex/history_events" => "club_codex",
+    "api/v1/codex/lore_entries" => "club_codex",
     # Not part of any Feature.
     "api/v1/health" => nil,
     "api/v1/sessions" => nil,

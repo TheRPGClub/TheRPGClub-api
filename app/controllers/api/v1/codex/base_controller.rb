@@ -55,6 +55,21 @@ module Api
           nil
         end
 
+        # The entry fields `data` gives, as attributes: each of `text` must be
+        # text or null (else 422, and nil is returned); each of `json` (Plate
+        # content) is taken as given. Fields left out stay out, so an edit
+        # changes only what it names.
+        def entry_attributes(data, text:, json: [])
+          attributes = data.slice(*json)
+          text.each do |field|
+            next unless data.key?(field)
+
+            attributes[field] = text_field(data, field)
+            return nil if performed?
+          end
+          attributes
+        end
+
         def forbid(message)
           render json: { error: "forbidden", message: message }, status: :forbidden
         end

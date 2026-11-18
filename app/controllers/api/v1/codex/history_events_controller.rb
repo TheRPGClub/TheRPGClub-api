@@ -15,8 +15,8 @@ module Api
         READS = %i[index show].freeze
         WRITES = %i[create update destroy].freeze
         TEXT_FIELDS = %w[title body occurred_on date_precision kind].freeze
-        # `rich_body` is Plate content, stored as given.
-        FIELDS = [ *TEXT_FIELDS, "rich_body" ].freeze
+        # Plate content, stored as given.
+        JSON_FIELDS = %w[rich_body].freeze
 
         skip_before_action :require_authentication!, only: READS
         before_action :require_acting_member!, only: WRITES
@@ -76,16 +76,9 @@ module Api
 
         def part = "history_event"
 
-        # The History Event fields the request gives (text fields as text);
-        # renders 422 and returns nil when one isn't.
-        def entry_fields
-          data = request_data
-          TEXT_FIELDS.each do |field|
-            text_field(data, field)
-            return nil if performed?
-          end
-          data.slice(*FIELDS)
-        end
+        # The History Event fields the request gives; 422 when a text field
+        # isn't text.
+        def entry_fields = entry_attributes(request_data, text: TEXT_FIELDS, json: JSON_FIELDS)
 
         def refuse_kind
           render json: { error: "invalid_kind", message: "Kind must be one of #{CodexEntry::KINDS.join(', ')}" },
