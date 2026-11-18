@@ -23,12 +23,12 @@ RSpec.describe 'api/v1/upcoming_releases', type: :request do
       parameter name: :platform_id, in: :query, required: false, style: :form, explode: true,
         schema: { type: :array, items: { type: :integer } },
         description: 'Keeps an entry when any of its Releases is on one of these platforms; the entry still ' \
-                     'lists all its Releases. Repeat it (`platform_id[]=1&platform_id[]=2`) or comma-separate the ids. A non-id is a 422 ' \
-                     '`invalid_platform_id`.'
+                     'lists all its Releases. Repeat it (`platform_id=1&platform_id=2`, or `platform_id[]=1&platform_id[]=2`) ' \
+                     'or comma-separate the ids. A non-id is a 422 `invalid_platform_id`.'
       parameter name: :game_id, in: :query, required: false, style: :form, explode: true,
         schema: { type: :array, items: { type: :integer } },
-        description: 'Limits the entries to these games. Repeat it (`game_id[]=1&game_id[]=2`) or comma-separate the ids. A non-id ' \
-                     'is a 422 `invalid_game_id`.'
+        description: 'Limits the entries to these games. Repeat it (`game_id=1&game_id=2`, or `game_id[]=1&game_id[]=2`) or ' \
+                     'comma-separate the ids. A non-id is a 422 `invalid_game_id`.'
       parameter name: :per_game, in: :query, required: false, schema: { type: :string, enum: %w[next] },
         description: '`next` keeps only each game\'s earliest entry (after the other filters). Any other value ' \
                      'is a 422 `invalid_per_game`.'

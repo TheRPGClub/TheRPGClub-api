@@ -227,6 +227,13 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       expect(entries(platform_id: "#{switch.platform_id},#{pc.platform_id}").map(&:first)).to eq([ "Duo", "Solo" ])
     end
 
+    it "takes the bare repeated form (platform_id=1&platform_id=2) as several platforms" do
+      get "/api/v1/upcoming_releases?platform_id=#{switch.platform_id}&platform_id=#{pc.platform_id}",
+        headers: auth_headers_for(member)
+
+      expect(json.fetch("data").map { |entry| entry.dig("game", "title") }).to eq([ "Duo", "Solo" ])
+    end
+
     it "is a 422 for an id that is not a number" do
       get "/api/v1/upcoming_releases", params: { platform_id: "ps5" }, headers: auth_headers_for(member)
 
@@ -251,6 +258,13 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       expect(entries(game_id: [ sequel.game_id ])).to eq([
         [ "Sequel", "2027-06-01", "day" ], [ "Sequel", "2027-08-01", "day" ], [ "Sequel", nil, "tba" ]
       ])
+    end
+
+    it "takes several games in the bare repeated form (game_id=1&game_id=2)" do
+      get "/api/v1/upcoming_releases?game_id=#{sequel.game_id}&game_id=#{other.game_id}&per_game=next",
+        headers: auth_headers_for(member)
+
+      expect(json.fetch("data").map { |entry| entry.dig("game", "title") }).to eq([ "Other", "Sequel" ])
     end
 
     it "keeps only each game's earliest Upcoming Release" do

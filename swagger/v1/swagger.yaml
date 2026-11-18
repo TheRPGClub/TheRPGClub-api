@@ -28281,8 +28281,9 @@ paths:
           items:
             type: integer
         description: Keeps an entry when any of its Releases is on one of these platforms;
-          the entry still lists all its Releases. Repeat it (`platform_id[]=1&platform_id[]=2`)
-          or comma-separate the ids. A non-id is a 422 `invalid_platform_id`.
+          the entry still lists all its Releases. Repeat it (`platform_id=1&platform_id=2`,
+          or `platform_id[]=1&platform_id[]=2`) or comma-separate the ids. A non-id
+          is a 422 `invalid_platform_id`.
       - name: game_id
         in: query
         required: false
@@ -28292,8 +28293,9 @@ paths:
           type: array
           items:
             type: integer
-        description: Limits the entries to these games. Repeat it (`game_id[]=1&game_id[]=2`)
-          or comma-separate the ids. A non-id is a 422 `invalid_game_id`.
+        description: Limits the entries to these games. Repeat it (`game_id=1&game_id=2`,
+          or `game_id[]=1&game_id[]=2`) or comma-separate the ids. A non-id is a 422
+          `invalid_game_id`.
       - name: per_game
         in: query
         required: false

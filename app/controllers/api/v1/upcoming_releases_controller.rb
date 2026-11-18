@@ -11,14 +11,15 @@ module Api
 
       MONTH_FORMAT = /\A(\d{4})-(\d{2})\z/
 
-      # GET /api/v1/upcoming_releases?month=YYYY-MM&platform_id[]=&game_id[]=&per_game=next&page=&per=
+      # GET /api/v1/upcoming_releases?month=YYYY-MM&platform_id=&game_id=&per_game=next&page=&per=
       #
       # Without `month`, every Upcoming Release from today (UTC) on, TBA last;
       # with it, those placed in that calendar month, past or future.
       # `platform_id` keeps an entry with any Release on one of the platforms,
       # `game_id` limits to those games, `per_game=next` keeps each game's
-      # earliest entry. Ids are repeated (`platform_id[]=1&platform_id[]=2`) or
-      # comma-separated. A malformed `month`, id or `per_game` is a 422.
+      # earliest entry. Ids are repeated (`platform_id=1&platform_id=2` or
+      # `platform_id[]=1&platform_id[]=2`) or comma-separated. A malformed
+      # `month`, id or `per_game` is a 422.
       def index
         filters = filter_params
         return if performed?
@@ -54,11 +55,16 @@ module Api
         invalid("invalid_month", "month must be YYYY-MM")
       end
 
+      # Ids may come repeated bare (`platform_id=1&platform_id=2`, OpenAPI's
+      # exploded form), repeated as an array (`platform_id[]=1`) or
+      # comma-separated, in any mix. Rails' `params` keeps only the last bare
+      # repeat, so they are read from the raw query string.
       def ids_param(name)
-        raw = params[name]
-        return [] if raw.blank?
+        query = Rack::Utils.parse_query(request.query_string)
+        values = [ name.to_s, "#{name}[]" ].flat_map { |key| Array(query[key]) }
+          .flat_map { |value| value.to_s.split(",", -1) }.map(&:strip)
+        return [] if values.all?(&:empty?)
 
-        values = (raw.is_a?(Array) ? raw : raw.to_s.split(",")).map { |value| value.to_s.strip }
         ids = values.map { |value| Integer(value, 10, exception: false) }
         return ids.uniq if ids.all? { |id| id&.positive? }
 
