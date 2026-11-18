@@ -67,7 +67,7 @@ module Gamedb
       release = matches.find(&:source_igdb?) || matches.find(&:source_manual?)
       return insert!(reported) if release.nil?
 
-      release.source = "igdb"
+      release.source = GamedbRelease.sources.fetch(:igdb)
       release.release_date = reported.release_date
       release.date_precision = reported.date_precision
       release.save!
@@ -76,14 +76,13 @@ module Gamedb
     end
 
     def insert!(reported)
-      GamedbRelease.create!(
+      GamedbRelease.source_igdb.create!(
         game_id: @game.game_id,
         platform_id: reported.platform_id,
         region_id: reported.region_id,
         format: nil,
         release_date: reported.release_date,
-        date_precision: reported.date_precision,
-        source: "igdb"
+        date_precision: reported.date_precision
       )
     end
 

@@ -9,8 +9,9 @@ module Gamedb
   class ReleaseRefreshJob < ApplicationJob
     queue_as :default
 
-    # Gap between games to stay within IGDB's rate limit, as the image backfill.
-    class_attribute :pause_seconds, default: 0.25
+    # Gap between games, a little over IGDB's 4 requests/second so a slow
+    # clock or a retry never tips the run over the rate limit.
+    class_attribute :pause_seconds, default: 0.3
 
     # Returns the ids of the games it refreshed (or tried to: failures are
     # logged), for the one-off `gamedb:refresh_releases` run.
@@ -44,9 +45,9 @@ module Gamedb
     # at all and no past first-release date. "Today" is the UTC calendar day,
     # as in the release-announcement due feed.
     def game_ids
-      today = Time.now.utc.to_date
+      today = Time.current.utc.to_date
       releases = GamedbRelease.where("gamedb_releases.game_id = gamedb_games.game_id")
-      due = releases.where(date_precision: "tba").or(releases.where(PERIOD_NOT_ENDED_SQL, today: today))
+      due = releases.date_precision_tba.or(releases.where(PERIOD_NOT_ENDED_SQL, today: today))
       undated = GamedbGame.where.not(releases.arel.exists)
         .where("gamedb_games.initial_release_date IS NULL OR gamedb_games.initial_release_date::date >= ?", today)
 
