@@ -953,7 +953,7 @@ module OpenapiSchemas
           "or fun_fact."),
         title: str(nullable: true, maxLength: CodexEntry::TITLE_MAX,
           description: "History Events and Lore Entries; null for a Fun Fact."),
-        rich_body: { type: :object, nullable: true, additionalProperties: true,
+        rich_body: { type: :array, items: { type: :object, additionalProperties: true }, nullable: true,
                      description: "The Plate.js story of a Lore Entry or description of a History Event, as the " \
                                   "website saved it (never checked by the API); null for a Fun Fact." },
         body: str(nullable: true, description: "The Discord-readable text, members mentioned as `<@discord_id>` " \

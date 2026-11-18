@@ -10,5 +10,12 @@ FactoryBot.define do
     trait :fun_fact do
       part { "fun_fact" }
     end
+
+    trait :lore_entry do
+      part { "lore_entry" }
+      sequence(:title) { |n| "Lore Entry #{n}" }
+      rich_body { [ { "type" => "p", "children" => [ { "text" => "Nobody remembers who ran the command." } ] } ] }
+      body { "Nobody remembers who ran the command." }
+    end
   end
 end

@@ -3125,9 +3125,11 @@ components:
           maxLength: 100
           description: History Events and Lore Entries; null for a Fun Fact.
         rich_body:
-          type: object
+          type: array
+          items:
+            type: object
+            additionalProperties: true
           nullable: true
-          additionalProperties: true
           description: The Plate.js story of a Lore Entry or description of a History
             Event, as the website saved it (never checked by the API); null for a
             Fun Fact.
@@ -10745,6 +10747,373 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: no such Fun Fact, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/codex/lore_entries":
+    get:
+      summary: List Lore Entries
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller). Newest first. Each carries `viewer`
+        for the acting member; the bot may name the member it reads for with `acting_user_id`,
+        without which `viewer` is all false. Belongs to the Club Codex Feature: not
+        found for non-staff in Preview and for everyone when Off; the service token
+        is not gated, but a bot write gets 403 `feature_unavailable` when the Flag
+        hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Lore Entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CodexEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Regulars, Moderators, Admins and Superadmins (a member without
+        the Regulars role gets 403 "You need the Regulars role to add to the Club
+        Codex."). Published at once, credited to the acting member. Refusals carry
+        `{ error, message }`; `message` is written for members (403 `forbidden`, 422
+        `invalid_entry`). Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not a Regular or staff, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: `title` blank or over 100 characters, `body`
+            blank, a field not text, a date and precision not given together, an unknown
+            precision, or a date that is not `YYYY-MM-DD`'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    title:
+                      type: string
+                      maxLength: 100
+                      description: Required, up to 100 characters. Surrounding spaces
+                        are dropped.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      nullable: true
+                      description: The Plate.js story, stored and returned exactly
+                        as given; the API never checks it. The website sanitizes it
+                        and keeps it to 4000 characters of text.
+                    body:
+                      type: string
+                      description: 'Required: the story as Discord markdown, which
+                        the website makes from `rich_body` on every save. Mention
+                        members as `<@discord_id>`; every save pulls them into `mentions`,
+                        and an id that is not a known member stays as text.'
+                    occurred_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Optional, as `YYYY-MM-DD`, given together with
+                        `date_precision` (both null for none). A `month` date is stored
+                        as the 1st of its month and a `year` date as 1 January, whatever
+                        day is sent.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - year
+                      -
+                      nullable: true
+                      description: 'How precise `occurred_on` is: day, month or year.
+                        Given together with it.'
+                  required:
+                  - title
+                  - body
+              required:
+              - data
+        required: true
+  "/api/v1/codex/lore_entries/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller). Belongs to the Club Codex Feature:
+        not found for non-staff in Preview and for everyone when Off; the service
+        token is not gated, but a bot write gets 403 `feature_unavailable` when the
+        Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Lore Entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Lore Entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Its author, or a Moderator and above, for anyone''s (403 "Only
+        its author or a Moderator can edit this."). A mentioned member gets no say.
+        Only the fields given change; send `occurred_on` and `date_precision` as null
+        to remove the date. Mentions are pulled again from a new `body`. Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_entry`). Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not its author or a Moderator, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Lore Entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: `title` blank or over 100 characters, `body`
+            blank, a field not text, a date and precision not given together, an unknown
+            precision, or a date that is not `YYYY-MM-DD`'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    title:
+                      type: string
+                      maxLength: 100
+                      description: Required, up to 100 characters. Surrounding spaces
+                        are dropped.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      nullable: true
+                      description: The Plate.js story, stored and returned exactly
+                        as given; the API never checks it. The website sanitizes it
+                        and keeps it to 4000 characters of text.
+                    body:
+                      type: string
+                      description: 'Required: the story as Discord markdown, which
+                        the website makes from `rich_body` on every save. Mention
+                        members as `<@discord_id>`; every save pulls them into `mentions`,
+                        and an id that is not a known member stays as text.'
+                    occurred_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Optional, as `YYYY-MM-DD`, given together with
+                        `date_precision` (both null for none). A `month` date is stored
+                        as the 1st of its month and a `year` date as 1 January, whatever
+                        day is sent.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - year
+                      -
+                      nullable: true
+                      description: 'How precise `occurred_on` is: day, month or year.
+                        Given together with it.'
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Its author, or a Moderator and above, for anyone''s (403 "Only
+        its author or a Moderator can delete this."). A hard delete: its mentions
+        go with it, and the author isn''t told. The bot sends `acting_user_id` as
+        a query parameter. Refusals carry `{ error, message }`; `message` is written
+        for members (403 `forbidden`, 422 `invalid_entry`). Belongs to the Club Codex
+        Feature: not found for non-staff in Preview and for everyone when Off; the
+        service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not its author or a Moderator, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Lore Entry, or the Feature is hidden from the caller
           content:
             application/json:
               schema:
