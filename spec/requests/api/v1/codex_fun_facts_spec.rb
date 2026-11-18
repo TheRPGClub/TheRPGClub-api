@@ -86,7 +86,8 @@ RSpec.describe 'api/v1/codex/fun_facts', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'invalid_entry: `body` blank, not text, or over 300 characters' do
+      response '422', 'invalid_entry: `body` blank, not text, over 300 characters or holding a NUL character, ' \
+                       'or a field a Fun Fact does not take' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
@@ -180,7 +181,8 @@ RSpec.describe 'api/v1/codex/fun_facts', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'invalid_entry: `body` blank, not text, or over 300 characters' do
+      response '422', 'invalid_entry: `body` blank, not text, over 300 characters or holding a NUL character, ' \
+                       'or a field a Fun Fact does not take' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

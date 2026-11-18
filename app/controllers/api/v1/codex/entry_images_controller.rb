@@ -48,7 +48,7 @@ module Api
           @entry = CodexEntry.find(params[:entry_id])
           return if actor.can_edit?(@entry)
 
-          forbid(@entry.history_event? ? ClubCodex::Refusals::HISTORY : ClubCodex::Refusals::EDIT)
+          forbid(edit_refusal(@entry))
         end
       end
     end

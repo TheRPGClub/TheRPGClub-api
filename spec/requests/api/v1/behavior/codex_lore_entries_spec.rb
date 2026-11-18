@@ -3,9 +3,9 @@
 require "rails_helper"
 
 # Club Lore (spec #397, ticket #407): Lore Entries under
-# /api/v1/codex/lore_entries. Regulars and above publish a story with a
-# title and an optional date; the author or a Moderator and above edits or
-# deletes one; members read them newest first.
+# /api/v1/codex/lore_entries. Regulars and above publish a Lore Entry, a
+# story with a title and an optional date; the author or a Moderator and
+# above edits or deletes one; members read them newest first.
 RSpec.describe "api/v1/codex/lore_entries behavior", type: :request do
   let(:regular) { create(:user, role_member: true, role_regular: true, global_name: "Rhea") }
   let(:member) { create(:user, role_member: true) }
@@ -76,6 +76,28 @@ RSpec.describe "api/v1/codex/lore_entries behavior", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(json).to include("error" => "invalid_entry", "message" => "title must be text")
+    end
+
+    it "refuses a field a Lore Entry doesn't take, rather than dropping it" do
+      add_lore_entry(as: regular, kind: "milestone")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to eq("error" => "invalid_entry", "message" => "A Lore Entry doesn't take kind")
+
+      add_lore_entry(as: regular, summary: "Not a field.")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to eq("error" => "invalid_entry", "message" => "A Lore Entry doesn't take summary")
+      expect(CodexEntry.count).to eq(0)
+    end
+
+    it "refuses a NUL character in the title or the story, which Postgres can't store" do
+      add_lore_entry(as: regular, title: "The\u0000wipe")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to eq("error" => "invalid_entry", "message" => "title can't hold NUL characters")
+
+      add_lore_entry(as: regular, rich_body: [ { "type" => "p", "children" => [ { "text" => "a\u0000b" } ] } ])
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to eq("error" => "invalid_entry", "message" => "rich_body can't hold NUL characters")
+      expect(CodexEntry.count).to eq(0)
     end
   end
 

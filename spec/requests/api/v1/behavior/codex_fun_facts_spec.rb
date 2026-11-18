@@ -102,6 +102,24 @@ RSpec.describe "api/v1/codex/fun_facts behavior", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("message")).to eq("Body is too long (maximum is 300 characters)")
     end
+
+    it "refuses a body holding a NUL character, which Postgres can't store" do
+      add_fun_fact(as: regular, body: "a\u0000b")
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to eq("error" => "invalid_entry", "message" => "body can't hold NUL characters")
+    end
+
+    it "refuses a field a Fun Fact doesn't take, rather than dropping it" do
+      %w[title rich_body occurred_on date_precision kind].each do |field|
+        post "/api/v1/codex/fun_facts", params: { data: { body: "A Fun Fact.", field => "x" } },
+          headers: auth_headers_for(regular), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json).to eq("error" => "invalid_entry", "message" => "A Fun Fact doesn't take #{field}")
+      end
+      expect(CodexEntry.count).to eq(0)
+    end
   end
 
   describe "editing and deleting a Fun Fact" do
@@ -193,6 +211,15 @@ RSpec.describe "api/v1/codex/fun_facts behavior", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to eq("invalid_entry")
+    end
+
+    it "refuses a field a Fun Fact doesn't take on edit, changing nothing" do
+      patch "/api/v1/codex/fun_facts/#{fun_fact.id}", params: { data: { body: "Edited.", title: "A title" } },
+        headers: auth_headers_for(regular), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to eq("error" => "invalid_entry", "message" => "A Fun Fact doesn't take title")
+      expect(fun_fact.reload.body).not_to eq("Edited.")
     end
   end
 

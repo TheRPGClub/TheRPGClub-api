@@ -10,7 +10,12 @@
 # `<@discord_id>` tokens. Every save pulls those tokens into `mentions`
 # (ClubCodex::Mentions), whatever the part.
 class CodexEntry < ApplicationRecord
-  PARTS = %w[history_event lore_entry fun_fact].freeze
+  HISTORY_EVENT = "history_event"
+  LORE_ENTRY = "lore_entry"
+  FUN_FACT = "fun_fact"
+  PARTS = [ HISTORY_EVENT, LORE_ENTRY, FUN_FACT ].freeze
+  # Each part as members read it, for messages.
+  PART_NAMES = { HISTORY_EVENT => "History Event", LORE_ENTRY => "Lore Entry", FUN_FACT => "Fun Fact" }.freeze
   # History Event Kinds.
   KINDS = %w[founding staff platform rules milestone].freeze
   DATE_PRECISIONS = %w[day month year].freeze
@@ -43,11 +48,11 @@ class CodexEntry < ApplicationRecord
 
   after_save :pull_mentions, if: :saved_change_to_body?
 
-  scope :fun_facts, -> { where(part: "fun_fact") }
+  scope :fun_facts, -> { where(part: FUN_FACT) }
 
-  def fun_fact? = part == "fun_fact"
-  def history_event? = part == "history_event"
-  def lore_entry? = part == "lore_entry"
+  def fun_fact? = part == FUN_FACT
+  def history_event? = part == HISTORY_EVENT
+  def lore_entry? = part == LORE_ENTRY
 
   private
 

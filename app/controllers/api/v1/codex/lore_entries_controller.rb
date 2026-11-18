@@ -36,9 +36,9 @@ module Api
         # a `month` or `year` one is moved to the start of its period
         # (CodexEntry::Dated).
         def create
-          return forbid(ClubCodex::Refusals::CREATE) unless actor.can_create?
+          return forbid(ClubCodex::Refusals::CREATE) unless actor.can_create?(part)
 
-          attributes = entry_attributes(request_data, text: TEXT_FIELDS, json: JSON_FIELDS)
+          attributes = entry_fields
           return if performed?
 
           entry = CodexEntry.create!(attributes.merge(part: part, author_user_id: actor.user_id))
@@ -54,7 +54,7 @@ module Api
           entry = find_entry
           return forbid(ClubCodex::Refusals::EDIT) unless actor.can_edit?(entry)
 
-          attributes = entry_attributes(request_data, text: TEXT_FIELDS, json: JSON_FIELDS)
+          attributes = entry_fields
           return if performed?
 
           entry.update!(attributes)
@@ -70,7 +70,11 @@ module Api
 
         private
 
-        def part = "lore_entry"
+        def part = CodexEntry::LORE_ENTRY
+
+        # The Lore Entry fields the request gives; 422 for a field it doesn't
+        # take (a History Event Kind) or one that isn't text.
+        def entry_fields = entry_attributes(request_data, text: TEXT_FIELDS, json: JSON_FIELDS)
       end
     end
   end

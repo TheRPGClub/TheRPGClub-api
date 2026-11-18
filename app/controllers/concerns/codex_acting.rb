@@ -8,10 +8,11 @@
 # body, and `data.acting_user_id` on other writes); the API then decides from
 # that member's stored roles, and applies the Feature Flag to them, since the
 # service passes the feature gate (docs/adr/0005). `require_acting_member!`
-# is the `before_action` for writes: 400 without an acting member, 403
-# `feature_unavailable` when the Flag hides the Feature from them. A bot read
-# without one is answered as for any member, with no rights in `viewer`, as
-# is a signed-out Visitor where an endpoint lets one in (Club History).
+# is the `before_action` for writes: 401 signed out, 400 without an acting
+# member, 403 `feature_unavailable` when the Flag hides the Feature from
+# them. A bot read without one is answered as for any member, with no rights
+# in `viewer`, as is a signed-out Visitor where an endpoint lets one in (Club
+# History).
 module CodexActing
   extend ActiveSupport::Concern
   include ActingMember
@@ -34,12 +35,14 @@ module CodexActing
 
   def acting_user_id
     return @acting_user_id if defined?(@acting_user_id)
-    return super unless current_principal.service? && request.delete?
+    return super unless current_principal&.service? && request.delete?
 
     @acting_user_id = params[:acting_user_id].presence&.to_s
   end
 
+  # A signed-out caller has no acting member: 401, as for any sign-in gate.
   def require_acting_member!
+    return render(json: { error: "unauthorized" }, status: :unauthorized) if current_principal.nil?
     return true unless current_principal.service?
     return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?
     return true if Features::Access.for_member(acting_member).can_use?(feature_key)

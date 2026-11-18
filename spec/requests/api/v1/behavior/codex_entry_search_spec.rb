@@ -49,6 +49,14 @@ RSpec.describe "api/v1/codex/entries behavior", type: :request do
     expect(search(q: "#general").map { |entry| entry["id"] }).to eq([ lore_entry.id ])
   end
 
+  it "finds nothing for a query holding a NUL character, which no entry can hold" do
+    expect(search(q: "Disc\u0000ord")).to eq([])
+
+    get "/api/v1/codex/fun_facts", params: { q: "Waf\u0000fle" }, headers: auth_headers_for(member)
+    expect(response).to have_http_status(:ok)
+    expect(json.fetch("data")).to eq([])
+  end
+
   it "keeps one part" do
     expect(search(q: "discord", part: "fun_fact").map { |entry| entry["id"] }).to eq([ fun_fact.id ])
 

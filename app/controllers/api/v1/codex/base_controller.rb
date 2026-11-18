@@ -13,6 +13,10 @@ module Api
       class BaseController < ApplicationController
         include CodexActing
 
+        # The fields of `data` that are not the entry's: the bot's
+        # `acting_user_id`.
+        ACTING_FIELDS = %w[acting_user_id].freeze
+
         feature :club_codex
 
         rescue_from ActiveRecord::RecordInvalid do |error|
@@ -41,41 +45,76 @@ module Api
         end
 
         def render_entry(entry, status: :ok)
-          entry = CodexEntryResource.preloaded(CodexEntry.where(id: entry.id)).first!
-          render json: { data: CodexEntryResource.new(entry, params: { actor: actor }).serializable_hash },
-            status: status
+          render json: { data: entry_payload(entry) }, status: status
         end
 
+        # The entry as every Club Codex endpoint shows it, for the acting
+        # member, outside any envelope.
+        def entry_payload(entry)
+          entry = CodexEntryResource.preloaded(CodexEntry.where(id: entry.id)).first!
+          CodexEntryResource.new(entry, params: { actor: actor }).serializable_hash
+        end
+
+        # Removes the entry's image files, then the entry. The files go first,
+        # outside any lock, so a storage failure keeps the entry for a retry;
+        # then, with the entry locked, any image an upload recorded meanwhile
+        # goes too, so no file outlives its entry (an upload still on its way
+        # finds the entry gone and removes its own file, ClubCodex::Images).
         def destroy_entry(entry, refusal: ClubCodex::Refusals::DELETE)
           return forbid(refusal) unless actor.can_delete?(entry)
 
-          ClubCodex::Images.new.remove_all!(entry)
-          entry.destroy!
+          images = ClubCodex::Images.new
+          images.remove_all!(entry)
+          CodexEntry.transaction do
+            entry.lock!
+            images.remove_all!(entry)
+            entry.destroy!
+          end
           render json: { data: { id: entry.id, deleted: true } }
         end
 
-        # A text field from the request: a String, or nil when left out.
-        def text_field(data, field)
-          value = data[field]
-          return value if value.nil? || value.is_a?(String)
+        # The refusal for someone who may not edit `entry`.
+        def edit_refusal(entry) = entry.history_event? ? ClubCodex::Refusals::HISTORY : ClubCodex::Refusals::EDIT
 
-          render json: { error: "invalid_entry", message: "#{field} must be text" }, status: :unprocessable_content
+        # The entry fields `data` gives, as attributes: each of `text` must be
+        # text or null; each of `json` (Plate content) is taken as given. A
+        # field the part doesn't take, or a NUL character (which Postgres
+        # can't store), is refused with 422 and nil is returned. Fields left
+        # out stay out, so an edit changes only what it names.
+        def entry_attributes(data, text:, json: [])
+          extra = data.keys - text - json - ACTING_FIELDS
+          return refuse_entry("A #{CodexEntry::PART_NAMES.fetch(part)} doesn't take #{extra.first}") if extra.any?
+
+          (json + text).each_with_object({}) do |field, attributes|
+            next unless data.key?(field)
+
+            value = data[field]
+            return refuse_entry("#{field} must be text") if text.include?(field) && !(value.nil? || value.is_a?(String))
+            return refuse_entry("#{field} can't hold NUL characters") if nul?(value)
+
+            attributes[field] = value
+          end
+        end
+
+        # Whether `value`, or any text inside it, holds a NUL character.
+        def nul?(value)
+          case value
+          when String then value.include?("\u0000")
+          when Hash then value.any? { |key, item| nul?(key) || nul?(item) }
+          when Array then value.any? { |item| nul?(item) }
+          else false
+          end
+        end
+
+        # 422 `invalid_entry`; nil, so a caller can return it as "no attributes".
+        def refuse_entry(message)
+          render json: { error: "invalid_entry", message: message }, status: :unprocessable_content
           nil
         end
 
-        # The entry fields `data` gives, as attributes: each of `text` must be
-        # text or null (else 422, and nil is returned); each of `json` (Plate
-        # content) is taken as given. Fields left out stay out, so an edit
-        # changes only what it names.
-        def entry_attributes(data, text:, json: [])
-          attributes = data.slice(*json)
-          text.each do |field|
-            next unless data.key?(field)
-
-            attributes[field] = text_field(data, field)
-            return nil if performed?
-          end
-          attributes
+        # 400 `error` for a filter whose value isn't one of `choices`.
+        def refuse_choice(error, label, choices)
+          render json: { error: error, message: "#{label} must be one of #{choices.join(', ')}" }, status: :bad_request
         end
 
         def forbid(message)

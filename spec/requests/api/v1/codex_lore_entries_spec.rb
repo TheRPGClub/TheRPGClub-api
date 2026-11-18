@@ -28,7 +28,8 @@ RSpec.describe 'api/v1/codex/lore_entries', type: :request do
   refusal = 'Refusals carry `{ error, message }`; `message` is written for members (403 `forbidden`, 422 ' \
             '`invalid_entry`).'
   invalid = 'invalid_entry: `title` blank or over 100 characters, `body` blank, a field not text, a date and ' \
-            'precision not given together, an unknown precision, or a date that is not `YYYY-MM-DD`'
+            'precision not given together, an unknown precision, a date that is not `YYYY-MM-DD`, a NUL ' \
+            'character in any field, or a field a Lore Entry does not take (`kind`, or any other)'
   gate = 'Belongs to the Club Codex Feature: not found for non-staff in Preview and for everyone when Off; the ' \
          'service token is not gated, but a bot write gets 403 `feature_unavailable` when the Flag hides the ' \
          'Feature from the member it acts for.'
