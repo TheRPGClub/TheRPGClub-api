@@ -936,6 +936,58 @@ module OpenapiSchemas
         to_state: str(enum: %w[preview live]),
         feature_key: str(enum: %w[news_hub])
       ),
+      # A member as Club Codex payloads show them (ClubCodex.member, spec #397).
+      CodexMember: obj(
+        user_id: str(description: "Their Discord id, which is also their profile's id."),
+        name: str(description: "The name they go by now: their Discord display name, else their username " \
+          "(their last known one once they have left)."),
+        avatar_url: str(description: "Path of their stored avatar (GET /api/v1/users/{id}/avatar, 404 without one).")
+      ),
+      # What the acting member may do with a Club Codex entry (ClubCodex::Actor).
+      CodexEntryViewer: obj(can_edit: bool, can_delete: bool),
+      # CodexEntryLinkResource (spec #397, ticket #409): an entry's short link
+      # shape, in "See also" links and the entry search.
+      CodexEntryLink: obj(
+        id: int,
+        part: str(enum: CodexEntry::PARTS),
+        title: str(description: "The entry's title, or a Fun Fact's opening words (at most " \
+          "#{ClubCodex::Links::OPENING_WORDS_MAX} characters, ending in an ellipsis when cut, members " \
+          "mentioned as @name).")
+      ),
+      # CodexEntryResource (spec #397, ticket #404): a Club Codex entry, the
+      # same shape for every part; fields a part doesn't use are null.
+      CodexEntry: obj(
+        id: int,
+        part: str(enum: CodexEntry::PARTS, description: "history_event (Club History), lore_entry (Club Lore) " \
+          "or fun_fact."),
+        title: str(nullable: true, maxLength: CodexEntry::TITLE_MAX,
+          description: "History Events and Lore Entries; null for a Fun Fact."),
+        rich_body: { type: :array, items: { type: :object, additionalProperties: true }, nullable: true,
+                     description: "The Plate.js story of a Lore Entry or description of a History Event, as the " \
+                                  "website saved it (never checked by the API); null for a Fun Fact." },
+        body: str(nullable: true, description: "The Discord-readable text, members mentioned as `<@discord_id>` " \
+          "tokens: a Fun Fact itself (up to #{CodexEntry::FUN_FACT_MAX} characters, tokens included), or the " \
+          "Discord markdown the website made from `rich_body`. Show each token as its member in `mentions`; a " \
+          "token not there names no known member and stays as text."),
+        occurred_on: date(nullable: true, description: "When it happened, at `date_precision`: a month is its " \
+          "first day, a year 1 January. Null for a Fun Fact and an undated Lore Entry."),
+        date_precision: str(nullable: true, enum: [ *CodexEntry::DATE_PRECISIONS, nil ],
+          description: "day, month or year; null with `occurred_on`."),
+        kind: str(nullable: true, enum: [ *CodexEntry::KINDS, nil ],
+          description: "The History Event Kind; null for other parts."),
+        author: ref("CodexMember"),
+        mentions: { type: :object, additionalProperties: ref("CodexMember"),
+                    description: "Each known member `body` mentions, keyed by Discord id, as they are now." },
+        images: { type: :array, items: obj(id: int, url: str, position: int),
+                  description: "The entry's gallery, by position (History Events and Lore Entries)." },
+        links: { type: :array, items: ref("CodexEntryLink"),
+                 description: "Its \"See also\" entries, oldest first, as the caller may read them: a Visitor " \
+                              "sees only History Events." },
+        viewer: ref("CodexEntryViewer"),
+        created_at: ts, updated_at: ts,
+        _required: %w[id part title rich_body body occurred_on date_precision kind author mentions images links
+                      viewer created_at updated_at]
+      ),
       # ChallengeResource (spec #376, ticket #377): a Challenge with its
       # Challenge Format's settings under the Format's key.
       Challenge: obj(
@@ -1284,6 +1336,17 @@ module OpenapiSchemas
         minimum: int.merge(example: 5, description: "left_out_of_draw only: the backlog minimum."),
         feature_key: str(enum: %w[challenges])
       ),
+      # The Daily Fun Fact bot job payload (#406), as BotJobClaim.payload carries it.
+      DailyFunFactJobPayload: obj(
+        _description: "Kind `daily_fun_fact`. Post the Fun Fact `entry_id` (GET /api/v1/codex/fun_facts/{id}) " \
+                      "in general chat, or the staff test channel while the Club Codex is in Preview, with no " \
+                      "pings. Queued once per club day at 15:00 America/New_York. Drop it, acked done, when " \
+                      "`club_date` is no longer today in New York or the Fun Fact has been deleted (404).",
+        _required: %w[club_date entry_id feature_key],
+        club_date: str(format: "date", example: "2026-11-18").merge(description: "The club day it is for."),
+        entry_id: int.merge(description: "The Fun Fact drawn for the day; the queue already counts it shown."),
+        feature_key: str(enum: %w[club_codex])
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
@@ -1293,7 +1356,7 @@ module OpenapiSchemas
                        "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
                        "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
-                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload."
+                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),

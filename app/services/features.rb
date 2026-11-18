@@ -100,7 +100,13 @@ module Features
     # state and starts in Preview. The bot's upcoming-release search and the
     # release announcements stay outside it.
     define("release_calendar", "Release Calendar", core: false,
-      website: [ "Releases" ])
+      website: [ "Releases" ]),
+    # Spec #397. Registered after Feature Flags shipped, so it has no stored
+    # state and starts in Preview, its posts going to the staff test channel.
+    define("club_codex", "Club Codex", core: false,
+      website: [ "Codex" ],
+      bot: [ "/codex", "/funfact" ],
+      posts: [ "Daily Fun Fact" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

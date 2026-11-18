@@ -111,6 +111,10 @@ _Avoid_: Roadmap, feedback board
 The date of birth a member enters on their own profile, if they choose to. Only the member and staff see the full date. Other members see the year only through a Run that starts at the member's birth year, which the member is told before starting it. A member can set or change it at most twice in a calendar month, counting the first time they enter it; staff can change it at any time.
 _Avoid_: Birthday (when meaning the full date), age, DOB
 
+**Regular**:
+A member holding the club's regulars role in Discord, trusted to add to the club's shared records without staff review.
+_Avoid_: Veteran, trusted member
+
 ## Staff
 
 **Admin**:
@@ -254,3 +258,39 @@ _Avoid_: Series challenge, list
 **Assignment**:
 The Challenge Format where another member chooses the game a member must play, such as a Secret Santa pick from their backlog.
 _Avoid_: Gift, pick (when meaning the format)
+
+## Club Codex
+
+**Club Codex**:
+The Feature that keeps the club's story about itself, in three parts: Club History, Club Lore and Fun Facts.
+_Avoid_: Club Lore (when meaning the whole Feature), wiki, archive
+
+**Club History**:
+The club's official record of how it got to where it is, told as History Events in date order.
+_Avoid_: Timeline (when meaning the record itself), changelog
+
+**History Event**:
+A dated moment that changed the club, such as its founding, a member joining or leaving the staff, a move to another platform, or a rule change. Its date can be a year alone, a month and year, or a full date, as precisely as the club remembers it, and it has one History Event Kind. Staff write every History Event by hand; role changes never create one. History Events are factual, only Admins and Superadmins write them, and any of them can edit or remove any History Event.
+_Avoid_: Event (unqualified), entry (unqualified)
+
+**History Event Kind**:
+One of the fixed sorts of History Event: Founding, Staff, Platform, Rules or Milestone.
+_Avoid_: Category, type, tag
+
+**Club Lore**:
+The stories the club tells about itself, kept as Lore Entries.
+_Avoid_: Legends, tales
+
+**Lore Entry**:
+A story about the club, usually funny and several paragraphs long, which may be tied to a date. Regulars and above publish Lore Entries straight away without staff review, and each one credits its author.
+_Avoid_: Story, post, anecdote
+
+**Fun Fact**:
+One or two standalone sentences about the club or its members, such as a member's original nickname or the origin of an inside joke, which the bot posts for members to read. Regulars and above publish Fun Facts straight away without staff review, and each one credits its author. The bot shows every Fun Fact once before showing any again, and a new Fun Fact jumps the queue.
+_Avoid_: Trivia, tidbit, did-you-know
+
+**Daily Fun Fact**:
+The bot's post of the next Fun Fact in general chat at 15:00 America/New_York every day. A member can also ask the bot for a Fun Fact at any time; it comes from the same queue, is posted for everyone to see, and never replaces the Daily Fun Fact.
+_Avoid_: Fact of the day, daily trivia
+
+The same moment can appear in more than one part of the Club Codex, such as a History Event recording that something happened and a Lore Entry telling the story, and any Club Codex entry can link to any others, the link showing on both. Members named in Club Codex entries are not asked for their consent and have no special say over them. An author can edit or delete their own Lore Entries and Fun Facts, and Moderators and above can edit or remove anyone's. Club History is public; Club Lore and Fun Facts are for Members only.

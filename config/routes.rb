@@ -424,6 +424,25 @@ Rails.application.routes.draw do
       resources :search_synonym_drafts, only: %i[index show create update destroy]
       # The Release Calendar (spec #389): GameDB's Upcoming Releases.
       get "upcoming_releases", to: "upcoming_releases#index"
+      # Club Codex (spec #397): its three parts' entries, gated by the
+      # `club_codex` Feature.
+      namespace :codex do
+        resources :fun_facts, only: %i[index show create update destroy] do
+          # The Fun Fact queue (ticket #405): the next one, marked shown.
+          post :draw, on: :collection
+          # Today's Daily Fun Fact, or the latest earlier one (a pure read).
+          get :today, on: :collection
+        end
+        resources :history_events, only: %i[index show create update destroy]
+        resources :lore_entries, only: %i[index show create update destroy]
+        # Across the three parts: the entry search and an entry's "See also"
+        # links (ticket #409), and any entry's images (ticket #410).
+        get "entries", to: "entries#index"
+        put "entries/:id/links", to: "entry_links#update"
+        resources :entries, only: [] do
+          resources :images, only: %i[create destroy], controller: "entry_images"
+        end
+      end
       # News Hub (spec #355): the fixed News Categories; the members' feed of
       # News Items; the bot records (PUT, an upsert) and removes News Items
       # by their Discord message id (service-only), lists those with no
