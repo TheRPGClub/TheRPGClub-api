@@ -20,10 +20,6 @@ module Birthdays
     queue_as :default
 
     KIND = "birthday_post"
-    # Members in the post by display name (Members.display_name), so the
-    # bot greets them in a stable, readable order.
-    BY_NAME = Arel.sql("LOWER(COALESCE(NULLIF(rpg_club_users.global_name, ''), " \
-                       "NULLIF(rpg_club_users.username, ''), rpg_club_users.user_id)), rpg_club_users.user_id")
 
     def perform
       today = ClubDay.today
@@ -35,12 +31,16 @@ module Birthdays
 
     private
 
+    # The members due a Birthday Post today, in the order Upcoming Birthdays
+    # lists them (Members.by_name), so the bot greets them in a stable,
+    # readable order. A day has few Birthdays, so they are sorted in Ruby.
     def due(today)
       already_posted = BirthdayPost.where(year: today.year).where("birthday_posts.user_id = rpg_club_users.user_id")
       Birthdays.falling_on(today, RpgClubUser.active.where(birthday_shared: true))
         .where.not(already_posted.arel.exists)
-        .order(BY_NAME)
-        .pluck(:user_id)
+        .select(:user_id, :global_name, :username)
+        .sort_by { |user| Members.by_name(user) }
+        .map(&:user_id)
     end
 
     # Writes this year's BirthdayPost for each of `user_ids`, skipping any a

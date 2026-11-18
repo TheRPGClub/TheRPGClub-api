@@ -63,6 +63,17 @@ RSpec.describe "api/v1/birthday post behavior", type: :request do
     expect(claim_birthday_posts.sole.dig("payload", "user_ids")).to eq([ alice, bob, carol ].map(&:user_id))
   end
 
+  it "orders members by the same names as Upcoming Birthdays, a blank display name falling back to the username" do
+    blank = member_born("05-04", global_name: " ", username: "zed")
+    ann = member_born("05-04", global_name: "Ann", username: "aaa")
+
+    post_birthdays_at("2026-05-04 10:00")
+    travel_to(club_time("2026-05-04 10:00")) { get "/api/v1/birthdays/upcoming", headers: service_headers }
+
+    expect(json.fetch("data").pluck("display_name")).to eq(%w[Ann zed])
+    expect(claim_birthday_posts.sole.dig("payload", "user_ids")).to eq([ ann, blank ].map(&:user_id))
+  end
+
   it "queues nothing on a day with no Birthdays" do
     member_born("1990-05-04")
 

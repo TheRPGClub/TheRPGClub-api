@@ -14,14 +14,16 @@ module Birthdays
     module_function
 
     # `today` is the club day (ClubDay.today). Ordered by the date the
-    # Birthday falls on, then by the member's display name.
+    # Birthday falls on, then by the member's name (Members.by_name, as the
+    # Birthday Post orders them).
     def entries(today)
       falls_on = window(today)
 
       RpgClubUser.active.without_images.where(birthday_shared: true)
         .where([ :birth_month, :birth_day ] => falls_on.keys)
-        .map { |user| entry(user, falls_on.fetch([ user.birth_month, user.birth_day ]), today) }
-        .sort_by { |entry| [ entry[:on], entry[:display_name].downcase, entry[:user_id] ] }
+        .map { |user| [ user, falls_on.fetch([ user.birth_month, user.birth_day ]) ] }
+        .sort_by { |user, on| [ on, *Members.by_name(user) ] }
+        .map { |user, on| entry(user, on, today) }
     end
 
     # [month, day] => the date in the window a Birthday on it falls on
