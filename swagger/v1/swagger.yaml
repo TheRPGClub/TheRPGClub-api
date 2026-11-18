@@ -4954,6 +4954,42 @@ components:
             month (US Eastern).'
       required:
       - error
+    UpcomingBirthday:
+      allOf:
+      - "$ref": "#/components/schemas/ChallengeMember"
+      - type: object
+        properties:
+          display_name:
+            type: string
+            example: Ava
+            description: 'The name the member goes by: their Discord display name,
+              else their username.'
+          month:
+            type: integer
+            minimum: 1
+            maximum: 12
+            example: 5
+          day:
+            type: integer
+            minimum: 1
+            maximum: 31
+            example: 4
+          'on':
+            type: string
+            format: date
+            example: '2026-05-04'
+            description: The date the Birthday falls on this time, in club days (America/New_York).
+              A 29 February Birthday falls on 28 February in years that aren't leap
+              years.
+          today:
+            type: boolean
+            description: Whether `on` is today in club time.
+        required:
+        - display_name
+        - month
+        - day
+        - 'on'
+        - today
     NewsCategory:
       type: object
       properties:
@@ -7820,6 +7856,38 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/birthdays/upcoming":
+    get:
+      summary: List Upcoming Birthdays
+      tags:
+      - Users
+      description: 'Upcoming Birthdays (spec #396): the shared Birthdays falling from
+        today through today + 29 days, counted in club days (America/New_York), across
+        the year end. Only members who share their Birthday and are still in the server
+        are listed. A 29 February Birthday falls on 28 February in years that aren''t
+        leap years. Ordered by `on`, then by `display_name`. Never the year or the
+        age. Any signed-in member or the service token; Birthdays aren''t a Feature,
+        so nothing gates it.'
+      responses:
+        '200':
+          description: the Upcoming Birthdays, soonest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/UpcomingBirthday"
+                required:
+                - data
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/bot_jobs":
     get:
       summary: List bot jobs (activity list)
