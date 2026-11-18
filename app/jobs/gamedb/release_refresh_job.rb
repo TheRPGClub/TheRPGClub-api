@@ -12,6 +12,8 @@ module Gamedb
     # Gap between games to stay within IGDB's rate limit, as the image backfill.
     class_attribute :pause_seconds, default: 0.25
 
+    # Returns the ids of the games it refreshed (or tried to: failures are
+    # logged), for the one-off `gamedb:refresh_releases` run.
     def perform
       importer = IgdbGameImporter.new
       game_ids.each_with_index do |game_id, index|
