@@ -4,6 +4,8 @@ class RpgClubUser < ApplicationRecord
   self.table_name = "rpg_club_users"
   self.primary_key = "user_id"
 
+  include HasBirthDate
+
   BINARY_COLUMNS = %w[avatar_blob profile_image].freeze
 
   has_many :avatar_history,

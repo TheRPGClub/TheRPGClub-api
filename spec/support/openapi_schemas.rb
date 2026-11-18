@@ -1489,8 +1489,9 @@ module OpenapiSchemas
       # served only to the member and staff, and the member's changes left.
       BirthDate: obj(
         user_id: str,
-        birth_date: str(nullable: true, format: "date", example: "1990-05-04",
-          description: "The member's Birth Date; null until they enter it."),
+        birth_date: str(nullable: true, pattern: '^(\\d{4}-)?\\d{2}-\\d{2}$', example: "1990-05-04",
+          description: "The member's Birth Date: \"1990-05-04\", or \"05-04\" when they gave only the day and " \
+                       "month (api#398). Null until they enter it."),
         changes_left_this_month: int.merge(
           example: 1,
           description: "How many more times the member may set or change it this calendar month (US Eastern), " \

@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 # A member's Birth Date (spec #376, ticket #380) and the limit on changing it.
+# Its year is optional (api#398, ADR 0011): a BirthDate of a month, a day and
+# maybe a year.
 #
 # A member may set or change their own Birth Date at most CHANGES_PER_MONTH
 # times per calendar month in the club's time zone, and entering it the first
@@ -10,6 +12,12 @@
 module BirthDates
   CHANGES_PER_MONTH = 2
   EARLIEST = Date.new(1900, 1, 1)
+  # The year a Birth Date without one is checked against, so 29 February is a
+  # real day.
+  LEAP_YEAR = 2000
+  DATED = /\A(?<year>\d{4})-(?<month>\d{1,2})-(?<day>\d{1,2})\z/
+  YEARLESS = /\A(?<month>\d{1,2})-(?<day>\d{1,2})\z/
+  NOT_A_DATE = "birth_date must be a date (YYYY-MM-DD, or MM-DD without the year)"
 
   # A member's own change refused because they used both of this month's.
   class LimitReached < StandardError
@@ -22,7 +30,8 @@ module BirthDates
     end
   end
 
-  # A Birth Date that is not a real date in the past.
+  # A Birth Date that is not a real date in the past, or a month and day
+  # that don't exist.
   class Invalid < StandardError; end
 
   module_function
@@ -33,7 +42,7 @@ module BirthDates
     left = changes_left(user_id, now: now)
     {
       user_id: user_id.to_s,
-      birth_date: user&.birth_date&.iso8601,
+      birth_date: user&.birth_date&.to_s,
       changes_left_this_month: left,
       next_change_on: left.zero? ? next_month_start(now).iso8601 : nil
     }
@@ -77,17 +86,27 @@ module BirthDates
     Challenges.today(now).next_month.beginning_of_month
   end
 
-  # nil removes the Birth Date; anything else must be a YYYY-MM-DD date
-  # between 1900 and today in the club's time zone.
+  # nil removes the Birth Date. Anything else is a YYYY-MM-DD date between
+  # 1900 and today in the club's time zone, or an MM-DD month and day that
+  # exist in some year (29 February included). Returns a BirthDate.
   def parse(value, now:)
     return nil if value.nil?
 
-    date = Date.strptime(value.to_s, "%Y-%m-%d")
+    match = DATED.match(value.to_s) || YEARLESS.match(value.to_s)
+    raise Invalid, NOT_A_DATE unless match
+
+    year = match.names.include?("year") ? match[:year].to_i : nil
+    birth_date = BirthDate.new(month: match[:month].to_i, day: match[:day].to_i, year: year)
+    check!(birth_date, now)
+    birth_date
+  end
+
+  def check!(birth_date, now)
+    raise Invalid, NOT_A_DATE unless Date.valid_date?(birth_date.year || LEAP_YEAR, birth_date.month, birth_date.day)
+    return unless birth_date.year?
+
+    date = Date.new(birth_date.year, birth_date.month, birth_date.day)
     raise Invalid, "birth_date can't be in the future" if date > Challenges.today(now)
     raise Invalid, "birth_date can't be before #{EARLIEST.year}" if date < EARLIEST
-
-    date
-  rescue Date::Error
-    raise Invalid, "birth_date must be a date (YYYY-MM-DD)"
   end
 end

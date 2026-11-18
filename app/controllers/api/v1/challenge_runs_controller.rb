@@ -58,8 +58,8 @@ module Api
       # Starts the acting member's Run. 409 `challenge_closed` when the
       # Challenge is Closed, 409 `run_active` (with `run_id`) when they
       # already have an Active Run of it. A Slots Run starting at the birth
-      # year: 409 `birth_date_required` without a Birth Date, 422 `no_slots`
-      # when the birth year is after the last year. `meta.notices` says what
+      # year: 409 `birth_date_required` without a Birth Date or its year,
+      # 422 `no_slots` when the birth year is after the last year. `meta.notices` says what
       # the member should know, such as their birth year showing on the Run.
       def create
         challenge = visible_challenges.find(params[:challenge_id])
