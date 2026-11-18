@@ -17,6 +17,13 @@ production:
     class: Voting::AdvanceRoundsJob
     queue: default
     schedule: every minute
+  # The Challenges lifecycle (Challenges::Lifecycle): Seasons opening and
+  # ending, end dates, reminder DMs. Only queries Neon when
+  # Challenges::SweepSchedule says a step is due.
+  challenges_lifecycle:
+    class: Challenges::LifecycleJob
+    queue: default
+    schedule: every minute
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12

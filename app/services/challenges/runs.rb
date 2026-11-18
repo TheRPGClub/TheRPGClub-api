@@ -1,0 +1,133 @@
+# frozen_string_literal: true
+
+module Challenges
+  # Starting, abandoning and deleting Runs (GLOSSARY.md, "Run"; ticket #378).
+  # Each raises Challenges::RunRefused with the message members see.
+  #
+  #   start!     an Open Challenge, while the member has no Active Run of it;
+  #              a Seasonal Run belongs to the Season it starts in, and a
+  #              member has at most one Run per Season (whatever its
+  #              status), so Finishing again means a later Season; a
+  #              Slots Run copies its first year (a birth-year one needs the
+  #              member's Birth Date). The new
+  #              Run counts the member's play at once (a Seasonal Run counts
+  #              play from earlier in its Season), so it may Finish straight
+  #              away.
+  #   abandon!   an Active Run; it stays, Abandoned, until deleted
+  #   delete!    a Finished, Expired or Abandoned Run
+  #   move!      a slot move on an Active Slots Run
+  #              (Challenges::Formats::Slots.move!), then the Run's progress
+  #              is refreshed, so a game waiting for the freed year fills it
+  #   pick!      a past-play pick on an Active Slots Run of a Challenge that
+  #              counts past play (Challenges::Formats::Slots.pick!), then
+  #              the Run's progress is refreshed, so it may Finish or be
+  #              Caught Up
+  #   past_play  what the member could pick now (Formats::Slots.past_play)
+  module Runs
+    CLOSED = "This Challenge is Closed, so no Run can start now."
+    ACTIVE = "You already have an Active Run of this Challenge."
+    SEASON_RUN = "You already have a Run in this Season of the Challenge. You can start a new one next Season."
+    NOT_ACTIVE = "Only an Active Run can be abandoned."
+    DELETE_ACTIVE = "Abandon this Run before deleting it."
+    MOVE_NOT_ACTIVE = "Only an Active Run's games can be moved."
+    NOT_SLOTS = "Only a Slots Run has years to move games between."
+    PICK_NOT_ACTIVE = "Only an Active Run can count past play."
+    PICK_NOT_SLOTS = "Only a Slots Run has years to pick past play for."
+
+    def self.start!(challenge, user_id, now: Time.current)
+      today = Challenges.today(now)
+      run = ChallengeRun.transaction do
+        # The Challenge stays locked until the Run is in, as for a rule edit
+        # (Challenges::Form), so its rules can't change under a first Run
+        # and two starts by one member wait for each other.
+        challenge.lock!
+        raise RunRefused.new("challenge_closed", CLOSED) unless challenge.open?(today)
+
+        season = challenge.seasonal? ? challenge.schedule_rules.season_on(today) : nil
+        refuse_active!(challenge, user_id)
+        refuse_season_run!(challenge, user_id, season) if season
+        format_attributes = challenge.format_rules.run_attributes(challenge, user_id, today: today)
+        created = ChallengeRun.create!(challenge: challenge, user_id: user_id, started_at: now,
+          season_starts_on: season&.first, season_ends_on: season&.last, **format_attributes)
+        Challenges.refresh_runs!(user_id)
+        created
+      end
+      run.reload
+    end
+
+    def self.abandon!(run, now: Time.current)
+      run.with_lock do
+        raise RunRefused.new("run_not_active", NOT_ACTIVE) unless run.active?
+
+        run.update!(status: "abandoned", ended_at: now)
+      end
+      run
+    end
+
+    def self.delete!(run)
+      run.with_lock do
+        raise RunRefused.new("run_active", DELETE_ACTIVE) if run.active?
+
+        run.destroy!
+      end
+    end
+
+    def self.move!(run, game_id:, year:)
+      with_member_runs_locked(run) do
+        format = run.challenge.format_rules
+        raise RunRefused.new("not_slots", NOT_SLOTS, status: :unprocessable_content) unless format.respond_to?(:move!)
+        raise RunRefused.new("run_not_active", MOVE_NOT_ACTIVE) unless run.active?
+
+        format.move!(run, game_id, year)
+        Challenges.refresh_runs!(run.user_id)
+      end
+      run
+    end
+
+    def self.pick!(run, completion_id:, year:)
+      with_member_runs_locked(run) do
+        format = past_play_format(run)
+        format.pick!(run, completion_id, year)
+        Challenges.refresh_runs!(run.user_id)
+      end
+      run
+    end
+
+    def self.past_play(run) = past_play_format(run).past_play(run)
+
+    # Locks every Run of the member in id order, the order the refresh that
+    # follows (Challenges::Progress.refresh) locks them in, so a change to
+    # one Run never deadlocks with a refresh running at the same time; then
+    # reloads `run` and yields, in one transaction.
+    def self.with_member_runs_locked(run)
+      ChallengeRun.transaction do
+        ChallengeRun.where(user_id: run.user_id).order(:id).lock.ids
+        run.reload
+        yield
+      end
+    end
+    private_class_method :with_member_runs_locked
+
+    def self.past_play_format(run)
+      format = run.challenge.format_rules
+      raise RunRefused.new("not_slots", PICK_NOT_SLOTS, status: :unprocessable_content) unless format.respond_to?(:pick!)
+      raise RunRefused.new("run_not_active", PICK_NOT_ACTIVE) unless run.active?
+
+      format
+    end
+    private_class_method :past_play_format
+
+    def self.refuse_active!(challenge, user_id)
+      active = ChallengeRun.active.find_by(challenge_id: challenge.id, user_id: user_id, edition_id: nil)
+      raise RunRefused.new("run_active", ACTIVE, run_id: active.id) if active
+    end
+    private_class_method :refuse_active!
+
+    def self.refuse_season_run!(challenge, user_id, season)
+      taken = ChallengeRun.where(challenge_id: challenge.id, user_id: user_id, season_starts_on: season.first)
+        .order(id: :desc).first
+      raise RunRefused.new("season_run_exists", SEASON_RUN, run_id: taken.id) if taken
+    end
+    private_class_method :refuse_season_run!
+  end
+end

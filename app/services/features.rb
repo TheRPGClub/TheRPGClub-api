@@ -89,7 +89,13 @@ module Features
     # ticket #369) share it.
     define("news_hub", "News Hub", core: false,
       website: [ "News" ],
-      bot: [ "/news", "Change news category (context menu)", "/news-import" ])
+      bot: [ "/news", "Change news category (context menu)", "/news-import" ]),
+    # Spec #376. Starts in Preview like any key with no stored state; its
+    # public posts go to the bot's #challenges channel once Live.
+    define("challenges", "Challenges", core: false,
+      website: [ "Challenges", "Profile Challenges" ],
+      bot: [ "/challenge" ],
+      posts: [ "Challenge announcements" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

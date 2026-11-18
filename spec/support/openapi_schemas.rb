@@ -902,6 +902,354 @@ module OpenapiSchemas
         to_state: str(enum: %w[preview live]),
         feature_key: str(enum: %w[news_hub])
       ),
+      # ChallengeResource (spec #376, ticket #377): a Challenge with its
+      # Challenge Format's settings under the Format's key.
+      Challenge: obj(
+        id: int, name: str(maxLength: Challenge::NAME_MAX), description: str,
+        challenge_format: str(enum: Challenge::FORMATS),
+        hosted_by_club: bool.merge(description: "True when the club itself is the Host (host is null)."),
+        host: ref("ChallengeMember", nullable: true).merge(
+          description: "The member who is the Host; null for a club-hosted Challenge."),
+        schedule: str(enum: Challenge::SCHEDULES),
+        ends_on: str(nullable: true, format: "date").merge(
+          description: "An Always Open Challenge's last Open day, in the club's time zone; null for none."
+        ),
+        season: obj(
+          start: str(example: "06-21"), end: str(example: "09-22"),
+          crosses_new_year: bool.merge(description: "True when the Season runs across 1 January.")
+        ).merge(nullable: true, description: "A Seasonal Challenge's Season, as MM-DD; null when Always Open."),
+        open: bool.merge(description: "Open today in the club's time zone (America/New_York)."),
+        pool: ref("ChallengePool", nullable: true),
+        slots: ref("ChallengeSlots", nullable: true),
+        assignment: ref("ChallengeAssignment", nullable: true),
+        run_count: int.merge(description: "Every Run of it, whatever its status."),
+        finished_count: int.merge(description: "Its Runs that Finished, in any Season."),
+        pool_games: { type: :array, maxItems: 4, items: ref("ChallengePostGame"),
+                      description: "Up to 4 games of a Pool Challenge's Pool for its flyer, those with a cover " \
+                                   "first, then by title (empty for Slots and Assignment)." },
+        tint: ref("ChallengeTint"),
+        key_art_url: str(nullable: true).merge(
+          description: "The picture behind the Challenge's banner and on its posts: for a Pool Challenge, the " \
+                       "artwork of the first Pool game by title that has artwork, else the first one's cover; null " \
+                       "without either, and for Slots and Assignment Challenges (draw the Format's picture in the " \
+                       "tint instead). Show and announcements only; null in lists."
+        ),
+        hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
+        ended_at: ts(nullable: true).merge(
+          description: "When an Always Open Challenge reached its end date and Closed for good (set the day after " \
+                       "ends_on); its schedule and end date can no longer change. Null otherwise."
+        ),
+        created_by: str(nullable: true), updated_by: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      ChallengeTint: obj(
+        _description: "The Challenge tint: the one colour it wears on the bot's posts and the website, as a pair " \
+                      "of lowercase #rrggbb. A new Challenge gets a curated tint (Secret Santa's holly for an " \
+                      "Assignment Challenge, otherwise the other seven in turn); the Host or a Moderator may " \
+                      "change it. Curated: #{Challenges::Tint::CURATED.map { |name, pair| "#{name} #{pair.fill} / #{pair.hi}" }.join(', ')}.",
+        _required: %w[fill hi],
+        fill: str(example: "#1f6b67").merge(description: "The flyer and banner ground. Paper type (#f4f4f0) on it " \
+                                                          "clears 4.5:1; set only paper type on it."),
+        hi: str(example: "#6fd6cc").merge(description: "The same hue lifted for type and marks on ink (#0b0b0d, " \
+                                                       "#141417), where it clears 4.5:1.")
+      ),
+      ChallengePool: obj(
+        _description: "A Pool Challenge's settings. A game is in the Pool if it belongs to a chosen franchise or " \
+                      "collection and is not excluded, or if it is included by hand; it is resolved against the " \
+                      "GameDB when read.",
+        target: { oneOf: [ { type: :integer, minimum: 1 }, { type: :string, enum: %w[all] } ],
+                  description: "Cleared games needed to Finish, or \"all\" for every game in the Pool." },
+        franchises: { type: :array, items: obj(franchise_id: int, name: str) },
+        collections: { type: :array, items: obj(collection_id: int, name: str) },
+        included_games: { type: :array, items: obj(game_id: int, title: str) },
+        excluded_games: { type: :array, items: obj(game_id: int, title: str) },
+        game_count: int(nullable: true).merge(description: "Games in the Pool now. Show and announcements only.")
+      ),
+      ChallengeSlots: obj(
+        _description: "A Slots Challenge's range: one slot per release year (ticket #381).",
+        first_year: { oneOf: [ { type: :integer }, { type: :string, enum: %w[birth_year] } ],
+                      description: "A fixed year, or \"birth_year\" for each member's birth year." },
+        last_year: { oneOf: [ { type: :integer }, { type: :string, enum: %w[current_year] } ],
+                     description: "A fixed year, or \"current_year\": the range gains a slot every 1 January." },
+        counts_past_play: bool.merge(description: "Counts past play (ticket #382, Always Open only): members may " \
+                                                  "pick Game Completions dated before their Run started for open slots.")
+      ),
+      ChallengeAssignment: obj(
+        _description: "An Assignment (Secret Santa) Challenge's Edition calendar, as MM-DD, coming in this order " \
+                      "through the year (ticket #383). Defaults: 12-01, 12-15, 12-25.",
+        signup_cutoff: str(example: "12-01").merge(description: "Sign-up closes at the start of this day, and the " \
+                                                                 "draw happens."),
+        pick_deadline: str(example: "12-15").merge(description: "Santas pick before this day."),
+        reveal: str(example: "12-25").merge(description: "The picks are revealed, and the Edition is named by " \
+                                                          "this day's year."),
+        edition: ref("ChallengeEditionSummary", nullable: true).merge(
+          description: "The latest Edition; null before the first one opens."
+        )
+      ),
+      # ChallengeEditionResource.summary (ticket #383).
+      ChallengeEditionSummary: obj(
+        _description: "An Edition's year, phase and dates, as the club's dates (America/New_York).",
+        id: int, year: int.merge(description: "The year of its reveal."),
+        phase: str(enum: ChallengeEdition::PHASES),
+        signup_opens_on: str(format: "date").merge(description: "The day after the previous reveal, or the day " \
+                                                                 "the Challenge was created."),
+        signup_cutoff_on: str(format: "date").merge(description: "Sign-up is open until the start of this day."),
+        pick_deadline_on: str(format: "date"), reveal_on: str(format: "date"),
+        ends_on: str(format: "date").merge(description: "The next reveal date: the year to Clear the game ends.")
+      ),
+      # ChallengeEditionResource (spec #376, tickets #383, #384): an Edition
+      # with the members signed up and, from the reveal, the assignments.
+      ChallengeEdition: obj(
+        id: int, year: int, phase: str(enum: ChallengeEdition::PHASES),
+        challenge: obj(id: int, name: str),
+        signup_opens_on: str(format: "date"), signup_cutoff_on: str(format: "date"),
+        pick_deadline_on: str(format: "date"), reveal_on: str(format: "date"), ends_on: str(format: "date"),
+        signup_open: bool.merge(description: "Members may sign up and withdraw today."),
+        signed_up_count: int,
+        signed_up: bool.merge(description: "The member reading is signed up (false for the bot without " \
+                                           "acting_user_id, and in bot job payloads)."),
+        members: { type: :array, description: "The members signed up, first first.", items: obj(
+          user_id: str, username: str, global_name: str(nullable: true),
+          discord_avatar: str(nullable: true), avatar_url: str,
+          left_out: bool.merge(description: "The draw left them out: fewer than 5 games in their backlog by then."),
+          withdrawn: bool.merge(description: "They withdrew after the draw; their recipient gets a random pick."),
+          picked: bool(nullable: true).merge(description: "While Santas pick: a game is picked for them (their " \
+                                                          "Santa's pick, kept when the Santa withdraws, or the " \
+                                                          "random pick at the deadline). Null in other phases and " \
+                                                          "for members the draw left out. Never names the Santa " \
+                                                          "or the game.")
+        ) },
+        picked_count: int(nullable: true).merge(description: "While Santas pick: how many members have a game " \
+                                                             "picked for them. Null in other phases."),
+        drawn_at: ts(nullable: true).merge(description: "When the draw happened (or cancelled the Edition)."),
+        assignments: {
+          type: :array, nullable: true,
+          description: "Who gives what to whom, by recipient: served from the reveal on, and to staff (Moderators " \
+                       "and above) from the draw on; null otherwise.",
+          items: obj(
+            _required: %w[recipient picked_randomly],
+            recipient: ref("ChallengeMember"),
+            game: ref("GameSummary", nullable: true).merge(description: "The game picked; null while nothing " \
+                                                                         "is, and before the reveal on the " \
+                                                                         "reader's own row."),
+            picked_randomly: bool(nullable: true).merge(description: "A random pick at the deadline: the Santa " \
+                                                                     "didn't pick, withdrew or left the server. " \
+                                                                     "Null while the game is hidden."),
+            santa: ref("ChallengeMember", nullable: true).merge(description: "Null before the Edition ends, " \
+                                                                             "except to staff the draw didn't " \
+                                                                             "give a Santa in it."),
+            run: obj(id: int, status: str(enum: ChallengeRun::STATUSES), progress: json(nullable: false))
+              .merge(nullable: true, description: "The recipient's Run of the Edition.")
+          )
+        },
+        picks_closed_at: ts(nullable: true).merge(description: "When the random picks were made at the deadline."),
+        viewer: obj(
+          _required: %w[backlog_count eligible],
+          backlog_count: int.merge(description: "Games in the member's backlog."),
+          eligible: bool.merge(description: "backlog_count meets the 5-game minimum to sign up.")
+        ).merge(nullable: true, description: "The member reading. Null for the bot without acting_user_id, and " \
+                                             "in bot job payloads.")
+      ),
+      ChallengeMember: obj(
+        user_id: str, username: str, global_name: str(nullable: true),
+        discord_avatar: str(nullable: true).merge(
+          description: "The member's Discord avatar hash from their last website login; null if unknown. " \
+                       "https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png"
+        ),
+        avatar_url: str(example: "/api/v1/users/123/avatar").merge(
+          description: "The API path of the avatar image the bot stores (404 when it has none)."
+        )
+      ),
+      # GET /api/v1/challenge_editions/{id}/santa (ticket #384).
+      ChallengeSanta: obj(
+        _description: "The acting member's side as a Santa.",
+        edition_id: int, year: int,
+        challenge: obj(id: int, name: str),
+        reveal_on: str(format: "date").merge(description: "The picks are revealed on this day."),
+        recipient: ref("ChallengeMember"),
+        taste: obj(
+          genres: { type: :array, maxItems: 3, items: obj(genre_id: int, name: str),
+                    description: "The recipient's top 3 genres, most played first." },
+          platform: obj(platform_id: int, platform_name: str, platform_abbreviation: str(nullable: true))
+            .merge(nullable: true, description: "The platform the recipient plays most on; null if none recorded.")
+        ).merge(description: "Taste hints about the recipient, worked out from the games in their Game " \
+                             "Completions and backlog (each game counted once)."),
+        pick: obj(game: ref("GameSummary"), picked_at: ts, picked_randomly: bool)
+          .merge(nullable: true, description: "The game picked for the recipient; null while nothing is."),
+        pick_deadline_on: str(format: "date").merge(description: "Picks are open until the start of this day."),
+        picks_open: bool,
+        backlog: { type: :array, items: { allOf: [ ref("BacklogEntry"), obj(
+                     hours: num(nullable: true).merge(description: "The HowLongToBeat time backlog#pick compares " \
+                                                                   "(main, single player, main + sides); null without."),
+                     hltb: ref("Hltb", nullable: true)
+                   ) ] },
+                   description: "The recipient's backlog minus the games they have Cleared (any Game Completion), " \
+                                "narrowed by `q`." }
+      ),
+      # ChallengeRunResource (spec #376, ticket #378): a Run with its progress.
+      ChallengeRun: obj(
+        id: int,
+        challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
+          schedule: str(enum: Challenge::SCHEDULES),
+          counts_past_play: bool.merge(description: "Counts past play is on (Slots only; false otherwise)."),
+          tint: ref("ChallengeTint"),
+          slots: ref("ChallengeSlots", nullable: true).merge(description: "Slots only: the Challenge's range " \
+                                                                          "and Counts past play.")),
+        user: ref("ChallengeMember"),
+        edition: obj(id: int, year: int).merge(nullable: true,
+          description: "Assignment only: the Edition the Run was drawn in."),
+        assignment: obj(
+          game: ref("GameSummary", nullable: true).merge(description: "The game picked for the member: null " \
+                                                                       "before the reveal (except to staff, " \
+                                                                       "on Runs not their own)."),
+          picked_randomly: bool(nullable: true).merge(description: "Null until the game is shown."),
+          santa: ref("ChallengeMember", nullable: true).merge(description: "Null before the Edition ends, " \
+                                                                           "except to staff the draw didn't " \
+                                                                           "give a Santa in it.")
+        ).merge(nullable: true, description: "Assignment only: the member's assigned game and their Santa."),
+        status: str(enum: ChallengeRun::STATUSES),
+        started_at: ts,
+        ended_at: ts(nullable: true).merge(description: "When it became Finished, Expired or Abandoned."),
+        window: obj(
+          starts_on: str(format: "date"),
+          ends_on: str(nullable: true, format: "date").merge(description: "Null while it has no end.")
+        ).merge(description: "When play counts toward the Run, as the club's dates (both included): the Season " \
+                             "it belongs to, from its start to an Always Open Challenge's end date, or an " \
+                             "Edition's reveal to the day before its end."),
+        progress: obj(
+          _required: %w[in_progress cleared target],
+          in_progress: int.merge(description: "Games In Progress: in the member's Now Playing."),
+          cleared: int.merge(description: "Games Cleared by a Game Completion dated inside the window; for " \
+                                           "Slots, the slots filled."),
+          target: int.merge(description: "Cleared games needed to Finish; for Slots, the Run's slots so far."),
+          caught_up: bool.merge(description: "Slots only (absent otherwise): an Active Run whose range ends at " \
+                                             "the current year, with every slot so far Cleared. Worked out " \
+                                             "when read, so it lapses on 1 January.")
+        ),
+        entries: { type: :array, description: "The games counted on the Run, Cleared first.", items: obj(
+          game_id: int, title: str,
+          cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none."),
+          state: str(enum: ChallengeRunEntry::STATES),
+          cleared_on: str(nullable: true, format: "date"),
+          completion_id: int(nullable: true).merge(
+            description: "The Game Completion that Cleared it; null on a Finished Run after it was deleted."
+          ),
+          slot_year: int(nullable: true).merge(description: "Slots: the year this Cleared game fills; null " \
+                                                           "when In Progress, waiting for an open year, or not Slots."),
+          picked_by_hand: bool.merge(description: "The member placed it there themselves (a slot move or a " \
+                                                  "past-play pick)."),
+          release_years: { type: :array, items: { type: :integer }, nullable: true,
+                           description: "Slots only (null otherwise): every year the game fits, its first " \
+                                        "release year and the year of each regional or platform release, " \
+                                        "oldest first; intersect with the Run's open years." }
+        ) },
+        slots: obj(
+          first_year: int.merge(description: "Copied when the Run started; kept if the Birth Date changes."),
+          last_year: int.merge(description: "The last year so far: the current year for a range that grows."),
+          growing: bool.merge(description: "The range ends at the current year and gains a slot every 1 January."),
+          years: { type: :array, items: obj(year: int, game_id: int(nullable: true), title: str(nullable: true)) }
+        ).merge(nullable: true, description: "Slots only: each year so far and the game filling it (null while open).")
+      ),
+      ChallengePoolGameProgress: obj(
+        _description: "A Pool game with who Cleared it and who has it In Progress.",
+        game_id: int, title: str, initial_release_date: ts(nullable: true),
+        cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none."),
+        cleared_by: { type: :array, description: "Members who Cleared it, earliest first.", items: {
+          allOf: [ ref("ChallengeMember"), obj(run_id: int, cleared_on: str(nullable: true, format: "date")) ]
+        } },
+        in_progress: { type: :array, description: "Members playing it on a Run that still counts play.", items: {
+          allOf: [ ref("ChallengeMember"), obj(run_id: int) ]
+        } }
+      ),
+      ChallengeOpenSignup: obj(
+        _description: "A member's sign-up for an Edition still in sign-up (no Run until the draw).",
+        edition_id: int, year: int, phase: str(enum: %w[signup]),
+        challenge: obj(id: int, name: str),
+        signed_up_at: ts,
+        signup_cutoff_on: str(format: "date").merge(description: "Sign-up closes at the start of this day, and " \
+                                                                 "the draw happens on it."),
+        pick_deadline_on: str(format: "date"), reveal_on: str(format: "date")
+      ),
+      ChallengeWarning: obj(
+        code: str(enum: %w[duplicate_name]), message: str,
+        challenge_ids: { type: :array, items: int, description: "The other Challenges with the same name." }
+      ),
+      ChallengePoolSource: obj(
+        kind: str(enum: %w[franchise collection]), id: int.merge(description: "franchise_id or collection_id."),
+        name: str, game_count: int
+      ),
+      # The Challenges bot job payload (#377), as BotJobClaim.payload carries it.
+      ChallengeAnnounceJobPayload: obj(
+        _description: "Kind `challenge_announce`. Post in the #challenges channel, or the staff test channel " \
+                      "while the Feature is in Preview. `event` says what to announce: `challenge_created`, " \
+                      "a new Challenge; `run_finished`, a member's Run that just Finished, or `run_caught_up`, a " \
+                      "member's Slots Run that just became Caught Up (at most once a year), both with `run`; or " \
+                      "`season_opened`, a Seasonal Challenge's Season that just opened (with `season`). An " \
+                      "Edition's sign-up: `signup_opened`; `signup_closing` (with `days_left`); and at the draw, " \
+                      "`signup_closed`, or `edition_cancelled` when fewer than 2 members could be drawn (both " \
+                      "with `joined` and `left_out`), all with `edition`; and `edition_revealed` on the reveal " \
+                      "date, whose `edition` carries every assignment (never the Santas).",
+        _required: %w[event challenge feature_key],
+        event: str(enum: %w[challenge_created run_finished run_caught_up season_opened signup_opened signup_closing
+          signup_closed edition_cancelled edition_revealed]),
+        challenge: ref("Challenge"),
+        run: ref("ChallengeRun").merge(description: "run_finished and run_caught_up only: the Run as GET /api/v1/challenge_runs/{id} serves it."),
+        season: ref("ChallengeSeasonDates").merge(description: "season_opened only: the Season that opened."),
+        pool_games: { type: :array, maxItems: 10, items: ref("ChallengePostGame"),
+                      description: "challenge_created and season_opened only: up to 10 games of a Pool " \
+                                   "Challenge's Pool for a cover wall, those with a cover first, then by title " \
+                                   "(empty for Slots and Assignment)." },
+        last_season_finishers: { type: :array, items: ref("ChallengeMember"),
+                                 description: "season_opened only: the members whose Run of the Season before " \
+                                              "Finished, in the order they Finished (show their names; no pings)." },
+        edition: ref("ChallengeEdition").merge(description: "Edition events only: the Edition as GET " \
+                                                             "/api/v1/challenge_editions/{id} serves it."),
+        days_left: int.merge(example: 3, description: "signup_closing only: days from today to the cutoff."),
+        signup_post: obj(channel_id: str, message_id: str).merge(
+          nullable: true, description: "signup_closing, signup_closed, edition_cancelled and edition_revealed only: " \
+                                       "the Edition's sign-up opening post, as the bot stored it (PUT " \
+                                       "/api/v1/challenge_editions/{id}/signup_post), to reply to; null if none."
+        ),
+        joined: int.merge(description: "signup_closed and edition_cancelled only: the members drawn."),
+        left_out: int.merge(description: "signup_closed and edition_cancelled only: the members left out for " \
+                                         "having fewer than `minimum` games in their backlog."),
+        minimum: int.merge(example: 5, description: "signup_closed and edition_cancelled only: the backlog " \
+                                                    "minimum to be drawn."),
+        feature_key: str(enum: %w[challenges])
+      ),
+      ChallengePostGame: obj(
+        game_id: int, title: str,
+        cover_url: str(nullable: true).merge(description: "The game's cover, null when it has none.")
+      ),
+      ChallengeSeasonDates: obj(
+        starts_on: str(format: "date", example: "2026-06-21"), ends_on: str(format: "date", example: "2026-09-22"),
+        _description: "One Season's first and last day, as the club's dates (America/New_York), both included."
+      ),
+      # The Challenge DM bot job payload (#379), as BotJobClaim.payload carries it.
+      ChallengeDmJobPayload: obj(
+        _description: "Kind `challenge_dm`. DM the member `user_id`; post nothing publicly. `event` says what " \
+                      "about: `season_ending`, a reminder that the Season of the member's unFinished Run ends " \
+                      "soon (with `run`, `season` and `days_left`), sent only to members who keep Challenge DMs " \
+                      "on; `left_out_of_draw`, the draw left the member out of an Edition they signed up for " \
+                      "(with `edition`, `backlog_count` and `minimum`), sent to every member still in the server; " \
+                      "`pick_reminder`, 2 days before an Edition's pick deadline, a Santa who hasn't picked for " \
+                      "their `recipient` (with `edition` and `days_left`), sent only to members who keep Challenge " \
+                      "DMs on.",
+        _required: %w[event user_id challenge feature_key],
+        event: str(enum: %w[season_ending left_out_of_draw pick_reminder]),
+        user_id: str.merge(description: "The member to DM."),
+        challenge: ref("Challenge"),
+        run: ref("ChallengeRun").merge(description: "season_ending only: the member's Run, as GET " \
+                                                     "/api/v1/challenge_runs/{id} serves it."),
+        season: ref("ChallengeSeasonDates").merge(description: "season_ending only."),
+        days_left: int.merge(example: 7, description: "season_ending: days from today to the Season's last day " \
+                                                      "(7 unless sent late); pick_reminder: days to the pick " \
+                                                      "deadline (2 unless sent late)."),
+        edition: ref("ChallengeEdition").merge(description: "left_out_of_draw and pick_reminder: the Edition."),
+        recipient: ref("ChallengeMember").merge(description: "pick_reminder only: the member the Santa picks for."),
+        backlog_count: int.merge(description: "left_out_of_draw only: the games in the member's backlog."),
+        minimum: int.merge(example: 5, description: "left_out_of_draw only: the backlog minimum."),
+        feature_key: str(enum: %w[challenges])
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
@@ -910,7 +1258,8 @@ module OpenapiSchemas
                        "carries `feature_key`, the key of the Feature that owns the post " \
                        "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
                        "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
-                       "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload."
+                       "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
+                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
@@ -1029,6 +1378,37 @@ module OpenapiSchemas
                        "use (Live, plus Preview for staff). Empty when there is none, e.g. no hideable Feature is Live."
         ),
         _required: %w[user_id hidden show_preview_features features]
+      ),
+
+      # ChallengeSettingsController (spec #376, ticket #379): the member's
+      # Challenge DM opt-out.
+      ChallengeSettings: obj(
+        user_id: str,
+        dms: bool.merge(description: "Whether the member gets Challenge reminder DMs; true until they turn it off."),
+        _required: %w[user_id dms]
+      ),
+
+      # BirthDatesController (spec #376, ticket #380). A member's Birth Date,
+      # served only to the member and staff, and the member's changes left.
+      BirthDate: obj(
+        user_id: str,
+        birth_date: str(nullable: true, format: "date", example: "1990-05-04",
+          description: "The member's Birth Date; null until they enter it."),
+        changes_left_this_month: int.merge(
+          example: 1,
+          description: "How many more times the member may set or change it this calendar month (US Eastern), " \
+                       "0 to 2. Entering it the first time counts; staff changes don't."
+        ),
+        next_change_on: str(nullable: true, format: "date", example: "2026-12-01",
+          description: "When changes_left_this_month is 0, the first day of next month, when the member may " \
+                       "change it again; null otherwise."),
+        _required: %w[user_id birth_date changes_left_this_month next_change_on]
+      ),
+      BirthDateRefusal: obj(
+        error: str(description: "Why it was refused. For the limit, names the date the member may change it again."),
+        next_change_on: str(format: "date", example: "2026-12-01",
+          description: "Only when the member reached the limit: the first day of next month (US Eastern)."),
+        _required: %w[error]
       ),
 
       # ---- News Hub (spec #355) --------------------------------------------

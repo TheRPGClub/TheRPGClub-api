@@ -2686,6 +2686,8 @@ components:
           - feature_flag_changed
           - news_images_renew
           - news_catch_up
+          - challenge_announce
+          - challenge_dm
         summary:
           type: string
           maxLength: 200
@@ -2949,6 +2951,1167 @@ components:
       description: 'Kind `news_catch_up`. The News Hub''s Feature Flag went from Off
         to Preview or Live: record News Channel messages posted while it was Off and
         post missing News Copies. The lease is 30 minutes.'
+    Challenge:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+        challenge_format:
+          type: string
+          enum:
+          - slots
+          - pool
+          - assignment
+        hosted_by_club:
+          type: boolean
+          description: True when the club itself is the Host (host is null).
+        host:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: The member who is the Host; null for a club-hosted Challenge.
+        schedule:
+          type: string
+          enum:
+          - always_open
+          - seasonal
+        ends_on:
+          type: string
+          nullable: true
+          format: date
+          description: An Always Open Challenge's last Open day, in the club's time
+            zone; null for none.
+        season:
+          type: object
+          properties:
+            start:
+              type: string
+              example: 06-21
+            end:
+              type: string
+              example: '09-22'
+            crosses_new_year:
+              type: boolean
+              description: True when the Season runs across 1 January.
+          required:
+          - start
+          - end
+          - crosses_new_year
+          nullable: true
+          description: A Seasonal Challenge's Season, as MM-DD; null when Always Open.
+        open:
+          type: boolean
+          description: Open today in the club's time zone (America/New_York).
+        pool:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengePool"
+          nullable: true
+        slots:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeSlots"
+          nullable: true
+        assignment:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeAssignment"
+          nullable: true
+        run_count:
+          type: integer
+          description: Every Run of it, whatever its status.
+        finished_count:
+          type: integer
+          description: Its Runs that Finished, in any Season.
+        pool_games:
+          type: array
+          maxItems: 4
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: Up to 4 games of a Pool Challenge's Pool for its flyer, those
+            with a cover first, then by title (empty for Slots and Assignment).
+        tint:
+          "$ref": "#/components/schemas/ChallengeTint"
+        key_art_url:
+          type: string
+          nullable: true
+          description: 'The picture behind the Challenge''s banner and on its posts:
+            for a Pool Challenge, the artwork of the first Pool game by title that
+            has artwork, else the first one''s cover; null without either, and for
+            Slots and Assignment Challenges (draw the Format''s picture in the tint
+            instead). Show and announcements only; null in lists.'
+        hidden:
+          type: boolean
+          description: 'Hidden by a Moderator: listed only for Moderators and above
+            and the Host.'
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When an Always Open Challenge reached its end date and Closed
+            for good (set the day after ends_on); its schedule and end date can no
+            longer change. Null otherwise.
+        created_by:
+          type: string
+          nullable: true
+        updated_by:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - name
+      - description
+      - challenge_format
+      - hosted_by_club
+      - schedule
+      - open
+      - run_count
+      - finished_count
+      - hidden
+      - created_at
+      - updated_at
+    ChallengeTint:
+      type: object
+      properties:
+        fill:
+          type: string
+          example: "#1f6b67"
+          description: The flyer and banner ground. Paper type (#f4f4f0) on it clears
+            4.5:1; set only paper type on it.
+        hi:
+          type: string
+          example: "#6fd6cc"
+          description: 'The same hue lifted for type and marks on ink (#0b0b0d, #141417),
+            where it clears 4.5:1.'
+      required:
+      - fill
+      - hi
+      description: 'The Challenge tint: the one colour it wears on the bot''s posts
+        and the website, as a pair of lowercase #rrggbb. A new Challenge gets a curated
+        tint (Secret Santa''s holly for an Assignment Challenge, otherwise the other
+        seven in turn); the Host or a Moderator may change it. Curated: teal #1f6b67
+        / #6fd6cc, cobalt #2c4f8e / #9ab8f2, holly #1c6545 / #3fbf8a, umber #7a531c
+        / #e0b56e, moss #3b5a2b / #a9cf86, azure #2a5ea6 / #9cc2f5, slate #3a3a52
+        / #b4b4d6, ochre #8a6417 / #e6c36a.'
+    ChallengePool:
+      type: object
+      properties:
+        target:
+          oneOf:
+          - type: integer
+            minimum: 1
+          - type: string
+            enum:
+            - all
+          description: Cleared games needed to Finish, or "all" for every game in
+            the Pool.
+        franchises:
+          type: array
+          items:
+            type: object
+            properties:
+              franchise_id:
+                type: integer
+              name:
+                type: string
+            required:
+            - franchise_id
+            - name
+        collections:
+          type: array
+          items:
+            type: object
+            properties:
+              collection_id:
+                type: integer
+              name:
+                type: string
+            required:
+            - collection_id
+            - name
+        included_games:
+          type: array
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - game_id
+            - title
+        excluded_games:
+          type: array
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+            required:
+            - game_id
+            - title
+        game_count:
+          type: integer
+          nullable: true
+          description: Games in the Pool now. Show and announcements only.
+      required:
+      - target
+      description: A Pool Challenge's settings. A game is in the Pool if it belongs
+        to a chosen franchise or collection and is not excluded, or if it is included
+        by hand; it is resolved against the GameDB when read.
+    ChallengeSlots:
+      type: object
+      properties:
+        first_year:
+          oneOf:
+          - type: integer
+          - type: string
+            enum:
+            - birth_year
+          description: A fixed year, or "birth_year" for each member's birth year.
+        last_year:
+          oneOf:
+          - type: integer
+          - type: string
+            enum:
+            - current_year
+          description: 'A fixed year, or "current_year": the range gains a slot every
+            1 January.'
+        counts_past_play:
+          type: boolean
+          description: 'Counts past play (ticket #382, Always Open only): members
+            may pick Game Completions dated before their Run started for open slots.'
+      required:
+      - first_year
+      - last_year
+      - counts_past_play
+      description: 'A Slots Challenge''s range: one slot per release year (ticket
+        #381).'
+    ChallengeAssignment:
+      type: object
+      properties:
+        signup_cutoff:
+          type: string
+          example: 12-01
+          description: Sign-up closes at the start of this day, and the draw happens.
+        pick_deadline:
+          type: string
+          example: 12-15
+          description: Santas pick before this day.
+        reveal:
+          type: string
+          example: 12-25
+          description: The picks are revealed, and the Edition is named by this day's
+            year.
+        edition:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeEditionSummary"
+          nullable: true
+          description: The latest Edition; null before the first one opens.
+      required:
+      - signup_cutoff
+      - pick_deadline
+      - reveal
+      description: 'An Assignment (Secret Santa) Challenge''s Edition calendar, as
+        MM-DD, coming in this order through the year (ticket #383). Defaults: 12-01,
+        12-15, 12-25.'
+    ChallengeEditionSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+          description: The year of its reveal.
+        phase:
+          type: string
+          enum:
+          - signup
+          - picking
+          - revealed
+          - ended
+          - cancelled
+        signup_opens_on:
+          type: string
+          format: date
+          description: The day after the previous reveal, or the day the Challenge
+            was created.
+        signup_cutoff_on:
+          type: string
+          format: date
+          description: Sign-up is open until the start of this day.
+        pick_deadline_on:
+          type: string
+          format: date
+        reveal_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+          description: 'The next reveal date: the year to Clear the game ends.'
+      required:
+      - id
+      - year
+      - phase
+      - signup_opens_on
+      - signup_cutoff_on
+      - pick_deadline_on
+      - reveal_on
+      - ends_on
+      description: An Edition's year, phase and dates, as the club's dates (America/New_York).
+    ChallengeEdition:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+        phase:
+          type: string
+          enum:
+          - signup
+          - picking
+          - revealed
+          - ended
+          - cancelled
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          required:
+          - id
+          - name
+        signup_opens_on:
+          type: string
+          format: date
+        signup_cutoff_on:
+          type: string
+          format: date
+        pick_deadline_on:
+          type: string
+          format: date
+        reveal_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+        signup_open:
+          type: boolean
+          description: Members may sign up and withdraw today.
+        signed_up_count:
+          type: integer
+        signed_up:
+          type: boolean
+          description: The member reading is signed up (false for the bot without
+            acting_user_id, and in bot job payloads).
+        members:
+          type: array
+          description: The members signed up, first first.
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              username:
+                type: string
+              global_name:
+                type: string
+                nullable: true
+              discord_avatar:
+                type: string
+                nullable: true
+              avatar_url:
+                type: string
+              left_out:
+                type: boolean
+                description: 'The draw left them out: fewer than 5 games in their
+                  backlog by then.'
+              withdrawn:
+                type: boolean
+                description: They withdrew after the draw; their recipient gets a
+                  random pick.
+              picked:
+                type: boolean
+                nullable: true
+                description: 'While Santas pick: a game is picked for them (their
+                  Santa''s pick, kept when the Santa withdraws, or the random pick
+                  at the deadline). Null in other phases and for members the draw
+                  left out. Never names the Santa or the game.'
+            required:
+            - user_id
+            - username
+            - avatar_url
+            - left_out
+            - withdrawn
+        picked_count:
+          type: integer
+          nullable: true
+          description: 'While Santas pick: how many members have a game picked for
+            them. Null in other phases.'
+        drawn_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the draw happened (or cancelled the Edition).
+        assignments:
+          type: array
+          nullable: true
+          description: 'Who gives what to whom, by recipient: served from the reveal
+            on, and to staff (Moderators and above) from the draw on; null otherwise.'
+          items:
+            type: object
+            properties:
+              recipient:
+                "$ref": "#/components/schemas/ChallengeMember"
+              game:
+                allOf:
+                - "$ref": "#/components/schemas/GameSummary"
+                nullable: true
+                description: The game picked; null while nothing is, and before the
+                  reveal on the reader's own row.
+              picked_randomly:
+                type: boolean
+                nullable: true
+                description: 'A random pick at the deadline: the Santa didn''t pick,
+                  withdrew or left the server. Null while the game is hidden.'
+              santa:
+                allOf:
+                - "$ref": "#/components/schemas/ChallengeMember"
+                nullable: true
+                description: Null before the Edition ends, except to staff the draw
+                  didn't give a Santa in it.
+              run:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                    enum:
+                    - active
+                    - finished
+                    - expired
+                    - abandoned
+                  progress:
+                    type: object
+                    description: Free-form JSON.
+                required:
+                - id
+                - status
+                - progress
+                nullable: true
+                description: The recipient's Run of the Edition.
+            required:
+            - recipient
+            - picked_randomly
+        picks_closed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the random picks were made at the deadline.
+        viewer:
+          type: object
+          properties:
+            backlog_count:
+              type: integer
+              description: Games in the member's backlog.
+            eligible:
+              type: boolean
+              description: backlog_count meets the 5-game minimum to sign up.
+          required:
+          - backlog_count
+          - eligible
+          nullable: true
+          description: The member reading. Null for the bot without acting_user_id,
+            and in bot job payloads.
+      required:
+      - id
+      - year
+      - phase
+      - challenge
+      - signup_opens_on
+      - signup_cutoff_on
+      - pick_deadline_on
+      - reveal_on
+      - ends_on
+      - signup_open
+      - signed_up_count
+      - signed_up
+    ChallengeMember:
+      type: object
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        global_name:
+          type: string
+          nullable: true
+        discord_avatar:
+          type: string
+          nullable: true
+          description: The member's Discord avatar hash from their last website login;
+            null if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png
+        avatar_url:
+          type: string
+          example: "/api/v1/users/123/avatar"
+          description: The API path of the avatar image the bot stores (404 when it
+            has none).
+      required:
+      - user_id
+      - username
+      - avatar_url
+    ChallengeSanta:
+      type: object
+      properties:
+        edition_id:
+          type: integer
+        year:
+          type: integer
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          required:
+          - id
+          - name
+        reveal_on:
+          type: string
+          format: date
+          description: The picks are revealed on this day.
+        recipient:
+          "$ref": "#/components/schemas/ChallengeMember"
+        taste:
+          type: object
+          properties:
+            genres:
+              type: array
+              maxItems: 3
+              items:
+                type: object
+                properties:
+                  genre_id:
+                    type: integer
+                  name:
+                    type: string
+                required:
+                - genre_id
+                - name
+              description: The recipient's top 3 genres, most played first.
+            platform:
+              type: object
+              properties:
+                platform_id:
+                  type: integer
+                platform_name:
+                  type: string
+                platform_abbreviation:
+                  type: string
+                  nullable: true
+              required:
+              - platform_id
+              - platform_name
+              nullable: true
+              description: The platform the recipient plays most on; null if none
+                recorded.
+          description: Taste hints about the recipient, worked out from the games
+            in their Game Completions and backlog (each game counted once).
+        pick:
+          type: object
+          properties:
+            game:
+              "$ref": "#/components/schemas/GameSummary"
+            picked_at:
+              type: string
+              format: date-time
+            picked_randomly:
+              type: boolean
+          required:
+          - picked_at
+          - picked_randomly
+          nullable: true
+          description: The game picked for the recipient; null while nothing is.
+        pick_deadline_on:
+          type: string
+          format: date
+          description: Picks are open until the start of this day.
+        picks_open:
+          type: boolean
+        backlog:
+          type: array
+          items:
+            allOf:
+            - "$ref": "#/components/schemas/BacklogEntry"
+            - type: object
+              properties:
+                hours:
+                  type: number
+                  nullable: true
+                  description: The HowLongToBeat time backlog#pick compares (main,
+                    single player, main + sides); null without.
+                hltb:
+                  allOf:
+                  - "$ref": "#/components/schemas/Hltb"
+                  nullable: true
+          description: The recipient's backlog minus the games they have Cleared (any
+            Game Completion), narrowed by `q`.
+      required:
+      - edition_id
+      - year
+      - challenge
+      - reveal_on
+      - taste
+      - pick_deadline_on
+      - picks_open
+      description: The acting member's side as a Santa.
+    ChallengeRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            challenge_format:
+              type: string
+              enum:
+              - slots
+              - pool
+              - assignment
+            schedule:
+              type: string
+              enum:
+              - always_open
+              - seasonal
+            counts_past_play:
+              type: boolean
+              description: Counts past play is on (Slots only; false otherwise).
+            tint:
+              "$ref": "#/components/schemas/ChallengeTint"
+            slots:
+              allOf:
+              - "$ref": "#/components/schemas/ChallengeSlots"
+              nullable: true
+              description: 'Slots only: the Challenge''s range and Counts past play.'
+          required:
+          - id
+          - name
+          - challenge_format
+          - schedule
+          - counts_past_play
+        user:
+          "$ref": "#/components/schemas/ChallengeMember"
+        edition:
+          type: object
+          properties:
+            id:
+              type: integer
+            year:
+              type: integer
+          required:
+          - id
+          - year
+          nullable: true
+          description: 'Assignment only: the Edition the Run was drawn in.'
+        assignment:
+          type: object
+          properties:
+            game:
+              allOf:
+              - "$ref": "#/components/schemas/GameSummary"
+              nullable: true
+              description: 'The game picked for the member: null before the reveal
+                (except to staff, on Runs not their own).'
+            picked_randomly:
+              type: boolean
+              nullable: true
+              description: Null until the game is shown.
+            santa:
+              allOf:
+              - "$ref": "#/components/schemas/ChallengeMember"
+              nullable: true
+              description: Null before the Edition ends, except to staff the draw
+                didn't give a Santa in it.
+          nullable: true
+          description: 'Assignment only: the member''s assigned game and their Santa.'
+        status:
+          type: string
+          enum:
+          - active
+          - finished
+          - expired
+          - abandoned
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it became Finished, Expired or Abandoned.
+        window:
+          type: object
+          properties:
+            starts_on:
+              type: string
+              format: date
+            ends_on:
+              type: string
+              nullable: true
+              format: date
+              description: Null while it has no end.
+          required:
+          - starts_on
+          description: 'When play counts toward the Run, as the club''s dates (both
+            included): the Season it belongs to, from its start to an Always Open
+            Challenge''s end date, or an Edition''s reveal to the day before its end.'
+        progress:
+          type: object
+          properties:
+            in_progress:
+              type: integer
+              description: 'Games In Progress: in the member''s Now Playing.'
+            cleared:
+              type: integer
+              description: Games Cleared by a Game Completion dated inside the window;
+                for Slots, the slots filled.
+            target:
+              type: integer
+              description: Cleared games needed to Finish; for Slots, the Run's slots
+                so far.
+            caught_up:
+              type: boolean
+              description: 'Slots only (absent otherwise): an Active Run whose range
+                ends at the current year, with every slot so far Cleared. Worked out
+                when read, so it lapses on 1 January.'
+          required:
+          - in_progress
+          - cleared
+          - target
+        entries:
+          type: array
+          description: The games counted on the Run, Cleared first.
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              cover_url:
+                type: string
+                nullable: true
+                description: The game's cover, null when it has none.
+              state:
+                type: string
+                enum:
+                - in_progress
+                - cleared
+              cleared_on:
+                type: string
+                nullable: true
+                format: date
+              completion_id:
+                type: integer
+                nullable: true
+                description: The Game Completion that Cleared it; null on a Finished
+                  Run after it was deleted.
+              slot_year:
+                type: integer
+                nullable: true
+                description: 'Slots: the year this Cleared game fills; null when In
+                  Progress, waiting for an open year, or not Slots.'
+              picked_by_hand:
+                type: boolean
+                description: The member placed it there themselves (a slot move or
+                  a past-play pick).
+              release_years:
+                type: array
+                items:
+                  type: integer
+                nullable: true
+                description: 'Slots only (null otherwise): every year the game fits,
+                  its first release year and the year of each regional or platform
+                  release, oldest first; intersect with the Run''s open years.'
+            required:
+            - game_id
+            - title
+            - state
+            - picked_by_hand
+        slots:
+          type: object
+          properties:
+            first_year:
+              type: integer
+              description: Copied when the Run started; kept if the Birth Date changes.
+            last_year:
+              type: integer
+              description: 'The last year so far: the current year for a range that
+                grows.'
+            growing:
+              type: boolean
+              description: The range ends at the current year and gains a slot every
+                1 January.
+            years:
+              type: array
+              items:
+                type: object
+                properties:
+                  year:
+                    type: integer
+                  game_id:
+                    type: integer
+                    nullable: true
+                  title:
+                    type: string
+                    nullable: true
+                required:
+                - year
+          required:
+          - first_year
+          - last_year
+          - growing
+          nullable: true
+          description: 'Slots only: each year so far and the game filling it (null
+            while open).'
+      required:
+      - id
+      - challenge
+      - status
+      - started_at
+      - window
+      - progress
+    ChallengePoolGameProgress:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        initial_release_date:
+          type: string
+          format: date-time
+          nullable: true
+        cover_url:
+          type: string
+          nullable: true
+          description: The game's cover, null when it has none.
+        cleared_by:
+          type: array
+          description: Members who Cleared it, earliest first.
+          items:
+            allOf:
+            - "$ref": "#/components/schemas/ChallengeMember"
+            - type: object
+              properties:
+                run_id:
+                  type: integer
+                cleared_on:
+                  type: string
+                  nullable: true
+                  format: date
+              required:
+              - run_id
+        in_progress:
+          type: array
+          description: Members playing it on a Run that still counts play.
+          items:
+            allOf:
+            - "$ref": "#/components/schemas/ChallengeMember"
+            - type: object
+              properties:
+                run_id:
+                  type: integer
+              required:
+              - run_id
+      required:
+      - game_id
+      - title
+      description: A Pool game with who Cleared it and who has it In Progress.
+    ChallengeOpenSignup:
+      type: object
+      properties:
+        edition_id:
+          type: integer
+        year:
+          type: integer
+        phase:
+          type: string
+          enum:
+          - signup
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          required:
+          - id
+          - name
+        signed_up_at:
+          type: string
+          format: date-time
+        signup_cutoff_on:
+          type: string
+          format: date
+          description: Sign-up closes at the start of this day, and the draw happens
+            on it.
+        pick_deadline_on:
+          type: string
+          format: date
+        reveal_on:
+          type: string
+          format: date
+      required:
+      - edition_id
+      - year
+      - phase
+      - challenge
+      - signed_up_at
+      - signup_cutoff_on
+      - pick_deadline_on
+      - reveal_on
+      description: A member's sign-up for an Edition still in sign-up (no Run until
+        the draw).
+    ChallengeWarning:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+          - duplicate_name
+        message:
+          type: string
+        challenge_ids:
+          type: array
+          items:
+            type: integer
+          description: The other Challenges with the same name.
+      required:
+      - code
+      - message
+    ChallengePoolSource:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - franchise
+          - collection
+        id:
+          type: integer
+          description: franchise_id or collection_id.
+        name:
+          type: string
+        game_count:
+          type: integer
+      required:
+      - kind
+      - id
+      - name
+      - game_count
+    ChallengeAnnounceJobPayload:
+      type: object
+      properties:
+        event:
+          type: string
+          enum:
+          - challenge_created
+          - run_finished
+          - run_caught_up
+          - season_opened
+          - signup_opened
+          - signup_closing
+          - signup_closed
+          - edition_cancelled
+          - edition_revealed
+        challenge:
+          "$ref": "#/components/schemas/Challenge"
+        run:
+          "$ref": "#/components/schemas/ChallengeRun"
+          description: 'run_finished and run_caught_up only: the Run as GET /api/v1/challenge_runs/{id}
+            serves it.'
+        season:
+          "$ref": "#/components/schemas/ChallengeSeasonDates"
+          description: 'season_opened only: the Season that opened.'
+        pool_games:
+          type: array
+          maxItems: 10
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: 'challenge_created and season_opened only: up to 10 games of
+            a Pool Challenge''s Pool for a cover wall, those with a cover first, then
+            by title (empty for Slots and Assignment).'
+        last_season_finishers:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ChallengeMember"
+          description: 'season_opened only: the members whose Run of the Season before
+            Finished, in the order they Finished (show their names; no pings).'
+        edition:
+          "$ref": "#/components/schemas/ChallengeEdition"
+          description: 'Edition events only: the Edition as GET /api/v1/challenge_editions/{id}
+            serves it.'
+        days_left:
+          type: integer
+          example: 3
+          description: 'signup_closing only: days from today to the cutoff.'
+        signup_post:
+          type: object
+          properties:
+            channel_id:
+              type: string
+            message_id:
+              type: string
+          required:
+          - channel_id
+          - message_id
+          nullable: true
+          description: 'signup_closing, signup_closed, edition_cancelled and edition_revealed
+            only: the Edition''s sign-up opening post, as the bot stored it (PUT /api/v1/challenge_editions/{id}/signup_post),
+            to reply to; null if none.'
+        joined:
+          type: integer
+          description: 'signup_closed and edition_cancelled only: the members drawn.'
+        left_out:
+          type: integer
+          description: 'signup_closed and edition_cancelled only: the members left
+            out for having fewer than `minimum` games in their backlog.'
+        minimum:
+          type: integer
+          example: 5
+          description: 'signup_closed and edition_cancelled only: the backlog minimum
+            to be drawn.'
+        feature_key:
+          type: string
+          enum:
+          - challenges
+      required:
+      - event
+      - challenge
+      - feature_key
+      description: 'Kind `challenge_announce`. Post in the #challenges channel, or
+        the staff test channel while the Feature is in Preview. `event` says what
+        to announce: `challenge_created`, a new Challenge; `run_finished`, a member''s
+        Run that just Finished, or `run_caught_up`, a member''s Slots Run that just
+        became Caught Up (at most once a year), both with `run`; or `season_opened`,
+        a Seasonal Challenge''s Season that just opened (with `season`). An Edition''s
+        sign-up: `signup_opened`; `signup_closing` (with `days_left`); and at the
+        draw, `signup_closed`, or `edition_cancelled` when fewer than 2 members could
+        be drawn (both with `joined` and `left_out`), all with `edition`; and `edition_revealed`
+        on the reveal date, whose `edition` carries every assignment (never the Santas).'
+    ChallengePostGame:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+          description: The game's cover, null when it has none.
+      required:
+      - game_id
+      - title
+    ChallengeSeasonDates:
+      type: object
+      properties:
+        starts_on:
+          type: string
+          format: date
+          example: '2026-06-21'
+        ends_on:
+          type: string
+          format: date
+          example: '2026-09-22'
+      required:
+      - starts_on
+      - ends_on
+      description: One Season's first and last day, as the club's dates (America/New_York),
+        both included.
+    ChallengeDmJobPayload:
+      type: object
+      properties:
+        event:
+          type: string
+          enum:
+          - season_ending
+          - left_out_of_draw
+          - pick_reminder
+        user_id:
+          type: string
+          description: The member to DM.
+        challenge:
+          "$ref": "#/components/schemas/Challenge"
+        run:
+          "$ref": "#/components/schemas/ChallengeRun"
+          description: 'season_ending only: the member''s Run, as GET /api/v1/challenge_runs/{id}
+            serves it.'
+        season:
+          "$ref": "#/components/schemas/ChallengeSeasonDates"
+          description: season_ending only.
+        days_left:
+          type: integer
+          example: 7
+          description: 'season_ending: days from today to the Season''s last day (7
+            unless sent late); pick_reminder: days to the pick deadline (2 unless
+            sent late).'
+        edition:
+          "$ref": "#/components/schemas/ChallengeEdition"
+          description: 'left_out_of_draw and pick_reminder: the Edition.'
+        recipient:
+          "$ref": "#/components/schemas/ChallengeMember"
+          description: 'pick_reminder only: the member the Santa picks for.'
+        backlog_count:
+          type: integer
+          description: 'left_out_of_draw only: the games in the member''s backlog.'
+        minimum:
+          type: integer
+          example: 5
+          description: 'left_out_of_draw only: the backlog minimum.'
+        feature_key:
+          type: string
+          enum:
+          - challenges
+      required:
+      - event
+      - user_id
+      - challenge
+      - feature_key
+      description: 'Kind `challenge_dm`. DM the member `user_id`; post nothing publicly.
+        `event` says what about: `season_ending`, a reminder that the Season of the
+        member''s unFinished Run ends soon (with `run`, `season` and `days_left`),
+        sent only to members who keep Challenge DMs on; `left_out_of_draw`, the draw
+        left the member out of an Edition they signed up for (with `edition`, `backlog_count`
+        and `minimum`), sent to every member still in the server; `pick_reminder`,
+        2 days before an Edition''s pick deadline, a Santa who hasn''t picked for
+        their `recipient` (with `edition` and `days_left`), sent only to members who
+        keep Challenge DMs on.'
     BotJobClaim:
       type: object
       properties:
@@ -2975,6 +4138,8 @@ components:
           - feature_flag_changed
           - news_images_renew
           - news_catch_up
+          - challenge_announce
+          - challenge_dm
         summary:
           type: string
           maxLength: 200
@@ -2985,7 +4150,8 @@ components:
             owns the post (BotJob::PUBLIC_POST_FEATURES), so the bot can route it
             by that Feature''s Flag. A kind that does a Feature''s work without posting
             carries it too (BotJob::FEATURE_WORK). Documented payloads: SayJobPayload,
-            NewsImagesRenewJobPayload, NewsCatchUpJobPayload.'
+            NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
+            ChallengeDmJobPayload.'
         status:
           type: string
           enum:
@@ -3386,6 +4552,62 @@ components:
       - hidden
       - show_preview_features
       - features
+    ChallengeSettings:
+      type: object
+      properties:
+        user_id:
+          type: string
+        dms:
+          type: boolean
+          description: Whether the member gets Challenge reminder DMs; true until
+            they turn it off.
+      required:
+      - user_id
+      - dms
+    BirthDate:
+      type: object
+      properties:
+        user_id:
+          type: string
+        birth_date:
+          type: string
+          nullable: true
+          format: date
+          example: '1990-05-04'
+          description: The member's Birth Date; null until they enter it.
+        changes_left_this_month:
+          type: integer
+          example: 1
+          description: How many more times the member may set or change it this calendar
+            month (US Eastern), 0 to 2. Entering it the first time counts; staff changes
+            don't.
+        next_change_on:
+          type: string
+          nullable: true
+          format: date
+          example: '2026-12-01'
+          description: When changes_left_this_month is 0, the first day of next month,
+            when the member may change it again; null otherwise.
+      required:
+      - user_id
+      - birth_date
+      - changes_left_this_month
+      - next_change_on
+    BirthDateRefusal:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Why it was refused. For the limit, names the date the member
+            may change it again.
+        next_change_on:
+          type: string
+          format: date
+          example: '2026-12-01'
+          description: 'Only when the member reached the limit: the first day of next
+            month (US Eastern).'
+      required:
+      - error
     NewsCategory:
       type: object
       properties:
@@ -6103,6 +7325,140 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/birth_date":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    get:
+      summary: Show a member's Birth Date
+      tags:
+      - Users
+      description: The member's Birth Date and how many times they may still set or
+        change it this calendar month. Only the member and staff (Moderators and above)
+        may read it; another member gets 403. The bot's service token must name the
+        member it acts for in `acting_user_id`, and the API checks that member the
+        same way.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 'Service token only (required): the Discord user the bot acts
+          for.'
+      responses:
+        '200':
+          description: birth date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BirthDate"
+                required:
+                - data
+        '400':
+          description: service token without acting_user_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is neither the member nor staff'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Set a member's Birth Date
+      tags:
+      - Users
+      description: Sets the member's Birth Date, or removes it with null. A member
+        may set or change their own at most twice per calendar month (US Eastern),
+        and entering it the first time counts; a third change that month gets 422
+        with `next_change_on`, the first day of next month. Setting the date it already
+        has changes nothing and doesn't count. Staff (Moderators and above) may set
+        anyone's at any time, and their changes don't use up the member's. Returns
+        the whole document, as GET does.
+      parameters: []
+      responses:
+        '200':
+          description: updated birth date
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BirthDate"
+                required:
+                - data
+        '422':
+          description: the member already changed it twice this month, or birth_date
+            is missing or not a date from 1900 to today
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/BirthDateRefusal"
+        '400':
+          description: missing `data`, or service token without acting_user_id
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is neither the member nor staff'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: staff naming a member the API doesn't know
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    birth_date:
+                      type: string
+                      format: date
+                      nullable: true
+                      example: '1990-05-04'
+                      description: YYYY-MM-DD, from 1900 to today; null removes it.
+                    acting_user_id:
+                      type: string
+                      description: 'Service token only (required): the Discord user
+                        the bot acts for.'
+                  required:
+                  - birth_date
+              required:
+              - data
+        required: true
   "/api/v1/bot_jobs":
     get:
       summary: List bot jobs (activity list)
@@ -6614,6 +7970,2212 @@ paths:
                   required:
                   - channel_id
                   - content
+              required:
+              - data
+        required: true
+  "/api/v1/challenges/{challenge_id}/editions":
+    parameters:
+    - name: challenge_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List a Challenge's Editions
+      tags:
+      - Challenges
+      description: 'Members (the `challenges` Feature). Newest first. An Edition is
+        one yearly cycle of an Assignment (Secret Santa) Challenge, named by the year
+        of its reveal. It opens by itself the day after the previous reveal (the first
+        one, when the Challenge is created), takes sign-ups until the start of its
+        cutoff day, and is then drawn: members with fewer than 5 games in their backlog
+        are left out, the rest go round one random circle and get a Run each, and
+        with fewer than 2 the Edition is cancelled. Santas pick until the start of
+        the pick deadline day; at the deadline the others get a random pick. On the
+        reveal date `assignments` lists every game picked, and the Edition ends on
+        the next reveal date, when unFinished Runs Expire. Dates are the club''s (America/New_York).
+        A Santa is served to nobody but staff (Moderators and above, who also see
+        `assignments` from the draw on) before the Edition ends; staff drawn in the
+        Edition see no Santas before it ends and not their own game before the reveal.
+        Editions of a hidden Challenge are found only by Moderators and above and
+        its Host. The bot may name the member it reads for with `acting_user_id` (for
+        `signed_up`).'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Editions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeEdition"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_editions/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show an Edition
+      tags:
+      - Challenges
+      description: 'Members. An Edition is one yearly cycle of an Assignment (Secret
+        Santa) Challenge, named by the year of its reveal. It opens by itself the
+        day after the previous reveal (the first one, when the Challenge is created),
+        takes sign-ups until the start of its cutoff day, and is then drawn: members
+        with fewer than 5 games in their backlog are left out, the rest go round one
+        random circle and get a Run each, and with fewer than 2 the Edition is cancelled.
+        Santas pick until the start of the pick deadline day; at the deadline the
+        others get a random pick. On the reveal date `assignments` lists every game
+        picked, and the Edition ends on the next reveal date, when unFinished Runs
+        Expire. Dates are the club''s (America/New_York). A Santa is served to nobody
+        but staff (Moderators and above, who also see `assignments` from the draw
+        on) before the Edition ends; staff drawn in the Edition see no Santas before
+        it ends and not their own game before the reveal. Editions of a hidden Challenge
+        are found only by Moderators and above and its Host.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Edition
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeEdition"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_editions/{id}/signup":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Sign up for an Edition
+      tags:
+      - Challenges
+      description: 'Signs the acting member up, before the cutoff. Refusals carry
+        `{ error, message }` written for members: 409 `signup_closed` from the cutoff
+        on, 409 `already_signed_up`, and 422 `backlog_too_small` (with `minimum` and
+        `backlog_count`) with fewer than 5 games in their backlog. The bot sends `{
+        "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
+        when the Feature Flag hides the Feature from that member).'
+      parameters: []
+      responses:
+        '200':
+          description: the Edition, with the member signed up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeEdition"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: signup_closed or already_signed_up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - signup_closed
+                    - already_signed_up
+                  message:
+                    type: string
+        '422':
+          description: backlog_too_small
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - backlog_too_small
+                  message:
+                    type: string
+                  minimum:
+                    type: integer
+                    example: 5
+                  backlog_count:
+                    type: integer
+                    example: 3
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+    delete:
+      summary: Withdraw from an Edition
+      tags:
+      - Challenges
+      description: 'Takes the acting member off the Edition, before the cutoff. After
+        the draw, until the start of the pick deadline day, a drawn member withdraws
+        instead: their pick is dropped (their recipient gets a random one at the deadline;
+        the circle is not redrawn), their own Run is Abandoned, and they show as `withdrawn`.
+        409 `signup_closed` between the cutoff and the draw and after the Edition
+        is cancelled, 409 `picks_closed` from the pick deadline on, 409 `not_drawn`
+        for a member the draw left out, 409 `not_signed_up`. The bot sends `acting_user_id`
+        as a query parameter.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Edition, without the member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeEdition"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: signup_closed, picks_closed, not_drawn or not_signed_up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - signup_closed
+                    - picks_closed
+                    - not_drawn
+                    - not_signed_up
+                  message:
+                    type: string
+  "/api/v1/challenge_editions/{id}/santa":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show the acting member's side as a Santa
+      tags:
+      - Challenges
+      description: 'The Santa''s view, only for the Santa: their recipient, taste
+        hints about them (top 3 genres and top platform), their pick, the deadline,
+        and the recipient''s backlog minus the games they have Cleared, which `q`
+        narrows by title. The bot sends `acting_user_id` as a query parameter (400
+        without).'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Santa's view
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeSanta"
+        '403':
+          description: 'not_a_santa: the acting member is not a Santa in this Edition
+            (not drawn yet, never drawn, or withdrew)'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - not_a_santa
+                  message:
+                    type: string
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_editions/{id}/signup_post":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Store an Edition's sign-up opening post (bot only)
+      tags:
+      - Challenges
+      description: The bot stores the Discord channel and message id of the Edition's
+        sign-up opening post after posting it (the `signup_opened` post, or the `challenge_created`
+        post for an Edition that opened with its Challenge). The later Edition posts
+        (`signup_closing`, `signup_closed`, `edition_cancelled`, `edition_revealed`)
+        carry it as `signup_post` so they can reply to it. Storing again replaces
+        it. Service token only (403 otherwise).
+      parameters: []
+      responses:
+        '200':
+          description: the stored post
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      edition_id:
+                        type: integer
+                      channel_id:
+                        type: string
+                      message_id:
+                        type: string
+        '403':
+          description: not the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_signup_post: channel_id and message_id must both be
+            Discord ids'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - invalid_signup_post
+                  message:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - channel_id
+                  - message_id
+                  properties:
+                    channel_id:
+                      type: string
+                      example: '1100000000000000001'
+                    message_id:
+                      type: string
+                      example: '1200000000000000002'
+        required: true
+  "/api/v1/challenge_editions/{id}/santa/pick":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Pick the recipient's game
+      tags:
+      - Challenges
+      description: Records (or changes) the acting Santa's pick, a game in their recipient's
+        backlog that the recipient hasn't Cleared, until the start of the pick deadline
+        day. It is revealed on the reveal date and becomes the recipient's Run goal,
+        even if it later leaves their backlog. The bot adds `acting_user_id` to `data`.
+      parameters: []
+      responses:
+        '200':
+          description: the Santa's view, with the pick
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeSanta"
+        '400':
+          description: game_id is not a whole number
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'not_a_santa: the acting member is not a Santa in this Edition
+            (not drawn yet, never drawn, or withdrew)'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - not_a_santa
+                  message:
+                    type: string
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: 'picks_closed: from the start of the pick deadline day'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - picks_closed
+                  message:
+                    type: string
+        '422':
+          description: 'not_eligible: not in the recipient''s backlog, or Cleared
+            by them'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - not_eligible
+                  message:
+                    type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - game_id
+                  properties:
+                    game_id:
+                      type: integer
+                    acting_user_id:
+                      type: string
+        required: true
+  "/api/v1/users/{user_id}/challenge_runs":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a member's Runs
+      tags:
+      - Challenges
+      description: 'Members (the `challenges` Feature). The member''s Runs, current
+        and past, newest first, for their profile. Progress fills in by itself from
+        the member''s Game Completions and Now Playing: a Pool game in Now Playing
+        is In Progress, and a Game Completion dated inside the Run''s window Clears
+        it. A Slots Run''s Cleared game fills the earliest open year it was released
+        in (anywhere), one slot per game; a range ending at the current year is Caught
+        Up while every year so far is Cleared. Earlier play counts only when picked
+        by hand (Counts past play). Finished is final. Runs of a hidden Challenge
+        are listed only for Moderators and above, its Host and the Run''s member.
+        The bot may name the member it reads for with `acting_user_id`.'
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - active
+          - finished
+          - expired
+          - abandoned
+          - ended
+          description: "`ended`: Finished, Expired and Abandoned."
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeRun"
+                  meta:
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      properties:
+                        signups:
+                          type: array
+                          items:
+                            "$ref": "#/components/schemas/ChallengeOpenSignup"
+                          description: The member's Secret Santa sign-ups that have
+                            no Run yet (their Edition is still in sign-up), soonest
+                            draw first, whatever `status` asks for.
+        '400':
+          description: an unknown `status`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{challenge_id}/runs":
+    parameters:
+    - name: challenge_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List a Challenge's Runs
+      tags:
+      - Challenges
+      description: Members. Newest first, with progress. 404 for a Challenge hidden
+        from the caller. Runs of a hidden Challenge are listed only for Moderators
+        and above, its Host and the Run's member.
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - active
+          - finished
+          - expired
+          - abandoned
+          - ended
+          description: "`ended`: Finished, Expired and Abandoned."
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeRun"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Start a Run
+      tags:
+      - Challenges
+      description: 'Starts the acting member''s Run of an Open Challenge. A Seasonal
+        Run belongs to the Season it starts in and counts play from earlier in that
+        Season, so it may Finish at once (queuing a `challenge_announce` `run_finished`
+        job). An Always Open Run counts play from its start day. Refusals carry `{
+        error, message }` written for members: 409 `challenge_closed`, and 409 `run_active`
+        (with `run_id`) when the member already has an Active Run of it. A member
+        has at most one Run of a Seasonal Challenge per Season, whatever its status:
+        409 `season_run_exists` (with `run_id`) until the next Season. A Slots Run
+        copies its first year: a birth-year one is 409 `birth_date_required` without
+        a Birth Date and 422 `no_slots` when the birth year comes after the last year,
+        and `meta.notices` tells the member their birth year shows on the Run. An
+        Assignment (Secret Santa) Challenge is 409 `signup_required`: its Runs come
+        from an Edition''s draw. The bot sends `{ "data": { "acting_user_id": "..."
+        } }` (400 without; 403 `feature_unavailable` when the Feature Flag hides the
+        Feature from that member).'
+      parameters: []
+      responses:
+        '201':
+          description: the new Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+                  meta:
+                    type: object
+                    properties:
+                      notices:
+                        type: array
+                        description: What the member should know about the new Run.
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                              enum:
+                              - birth_year_shown
+                            message:
+                              type: string
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: challenge_closed, run_active, season_run_exists, birth_date_required
+            or signup_required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - challenge_closed
+                    - run_active
+                    - season_run_exists
+                    - birth_date_required
+                    - signup_required
+                  message:
+                    type: string
+                  run_id:
+                    type: integer
+                    description: 'run_active: the member''s Active Run; season_run_exists:
+                      their Run in this Season.'
+        '422':
+          description: 'no_slots: a birth-year Slots Run whose birth year comes after
+            the last year'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+  "/api/v1/challenge_runs/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Run
+      tags:
+      - Challenges
+      description: 'Members. Progress fills in by itself from the member''s Game Completions
+        and Now Playing: a Pool game in Now Playing is In Progress, and a Game Completion
+        dated inside the Run''s window Clears it. A Slots Run''s Cleared game fills
+        the earliest open year it was released in (anywhere), one slot per game; a
+        range ending at the current year is Caught Up while every year so far is Cleared.
+        Earlier play counts only when picked by hand (Counts past play). Finished
+        is final. Runs of a hidden Challenge are listed only for Moderators and above,
+        its Host and the Run''s member.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Delete a Run
+      tags:
+      - Challenges
+      description: 'The Run''s member only (403 otherwise): a Finished, Expired or
+        Abandoned Run. An Active Run is 409 `run_active` until abandoned. The bot
+        sends `acting_user_id` as a query parameter.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: run_active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_runs/{id}/abandon":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Abandon a Run
+      tags:
+      - Challenges
+      description: 'The Run''s member only (403 otherwise). The Run stays on their
+        profile, Abandoned, until they delete it. 409 `run_not_active` unless it is
+        Active. The bot sends `{ "data": { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Abandoned Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: run_not_active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenge_runs/{id}/slot_move":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Move a game to another year of a Slots Run
+      tags:
+      - Challenges
+      description: The Run's member only (403 otherwise). Puts a game Cleared on the
+        Active Slots Run in another open year it was released in (anywhere); it keeps
+        that slot while it still holds, and a Cleared game waiting for its old year
+        fills it. The bot adds `acting_user_id` to `data`.
+      parameters: []
+      responses:
+        '200':
+          description: the Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '400':
+          description: game_id or slot_year missing or not a whole number
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: slot_filled (with the filling `game_id`) or run_not_active
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - slot_filled
+                    - run_not_active
+                  message:
+                    type: string
+                  game_id:
+                    type: integer
+                    description: 'slot_filled only: the game filling that year.'
+        '422':
+          description: not_slots, not_cleared, slot_out_of_range or slot_not_fitting
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - game_id
+                  - slot_year
+                  properties:
+                    game_id:
+                      type: integer
+                    slot_year:
+                      type: integer
+                    acting_user_id:
+                      type: string
+        required: true
+  "/api/v1/challenge_runs/{id}/past_pick":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Pick a past Game Completion for a slot
+      tags:
+      - Challenges
+      description: The Run's member only (403 otherwise). With Counts past play on,
+        puts one of the member's Game Completions dated before the Active Slots Run
+        started (or undated) in an open year its game was released in. Earlier play
+        counts only this way. The pick holds while its Game Completion exists (a Finished
+        Run keeps it regardless). The bot adds `acting_user_id` to `data`.
+      parameters: []
+      responses:
+        '200':
+          description: the Run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeRun"
+        '400':
+          description: completion_id or slot_year missing or not a whole number
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: slot_filled (with the filling `game_id`) or run_not_active
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - slot_filled
+                    - run_not_active
+                  message:
+                    type: string
+                  game_id:
+                    type: integer
+                    description: 'slot_filled only: the game filling that year.'
+        '422':
+          description: not_slots, past_play_off, not_past_completion, already_cleared
+            (use a slot move), slot_out_of_range or slot_not_fitting
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - completion_id
+                  - slot_year
+                  properties:
+                    completion_id:
+                      type: integer
+                    slot_year:
+                      type: integer
+                    acting_user_id:
+                      type: string
+        required: true
+  "/api/v1/challenge_runs/{id}/past_play":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List the past Game Completions a member can pick
+      tags:
+      - Challenges
+      description: The Run's member only (403 otherwise). With Counts past play on,
+        the member's Game Completions dated before their Active Slots Run started
+        (or undated) whose game is not Cleared on the Run and fits an open year, each
+        with those years, oldest first and undated last. For the past-pick picker
+        and autocomplete. The bot names the member with `acting_user_id`.
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Only games whose title contains this.
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+      responses:
+        '200':
+          description: the Game Completions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        completion_id:
+                          type: integer
+                        game_id:
+                          type: integer
+                        title:
+                          type: string
+                        cover_url:
+                          type: string
+                          nullable: true
+                          description: The game's cover; null without one.
+                        completed_at:
+                          type: string
+                          format: date
+                          nullable: true
+                        open_years:
+                          type: array
+                          items:
+                            type: integer
+                          description: Open years of the Run it fits.
+        '403':
+          description: not the Run's member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: run_not_active
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not_slots or past_play_off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/challenge_settings":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    get:
+      summary: Show a member's Challenge settings
+      tags:
+      - Challenges
+      description: 'The member''s Challenge DM opt-out: whether the bot may DM them
+        Challenge reminders (a Season ending soon). On until the member turns it off,
+        including for a member the API has no record of. Only the member, or the bot''s
+        service token acting for them, may read it.'
+      responses:
+        '200':
+          description: challenge settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeSettings"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Challenges Feature is unavailable to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Change a member's Challenge settings
+      tags:
+      - Challenges
+      description: Turns the member's Challenge DMs on or off. Only the member, or
+        the bot's service token acting for them, may change it. Creates the member's
+        record if the API has none yet. Returns the whole document, as GET does.
+      parameters: []
+      responses:
+        '200':
+          description: updated challenge settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengeSettings"
+                required:
+                - data
+        '422':
+          description: "`dms` missing or not a boolean (error `invalid_settings`)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Challenges Feature is unavailable to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    dms:
+                      type: boolean
+                      description: Whether the member gets Challenge reminder DMs.
+                  required:
+                  - dms
+              required:
+              - data
+        required: true
+  "/api/v1/challenges":
+    get:
+      summary: List Challenges
+      tags:
+      - Challenges
+      description: Members (the `challenges` Feature). Newest first. Hidden Challenges
+        are listed only for Moderators and above and for their Host. The bot may name
+        the member it reads for with `acting_user_id`, without which it sees what
+        any member sees.
+      parameters:
+      - name: open
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - 'true'
+          - 'false'
+        description: Only the Challenges Open (true) or Closed (false) today, in the
+          club's time zone.
+      - name: challenge_format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - slots
+          - pool
+          - assignment
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Only the Challenges whose name contains `q`, ignoring case (surrounding
+          spaces are dropped; empty means no filter). For the bot's Challenge autocomplete.
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Challenges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Challenge"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: an unknown `open` or `challenge_format`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a Challenge
+      tags:
+      - Challenges
+      description: Regulars, Moderators, Admins and Superadmins (a member without
+        the Regulars role gets 403 "You need the Regulars role to create a Challenge.").
+        The acting member becomes the Host, or the club with `hosted_by_club` (Moderator
+        and above). A name another Challenge already has is allowed and adds a `duplicate_name`
+        warning to `meta.warnings`. Queues a `challenge_announce` bot job (payload
+        ChallengeAnnounceJobPayload, event `challenge_created`). Refusals carry `{
+        error, message }`; `message` is written for members (403 `forbidden`, 422
+        `invalid_challenge`).
+      parameters: []
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+                  meta:
+                    type: object
+                    properties:
+                      warnings:
+                        type: array
+                        items:
+                          "$ref": "#/components/schemas/ChallengeWarning"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not a Regular or staff, club-hosted without Moderator, or (bot)
+            `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_challenge: a missing or invalid field, an empty or
+            unknown Pool, a slot range that ends before it starts, an Edition calendar
+            out of order, a Seasonal or ending Assignment Challenge'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                    challenge_format:
+                      type: string
+                      enum:
+                      - slots
+                      - pool
+                      - assignment
+                      description: pool, slots or assignment (Secret Santa). Locked
+                        once the Challenge has a Run.
+                    schedule:
+                      type: string
+                      enum:
+                      - always_open
+                      - seasonal
+                      description: Locked once the Challenge has a Run.
+                    ends_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: 'Always Open only: the last Open day (club time
+                        zone). Stays editable after Runs exist, until the day after
+                        it, when the Challenge Closes for good.'
+                    season:
+                      type: object
+                      nullable: true
+                      description: 'Seasonal only: start and end as MM-DD, repeating
+                        every year; the end may come before the start to cross the
+                        new year. Locked once the Challenge has a Run.'
+                      properties:
+                        start:
+                          type: string
+                          example: 12-01
+                        end:
+                          type: string
+                          example: 02-28
+                    pool:
+                      type: object
+                      description: The Pool (challenge_format pool). On edit, only
+                        the keys given change.
+                      properties:
+                        franchise_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB franchises whose games are in the Pool.
+                        collection_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB collections whose games are in the Pool.
+                        included_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games in the Pool whatever their franchise.
+                        excluded_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games left out of the chosen franchises and
+                            collections.
+                        target:
+                          oneOf:
+                          - type: integer
+                            minimum: 1
+                          - type: string
+                            enum:
+                            - all
+                          description: Cleared games needed to Finish, or "all" for
+                            every game in the Pool. Required on create.
+                    slots:
+                      type: object
+                      description: 'The slot range (challenge_format slots): one slot
+                        per release year. On edit, only the keys given change; first_year
+                        and last_year are required on create.'
+                      properties:
+                        first_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - birth_year
+                          description: A fixed year, or "birth_year" for each member's
+                            birth year (a Run then needs their Birth Date, and shows
+                            the year).
+                        last_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - current_year
+                          description: A fixed year, or "current_year" for a range
+                            that gains a slot every 1 January. Not before a fixed
+                            first year.
+                        counts_past_play:
+                          type: boolean
+                          description: 'Counts past play: members may pick Game Completions
+                            dated before their Run started for open slots. Always
+                            Open Challenges only (422 on Seasonal); false when left
+                            out on create.'
+                    assignment:
+                      type: object
+                      description: The Edition calendar (challenge_format assignment,
+                        Secret Santa) as MM-DD, coming in this order through the year;
+                        29 February is refused. Any day left out is the Secret Santa
+                        default (12-01, 12-15, 12-25). An Assignment Challenge is
+                        Always Open with no end date. Saving it opens the Edition
+                        whose sign-up is due today; a change moves an Edition still
+                        in sign-up that nobody has joined to the new dates, and otherwise
+                        applies from the next Edition.
+                      properties:
+                        signup_cutoff:
+                          type: string
+                          example: 12-01
+                          description: Sign-up closes at the start of this day.
+                        pick_deadline:
+                          type: string
+                          example: 12-15
+                        reveal:
+                          type: string
+                          example: 12-25
+                          description: The Edition is named by its reveal's year.
+                    tint:
+                      oneOf:
+                      - type: string
+                        enum:
+                        - teal
+                        - cobalt
+                        - holly
+                        - umber
+                        - moss
+                        - azure
+                        - slate
+                        - ochre
+                      - type: object
+                        required:
+                        - fill
+                        - hi
+                        properties:
+                          fill:
+                            type: string
+                            example: "#5a2d82"
+                          hi:
+                            type: string
+                            example: "#d9b8ff"
+                      nullable: true
+                      description: 'The Challenge tint: a curated tint by name, any
+                        `{ fill, hi }` as #rrggbb, or null for the Challenge''s curated
+                        tint. A pair must keep type readable (4.5:1): paper #f4f4f0
+                        on the fill, and the hi on ink #0b0b0d and #141417; otherwise
+                        422 `invalid_challenge`. Left out on create, the Challenge
+                        gets its curated tint. Not a rule: editable after Runs exist.'
+                    hosted_by_club:
+                      type: boolean
+                      description: Moderator and above.
+                  required:
+                  - name
+                  - challenge_format
+                  - schedule
+                  description: 'Send the settings of the chosen Format: `pool`, `slots`
+                    or `assignment` (optional).'
+              required:
+              - data
+        required: true
+  "/api/v1/challenges/pool_preview":
+    post:
+      summary: Preview the games a draft Pool resolves to
+      tags:
+      - Challenges
+      description: Members. The games a Pool definition resolves to against the GameDB
+        now, oldest release first, paginated, so the bot and the website can show
+        them before saving. 422 `invalid_challenge` for an empty definition, unknown
+        ids, or a game both included and excluded.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the Pool's games
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameSummary"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: not a Pool the GameDB can resolve
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  description: The Pool (challenge_format pool). On edit, only the
+                    keys given change.
+                  properties:
+                    franchise_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: GameDB franchises whose games are in the Pool.
+                    collection_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: GameDB collections whose games are in the Pool.
+                    included_game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Games in the Pool whatever their franchise.
+                    excluded_game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Games left out of the chosen franchises and collections.
+              required:
+              - data
+        required: true
+  "/api/v1/challenges/pool_sources":
+    get:
+      summary: Find franchises and collections to build a Pool from
+      tags:
+      - Challenges
+      description: Members. GameDB franchises, then collections, whose name contains
+        `q` (ignoring case), at most 25 of each, with how many games each has.
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: matching franchises and collections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengePoolSource"
+        '400':
+          description: no `q`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Challenge
+      tags:
+      - Challenges
+      description: Members. A hidden Challenge is 404 except for Moderators and above
+        and its Host. Adds the Pool's `game_count` and `run_count`.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Challenge
+      tags:
+      - Challenges
+      description: 'The Host, for their own; any Moderator or above, for a club-hosted
+        one. Only the keys given change. Once the Challenge has any Run its rules
+        are locked: a change to the Format, schedule, Season, Pool or slot range is
+        409 `rules_locked` with the `fields` it would change (sending them unchanged
+        is fine). Name, description and end date stay editable, except that an Always
+        Open Challenge that reached its end date is Closed for good (`ended_at`):
+        a change to its schedule or end date is 422 `invalid_challenge`. Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_challenge`).'
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not the Host (or, club-hosted, not a Moderator)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: rules_locked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                    - rules_locked
+                  message:
+                    type: string
+                  fields:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                      - challenge_format
+                      - schedule
+                      - season
+                      - pool
+                      - slots
+        '422':
+          description: invalid_challenge, including a new schedule or end date for
+            a Challenge Closed for good
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                    challenge_format:
+                      type: string
+                      enum:
+                      - slots
+                      - pool
+                      - assignment
+                      description: pool, slots or assignment (Secret Santa). Locked
+                        once the Challenge has a Run.
+                    schedule:
+                      type: string
+                      enum:
+                      - always_open
+                      - seasonal
+                      description: Locked once the Challenge has a Run.
+                    ends_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: 'Always Open only: the last Open day (club time
+                        zone). Stays editable after Runs exist, until the day after
+                        it, when the Challenge Closes for good.'
+                    season:
+                      type: object
+                      nullable: true
+                      description: 'Seasonal only: start and end as MM-DD, repeating
+                        every year; the end may come before the start to cross the
+                        new year. Locked once the Challenge has a Run.'
+                      properties:
+                        start:
+                          type: string
+                          example: 12-01
+                        end:
+                          type: string
+                          example: 02-28
+                    pool:
+                      type: object
+                      description: The Pool (challenge_format pool). On edit, only
+                        the keys given change.
+                      properties:
+                        franchise_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB franchises whose games are in the Pool.
+                        collection_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: GameDB collections whose games are in the Pool.
+                        included_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games in the Pool whatever their franchise.
+                        excluded_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Games left out of the chosen franchises and
+                            collections.
+                        target:
+                          oneOf:
+                          - type: integer
+                            minimum: 1
+                          - type: string
+                            enum:
+                            - all
+                          description: Cleared games needed to Finish, or "all" for
+                            every game in the Pool. Required on create.
+                    slots:
+                      type: object
+                      description: 'The slot range (challenge_format slots): one slot
+                        per release year. On edit, only the keys given change; first_year
+                        and last_year are required on create.'
+                      properties:
+                        first_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - birth_year
+                          description: A fixed year, or "birth_year" for each member's
+                            birth year (a Run then needs their Birth Date, and shows
+                            the year).
+                        last_year:
+                          oneOf:
+                          - type: integer
+                            minimum: 1900
+                            maximum: 2100
+                          - type: string
+                            enum:
+                            - current_year
+                          description: A fixed year, or "current_year" for a range
+                            that gains a slot every 1 January. Not before a fixed
+                            first year.
+                        counts_past_play:
+                          type: boolean
+                          description: 'Counts past play: members may pick Game Completions
+                            dated before their Run started for open slots. Always
+                            Open Challenges only (422 on Seasonal); false when left
+                            out on create.'
+                    assignment:
+                      type: object
+                      description: The Edition calendar (challenge_format assignment,
+                        Secret Santa) as MM-DD, coming in this order through the year;
+                        29 February is refused. Any day left out is the Secret Santa
+                        default (12-01, 12-15, 12-25). An Assignment Challenge is
+                        Always Open with no end date. Saving it opens the Edition
+                        whose sign-up is due today; a change moves an Edition still
+                        in sign-up that nobody has joined to the new dates, and otherwise
+                        applies from the next Edition.
+                      properties:
+                        signup_cutoff:
+                          type: string
+                          example: 12-01
+                          description: Sign-up closes at the start of this day.
+                        pick_deadline:
+                          type: string
+                          example: 12-15
+                        reveal:
+                          type: string
+                          example: 12-25
+                          description: The Edition is named by its reveal's year.
+                    tint:
+                      oneOf:
+                      - type: string
+                        enum:
+                        - teal
+                        - cobalt
+                        - holly
+                        - umber
+                        - moss
+                        - azure
+                        - slate
+                        - ochre
+                      - type: object
+                        required:
+                        - fill
+                        - hi
+                        properties:
+                          fill:
+                            type: string
+                            example: "#5a2d82"
+                          hi:
+                            type: string
+                            example: "#d9b8ff"
+                      nullable: true
+                      description: 'The Challenge tint: a curated tint by name, any
+                        `{ fill, hi }` as #rrggbb, or null for the Challenge''s curated
+                        tint. A pair must keep type readable (4.5:1): paper #f4f4f0
+                        on the fill, and the hi on ink #0b0b0d and #141417; otherwise
+                        422 `invalid_challenge`. Left out on create, the Challenge
+                        gets its curated tint. Not a rule: editable after Runs exist.'
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Challenge
+      tags:
+      - Challenges
+      description: 'The Host, while it has no Runs (409 `has_runs` after); a Moderator
+        or above removes any Challenge, its Runs included. Write: the bot sends `acting_user_id`
+        as a query parameter.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: 'has_runs: the Host cannot delete a Challenge with Runs'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/hide":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Hide a Challenge
+      tags:
+      - Challenges
+      description: 'Moderator and above. Hides it from members (not its Host). The
+        bot sends `{ "data": { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not a Moderator or above
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/unhide":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Unhide a Challenge
+      tags:
+      - Challenges
+      description: 'Moderator and above. Shows it again. The bot sends `{ "data":
+        { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not a Moderator or above
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/pool_progress":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Read a Pool Challenge's progress by game
+      tags:
+      - Challenges
+      description: Members. The Pool's games, oldest release first, paginated, each
+        with the members who Cleared it (on a Run of any status, each member once
+        at their earliest Clear) and who have it In Progress (on an Active Run, or
+        a Finished one whose window is open). The Runs read are those of the Season
+        running now, or of the last Season while the Challenge is Closed, and every
+        Run of an Always Open Challenge. 404 for a Challenge hidden from the caller;
+        422 `not_pool` for Slots and Assignment.
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the Pool's games with their progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengePoolGameProgress"
+                  meta:
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      properties:
+                        window:
+                          "$ref": "#/components/schemas/ChallengeSeasonDates"
+                          nullable: true
+                          description: The Season read; null for an Always Open Challenge.
+        '404':
+          description: not found, or hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not a Pool Challenge
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/tint":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Change a Challenge's tint
+      tags:
+      - Challenges
+      description: The Host, for their own (PATCH takes `tint` too), and a Moderator
+        or above for any Challenge, which PATCH does not let them edit. 403 "Only
+        the Host or a Moderator can change this Challenge's tint."; 422 `invalid_challenge`
+        without `tint`, or for a tint PATCH would refuse.
+      parameters: []
+      responses:
+        '200':
+          description: the Challenge with its new tint
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid_challenge
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    tint:
+                      oneOf:
+                      - type: string
+                        enum:
+                        - teal
+                        - cobalt
+                        - holly
+                        - umber
+                        - moss
+                        - azure
+                        - slate
+                        - ochre
+                      - type: object
+                        required:
+                        - fill
+                        - hi
+                        properties:
+                          fill:
+                            type: string
+                            example: "#5a2d82"
+                          hi:
+                            type: string
+                            example: "#d9b8ff"
+                      nullable: true
+                      description: 'The Challenge tint: a curated tint by name, any
+                        `{ fill, hi }` as #rrggbb, or null for the Challenge''s curated
+                        tint. A pair must keep type readable (4.5:1): paper #f4f4f0
+                        on the fill, and the hi on ink #0b0b0d and #141417; otherwise
+                        422 `invalid_challenge`. Left out on create, the Challenge
+                        gets its curated tint. Not a rule: editable after Runs exist.'
+                  required:
+                  - tint
+              required:
+              - data
+        required: true
+  "/api/v1/challenges/{id}/host":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Hand a Challenge to another Host
+      tags:
+      - Challenges
+      description: Moderator and above. Hands it to another member (who needs no role)
+        or, with `hosted_by_club`, to the club. 422 `invalid_challenge` for neither,
+        or an unknown member.
+      parameters: []
+      responses:
+        '200':
+          description: the Challenge with its new Host
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: not a Moderator or above
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid_challenge
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    host_user_id:
+                      type: string
+                    hosted_by_club:
+                      type: boolean
               required:
               - data
         required: true
@@ -10207,6 +13769,7 @@ paths:
         - journals
         - suggestions
         - news_hub
+        - challenges
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag

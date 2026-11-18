@@ -88,6 +88,8 @@ module Features
         Achievements::ProviderTickJob.enqueue_all if change.from_state == "off"
       when "voting_gotm"
         Voting::SweepSchedule.clear
+      when "challenges"
+        Challenges::SweepSchedule.clear
       end
     end
   end

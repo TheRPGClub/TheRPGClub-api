@@ -130,6 +130,14 @@ Rails.application.routes.draw do
           patch "giveaway_settings", to: "giveaway_settings#update"
           get "feature_preferences", to: "feature_preferences#show"
           patch "feature_preferences", to: "feature_preferences#update"
+          # Challenges (ticket #380): the member's Birth Date.
+          get "birth_date", to: "birth_dates#show"
+          put "birth_date", to: "birth_dates#update"
+          # Challenges (ticket #379): the member's Challenge DM opt-out.
+          get "challenge_settings", to: "challenge_settings#show"
+          patch "challenge_settings", to: "challenge_settings#update"
+          # Challenges (ticket #378): the member's Runs, for their profile.
+          get "challenge_runs", to: "challenge_runs#user_index"
           get "news_category_preferences", to: "news_category_preferences#show"
           patch "news_category_preferences", to: "news_category_preferences#update"
           get "game_keys", to: "game_keys#user_index"
@@ -431,6 +439,41 @@ Rails.application.routes.draw do
       get  "news_import/items",       to: "news_import#unsorted"
       post "news_import/assignments", to: "news_import#assign"
       get  "news_import/status",      to: "news_import#status"
+      # Challenges (spec #376, ticket #377): list, show, create, edit and
+      # delete; staff hide, unhide and change the Host; and a draft Pool's
+      # games and the franchises and collections to build one from. The
+      # fixed paths precede the resource so they are never read as an id.
+      post "challenges/pool_preview", to: "challenges#pool_preview"
+      get  "challenges/pool_sources", to: "challenges#pool_sources"
+      resources :challenges, only: %i[index show create update destroy] do
+        member do
+          post "hide"
+          post "unhide"
+          put "host", action: :change_host
+          put "tint", action: :change_tint
+          get "pool_progress"
+        end
+      end
+      # Runs (ticket #378): start one of a Challenge, list a Challenge's
+      # Runs, read, abandon and delete one; a member's Runs are under users.
+      # A slot move (ticket #381) puts a game of a Slots Run in another year.
+      get  "challenges/:challenge_id/runs", to: "challenge_runs#challenge_index"
+      post "challenges/:challenge_id/runs", to: "challenge_runs#create"
+      get    "challenge_runs/:id",           to: "challenge_runs#show"
+      post   "challenge_runs/:id/abandon",   to: "challenge_runs#abandon"
+      post   "challenge_runs/:id/slot_move", to: "challenge_runs#slot_move"
+      post   "challenge_runs/:id/past_pick", to: "challenge_runs#past_pick"
+      get    "challenge_runs/:id/past_play", to: "challenge_runs#past_play"
+      delete "challenge_runs/:id",           to: "challenge_runs#destroy"
+      # Editions of an Assignment Challenge (ticket #383): list, read, and
+      # sign up for one or withdraw before its cutoff.
+      get    "challenges/:challenge_id/editions", to: "challenge_editions#index"
+      get    "challenge_editions/:id",            to: "challenge_editions#show"
+      post   "challenge_editions/:id/signup",     to: "challenge_editions#sign_up"
+      delete "challenge_editions/:id/signup",     to: "challenge_editions#withdraw"
+      get    "challenge_editions/:id/santa",      to: "challenge_editions#santa"
+      put    "challenge_editions/:id/santa/pick", to: "challenge_editions#pick"
+      put    "challenge_editions/:id/signup_post", to: "challenge_editions#signup_post"
     end
   end
 end
