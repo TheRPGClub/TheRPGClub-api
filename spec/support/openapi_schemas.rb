@@ -1353,6 +1353,21 @@ module OpenapiSchemas
         entry_id: int.merge(description: "The Fun Fact drawn for the day; the queue already counts it shown."),
         feature_key: str(enum: %w[club_codex])
       ),
+      # The Birthday Post bot job payload (#401), as BotJobClaim.payload carries it.
+      BirthdayPostJobPayload: obj(
+        _description: "Kind `birthday_post`. Post one Birthday Post in the Birthday channel greeting every " \
+                      "member in `user_ids`, @mentioning each so they are pinged. Queued at 10:00 " \
+                      "America/New_York, only on a day with Birthdays. If `club_date` is no longer today in " \
+                      "New York, ack it done without posting. Birthdays are not a Feature: no `feature_key`, " \
+                      "and no Feature Flag routes it.",
+        _required: %w[club_date user_ids],
+        club_date: str(format: "date", example: "2026-05-04").merge(
+          description: "The club day (America/New_York) whose Birthdays these are."
+        ),
+        user_ids: { type: :array, minItems: 1, items: str,
+                    description: "The members to greet, by display name: Discord user ids, still in the server, " \
+                                 "sharing their Birthday. No year or age is sent." }
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
@@ -1361,8 +1376,10 @@ module OpenapiSchemas
                        "carries `feature_key`, the key of the Feature that owns the post " \
                        "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
                        "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
+                       "birthday_post is a public post no Feature owns and carries none. " \
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
-                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload."
+                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload, " \
+                       "BirthdayPostJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),

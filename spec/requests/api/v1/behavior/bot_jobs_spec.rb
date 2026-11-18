@@ -95,6 +95,14 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       end
     end
 
+    # Birthdays are a utility, not a Feature (ticket #401): the Birthday Post
+    # posts publicly but no Feature Flag routes it.
+    it "gives a birthday_post job, a public post no Feature owns, no Feature key" do
+      enqueue(kind: "birthday_post", payload: { club_date: "2026-05-04", user_ids: [ "1" ] })
+
+      expect(poll.sole.fetch("payload")).to eq("club_date" => "2026-05-04", "user_ids" => [ "1" ])
+    end
+
     it "makes no Postgres queries while the signal is down" do
       poll # a fresh machine checks Postgres once, finds nothing, lowers the signal
 
