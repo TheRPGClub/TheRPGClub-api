@@ -243,16 +243,17 @@ RSpec.describe "api/v1/games behavior", type: :request do
         franchises: [],
         companies: [ { igdb_id: company_igdb_id, name: "Spec Square #{SecureRandom.hex(3)}", developer: true, publisher: true } ],
         release_dates: [
-          # Japan release is the earliest on SNES but must be skipped entirely.
-          { platform: snes_ref, region: 5, date: Time.utc(1995, 3, 11) },
-          # NA is the earliest non-JP SNES release and should win...
-          { platform: snes_ref, region: 2, date: Time.utc(1995, 8, 22) },
-          # ...over the later EU release on the same platform.
-          { platform: snes_ref, region: 1, date: Time.utc(1995, 12, 1) },
-          # Undated rows are dropped.
-          { platform: ps_ref, region: 2, date: nil },
+          # A Japan-first game: Japan is the earliest SNES release and is kept...
+          { platform: snes_ref, region: 5, date: Date.new(1995, 3, 11), date_precision: "day" },
+          # ...beside each other region's earliest SNES release...
+          { platform: snes_ref, region: 2, date: Date.new(1995, 8, 22), date_precision: "day" },
+          { platform: snes_ref, region: 1, date: Date.new(1995, 12, 1), date_precision: "day" },
+          # ...while a later date in the same region loses.
+          { platform: snes_ref, region: 2, date: Date.new(1996, 2, 1), date_precision: "day" },
+          # A TBA row is kept as a TBA Release when its platform and region has nothing else.
+          { platform: ps_ref, region: 2, date: nil, date_precision: "tba" },
           # A nil region falls back to Worldwide.
-          { platform: ps_ref, region: nil, date: Time.utc(2001, 6, 29) }
+          { platform: ps_ref, region: nil, date: Date.new(2001, 6, 29), date_precision: "day" }
         ]
       }
     end
@@ -298,21 +299,27 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(platform.platform_name).to eq(snes_ref[:name])
     end
 
-    it "imports one earliest non-Japanese release per platform, format null" do
+    it "imports the earliest IGDB Release per platform per region, Japan included, format null" do
       post "/api/v1/games", params: { igdb_id: igdb_id }, headers: service_headers, as: :json
 
       game = GamedbGame.find_by!(igdb_id: igdb_id)
       releases = game.releases.includes(:platform, :region)
-      expect(releases.length).to eq(2)
+      expect(releases.length).to eq(5)
+      expect(releases.map(&:source)).to all(eq("igdb"))
+      expect(releases.map(&:format)).to all(be_nil)
 
-      snes_release = releases.find { |r| r.platform.igdb_platform_id == snes_igdb_id }
-      expect(snes_release.release_date).to eq(Time.utc(1995, 8, 22))
-      expect(snes_release.region.igdb_region_id).to eq(2)
-      expect(snes_release.format).to be_nil
+      snes_releases = releases.select { |r| r.platform.igdb_platform_id == snes_igdb_id }
+      expect(snes_releases.to_h { |r| [ r.region.igdb_region_id, r.release_date ] }).to eq(
+        5 => Date.new(1995, 3, 11),
+        2 => Date.new(1995, 8, 22),
+        1 => Date.new(1995, 12, 1)
+      )
 
-      ps_release = releases.find { |r| r.platform.igdb_platform_id == ps_igdb_id }
-      expect(ps_release.release_date).to eq(Time.utc(2001, 6, 29))
-      expect(ps_release.region.region_code).to eq("WW")
+      ps_releases = releases.select { |r| r.platform.igdb_platform_id == ps_igdb_id }
+      expect(ps_releases.to_h { |r| [ r.region.region_code, [ r.release_date, r.date_precision ] ] }).to eq(
+        "WW" => [ Date.new(2001, 6, 29), "day" ],
+        "NA" => [ nil, "tba" ]
+      )
     end
 
     it "is idempotent on igdb_id, refreshing with 200 and never duplicating" do
@@ -560,9 +567,9 @@ RSpec.describe "api/v1/games behavior", type: :request do
         igdb_id: igdb_id,
         name: game.title,
         release_dates: [
-          # JP-only date is skipped; the NA one lands.
-          { platform: platform_ref, region: 5, date: Time.utc(2024, 1, 1) },
-          { platform: platform_ref, region: 2, date: Time.utc(2024, 6, 1) }
+          # The earliest NA date lands; the later one loses.
+          { platform: platform_ref, region: 2, date: Date.new(2024, 9, 1), date_precision: "day" },
+          { platform: platform_ref, region: 2, date: Date.new(2024, 6, 1), date_precision: "day" }
         ]
       }
     end
@@ -573,27 +580,58 @@ RSpec.describe "api/v1/games behavior", type: :request do
       allow(igdb_client).to receive(:game).with(igdb_id).and_return(igdb_payload)
     end
 
-    it "replaces the game's releases and their announcements from IGDB" do
-      stale_release = create(:release, game: game, release_date: Time.utc(2020, 1, 1))
-      stale_announcement = create(:release_announcement, release: stale_release)
+    def announcement_ids_for(game)
+      get "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+      json.fetch("data").map { |announcement| announcement.fetch("release_id") }
+    end
+
+    def refresh!
+      post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
+      expect(response).to have_http_status(:ok)
+    end
+
+    def igdb_reports(*dates)
+      allow(igdb_client).to receive(:game).with(igdb_id).and_return(
+        igdb_id: igdb_id, name: game.title,
+        release_dates: dates.map { |date| { platform: platform_ref, region: 2, date: date.to_date, date_precision: "day" } }
+      )
+    end
+
+    def releases_of(game)
+      get "/api/v1/games/#{game.game_id}/releases", headers: service_headers
+      json.fetch("data")
+    end
+
+    def announcements_of(game)
+      get "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+      json.fetch("data")
+    end
+
+    def due_feed
+      get "/api/v1/release_announcements/due", headers: service_headers
+      json.fetch("data")
+    end
+
+    def sync_announcements!
+      patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "keeps an unmatched Manual Release and adds the IGDB Release beside it" do
+      manual = create(:release, game: game, release_date: Time.utc(2020, 1, 1), notes: "hand entered")
+      announcement = create(:release_announcement, release: manual)
 
       post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
 
       expect(response).to have_http_status(:ok)
-      expect(GamedbRelease.exists?(stale_release.release_id)).to be(false)
-      expect(GamedbReleaseAnnouncement.exists?(stale_announcement.release_id)).to be(false)
-
-      releases = game.releases.reload.includes(:platform, :region)
-      expect(releases.length).to eq(1)
-      expect(releases.first.release_date).to eq(Time.utc(2024, 6, 1))
-      expect(releases.first.platform.igdb_platform_id).to eq(platform_ref[:igdb_id])
-
-      expect(json.fetch("data").length).to eq(1)
-      expect(json.fetch("data").first).to include(
-        "release_id" => releases.first.release_id,
-        "platform_name" => platform_ref[:name],
-        "format" => nil
+      expect(json.fetch("data")).to contain_exactly(
+        hash_including("release_id" => manual.release_id, "source" => "manual", "notes" => "hand entered",
+          "release_date" => "2020-01-01"),
+        hash_including("platform_name" => platform_ref[:name], "source" => "igdb", "format" => nil,
+          "release_date" => "2024-06-01")
       )
+      igdb_release_id = json.fetch("data").find { |release| release["source"] == "igdb" }.fetch("release_id")
+      expect(announcement_ids_for(game)).to contain_exactly(announcement.release_id, igdb_release_id)
     end
 
     it "reports how many releases the refresh added" do
@@ -604,11 +642,473 @@ RSpec.describe "api/v1/games behavior", type: :request do
     end
 
     it "reports no additions when IGDB has nothing new" do
-      create(:release, game: game, release_date: Time.utc(2020, 1, 1))
-
+      post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
       post "/api/v1/games/#{game.game_id}/refresh-releases", headers: service_headers
 
       expect(json.fetch("meta")).to eq("added" => 0, "total" => 1)
+    end
+
+    describe "in-place refresh (ADR 0010)" do
+      let(:in_window_date) { 5.days.from_now.utc.beginning_of_day }
+      let(:igdb_platform) { GamedbPlatform.create!(igdb_platform_id: platform_ref[:igdb_id], platform_name: platform_ref[:name], platform_code: "RD#{SecureRandom.hex(4)}") }
+      let(:north_america) do
+        GamedbRegion.create_with(region_code: "NA", region_name: "North America").find_or_create_by!(igdb_region_id: 2)
+      end
+
+      it "updates the same IGDB Release when IGDB moves its date" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        release_id = releases_of(game).sole.fetch("release_id")
+
+        igdb_reports(Time.utc(2030, 4, 15))
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("release_id" => release_id, "source" => "igdb", "release_date" => "2030-04-15")
+        )
+      end
+
+      it "adopts the oldest matching Manual Release instead of duplicating it" do
+        oldest = create(:release, game: game, platform: igdb_platform, region: north_america,
+          release_date: Time.utc(2029, 1, 1), notes: "staff entry")
+        newer = create(:release, game: game, platform: igdb_platform, region: north_america,
+          release_date: Time.utc(2029, 2, 2))
+        igdb_reports(Time.utc(2030, 3, 1))
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("release_id" => oldest.release_id, "source" => "igdb", "notes" => "staff entry",
+            "release_date" => "2030-03-01"),
+          hash_including("release_id" => newer.release_id, "source" => "manual",
+            "release_date" => "2029-02-02")
+        )
+      end
+
+      it "removes an IGDB Release that IGDB stops reporting, with its unsent announcement" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        sync_announcements!
+        expect(announcements_of(game).length).to eq(1)
+
+        igdb_reports
+        refresh!
+
+        expect(releases_of(game)).to eq([])
+        expect(announcements_of(game)).to eq([])
+      end
+
+      it "moves an unsent announcement with its Release's new date" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        sync_announcements!
+
+        igdb_reports(Time.utc(2030, 4, 15))
+        refresh!
+
+        expect(announcements_of(game)).to contain_exactly(
+          hash_including("announce_at" => "2030-04-08T00:00:00.000Z", "sent_at" => nil, "skipped_at" => nil)
+        )
+      end
+
+      it "never resets a sent announcement when the date moves" do
+        igdb_reports(Time.utc(2030, 3, 1))
+        refresh!
+        sync_announcements!
+        release_id = releases_of(game).sole.fetch("release_id")
+        patch "/api/v1/release_announcements/#{release_id}",
+          params: { data: { sent_at: "2030-02-22T12:00:00Z" } }, headers: service_headers, as: :json
+
+        igdb_reports(Time.utc(2030, 4, 15))
+        refresh!
+        sync_announcements!
+
+        expect(announcements_of(game)).to contain_exactly(
+          hash_including("release_id" => release_id, "announce_at" => "2030-02-22T00:00:00.000Z",
+            "sent_at" => "2030-02-22T12:00:00.000Z")
+        )
+      end
+
+      it "does not offer an announcement again after a refresh inside its 7-day window" do
+        igdb_reports(in_window_date)
+        refresh!
+        sync_announcements!
+        offered = due_feed.sole
+        patch "/api/v1/release_announcements/#{offered.fetch("release_id")}",
+          params: { data: { sent_at: Time.current.iso8601 } }, headers: service_headers, as: :json
+
+        refresh!
+        sync_announcements!
+
+        expect(due_feed).to eq([])
+      end
+    end
+
+    describe "Releases per platform per region, Japan included (api#391)" do
+      let(:japan) { 5 }
+      let(:north_america) { 2 }
+      let(:europe) { 1 }
+      let(:in_window_date) { 5.days.from_now.utc.beginning_of_day }
+
+      # Each pair is [IGDB region, date], all on the one platform.
+      def igdb_reports_regions(*pairs)
+        allow(igdb_client).to receive(:game).with(igdb_id).and_return(
+          igdb_id: igdb_id, name: game.title,
+          release_dates: pairs.map do |region, date|
+            { platform: platform_ref, region: region, date: date.to_date, date_precision: "day" }
+          end
+        )
+      end
+
+      def release_id_in(region_code)
+        releases_of(game).find { |release| release.fetch("region_code") == region_code }.fetch("release_id")
+      end
+
+      def send_announcement!(release_id)
+        patch "/api/v1/release_announcements/#{release_id}",
+          params: { data: { sent_at: Time.current.iso8601 } }, headers: service_headers, as: :json
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "keeps one IGDB Release per region for NA, EU and JP dates on one platform" do
+        igdb_reports_regions(
+          [ north_america, Time.utc(2030, 6, 1) ],
+          [ europe, Time.utc(2030, 6, 5) ],
+          [ japan, Time.utc(2030, 5, 1) ],
+          [ north_america, Time.utc(2030, 7, 1) ]
+        )
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "NA", "source" => "igdb", "release_date" => "2030-06-01"),
+          hash_including("region_code" => "EU", "source" => "igdb", "release_date" => "2030-06-05"),
+          hash_including("region_code" => "JP", "source" => "igdb", "release_date" => "2030-05-01")
+        )
+      end
+
+      it "keeps both the Japanese and the western Releases of a Japan-first game across refreshes" do
+        igdb_reports_regions([ japan, Time.utc(2030, 3, 1) ], [ north_america, Time.utc(2030, 9, 1) ])
+        refresh!
+        before = releases_of(game).map { |release| release.fetch("release_id") }
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "JP", "release_date" => "2030-03-01"),
+          hash_including("region_code" => "NA", "release_date" => "2030-09-01")
+        )
+        expect(releases_of(game).map { |release| release.fetch("release_id") }).to match_array(before)
+      end
+
+      it "offers the earliest Release outside Japan in the due feed for a game that has both" do
+        igdb_reports_regions(
+          [ japan, in_window_date - 1.day ],
+          [ north_america, in_window_date ],
+          [ europe, in_window_date + 1.day ]
+        )
+        refresh!
+        sync_announcements!
+
+        expect(due_feed.map { |row| row.fetch("release_id") }).to eq([ release_id_in("NA") ])
+      end
+
+      it "offers the earliest Japanese Release in the due feed for a Japan-only game" do
+        igdb_reports_regions([ japan, in_window_date ])
+        refresh!
+        sync_announcements!
+
+        expect(due_feed.map { |row| row.fetch("release_id") }).to eq([ release_id_in("JP") ])
+      end
+
+      it "offers one announcement for same-day Releases in several regions" do
+        igdb_reports_regions(
+          [ japan, in_window_date ],
+          [ north_america, in_window_date ],
+          [ europe, in_window_date ]
+        )
+        refresh!
+        sync_announcements!
+
+        offered = due_feed.map { |row| row.fetch("release_id") }
+        expect(offered.length).to eq(1)
+        expect(offered).not_to include(release_id_in("JP"))
+      end
+
+      it "does not announce a game again when its announced Release moves later" do
+        igdb_reports_regions([ north_america, in_window_date ], [ europe, in_window_date ])
+        refresh!
+        sync_announcements!
+        send_announcement!(due_feed.sole.fetch("release_id"))
+
+        igdb_reports_regions([ north_america, in_window_date + 1.day ], [ europe, in_window_date ])
+        refresh!
+        sync_announcements!
+
+        expect(due_feed).to eq([])
+      end
+
+      it "does not announce a game again when IGDB drops its announced Release" do
+        igdb_reports_regions([ north_america, in_window_date ], [ europe, in_window_date + 1.day ])
+        refresh!
+        sync_announcements!
+        send_announcement!(release_id_in("NA"))
+        expect(due_feed).to eq([])
+
+        igdb_reports_regions([ europe, in_window_date + 1.day ])
+        refresh!
+        sync_announcements!
+
+        expect(releases_of(game)).to contain_exactly(hash_including("region_code" => "EU"))
+        expect(due_feed).to eq([])
+      end
+
+      it "does not announce a Japan-only game again when a western Release appears" do
+        igdb_reports_regions([ japan, in_window_date ])
+        refresh!
+        sync_announcements!
+        send_announcement!(release_id_in("JP"))
+
+        igdb_reports_regions([ japan, in_window_date ], [ north_america, in_window_date + 1.day ])
+        refresh!
+        sync_announcements!
+
+        expect(due_feed).to eq([])
+      end
+    end
+
+    describe "Date Precision and TBA Releases (api#392)" do
+      let(:in_window_date) { 5.days.from_now.utc.to_date }
+
+      # Each row is [IGDB region, date, Date Precision] as the IGDB client maps it.
+      def igdb_reports_precisions(*rows)
+        allow(igdb_client).to receive(:game).with(igdb_id).and_return(
+          igdb_id: igdb_id, name: game.title,
+          release_dates: rows.map do |region, date, precision|
+            { platform: platform_ref, region: region, date: date, date_precision: precision }
+          end
+        )
+      end
+
+      it "refreshes a game IGDB lists for Q3 2027 into a `quarter` Release dated 2027-07-01" do
+        igdb_reports_precisions([ 2, Date.new(2027, 7, 1), "quarter" ])
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("release_date" => "2027-07-01", "date_precision" => "quarter", "source" => "igdb")
+        )
+      end
+
+      it "refreshes a month-only date into a `month` Release and a year-only date into a `year` Release" do
+        igdb_reports_precisions([ 2, Date.new(2027, 3, 1), "month" ], [ 1, Date.new(2028, 1, 1), "year" ])
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "NA", "release_date" => "2027-03-01", "date_precision" => "month"),
+          hash_including("region_code" => "EU", "release_date" => "2028-01-01", "date_precision" => "year")
+        )
+      end
+
+      it "refreshes a game IGDB lists only as TBA into one `tba` Release with no date" do
+        igdb_reports_precisions([ 2, nil, "tba" ], [ 2, nil, "tba" ])
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("release_date" => nil, "date_precision" => "tba", "source" => "igdb")
+        )
+      end
+
+      it "prefers an earlier exact or vague date over TBA for the same platform and region" do
+        igdb_reports_precisions(
+          [ 2, nil, "tba" ], [ 2, Date.new(2027, 10, 1), "quarter" ],
+          [ 1, Date.new(2027, 5, 9), "day" ], [ 1, nil, "tba" ]
+        )
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "NA", "release_date" => "2027-10-01", "date_precision" => "quarter"),
+          hash_including("region_code" => "EU", "release_date" => "2027-05-09", "date_precision" => "day")
+        )
+      end
+
+      it "prefers a more precise date that falls inside a vague date's period for the same platform and region" do
+        igdb_reports_precisions(
+          [ 2, Date.new(2027, 7, 1), "quarter" ], [ 2, Date.new(2027, 8, 14), "day" ],
+          [ 1, Date.new(2027, 1, 1), "year" ], [ 1, Date.new(2027, 5, 1), "month" ],
+          [ 3, Date.new(2027, 4, 1), "quarter" ], [ 3, Date.new(2027, 8, 14), "day" ]
+        )
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "NA", "release_date" => "2027-08-14", "date_precision" => "day"),
+          hash_including("region_code" => "EU", "release_date" => "2027-05-01", "date_precision" => "month"),
+          hash_including("region_code" => "AUS", "release_date" => "2027-04-01", "date_precision" => "quarter")
+        )
+      end
+
+      it "sharpens a vague Release into an exact day in place" do
+        igdb_reports_precisions([ 2, Date.new(2027, 7, 1), "quarter" ])
+        refresh!
+        release_id = releases_of(game).sole.fetch("release_id")
+
+        igdb_reports_precisions([ 2, Date.new(2027, 8, 14), "day" ])
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("release_id" => release_id, "release_date" => "2027-08-14", "date_precision" => "day")
+        )
+      end
+
+      it "includes the Date Precision in the relations payload" do
+        igdb_reports_precisions([ 2, Date.new(2027, 3, 1), "month" ])
+        refresh!
+
+        get "/api/v1/games/#{game.game_id}/relations", headers: service_headers
+
+        expect(json.dig("data", "releases")).to contain_exactly(
+          hash_including("release_date" => "2027-03-01", "date_precision" => "month")
+        )
+      end
+
+      it "schedules announcements only for `day` Releases" do
+        igdb_reports_precisions(
+          [ 2, Date.new(2030, 3, 1), "month" ], [ 1, Date.new(2030, 7, 1), "quarter" ],
+          [ 3, Date.new(2030, 1, 1), "year" ], [ 4, nil, "tba" ], [ 8, Date.new(2030, 9, 9), "day" ]
+        )
+        refresh!
+
+        sync_announcements!
+
+        ww_release = releases_of(game).find { |release| release.fetch("date_precision") == "day" }
+        expect(announcements_of(game).map { |row| row.fetch("release_id") }).to eq([ ww_release.fetch("release_id") ])
+      end
+
+      it "never offers a vague Release in the due feed, even when it is the earliest" do
+        igdb_reports_precisions([ 2, in_window_date.beginning_of_month, "month" ], [ 1, in_window_date, "day" ])
+        refresh!
+        sync_announcements!
+
+        expect(due_feed).to contain_exactly(hash_including("release_date" => in_window_date.iso8601))
+      end
+
+      it "makes the earliest `day` Release canonical when an earlier Release is vague" do
+        igdb_reports_precisions([ 2, Date.new(2030, 3, 1), "month" ], [ 1, Date.new(2030, 3, 20), "day" ])
+        refresh!
+
+        sync_announcements!
+
+        expect(announcements_of(game)).to contain_exactly(hash_including("skipped_at" => nil, "skip_reason" => nil))
+      end
+
+      it "drops the unsent announcement of a `day` Release that turns vague" do
+        igdb_reports_precisions([ 2, in_window_date, "day" ])
+        refresh!
+        sync_announcements!
+        expect(due_feed.length).to eq(1)
+
+        igdb_reports_precisions([ 2, in_window_date.beginning_of_month, "month" ])
+        refresh!
+        sync_announcements!
+
+        expect(announcements_of(game)).to eq([])
+        expect(due_feed).to eq([])
+      end
+
+      it "drops the unsent announcement of a `day` Release that turns TBA" do
+        igdb_reports_precisions([ 2, Date.new(2030, 3, 1), "day" ])
+        refresh!
+        sync_announcements!
+
+        igdb_reports_precisions([ 2, nil, "tba" ])
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(hash_including("date_precision" => "tba"))
+        expect(announcements_of(game)).to eq([])
+      end
+    end
+
+    describe "the announcement schedule after a refresh, without the bot's PATCH" do
+      let(:in_window_date) { 5.days.from_now.utc.to_date }
+
+      # Each row is [IGDB region, date, Date Precision], all on the one platform.
+      def igdb_reports_rows(*rows)
+        allow(igdb_client).to receive(:game).with(igdb_id).and_return(
+          igdb_id: igdb_id, name: game.title,
+          release_dates: rows.map do |region, date, precision|
+            { platform: platform_ref, region: region, date: date, date_precision: precision || "day" }
+          end
+        )
+      end
+
+      def release_id_in(region_code)
+        releases_of(game).find { |release| release.fetch("region_code") == region_code }.fetch("release_id")
+      end
+
+      it "schedules the announcement of a new `day` Release" do
+        igdb_reports_rows([ 2, in_window_date ])
+
+        refresh!
+
+        expect(due_feed.map { |row| row.fetch("release_id") }).to eq([ release_id_in("NA") ])
+      end
+
+      it "schedules a TBA Release's announcement once it becomes an exact day" do
+        igdb_reports_rows([ 2, nil, "tba" ])
+        refresh!
+        expect(announcements_of(game)).to eq([])
+
+        igdb_reports_rows([ 2, in_window_date ])
+        refresh!
+
+        expect(announcements_of(game)).to contain_exactly(
+          hash_including("announce_at" => (in_window_date - 7).iso8601 + "T00:00:00.000Z", "skipped_at" => nil)
+        )
+        expect(due_feed.length).to eq(1)
+      end
+
+      it "skips the Releases that are not canonical" do
+        igdb_reports_rows([ 2, in_window_date ], [ 1, in_window_date + 1 ], [ 3, in_window_date ])
+
+        refresh!
+
+        expect(announcements_of(game).to_h { |row| [ row.fetch("release_id"), row.fetch("skip_reason") ] }).to eq(
+          release_id_in("NA") => nil,
+          release_id_in("EU") => "port-only-release",
+          release_id_in("AUS") => "same-day-platform-duplicate"
+        )
+      end
+
+      it "moves the canonical announcement when IGDB moves the canonical Release later" do
+        igdb_reports_rows([ 2, in_window_date ], [ 1, in_window_date + 1 ])
+        refresh!
+
+        igdb_reports_rows([ 2, in_window_date + 2 ], [ 1, in_window_date + 1 ])
+        refresh!
+
+        expect(announcements_of(game).to_h { |row| [ row.fetch("release_id"), row.fetch("skip_reason") ] }).to eq(
+          release_id_in("NA") => "port-only-release",
+          release_id_in("EU") => nil
+        )
+        expect(due_feed.map { |row| row.fetch("release_id") }).to eq([ release_id_in("EU") ])
+      end
+
+      it "reschedules a skipped Release that moved before it becomes canonical, so it is not announced early" do
+        igdb_reports_rows([ 2, in_window_date ], [ 1, in_window_date + 1 ])
+        refresh!
+
+        igdb_reports_rows([ 2, in_window_date + 120 ], [ 1, in_window_date + 60 ])
+        refresh!
+
+        expect(announcements_of(game).find { |row| row.fetch("release_id") == release_id_in("EU") }).to include(
+          "announce_at" => "#{(in_window_date + 53).iso8601}T00:00:00.000Z", "skipped_at" => nil
+        )
+        expect(due_feed).to eq([])
+      end
     end
 
     it "allows a Members role holder" do
@@ -675,8 +1175,28 @@ RSpec.describe "api/v1/games behavior", type: :request do
         "platform_code" => earlier.platform.platform_code,
         "platform_name" => earlier.platform.platform_name,
         "region_code" => earlier.region.region_code,
-        "region_name" => earlier.region.region_name
+        "region_name" => earlier.region.region_name,
+        "source" => "manual",
+        "release_date" => "1995-08-22",
+        "date_precision" => "day"
       )
+    end
+
+    it "orders the releases as the Release Calendar places them" do
+      game = create(:game)
+      platform = create(:platform, platform_name: "Only Platform")
+      at = ->(date, precision) { create(:release, game: game, platform: platform, release_date: date, date_precision: precision) }
+      tba = at.call(nil, "tba")
+      year = at.call(Date.new(2027, 1, 1), "year")
+      quarter = at.call(Date.new(2027, 7, 1), "quarter")
+      day = at.call(Date.new(2027, 8, 14), "day")
+      month = at.call(Date.new(2027, 8, 1), "month")
+      late_day = at.call(Date.new(2027, 9, 30), "day")
+
+      get "/api/v1/games/#{game.game_id}/releases", headers: auth_headers_for(create(:user))
+
+      expect(json.fetch("data").map { |r| r.fetch("release_id") })
+        .to eq([ month, day, late_day, quarter, year, tba ].map(&:release_id))
     end
 
     it "404s for an unknown game" do
@@ -803,7 +1323,7 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(data.fetch("platforms")).to contain_exactly(
         hash_including("platform_id" => platform.platform_id, "platform_name" => platform.platform_name)
       )
-      expect(data.fetch("releases")).to contain_exactly(hash_including("release_id" => release.release_id))
+      expect(data.fetch("releases")).to contain_exactly(hash_including("release_id" => release.release_id, "source" => "manual"))
       expect(data.fetch("alternates")).to contain_exactly(hash_including("game_id" => alternate.game_id))
       expect(data.fetch("collection")).to be_nil
       expect(data.fetch("franchises")).to eq([])

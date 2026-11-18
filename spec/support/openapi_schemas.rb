@@ -36,6 +36,7 @@ module OpenapiSchemas
   def num(nullable: false) = { type: :number }.merge(nullable ? { nullable: true } : {})
   def bool(nullable: false) = { type: :boolean }.merge(nullable ? { nullable: true } : {})
   def ts(nullable: false) = { type: :string, format: "date-time" }.merge(nullable ? { nullable: true } : {})
+  def date(nullable: false, **opts) = { type: :string, format: "date" }.merge(nullable ? { nullable: true } : {}).merge(opts)
   def json(nullable: true) = { type: :object, description: "Free-form JSON." }.merge(nullable ? { nullable: true } : {})
   def ref(name, nullable: false) = nullable ? { allOf: [ { "$ref" => "#/components/schemas/#{name}" } ], nullable: true } : { "$ref" => "#/components/schemas/#{name}" }
   def array_of(name) = { type: :array, items: { "$ref" => "#/components/schemas/#{name}" } }
@@ -152,8 +153,40 @@ module OpenapiSchemas
       # GamedbRelease (all columns) plus the flattened platform/region labels.
       Release: obj(
         release_id: int, game_id: int, platform_id: int, region_id: int,
-        format: str(nullable: true), release_date: ts(nullable: true), notes: str(nullable: true),
+        format: str(nullable: true), notes: str(nullable: true),
+        release_date: date(nullable: true, description: "Plain calendar date (YYYY-MM-DD) at the Release's " \
+          "Date Precision: the first day of its month or quarter, 1 January of its year, null when TBA."),
+        date_precision: str(enum: GamedbRelease::DATE_PRECISIONS, description: "How exactly the date is " \
+          "known: day, month, quarter, year, or tba (no date yet). Only day Releases are announced."),
+        source: str(enum: GamedbRelease::SOURCES, description: "igdb: an IGDB Release, kept in step by the " \
+          "IGDB refresh. manual: a Manual Release (staff or another import), never changed by a refresh."),
         platform_code: str, platform_name: str, region_code: str, region_name: str
+      ),
+      # One Release inside an Upcoming Release (UpcomingReleaseResource).
+      UpcomingReleaseRelease: obj(
+        release_id: int, platform_id: int, platform_name: str, platform_abbreviation: str(nullable: true),
+        region_id: int, region_code: str, region_name: str,
+        format: str(nullable: true, description: "Physical, Digital, or null when unknown."),
+        source: str(enum: GamedbRelease::SOURCES)
+      ),
+      # An Upcoming Release on the Release Calendar (UpcomingReleaseResource,
+      # spec #389): one game's Releases sharing a date and Date Precision.
+      UpcomingRelease: obj(
+        game: obj(game_id: int, title: str, cover_url: str(nullable: true)),
+        date: date(nullable: true, description: "Plain calendar date (YYYY-MM-DD) shared by the Releases, at " \
+          "their Date Precision: the first day of the month or quarter, 1 January of the year, null when TBA."),
+        date_precision: str(enum: GamedbRelease::DATE_PRECISIONS),
+        section: str(example: "July 2027", description: "The heading to list it under: the month " \
+          "(\"July 2027\") for day and month Upcoming Releases, \"Q3 2027\" for a quarter, \"2027\" for a year, \"TBA\"."),
+        first_released_on: date(nullable: true, description: "The game's earliest dated Release (any platform " \
+          "or region, earliest date, then the more precise Date Precision) whose whole period ended before " \
+          "this Upcoming Release's date (any dated Release for a TBA one), so a vague Release still running on the " \
+          "Upcoming Release's date does not count. Null otherwise, so the game's first Upcoming Release has none."),
+        first_released_precision: str(nullable: true, enum: [ *(GamedbRelease::DATE_PRECISIONS - %w[tba]), nil ],
+          description: "The Date Precision of " \
+          "`first_released_on` (day, month, quarter or year); null with it."),
+        releases: array_of("UpcomingReleaseRelease"),
+        _required: %w[game date date_precision section first_released_on first_released_precision releases]
       ),
       # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.
       ReleaseRefreshMeta: obj(
@@ -178,7 +211,8 @@ module OpenapiSchemas
       # announcement joined to its release, game and platform. `id` and
       # `release_id` are the same value (the PK is the release_id, 1:1).
       DueReleaseAnnouncement: obj(
-        id: int, release_id: int, game_id: int, title: str, release_date: ts,
+        id: int, release_id: int, game_id: int, title: str,
+        release_date: date(description: "Plain calendar date (YYYY-MM-DD); always an exact day."),
         announce_at: ts, platform_name: str(nullable: true),
         platform_abbreviation: str(nullable: true), igdb_url: str(nullable: true)
       ),

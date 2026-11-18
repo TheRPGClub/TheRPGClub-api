@@ -382,13 +382,33 @@ components:
         format:
           type: string
           nullable: true
-        release_date:
-          type: string
-          format: date-time
-          nullable: true
         notes:
           type: string
           nullable: true
+        release_date:
+          type: string
+          format: date
+          nullable: true
+          description: 'Plain calendar date (YYYY-MM-DD) at the Release''s Date Precision:
+            the first day of its month or quarter, 1 January of its year, null when
+            TBA.'
+        date_precision:
+          type: string
+          enum:
+          - day
+          - month
+          - quarter
+          - year
+          - tba
+          description: 'How exactly the date is known: day, month, quarter, year,
+            or tba (no date yet). Only day Releases are announced.'
+        source:
+          type: string
+          enum:
+          - igdb
+          - manual
+          description: 'igdb: an IGDB Release, kept in step by the IGDB refresh. manual:
+            a Manual Release (staff or another import), never changed by a refresh.'
         platform_code:
           type: string
         platform_name:
@@ -402,10 +422,117 @@ components:
       - game_id
       - platform_id
       - region_id
+      - date_precision
+      - source
       - platform_code
       - platform_name
       - region_code
       - region_name
+    UpcomingReleaseRelease:
+      type: object
+      properties:
+        release_id:
+          type: integer
+        platform_id:
+          type: integer
+        platform_name:
+          type: string
+        platform_abbreviation:
+          type: string
+          nullable: true
+        region_id:
+          type: integer
+        region_code:
+          type: string
+        region_name:
+          type: string
+        format:
+          type: string
+          nullable: true
+          description: Physical, Digital, or null when unknown.
+        source:
+          type: string
+          enum:
+          - igdb
+          - manual
+      required:
+      - release_id
+      - platform_id
+      - platform_name
+      - region_id
+      - region_code
+      - region_name
+      - source
+    UpcomingRelease:
+      type: object
+      properties:
+        game:
+          type: object
+          properties:
+            game_id:
+              type: integer
+            title:
+              type: string
+            cover_url:
+              type: string
+              nullable: true
+          required:
+          - game_id
+          - title
+        date:
+          type: string
+          format: date
+          nullable: true
+          description: 'Plain calendar date (YYYY-MM-DD) shared by the Releases, at
+            their Date Precision: the first day of the month or quarter, 1 January
+            of the year, null when TBA.'
+        date_precision:
+          type: string
+          enum:
+          - day
+          - month
+          - quarter
+          - year
+          - tba
+        section:
+          type: string
+          example: July 2027
+          description: 'The heading to list it under: the month ("July 2027") for
+            day and month Upcoming Releases, "Q3 2027" for a quarter, "2027" for a
+            year, "TBA".'
+        first_released_on:
+          type: string
+          format: date
+          nullable: true
+          description: The game's earliest dated Release (any platform or region,
+            earliest date, then the more precise Date Precision) whose whole period
+            ended before this Upcoming Release's date (any dated Release for a TBA
+            one), so a vague Release still running on the Upcoming Release's date
+            does not count. Null otherwise, so the game's first Upcoming Release has
+            none.
+        first_released_precision:
+          type: string
+          nullable: true
+          enum:
+          - day
+          - month
+          - quarter
+          - year
+          -
+          description: The Date Precision of `first_released_on` (day, month, quarter
+            or year); null with it.
+        releases:
+          type: array
+          items:
+            "$ref": "#/components/schemas/UpcomingReleaseRelease"
+      required:
+      - game
+      - date
+      - date_precision
+      - section
+      - first_released_on
+      - first_released_precision
+      - releases
     ReleaseRefreshMeta:
       type: object
       properties:
@@ -477,7 +604,8 @@ components:
           type: string
         release_date:
           type: string
-          format: date-time
+          format: date
+          description: Plain calendar date (YYYY-MM-DD); always an exact day.
         announce_at:
           type: string
           format: date-time
@@ -13770,6 +13898,7 @@ paths:
         - suggestions
         - news_hub
         - challenges
+        - release_calendar
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -14973,8 +15102,8 @@ paths:
         Features import games). Creates a game from IGDB by `igdb_id`: fetches the
         full IGDB payload, upserts the game row plus its taxonomy (genres, themes,
         perspectives, modes, engines, franchises, platforms, developer/publisher companies,
-        collection) and releases (one per platform, earliest dated; Japan-only releases
-        are skipped; `format` is left null), then imports its cover/artwork/logo images
+        collection) and releases (one per platform per region, earliest dated, Japan
+        included; `format` is left null), then imports its cover/artwork/logo images
         into Backblaze through the same importer the jobs use. Idempotent on `igdb_id`,
         answering 200 instead of 201 for a game already in the GameDB: an Admin, Superadmin
         or the service re-POSTing refreshes it from IGDB; any other caller gets the
@@ -15560,7 +15689,9 @@ paths:
       summary: List game releases
       tags:
       - Games
-      description: Returns release rows for a game, sorted by date then platform/region.
+      description: Returns release rows for a game in Release Calendar placement order
+        (a `month` before day 1 of its month, a `quarter` or `year` after the last
+        day of its period, `tba` last), then platform/region.
       responses:
         '200':
           description: releases list
@@ -15592,7 +15723,9 @@ paths:
       description: Admin/service-only. Adds a release row for the game (the bot's
         `addReleaseInfo`). `platform_id` and `region_id` are required; `format` must
         be `Physical`, `Digital` or null; `release_date` and `notes` are optional.
-        A plain insert — duplicates are allowed.
+        A plain insert, so duplicates are allowed. Always creates a Manual Release
+        (`source` "manual"), which no IGDB refresh changes or removes. Its Date Precision
+        is `day`, or `tba` when no `release_date` is given.
       parameters: []
       responses:
         '201':
@@ -15653,9 +15786,10 @@ paths:
                       description: Physical, Digital, or null.
                     release_date:
                       type: string
-                      format: date-time
+                      format: date
                       nullable: true
-                      description: Release date.
+                      description: Release date (YYYY-MM-DD; a timestamp keeps its
+                        calendar day). Omit or null for TBA.
                     notes:
                       type: string
                       nullable: true
@@ -15678,11 +15812,20 @@ paths:
       tags:
       - Games
       description: 'Members role holders, staff (Moderator and above) and the service.
-        Re-fetches the game''s release dates from IGDB and replaces its release rows
-        (the bot''s `refreshReleaseDates`): clears the existing releases plus their
-        scheduled announcements, then re-imports one release per platform (earliest
-        dated; Japan-only releases skipped, undated rows dropped, `format` left null).
-        Returns the rebuilt release list (same shape as GET /api/v1/games/{id}/releases),
+        Re-fetches the game''s release dates from IGDB and refreshes its Releases
+        in place (ADR 0010), matching on platform + region: an IGDB Release takes
+        IGDB''s date and Date Precision, else the oldest matching Manual Release is
+        adopted (becomes `source` "igdb"), else a new IGDB Release is added. IGDB
+        Releases IGDB no longer reports are removed with their announcement; Manual
+        Releases are never changed or removed. An unsent announcement is dropped when
+        its Release stops being an exact day, and a sent one is never reset; then
+        the game''s announcement schedule is rebuilt as PATCH /api/v1/games/{id}/release_announcements
+        does (new or newly exact `day` Releases scheduled, a pending announcement
+        moved with its date, canonicality re-ranked). IGDB dates kept: one per platform
+        per region (earliest date, exact or vague, Japan included, except that a more
+        precise date beats the vague one it falls in, so "Q3 2027" and 2027-08-14
+        keep 2027-08-14; TBA only when the platform and region has nothing dated;
+        `format` left null). Returns the rebuilt release list (same shape as GET /api/v1/games/{id}/releases),
         with `meta.added` (how many more releases the game has than before, never
         negative) and `meta.total`.'
       responses:
@@ -22604,12 +22747,19 @@ paths:
         its releases and applies canonicality (the bot's `syncReleaseAnnouncements`
         + `markNonCanonicalAnnouncements`). Server-side and body-less — everything
         is computed from `gamedb_releases`. In one transaction it (1) upserts an announcement
-        for every release with a `release_date`, scheduling `announce_at = release_date
-        - 7 days` (a pending row is moved only when its time changes; rows already
-        sent/skipped are left alone); (2) clears the canonicality skip on rows that
-        no longer qualify as port-only / same-day-duplicate; and (3) skips rows that
-        are now non-canonical (`port-only-release` for a later release date, `same-day-platform-duplicate`
-        for a same-day tie).
+        for every exact-day release (Date Precision `day`), scheduling `announce_at
+        = release_date - 7 days` (a pending row is moved only when its time changes;
+        rows already sent/skipped are left alone); (2) clears the canonicality skip
+        on rows that no longer qualify as port-only / same-day-duplicate, rescheduling
+        each from its release's current date; and (3) skips rows that are now non-canonical
+        (`same-day-platform-duplicate` for a release on the canonical release's date,
+        in any region, `port-only-release` for any other date). Releases that are
+        not an exact day are never announced or skipped. The canonical release is
+        the game's earliest exact-day release outside Japan, or its earliest Japanese
+        one when it has no release outside Japan at any Date Precision (a vague or
+        TBA western release makes Japanese releases wait), with the lowest `release_id`
+        breaking a same-day tie. Every IGDB refresh of the game (POST /api/v1/games/{id}/refresh-releases,
+        import and the weekly refresh) runs the same steps.
       responses:
         '200':
           description: schedule synced
@@ -22685,11 +22835,15 @@ paths:
       - Release Announcements
       description: 'Service-only poll feed (the bot''s `listDueAnnouncements`). Returns
         the announcements ready to post: not yet sent or skipped, whose `announce_at`
-        has passed, whose release is still in the future, and which are the canonical
-        release for their game (earliest release date; on a same-day tie the lowest
-        `release_id`). Any pending announcement whose window has already passed (its
-        release has shipped) is marked skipped (`release-window-missed`) server-side
-        first, so it never appears here. Unpaginated; bounded by `limit`.'
+        has passed, whose release is still in the future (its plain `release_date`,
+        YYYY-MM-DD, is after today in UTC), and which are the canonical release for
+        their game (its earliest exact-day release outside Japan, or its earliest
+        Japanese one when it has no release outside Japan at any Date Precision, TBA
+        included; on a same-day tie the lowest `release_id`). A game is announced
+        once: no release of a game whose announcement was already sent is offered
+        again. Any pending announcement whose window has already passed (its release
+        has shipped) is marked skipped (`release-window-missed`) server-side first,
+        so it never appears here. Unpaginated; bounded by `limit`.'
       parameters:
       - name: limit
         in: query
@@ -28104,6 +28258,116 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/upcoming_releases":
+    get:
+      summary: List the Release Calendar
+      tags:
+      - Release Calendar
+      description: 'The Release Calendar (spec #389): GameDB''s Upcoming Releases
+        in calendar order. An Upcoming Release is one game''s Releases that share
+        a date and Date Precision, across platforms and regions (Japan included).
+        Placement: a `month` Upcoming Release before day 1 of its month, a `day` one
+        on its date, a `quarter` one after its last month, a `year` one after December
+        and that year''s Q4, `tba` last; ties break on game title, then game id. Without
+        `month` the window runs from today (UTC calendar day) forward: a `day` one
+        counts on and after its date, `month`/`quarter`/`year` until their whole period
+        has ended, `tba` always. Any signed-in member; belongs to the Release Calendar
+        Feature, so a member who cannot use it gets 404 `not_found`; the service token
+        is not gated.'
+      parameters:
+      - name: month
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: "^\\d{4}-\\d{2}$"
+          example: 2027-07
+        description: 'A calendar month, past or future: the Upcoming Releases placed
+          in it (its days, the month itself, a quarter ending in it and, for December,
+          the year). Never TBA. A malformed month is a 422 `invalid_month`.'
+      - name: platform_id
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Keeps an Upcoming Release when any of its Releases is on one
+          of these platforms; it still lists all its Releases. Repeat it (`platform_id=1&platform_id=2`,
+          or `platform_id[]=1&platform_id[]=2`) or comma-separate the ids. A non-id
+          is a 422 `invalid_platform_id`.
+      - name: game_id
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Limits the Upcoming Releases to these games. Repeat it (`game_id=1&game_id=2`,
+          or `game_id[]=1&game_id[]=2`) or comma-separate the ids. A non-id is a 422
+          `invalid_game_id`.
+      - name: per_game
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - next
+        description: "`next` keeps only each game's earliest Upcoming Release (after
+          the other filters). Any other value is a 422 `invalid_per_game`."
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 100
+        required: false
+      responses:
+        '200':
+          description: the Upcoming Releases, in calendar order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/UpcomingRelease"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the Release Calendar Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: a malformed month, id or per_game
           content:
             application/json:
               schema:

@@ -87,13 +87,13 @@ RSpec.describe Gamedb::IgdbGameImporter do
   end
 
   describe "#refresh_releases!" do
-    it "bumps the game's updated_at after rebuilding its release rows" do
+    it "bumps the game's updated_at after refreshing its Releases in place" do
       game = GamedbGame.create!(title: "Game A", igdb_id: 602)
       original_updated_at = game.updated_at
 
       allow(client).to receive(:game).with(game.igdb_id).and_return(
         release_dates: [
-          { region: 8, platform: { igdb_id: 77, name: "PC" }, date: Time.zone.parse("2020-01-01") }
+          { region: 8, platform: { igdb_id: 77, name: "PC" }, date: Date.new(2020, 1, 1), date_precision: "day" }
         ]
       )
 
@@ -102,6 +102,21 @@ RSpec.describe Gamedb::IgdbGameImporter do
 
       expect(refreshed.releases.count).to eq(1)
       expect(refreshed.updated_at).to be > original_updated_at
+    end
+
+    it "keeps Korean and Brazilian Releases in their own regions" do
+      game = GamedbGame.create!(title: "Game A", igdb_id: 605)
+      allow(client).to receive(:game).with(game.igdb_id).and_return(
+        release_dates: [
+          { region: 9, platform: { igdb_id: 77, name: "PC" }, date: Date.new(2030, 4, 2), date_precision: "day" },
+          { region: 10, platform: { igdb_id: 77, name: "PC" }, date: Date.new(2030, 5, 3), date_precision: "day" }
+        ]
+      )
+
+      refreshed = importer.refresh_releases!(game.game_id)
+
+      expect(refreshed.releases.map { |r| [ r.region.region_code, r.region.region_name, r.release_date ] })
+        .to contain_exactly([ "KR", "Korea", Date.new(2030, 4, 2) ], [ "BR", "Brazil", Date.new(2030, 5, 3) ])
     end
 
     it "still bumps updated_at when the refreshed release set is empty" do

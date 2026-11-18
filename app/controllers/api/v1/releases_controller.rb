@@ -17,10 +17,11 @@ module Api
       # (the belongs_to presence validations reject a missing or unknown id with
       # a 422); `format` must be `Physical`, `Digital` or null; `release_date` and
       # `notes` are optional. A plain insert — duplicates are allowed, matching
-      # the bot. Returns the created release (platform/region labels flattened in).
+      # the bot. Always a Manual Release (`source` is not writable), so no IGDB
+      # refresh ever changes or removes it. Returns the created release (platform/region labels flattened in).
       def create
         game = GamedbGame.find(params[:id])
-        release = GamedbRelease.create!(release_data.merge(game_id: game.game_id))
+        release = GamedbRelease.source_manual.create!(release_data.merge(game_id: game.game_id))
         # Bump the game's updated_at so GamesController#relations_data's cache
         # (keyed on it) picks up the new release -- the release lives on a
         # child table, so nothing else here saves the game record.

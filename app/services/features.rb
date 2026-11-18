@@ -95,7 +95,12 @@ module Features
     define("challenges", "Challenges", core: false,
       website: [ "Challenges", "Profile Challenges" ],
       bot: [ "/challenge" ],
-      posts: [ "Challenge announcements" ])
+      posts: [ "Challenge announcements" ]),
+    # Spec #389. Registered after Feature Flags shipped, so it has no stored
+    # state and starts in Preview. The bot's upcoming-release search and the
+    # release announcements stay outside it.
+    define("release_calendar", "Release Calendar", core: false,
+      website: [ "Releases" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

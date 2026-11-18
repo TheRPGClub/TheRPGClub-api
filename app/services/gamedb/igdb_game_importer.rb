@@ -8,9 +8,12 @@ module Gamedb
   #
   # Mirrors the Discord bot's "add a game from IGDB" flow so an API-created game
   # is indistinguishable from a bot-created one: missing lookup rows (genre,
-  # company, platform, …) are created on the fly keyed by their `igdb_*_id`, and
-  # releases are one-per-platform (earliest), skip Japan, and leave `format`
-  # null (IGDB carries no physical/digital signal).
+  # company, platform, …) are created on the fly keyed by their `igdb_*_id`.
+  # Releases are one per platform per region (the earliest, Japan included,
+  # ADR 0010), carry IGDB's Date Precision (a TBA Release when IGDB has no
+  # date yet, api#392) and leave `format` null (IGDB carries no physical/digital
+  # signal); they are written through Gamedb::ReleaseSync, the in-place
+  # refresh shared by import and refresh.
   class IgdbGameImporter
     class MissingIgdbGameError < StandardError; end
     class MissingIgdbIdError < StandardError; end
@@ -26,7 +29,7 @@ module Gamedb
       end
     end
 
-    # IGDB `release_dates.region` enum -> local region code/name (the bot's
+    # IGDB `release_dates.release_region` id -> local region code/name (the bot's
     # IGDB_REGION_MAP). A release whose region isn't listed is dropped.
     REGION_MAP = {
       1 => { code: "EU", name: "Europe" },
@@ -36,12 +39,12 @@ module Gamedb
       5 => { code: "JP", name: "Japan" },
       6 => { code: "CN", name: "China" },
       7 => { code: "AS", name: "Asia" },
-      8 => { code: "WW", name: "Worldwide" }
+      8 => { code: "WW", name: "Worldwide" },
+      9 => { code: "KR", name: "Korea" },
+      10 => { code: "BR", name: "Brazil" }
     }.freeze
 
-    # Region the bot excludes from auto-created releases (JP), and the fallback
-    # region applied when a release date carries none (WW).
-    SKIPPED_RELEASE_REGION = 5
+    # The fallback region applied when a release date carries none (WW).
     DEFAULT_RELEASE_REGION = 8
 
     def initialize(client: Igdb::Client.new, image_importer: IgdbImageImporter.new)
@@ -64,11 +67,12 @@ module Gamedb
       Result.new(game: game, created: created, images: images)
     end
 
-    # Re-fetch the game's release dates from IGDB and rebuild its release rows
-    # (the bot's `refreshReleaseDates`): drop the existing releases plus their
-    # scheduled announcements, then re-run the same one-per-platform sync #import!
-    # uses. Touches releases only — never images or the game's metadata/taxonomy.
-    # Returns the (unchanged) GamedbGame so the caller can re-render its releases.
+    # Re-fetch the game's release dates from IGDB and refresh its Releases in
+    # place (ADR 0010) through the same sync #import! uses: IGDB Releases are
+    # updated, added or removed, Manual Releases are adopted or left alone, and
+    # announcements keep their delivery state. Touches Releases only, never
+    # images or the game's metadata/taxonomy. Returns the GamedbGame so the
+    # caller can re-render its releases.
     def refresh_releases!(game_id)
       game = GamedbGame.find(game_id)
       raise MissingIgdbIdError, "Game #{game_id} has no IGDB id" if game.igdb_id.blank?
@@ -77,10 +81,6 @@ module Gamedb
       raise MissingIgdbGameError, "IGDB game #{game.igdb_id} was not found" if payload.blank?
 
       GamedbGame.transaction do
-        clear_releases!(game)
-        # Drop any cached releases so sync_releases!'s `seen_platform_ids` lookup
-        # reads the now-empty set rather than the pre-clear association cache.
-        game.releases.reset
         sync_releases!(game, payload)
         # Bump updated_at so GamesController#relations_data's cache key (keyed
         # on it) changes -- releases live on a child table, so saving the game
@@ -92,17 +92,6 @@ module Gamedb
     end
 
     private
-
-    # Delete the game's releases and the announcements that hang off them
-    # (announcements first — they FK to release_id). Mirrors the bot's
-    # `clearReleaseDates`, which wipes both before re-inserting.
-    def clear_releases!(game)
-      release_ids = game.releases.pluck(:release_id)
-      return if release_ids.empty?
-
-      GamedbReleaseAnnouncement.where(release_id: release_ids).delete_all
-      GamedbRelease.where(release_id: release_ids).delete_all
-    end
 
     def upsert_game!(payload)
       result = GamedbGame.transaction do
@@ -205,39 +194,54 @@ module Gamedb
     end
 
     def sync_releases!(game, payload)
-      seen_platform_ids = game.releases.pluck(:platform_id).to_set
-
-      earliest_release_per_platform(payload[:release_dates]).each_value do |release|
+      reported = earliest_release_per_platform_and_region(payload[:release_dates]).each_value.filter_map do |release|
         platform = ensure_platform(release[:platform])
-        next if platform.nil? || seen_platform_ids.include?(platform.platform_id)
-
         region = ensure_region(release[:region])
-        next if region.nil?
+        next if platform.nil? || region.nil?
 
-        GamedbRelease.create!(
-          game_id: game.game_id,
-          platform_id: platform.platform_id,
-          region_id: region.region_id,
-          format: nil,
-          release_date: release[:date]
+        ReleaseSync::Reported.new(
+          platform_id: platform.platform_id, region_id: region.region_id,
+          release_date: release[:date], date_precision: release[:date_precision]
         )
-        seen_platform_ids << platform.platform_id
       end
+
+      ReleaseSync.call(game, reported)
     end
 
-    # IGDB returns many release_dates per game (one per region/platform). Keep
-    # the earliest dated row per platform, skipping Japan and undated rows —
-    # mirroring the bot so the same single release lands per platform.
-    def earliest_release_per_platform(release_dates)
-      Array(release_dates).each_with_object({}) do |release, earliest|
-        next if release[:region] == SKIPPED_RELEASE_REGION
+    # IGDB can return several release_dates for one platform and region (a
+    # re-release, an edition, a TBA placeholder). Keep the earliest per platform
+    # per region, Japan included (ADR 0010): any dated row, exact or vague,
+    # beats TBA, and on the same date the more precise row wins. A vague row is
+    # passed over when a more precise row falls inside its period, so IGDB's
+    # "Q3 2027" never hides the 2027-08-14 it also knows (a "Q2 2027" still
+    # beats that later day). A platform and region with only TBA rows keeps one
+    # TBA Release. A missing region counts as Worldwide, as ensure_region
+    # stores it.
+    def earliest_release_per_platform_and_region(release_dates)
+      Array(release_dates)
+        .select { |release| release.dig(:platform, :igdb_id).present? }
+        .group_by { |release| [ release.dig(:platform, :igdb_id), release[:region] || DEFAULT_RELEASE_REGION ] }
+        .transform_values do |releases|
+          releases.reject { |vague| releases.any? { |sharper| sharpens?(sharper, vague) } }.min_by { |release| release_order(release) }
+        end
+    end
 
-        igdb_platform_id = release.dig(:platform, :igdb_id)
-        next if igdb_platform_id.blank? || release[:date].nil?
+    # Whether `sharper` dates the same release more precisely than `vague`:
+    # it is more precise and its date falls inside `vague`'s period.
+    def sharpens?(sharper, vague)
+      return false if sharper[:date].nil? || vague[:date].nil?
+      return false unless precision_rank(sharper) < precision_rank(vague)
 
-        current = earliest[igdb_platform_id]
-        earliest[igdb_platform_id] = release if current.nil? || release[:date] < current[:date]
-      end
+      GamedbRelease.period(vague[:date], vague[:date_precision]).cover?(sharper[:date])
+    end
+
+    # Sort key for "earliest": TBA (no date) last, then date, then precision.
+    def release_order(release)
+      [ release[:date] ? 0 : 1, release[:date] || Date.new(0), precision_rank(release) ]
+    end
+
+    def precision_rank(release)
+      GamedbRelease.precision_rank(release[:date_precision]) || 0
     end
 
     def ensure_platform(ref)

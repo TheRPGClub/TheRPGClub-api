@@ -69,7 +69,76 @@ RSpec.describe "api/v1/release_announcements behavior", type: :request do
         "igdb_url" => "https://www.igdb.com/games/due-spec"
       )
       expect(row.fetch("announce_at")).to be_present
-      expect(row.fetch("release_date")).to be_present
+      # A plain calendar date the bot reads with `new Date(...)` (UTC midnight).
+      expect(row.fetch("release_date")).to eq((Date.current + 5).iso8601)
+    end
+
+    it "never offers a Release whose date is not an exact day" do
+      game = create(:game)
+      vague = create(:release, game: game, release_date: Date.current.next_month.beginning_of_month,
+        date_precision: "month")
+      create(:release_announcement, release: vague, announce_at: 1.hour.ago)
+
+      get "/api/v1/release_announcements/due", headers: service_headers
+
+      expect(json.fetch("data")).to eq([])
+    end
+
+    it "never offers another Release of a game whose announcement was already sent" do
+      game = create(:game)
+      announced = create(:release, game: game, release_date: 6.days.from_now)
+      create(:release_announcement, release: announced, announce_at: 1.day.ago, sent_at: 1.hour.ago)
+      now_canonical = create(:release, game: game, release_date: 5.days.from_now)
+      create(:release_announcement, release: now_canonical, announce_at: 2.days.ago)
+
+      get "/api/v1/release_announcements/due", headers: service_headers
+
+      expect(json.fetch("data")).to eq([])
+    end
+
+    context "with a Japanese Release (ADR 0010)" do
+      let(:japan) { GamedbRegion.create_with(region_name: "Japan").find_or_create_by!(region_code: "JP") }
+      let(:game) { create(:game) }
+
+      def schedule_and_read_due
+        patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+        get "/api/v1/release_announcements/due", headers: service_headers
+        json.fetch("data").map { |row| row.fetch("release_id") }
+      end
+
+      it "waits for the western day when the West has only a vague date" do
+        create(:release, game: game, region: japan, release_date: Date.current + 4)
+        create(:release, game: game, release_date: Date.current.next_year.beginning_of_year, date_precision: "year")
+
+        expect(schedule_and_read_due).to eq([])
+      end
+
+      it "waits for the western day when the West is TBA" do
+        create(:release, game: game, region: japan, release_date: Date.current + 4)
+        create(:release, game: game, release_date: nil)
+
+        expect(schedule_and_read_due).to eq([])
+      end
+
+      it "announces the western day once it becomes exact, and only once" do
+        create(:release, game: game, region: japan, release_date: Date.current + 4)
+        west = create(:release, game: game, release_date: Date.current.next_year.beginning_of_year,
+          date_precision: "year")
+        expect(schedule_and_read_due).to eq([])
+
+        west.update!(release_date: Date.current + 6, date_precision: "day")
+        expect(schedule_and_read_due).to eq([ west.release_id ])
+
+        patch "/api/v1/release_announcements/#{west.release_id}", headers: service_headers,
+          params: { data: { sent_at: Time.current.iso8601 } }, as: :json
+        expect(schedule_and_read_due).to eq([])
+      end
+
+      it "still announces a Japan-only game" do
+        japanese = create(:release, game: game, region: japan, release_date: Date.current + 4)
+
+        expect(schedule_and_read_due).to eq([ japanese.release_id ])
+      end
     end
 
     it "stamps pending announcements whose release already shipped as release-window-missed" do
@@ -361,6 +430,34 @@ RSpec.describe "api/v1/release_announcements behavior", type: :request do
       # Re-running is a no-op once the schedule is settled.
       patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
       expect(json.fetch("data")).to eq("upserted" => 0, "restored" => 0, "skipped" => 0)
+    end
+
+    it "ignores Japan when choosing the canonical Release, skipping Japanese Releases like any other" do
+      japan = GamedbRegion.create_with(region_name: "Japan").find_or_create_by!(region_code: "JP")
+      japan_first = create(:release, game: game, region: japan, release_date: Time.utc(2031, 5, 1))
+      canonical = create(:release, game: game, release_date: Time.utc(2031, 6, 1))
+      japan_same_day = create(:release, game: game, region: japan, release_date: Time.utc(2031, 6, 1))
+      later = create(:release, game: game, release_date: Time.utc(2031, 7, 1))
+
+      patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+
+      expect(json.fetch("data")).to eq("upserted" => 4, "restored" => 0, "skipped" => 3)
+      expect(GamedbReleaseAnnouncement.find(canonical.release_id).skipped_at).to be_nil
+      expect(GamedbReleaseAnnouncement.find(japan_first.release_id).skip_reason).to eq("port-only-release")
+      expect(GamedbReleaseAnnouncement.find(japan_same_day.release_id).skip_reason).to eq("same-day-platform-duplicate")
+      expect(GamedbReleaseAnnouncement.find(later.release_id).skip_reason).to eq("port-only-release")
+    end
+
+    it "makes the earliest Japanese Release canonical for a Japan-only game" do
+      japan = GamedbRegion.create_with(region_name: "Japan").find_or_create_by!(region_code: "JP")
+      canonical = create(:release, game: game, region: japan, release_date: Time.utc(2031, 6, 1))
+      later = create(:release, game: game, region: japan, release_date: Time.utc(2031, 7, 1))
+
+      patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+
+      expect(json.fetch("data")).to eq("upserted" => 2, "restored" => 0, "skipped" => 1)
+      expect(GamedbReleaseAnnouncement.find(canonical.release_id).skipped_at).to be_nil
+      expect(GamedbReleaseAnnouncement.find(later.release_id).skip_reason).to eq("port-only-release")
     end
 
     it "restores a canonicality skip that no longer qualifies" do

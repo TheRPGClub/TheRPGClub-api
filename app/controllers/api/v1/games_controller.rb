@@ -151,11 +151,13 @@ module Api
       #
       # Members role holders, staff and the service (#314, as the bot's
       # `/gamedb refresh-release-info`). Re-fetches the game's release dates
-      # from IGDB and replaces its release rows (the bot's `refreshReleaseDates`):
-      # clears the existing releases plus their scheduled announcements, then
-      # re-imports one release per platform (earliest dated; Japan-only releases
-      # skipped, undated rows dropped, `format` left null). Returns the rebuilt
-      # release list, matching GET /api/v1/games/:id/releases, with
+      # from IGDB and refreshes its Releases in place (Gamedb::ReleaseSync, ADR
+      # 0010): IGDB Releases are updated, added or removed, Manual Releases are
+      # adopted or left alone, announcements keep their delivery state, and the
+      # game's announcement schedule is rebuilt. IGDB dates kept: one per
+      # platform per region (the earliest, Japan included, a more precise date
+      # beating the vague one it falls in, TBA when IGDB has no date, `format`
+      # left null). Returns the rebuilt release list, matching GET /api/v1/games/:id/releases, with
       # `meta.added` (how many more releases than before, never negative, as
       # the bot reports it) and `meta.total`.
       def refresh_releases
@@ -441,7 +443,7 @@ module Api
           .releases
           .includes(:platform, :region)
           .select { |release| release.platform.present? && release.region.present? }
-          .sort_by { |release| [ release.release_date || Date.new(9999, 12, 31), release.platform.platform_name, release.region.region_name ] }
+          .sort_by { |release| [ release.placement_key, release.platform.platform_name, release.region.region_name ] }
         ReleaseResource.new(releases).serializable_hash
       end
     end

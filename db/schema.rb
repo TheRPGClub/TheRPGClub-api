@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_17_170378) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -397,6 +397,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_170378) do
     t.string "title", limit: 255, null: false
     t.decimal "total_rating"
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }
+    t.datetime "release_announced_at"
 
     t.unique_constraint ["igdb_id"], name: "gamedb_games_igdb_id_key"
   end
@@ -453,11 +454,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_17_170378) do
     t.string "notes", limit: 255
     t.bigint "platform_id", null: false
     t.bigint "region_id", null: false
-    t.datetime "release_date", precision: 0
+    t.date "release_date"
+    t.string "source", limit: 10, default: "manual", null: false
+    t.string "date_precision", limit: 10, default: "day", null: false
     t.index ["game_id"], name: "idx_gamedb_releases_game"
     t.index ["platform_id"], name: "idx_gamedb_releases_platform"
     t.index ["region_id"], name: "idx_gamedb_releases_region"
+    t.check_constraint "(date_precision::text = 'tba'::text) = (release_date IS NULL)", name: "ck_gamedb_releases_tba_has_no_date"
+    t.check_constraint "date_precision::text = ANY (ARRAY['day'::character varying, 'month'::character varying, 'quarter'::character varying, 'year'::character varying, 'tba'::character varying]::text[])", name: "ck_gamedb_releases_date_precision"
     t.check_constraint "format::text = ANY (ARRAY['Physical'::character varying::text, 'Digital'::character varying::text])", name: "sys_c009076"
+    t.check_constraint "source::text = ANY (ARRAY['igdb'::character varying, 'manual'::character varying]::text[])", name: "ck_gamedb_releases_source"
   end
 
   create_table "gamedb_search_synonym_drafts", primary_key: "draft_id", force: :cascade do |t|

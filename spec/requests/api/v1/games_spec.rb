@@ -102,7 +102,7 @@ RSpec.describe 'api/v1/games', type: :request do
                   'the service, whatever the Game Index Feature Flag (other Features import games). Creates a game from IGDB by `igdb_id`: fetches the full IGDB ' \
                   'payload, upserts the game row plus its taxonomy (genres, themes, perspectives, modes, ' \
                   'engines, franchises, platforms, developer/publisher companies, collection) and releases ' \
-                  '(one per platform, earliest dated; Japan-only releases are skipped; `format` is left ' \
+                  '(one per platform per region, earliest dated, Japan included; `format` is left ' \
                   'null), then imports its cover/artwork/logo images into Backblaze through the same ' \
                   'importer the jobs use. Idempotent on `igdb_id`, answering 200 instead of 201 for a game ' \
                   'already in the GameDB: an Admin, Superadmin or the service re-POSTing refreshes it from ' \
@@ -413,7 +413,8 @@ RSpec.describe 'api/v1/games', type: :request do
 
     get 'List game releases' do
       tags 'Games'
-      description 'Returns release rows for a game, sorted by date then platform/region.'
+      description 'Returns release rows for a game in Release Calendar placement order (a `month` before day 1 of ' \
+                  'its month, a `quarter` or `year` after the last day of its period, `tba` last), then platform/region.'
       produces 'application/json'
 
       response '200', 'releases list' do
@@ -435,7 +436,9 @@ RSpec.describe 'api/v1/games', type: :request do
       tags 'Games'
       description 'Admin/service-only. Adds a release row for the game (the bot\'s `addReleaseInfo`). ' \
                   '`platform_id` and `region_id` are required; `format` must be `Physical`, `Digital` or ' \
-                  'null; `release_date` and `notes` are optional. A plain insert — duplicates are allowed.'
+                  'null; `release_date` and `notes` are optional. A plain insert, so duplicates are allowed. ' \
+                  'Always creates a Manual Release (`source` "manual"), which no IGDB refresh changes or removes. ' \
+                  'Its Date Precision is `day`, or `tba` when no `release_date` is given.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -448,7 +451,8 @@ RSpec.describe 'api/v1/games', type: :request do
               platform_id: { type: :integer, description: 'GamedbPlatform id. Required.' },
               region_id: { type: :integer, description: 'GamedbRegion id. Required.' },
               format: { type: :string, enum: %w[Physical Digital], nullable: true, description: 'Physical, Digital, or null.' },
-              release_date: { type: :string, format: 'date-time', nullable: true, description: 'Release date.' },
+              release_date: { type: :string, format: 'date', nullable: true,
+                              description: 'Release date (YYYY-MM-DD; a timestamp keeps its calendar day). Omit or null for TBA.' },
               notes: { type: :string, nullable: true, description: 'Free-text notes.' }
             },
             required: %w[platform_id region_id]
@@ -485,10 +489,18 @@ RSpec.describe 'api/v1/games', type: :request do
     post 'Refresh releases from IGDB' do
       tags 'Games'
       description 'Members role holders, staff (Moderator and above) and the service. Re-fetches the ' \
-                  'game\'s release dates from IGDB and replaces its ' \
-                  'release rows (the bot\'s `refreshReleaseDates`): clears the existing releases plus their ' \
-                  'scheduled announcements, then re-imports one release per platform (earliest dated; ' \
-                  'Japan-only releases skipped, undated rows dropped, `format` left null). Returns the ' \
+                  'game\'s release dates from IGDB and refreshes its Releases in place (ADR 0010), matching ' \
+                  'on platform + region: an IGDB Release takes IGDB\'s date and Date Precision, else the oldest matching Manual ' \
+                  'Release is adopted (becomes `source` "igdb"), else a new IGDB Release is added. IGDB ' \
+                  'Releases IGDB no longer reports are removed with their announcement; Manual Releases are ' \
+                  'never changed or removed. An unsent announcement is dropped when its Release stops being an ' \
+                  'exact day, and a sent one is never reset; then the game\'s announcement schedule is rebuilt ' \
+                  'as PATCH /api/v1/games/{id}/release_announcements does (new or newly exact `day` Releases ' \
+                  'scheduled, a pending announcement moved with its date, canonicality re-ranked). IGDB dates kept: one per platform per region (earliest date, exact or vague, Japan ' \
+                  'included, except that a more precise date beats the vague one it falls in, so "Q3 2027" and ' \
+                  '2027-08-14 keep 2027-08-14; TBA only when the platform and region has nothing dated; ' \
+                  '`format` left null). ' \
+                  'Returns the ' \
                   'rebuilt release list (same shape as GET /api/v1/games/{id}/releases), with `meta.added` ' \
                   '(how many more releases the game has than before, never negative) and `meta.total`.'
       produces 'application/json'
