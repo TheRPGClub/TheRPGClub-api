@@ -2816,6 +2816,7 @@ components:
           - news_catch_up
           - challenge_announce
           - challenge_dm
+          - daily_fun_fact
         summary:
           type: string
           maxLength: 200
@@ -4397,6 +4398,31 @@ components:
         2 days before an Edition''s pick deadline, a Santa who hasn''t picked for
         their `recipient` (with `edition` and `days_left`), sent only to members who
         keep Challenge DMs on.'
+    DailyFunFactJobPayload:
+      type: object
+      properties:
+        club_date:
+          type: string
+          format: date
+          example: '2026-11-18'
+          description: The club day it is for.
+        entry_id:
+          type: integer
+          description: The Fun Fact drawn for the day; the queue already counts it
+            shown.
+        feature_key:
+          type: string
+          enum:
+          - club_codex
+      required:
+      - club_date
+      - entry_id
+      - feature_key
+      description: Kind `daily_fun_fact`. Post the Fun Fact `entry_id` (GET /api/v1/codex/fun_facts/{id})
+        in general chat, or the staff test channel while the Club Codex is in Preview,
+        with no pings. Queued once per club day at 15:00 America/New_York. Drop it,
+        acked done, when `club_date` is no longer today in New York or the Fun Fact
+        has been deleted (404).
     BotJobClaim:
       type: object
       properties:
@@ -4425,6 +4451,7 @@ components:
           - news_catch_up
           - challenge_announce
           - challenge_dm
+          - daily_fun_fact
         summary:
           type: string
           maxLength: 200
@@ -4436,7 +4463,7 @@ components:
             by that Feature''s Flag. A kind that does a Feature''s work without posting
             carries it too (BotJob::FEATURE_WORK). Documented payloads: SayJobPayload,
             NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
-            ChallengeDmJobPayload.'
+            ChallengeDmJobPayload, DailyFunFactJobPayload.'
         status:
           type: string
           enum:

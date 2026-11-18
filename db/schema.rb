@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_120404) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_120406) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -292,6 +292,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120404) do
     t.bigint "entry_id", null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id"], name: "ix_codex_entry_mentions_user"
+  end
+
+  create_table "daily_fun_fact_posts", comment: "The Fun Fact queued as each club day's Daily Fun Fact.", force: :cascade do |t|
+    t.date "club_date", null: false, comment: "The club day (America/New_York) it was queued for."
+    t.bigint "entry_id", comment: "The Fun Fact posted; null once it is deleted, so the day stays posted."
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.index ["club_date"], name: "ux_daily_fun_fact_posts_club_date", unique: true
+    t.index ["entry_id"], name: "ix_daily_fun_fact_posts_entry"
   end
 
   create_table "feature_flag_changes", force: :cascade do |t|
@@ -1482,6 +1490,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120404) do
   add_foreign_key "codex_entries", "rpg_club_users", column: "author_user_id", primary_key: "user_id", name: "fk_codex_entries_author"
   add_foreign_key "codex_entry_mentions", "codex_entries", column: "entry_id", name: "fk_codex_entry_mentions_entry", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_codex_entry_mentions_user", on_delete: :cascade
+  add_foreign_key "daily_fun_fact_posts", "codex_entries", column: "entry_id", name: "fk_daily_fun_fact_posts_entry", on_delete: :nullify
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"
