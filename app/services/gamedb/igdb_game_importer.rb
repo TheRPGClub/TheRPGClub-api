@@ -209,23 +209,37 @@ module Gamedb
     # IGDB can return several release_dates for one platform and region (a
     # re-release, an edition, a TBA placeholder). Keep the earliest per platform
     # per region, Japan included (ADR 0009): any dated row, exact or vague,
-    # beats TBA, and on the same date the more precise row wins. A platform and
-    # region with only TBA rows keeps one TBA Release. A missing region counts
-    # as Worldwide, as ensure_region stores it.
+    # beats TBA, and on the same date the more precise row wins. A vague row is
+    # passed over when a more precise row falls inside its period, so IGDB's
+    # "Q3 2027" never hides the 2027-08-14 it also knows (a "Q2 2027" still
+    # beats that later day). A platform and region with only TBA rows keeps one
+    # TBA Release. A missing region counts as Worldwide, as ensure_region
+    # stores it.
     def earliest_release_per_platform_and_region(release_dates)
-      Array(release_dates).each_with_object({}) do |release, earliest|
-        igdb_platform_id = release.dig(:platform, :igdb_id)
-        next if igdb_platform_id.blank?
+      Array(release_dates)
+        .select { |release| release.dig(:platform, :igdb_id).present? }
+        .group_by { |release| [ release.dig(:platform, :igdb_id), release[:region] || DEFAULT_RELEASE_REGION ] }
+        .transform_values do |releases|
+          releases.reject { |vague| releases.any? { |sharper| sharpens?(sharper, vague) } }.min_by { |release| release_order(release) }
+        end
+    end
 
-        key = [ igdb_platform_id, release[:region] || DEFAULT_RELEASE_REGION ]
-        current = earliest[key]
-        earliest[key] = release if current.nil? || (release_order(release) <=> release_order(current)).negative?
-      end
+    # Whether `sharper` dates the same release more precisely than `vague`:
+    # it is more precise and its date falls inside `vague`'s period.
+    def sharpens?(sharper, vague)
+      return false if sharper[:date].nil? || vague[:date].nil?
+      return false unless precision_rank(sharper) < precision_rank(vague)
+
+      GamedbRelease.period(vague[:date], vague[:date_precision]).cover?(sharper[:date])
     end
 
     # Sort key for "earliest": TBA (no date) last, then date, then precision.
     def release_order(release)
-      [ release[:date] ? 0 : 1, release[:date] || Date.new(0), GamedbRelease::DATE_PRECISIONS.index(release[:date_precision]) || 0 ]
+      [ release[:date] ? 0 : 1, release[:date] || Date.new(0), precision_rank(release) ]
+    end
+
+    def precision_rank(release)
+      GamedbRelease.precision_rank(release[:date_precision]) || 0
     end
 
     def ensure_platform(ref)

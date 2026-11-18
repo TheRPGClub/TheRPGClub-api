@@ -15811,10 +15811,12 @@ paths:
         Releases are never changed or removed. A pending announcement follows its
         Release''s moved date, an unsent one is dropped when its Release stops being
         an exact day, and a sent one is never reset. IGDB dates kept: one per platform
-        per region (earliest date, exact or vague, Japan included; TBA only when the
-        platform and region has nothing dated; `format` left null). Returns the rebuilt
-        release list (same shape as GET /api/v1/games/{id}/releases), with `meta.added`
-        (how many more releases the game has than before, never negative) and `meta.total`.'
+        per region (earliest date, exact or vague, Japan included, except that a more
+        precise date beats the vague one it falls in, so "Q3 2027" and 2027-08-14
+        keep 2027-08-14; TBA only when the platform and region has nothing dated;
+        `format` left null). Returns the rebuilt release list (same shape as GET /api/v1/games/{id}/releases),
+        with `meta.added` (how many more releases the game has than before, never
+        negative) and `meta.total`.'
       responses:
         '200':
           description: releases refreshed

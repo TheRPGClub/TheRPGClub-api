@@ -934,6 +934,22 @@ RSpec.describe "api/v1/games behavior", type: :request do
         )
       end
 
+      it "prefers a more precise date that falls inside a vague date's period for the same platform and region" do
+        igdb_reports_precisions(
+          [ 2, Date.new(2027, 7, 1), "quarter" ], [ 2, Date.new(2027, 8, 14), "day" ],
+          [ 1, Date.new(2027, 1, 1), "year" ], [ 1, Date.new(2027, 5, 1), "month" ],
+          [ 3, Date.new(2027, 4, 1), "quarter" ], [ 3, Date.new(2027, 8, 14), "day" ]
+        )
+
+        refresh!
+
+        expect(releases_of(game)).to contain_exactly(
+          hash_including("region_code" => "NA", "release_date" => "2027-08-14", "date_precision" => "day"),
+          hash_including("region_code" => "EU", "release_date" => "2027-05-01", "date_precision" => "month"),
+          hash_including("region_code" => "AUS", "release_date" => "2027-04-01", "date_precision" => "quarter")
+        )
+      end
+
       it "sharpens a vague Release into an exact day in place" do
         igdb_reports_precisions([ 2, Date.new(2027, 7, 1), "quarter" ])
         refresh!
