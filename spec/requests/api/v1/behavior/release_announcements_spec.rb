@@ -96,6 +96,51 @@ RSpec.describe "api/v1/release_announcements behavior", type: :request do
       expect(json.fetch("data")).to eq([])
     end
 
+    context "with a Japanese Release (ADR 0009)" do
+      let(:japan) { GamedbRegion.create_with(region_name: "Japan").find_or_create_by!(region_code: "JP") }
+      let(:game) { create(:game) }
+
+      def schedule_and_read_due
+        patch "/api/v1/games/#{game.game_id}/release_announcements", headers: service_headers
+        get "/api/v1/release_announcements/due", headers: service_headers
+        json.fetch("data").map { |row| row.fetch("release_id") }
+      end
+
+      it "waits for the western day when the West has only a vague date" do
+        create(:release, game: game, region: japan, release_date: Date.current + 4)
+        create(:release, game: game, release_date: Date.current.next_year.beginning_of_year, date_precision: "year")
+
+        expect(schedule_and_read_due).to eq([])
+      end
+
+      it "waits for the western day when the West is TBA" do
+        create(:release, game: game, region: japan, release_date: Date.current + 4)
+        create(:release, game: game, release_date: nil)
+
+        expect(schedule_and_read_due).to eq([])
+      end
+
+      it "announces the western day once it becomes exact, and only once" do
+        create(:release, game: game, region: japan, release_date: Date.current + 4)
+        west = create(:release, game: game, release_date: Date.current.next_year.beginning_of_year,
+          date_precision: "year")
+        expect(schedule_and_read_due).to eq([])
+
+        west.update!(release_date: Date.current + 6, date_precision: "day")
+        expect(schedule_and_read_due).to eq([ west.release_id ])
+
+        patch "/api/v1/release_announcements/#{west.release_id}", headers: service_headers,
+          params: { data: { sent_at: Time.current.iso8601 } }, as: :json
+        expect(schedule_and_read_due).to eq([])
+      end
+
+      it "still announces a Japan-only game" do
+        japanese = create(:release, game: game, region: japan, release_date: Date.current + 4)
+
+        expect(schedule_and_read_due).to eq([ japanese.release_id ])
+      end
+    end
+
     it "stamps pending announcements whose release already shipped as release-window-missed" do
       shipped = create(:release, release_date: 1.day.ago)
       missed = create(:release_announcement, release: shipped, announce_at: 2.days.ago)

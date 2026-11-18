@@ -30,29 +30,53 @@ module Gamedb
     # (ADR 0009): announcements go out for the release most members get.
     JAPAN_REGION_CODE = "JP"
 
+    # A Japanese Release waits while its game has any Release outside Japan,
+    # at any Date Precision (TBA included): a JP exact day beside a western
+    # "2027" is never announced, so the western day can be once it is known.
+    # Evaluated per row of `r` (and its region `g`).
+    WAITS_FOR_WEST_SQL = <<~SQL.squish
+      (g.region_code = '#{JAPAN_REGION_CODE}' AND EXISTS (
+        SELECT 1
+        FROM gamedb_releases west
+        JOIN gamedb_regions west_region ON west_region.region_id = west.region_id
+        WHERE west.game_id = r.game_id
+          AND west_region.region_code <> '#{JAPAN_REGION_CODE}'
+      ))
+    SQL
+
     # Every exact-day Release ranked for canonicality within its game: only
     # Date Precision `day` is announced (api#392), so a vague or TBA Release
     # is never a candidate, never skipped, and never shifts the canonical
-    # date. The canonical Release (`canonical_rank` 1) is the earliest outside
-    # Japan, or the earliest Japanese one when the game has nothing else, with
-    # the lowest `release_id` breaking a same-day tie. `canonical_date` is that
-    # Release's date, so the others can be told apart as same-day duplicates
-    # (any region, Japan included) or port-only Releases (any other date).
+    # date. The canonical Release (`canonical` true) is the earliest outside
+    # Japan, or the earliest Japanese one when the game has no Release outside
+    # Japan at all, with the lowest `release_id` breaking a same-day tie.
+    # `canonical_date` is that Release's date, so the others can be told apart
+    # as same-day duplicates (any region, Japan included) or port-only
+    # Releases (any other date); it is NULL while the game's Japanese Releases
+    # wait for a western day, so every one of them is port-only.
     # Split around its WHERE clause so a single game can be ranked.
     RANKED_RELEASES_SELECT_SQL = <<~SQL.squish
-      SELECT r.release_id,
-             r.release_date,
-             FIRST_VALUE(r.release_date) OVER canonical_order AS canonical_date,
-             ROW_NUMBER() OVER canonical_order AS canonical_rank
-      FROM gamedb_releases r
-      JOIN gamedb_regions g ON g.region_id = r.region_id
-      WHERE r.date_precision = '#{GamedbRelease.date_precisions[:day]}'
+      SELECT ranked_rows.release_id,
+             ranked_rows.release_date,
+             CASE WHEN ranked_rows.first_waits THEN NULL ELSE ranked_rows.first_date END AS canonical_date,
+             (ranked_rows.canonical_rank = 1 AND NOT ranked_rows.waits) AS canonical
+      FROM (
+        SELECT r.release_id,
+               r.release_date,
+               #{WAITS_FOR_WEST_SQL} AS waits,
+               FIRST_VALUE(#{WAITS_FOR_WEST_SQL}) OVER canonical_order AS first_waits,
+               FIRST_VALUE(r.release_date) OVER canonical_order AS first_date,
+               ROW_NUMBER() OVER canonical_order AS canonical_rank
+        FROM gamedb_releases r
+        JOIN gamedb_regions g ON g.region_id = r.region_id
+        WHERE r.date_precision = '#{GamedbRelease.date_precisions[:day]}'
     SQL
     RANKED_RELEASES_WINDOW_SQL = <<~SQL.squish
-      WINDOW canonical_order AS (
-        PARTITION BY r.game_id
-        ORDER BY (g.region_code = '#{JAPAN_REGION_CODE}') ASC, r.release_date ASC, r.release_id ASC
-      )
+        WINDOW canonical_order AS (
+          PARTITION BY r.game_id
+          ORDER BY (g.region_code = '#{JAPAN_REGION_CODE}') ASC, r.release_date ASC, r.release_id ASC
+        )
+      ) ranked_rows
     SQL
 
     # The canonical Release of every game, for the due feed's
@@ -60,7 +84,7 @@ module Gamedb
     CANONICAL_RELEASE_IDS_SQL = <<~SQL.squish
       SELECT ranked.release_id
       FROM (#{RANKED_RELEASES_SELECT_SQL} #{RANKED_RELEASES_WINDOW_SQL}) ranked
-      WHERE ranked.canonical_rank = 1
+      WHERE ranked.canonical
     SQL
 
     # Row counts written by each step.
@@ -123,7 +147,7 @@ module Gamedb
            AND NOT EXISTS (
              SELECT 1
              FROM (#{ranked_releases_sql}) ranked
-             WHERE ranked.canonical_rank > 1
+             WHERE NOT ranked.canonical
                AND ranked.release_id = a.release_id
            )
       SQL
@@ -132,7 +156,8 @@ module Gamedb
     # Step 3. `same-day-platform-duplicate` for a Release on the canonical
     # Release's date (any platform or region), `port-only-release` for any
     # other date, including a Japanese Release earlier than a canonical one
-    # outside Japan. `src` is the game's ranked non-canonical Releases, so the
+    # outside Japan and a Japanese Release still waiting for a western day.
+    # `src` is the game's ranked non-canonical Releases, so the
     # join self-scopes to this game; only pending rows are touched.
     def mark_non_canonical
       exec_update(<<~SQL.squish)
@@ -146,7 +171,7 @@ module Gamedb
                         THEN #{quote(SAME_DAY_DUPLICATE_REASON)}
                         ELSE #{quote(PORT_ONLY_RELEASE_REASON)} END AS skip_reason
             FROM (#{ranked_releases_sql}) ranked
-            WHERE ranked.canonical_rank > 1
+            WHERE NOT ranked.canonical
           ) src
          WHERE a.release_id = src.release_id
            AND a.sent_at IS NULL
@@ -155,8 +180,9 @@ module Gamedb
     end
 
     # The game's Releases ranked for canonicality. The window partitions by
-    # `game_id`, so narrowing the rows to one game yields the same ranks as
-    # the due feed's global query.
+    # `game_id` (and the Japan wait looks only at the row's own game), so
+    # narrowing the rows to one game yields the same ranks as the due feed's
+    # global query.
     def ranked_releases_sql
       "#{RANKED_RELEASES_SELECT_SQL} AND r.game_id = #{@game_id} #{RANKED_RELEASES_WINDOW_SQL}"
     end

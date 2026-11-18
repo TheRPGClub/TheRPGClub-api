@@ -56,7 +56,8 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
                   '(`same-day-platform-duplicate` for a release on the canonical release\'s date, in any region, ' \
                   '`port-only-release` for any other date). Releases that are not an exact day are never ' \
                   'announced or skipped. The canonical release is the game\'s earliest exact-day release outside ' \
-                  'Japan, or its earliest Japanese one when it has no other, with the lowest `release_id` breaking ' \
+                  'Japan, or its earliest Japanese one when it has no release outside Japan at any Date Precision ' \
+                  '(a vague or TBA western release makes Japanese releases wait), with the lowest `release_id` breaking ' \
                   'a same-day tie. Every IGDB refresh of the game (POST /api/v1/games/{id}/refresh-releases, ' \
                   'import and the weekly refresh) runs the same steps.'
       produces 'application/json'
@@ -116,7 +117,8 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
                   'to post: not yet sent or skipped, whose `announce_at` has passed, whose release is still in ' \
                   'the future (its plain `release_date`, YYYY-MM-DD, is after today in UTC), and which are the ' \
                   'canonical release for their game (its earliest exact-day release outside ' \
-                  'Japan, or its earliest Japanese one when it has no other; on a same-day tie the lowest ' \
+                  'Japan, or its earliest Japanese one when it has no release outside Japan at any Date Precision, ' \
+                  'TBA included; on a same-day tie the lowest ' \
                   '`release_id`). A game is announced once: no release of a game whose announcement was already ' \
                   'sent is offered again. Any pending announcement whose window has already ' \
                   'passed (its release has shipped) is marked skipped (`release-window-missed`) server-side ' \
