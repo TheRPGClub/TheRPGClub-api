@@ -22,13 +22,15 @@ module Birthdays
     Date.new(year, month, day)
   end
 
-  # The members of `users` whose Birthday falls on `date`, shared or not (by
-  # month and day, ADR 0011): those born on its month and day, and on
-  # 28 February of a non-leap year those born on 29 February too.
-  def self.falling_on(date, users = RpgClubUser.all)
-    born = users.where(birth_month: date.month, birth_day: date.day)
-    return born unless date.month == 2 && date.day == 28 && !date.leap?
+  # The [month, day] Birthdays falling on `date` (by falls_on): its own month
+  # and day, and on 28 February of a non-leap year 29 February too.
+  def self.days_falling_on(date)
+    [ [ date.month, date.day ], [ 2, 29 ] ].uniq.select { |month, day| falls_on(month, day, date.year) == date }
+  end
 
-    born.or(users.where(birth_month: 2, birth_day: 29))
+  # The members of `users` whose Birthday falls on `date`, shared or not (by
+  # month and day, ADR 0011).
+  def self.falling_on(date, users = RpgClubUser.all)
+    users.where([ :birth_month, :birth_day ] => days_falling_on(date))
   end
 end

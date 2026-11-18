@@ -3,7 +3,8 @@
 module Birthdays
   # Upcoming Birthdays (spec #396, api#400): the shared Birthdays falling
   # from a club day through the next DAYS - 1 days, of members still in the
-  # server. A 29 February Birthday falls on 28 February in other years.
+  # server, on the date each falls on (Birthdays.falls_on: a 29 February
+  # Birthday falls on 28 February in other years).
   # Members are looked up by month and day directly (ADR 0011). Each entry is
   # the member, the month and day, the date it falls on and whether that is
   # today; never the year or the age.
@@ -12,7 +13,7 @@ module Birthdays
 
     module_function
 
-    # `today` is the club's date (Challenges.today). Ordered by the date the
+    # `today` is the club's date (Birthdays.today). Ordered by the date the
     # Birthday falls on, then by the member's display name.
     def entries(today)
       falls_on = window(today)
@@ -23,12 +24,11 @@ module Birthdays
         .sort_by { |entry| [ entry[:on], entry[:display_name].downcase, entry[:user_id] ] }
     end
 
-    # [month, day] => the date in the window a Birthday on it falls on.
+    # [month, day] => the date in the window a Birthday on it falls on
+    # (Birthdays.days_falling_on).
     def window(today)
-      days = (today...(today + DAYS))
-      days.each_with_object({}) do |date, falls_on|
-        falls_on[[ date.month, date.day ]] = date
-        falls_on[[ 2, 29 ]] = date if date.month == 2 && date.day == 28 && !date.leap?
+      (today...(today + DAYS)).each_with_object({}) do |date, falls_on|
+        Birthdays.days_falling_on(date).each { |month_day| falls_on[month_day] = date }
       end
     end
 
