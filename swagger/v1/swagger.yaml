@@ -764,6 +764,25 @@ components:
               "$ref": "#/components/schemas/JournaledGame"
           counts:
             "$ref": "#/components/schemas/UserCounts"
+          birthday:
+            type: object
+            properties:
+              month:
+                type: integer
+                minimum: 1
+                maximum: 12
+                example: 5
+              day:
+                type: integer
+                minimum: 1
+                maximum: 31
+                example: 4
+            required:
+            - month
+            - day
+            description: The member's Birthday, the month and day of their Birth Date,
+              when they share it (api#399); null otherwise. Never the year.
+            nullable: true
         description: The Feature-owned previews (now_playing, reviews, completions,
           journal) are left out, like their `counts`, when the viewer cannot use that
           Feature.
@@ -4892,6 +4911,11 @@ components:
           example: '1990-05-04'
           description: 'The member''s Birth Date: "1990-05-04", or "05-04" when they
             gave only the day and month (api#398). Null until they enter it.'
+        birthday_shared:
+          type: boolean
+          description: Whether the member shares their Birthday, the day and month
+            (never the year). Off until the member turns it on; removing the Birth
+            Date turns it off (api#399).
         changes_left_this_month:
           type: integer
           example: 1
@@ -4908,6 +4932,7 @@ components:
       required:
       - user_id
       - birth_date
+      - birthday_shared
       - changes_left_this_month
       - next_change_on
     BirthDateRefusal:
@@ -4916,7 +4941,11 @@ components:
         error:
           type: string
           description: Why it was refused. For the limit, names the date the member
-            may change it again.
+            may change it again. `birth_date_required` when sharing a Birthday without
+            a Birth Date.
+        message:
+          type: string
+          description: 'Only with `birth_date_required`: what the member is told.'
         next_change_on:
           type: string
           format: date
@@ -7698,17 +7727,23 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
     put:
-      summary: Set a member's Birth Date
+      summary: Set a member's Birth Date or share its Birthday
       tags:
       - Users
-      description: 'Sets the member''s Birth Date, or removes it with null. The year
-        is optional: `MM-DD` sets a day and month alone, served back as `"05-04"`.
-        A member may set or change their own at most twice per calendar month (US
-        Eastern), and entering it the first time counts; a third change that month
-        gets 422 with `next_change_on`, the first day of next month. Setting the date
-        it already has changes nothing and doesn''t count. Staff (Moderators and above)
-        may set anyone''s at any time, and their changes don''t use up the member''s.
-        Returns the whole document, as GET does.'
+      description: 'Sets the member''s Birth Date, or removes it with null, and/or
+        turns sharing its Birthday (the day and month, never the year) on or off with
+        `birthday_shared`; send either or both, and the request is applied whole or
+        not at all. Only the member can turn sharing on, and only with a Birth Date
+        (422 `birth_date_required`); staff can turn it off for anyone, and get 403
+        turning it on for another member. Sharing never counts toward the limit below,
+        and removing the Birth Date turns it off. The year is optional: `MM-DD` sets
+        a day and month alone, served back as `"05-04"`. A member may set or change
+        their own at most twice per calendar month (US Eastern), and entering it the
+        first time counts; a third change that month gets 422 with `next_change_on`,
+        the first day of next month. Setting the date it already has changes nothing
+        and doesn''t count. Staff (Moderators and above) may set anyone''s at any
+        time, and their changes don''t use up the member''s. Returns the whole document,
+        as GET does.'
       parameters: []
       responses:
         '200':
@@ -7723,9 +7758,10 @@ paths:
                 required:
                 - data
         '422':
-          description: the member already changed it twice this month, or birth_date
-            is missing, not a date from 1900 to today, or not a real MM-DD month and
-            day
+          description: 'the member already changed it twice this month; birth_date
+            and birthday_shared are both missing; birth_date is not a date from 1900
+            to today or a real MM-DD month and day; birthday_shared is not a boolean;
+            or `birth_date_required`: sharing a Birthday without a Birth Date'
           content:
             application/json:
               schema:
@@ -7737,7 +7773,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: 'forbidden: caller is neither the member nor staff'
+          description: 'forbidden: caller is neither the member nor staff, or staff
+            turning sharing on for another member'
           content:
             application/json:
               schema:
@@ -7770,13 +7807,16 @@ paths:
                       example: '1990-05-04'
                       description: YYYY-MM-DD, from 1900 to today, or MM-DD without
                         the year (any real month and day, 29 February included); null
-                        removes it.
+                        removes it and stops sharing its Birthday.
+                    birthday_shared:
+                      type: boolean
+                      description: Share the member's Birthday (true) or stop sharing
+                        it (false). Only the member can send true.
                     acting_user_id:
                       type: string
                       description: 'Service token only (required): the Discord user
                         the bot acts for.'
-                  required:
-                  - birth_date
+                  description: At least one of birth_date and birthday_shared.
               required:
               - data
         required: true

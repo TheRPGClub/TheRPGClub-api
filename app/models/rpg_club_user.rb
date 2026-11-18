@@ -197,6 +197,12 @@ class RpgClubUser < ApplicationRecord
     role_moderator? || admin_or_above?
   end
 
+  # The member's Birthday, the month and day of their Birth Date, when they
+  # share it (api#399); nil otherwise. Never the year.
+  def shared_birthday
+    { month: birth_month, day: birth_day } if birthday_shared? && birth_date
+  end
+
   def membership
     {
       admin: role_admin?,

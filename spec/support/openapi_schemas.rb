@@ -264,7 +264,13 @@ module OpenapiSchemas
         reviews: array_of("ReviewEntry"),
         completions: array_of("CompletionEntry"),
         journal: array_of("JournaledGame"),
-        counts: ref("UserCounts")
+        counts: ref("UserCounts"),
+        birthday: obj(
+          month: int.merge(minimum: 1, maximum: 12, example: 5),
+          day: int.merge(minimum: 1, maximum: 31, example: 4),
+          _description: "The member's Birthday, the month and day of their Birth Date, when they share it " \
+                        "(api#399); null otherwise. Never the year."
+        ).merge(nullable: true)
       ),
       # The members-list shape returned by users#index when filtered by
       # `has_platform` (#99, UserWithSocialsResource): UserSummary plus the
@@ -1492,6 +1498,10 @@ module OpenapiSchemas
         birth_date: str(nullable: true, pattern: '^(\\d{4}-)?\\d{2}-\\d{2}$', example: "1990-05-04",
           description: "The member's Birth Date: \"1990-05-04\", or \"05-04\" when they gave only the day and " \
                        "month (api#398). Null until they enter it."),
+        birthday_shared: bool.merge(
+          description: "Whether the member shares their Birthday, the day and month (never the year). Off until " \
+                       "the member turns it on; removing the Birth Date turns it off (api#399)."
+        ),
         changes_left_this_month: int.merge(
           example: 1,
           description: "How many more times the member may set or change it this calendar month (US Eastern), " \
@@ -1500,10 +1510,12 @@ module OpenapiSchemas
         next_change_on: str(nullable: true, format: "date", example: "2026-12-01",
           description: "When changes_left_this_month is 0, the first day of next month, when the member may " \
                        "change it again; null otherwise."),
-        _required: %w[user_id birth_date changes_left_this_month next_change_on]
+        _required: %w[user_id birth_date birthday_shared changes_left_this_month next_change_on]
       ),
       BirthDateRefusal: obj(
-        error: str(description: "Why it was refused. For the limit, names the date the member may change it again."),
+        error: str(description: "Why it was refused. For the limit, names the date the member may change it " \
+                                "again. `birth_date_required` when sharing a Birthday without a Birth Date."),
+        message: str(description: "Only with `birth_date_required`: what the member is told."),
         next_change_on: str(format: "date", example: "2026-12-01",
           description: "Only when the member reached the limit: the first day of next month (US Eastern)."),
         _required: %w[error]
