@@ -13,6 +13,15 @@ module Birthdays
   # member who already has this year's is left out, so a re-run (or a Birth
   # Date moved to a later day) queues nothing new for them.
   #
+  # It runs once a day and a missed run is not retried (owner decision,
+  # 2026-11-18): if the API is down or redeploying at 10:00 New York time,
+  # Solid Queue doesn't backfill the tick and its machine-local queue loses
+  # anything not yet performed, so that day's members are not greeted and
+  # are greeted next year instead. Likewise a member who starts sharing after
+  # 10:00 on their Birthday waits for next year. The bot being down is
+  # covered: the bot job waits in Postgres and the bot posts it later the same
+  # club day.
+  #
   # Birthdays are not a Feature: `birthday_post` is in neither
   # BotJob::PUBLIC_POST_FEATURES nor FEATURE_WORK, so it carries no
   # `feature_key` and no Feature Flag gates it.
@@ -22,6 +31,8 @@ module Birthdays
     KIND = "birthday_post"
 
     def perform
+      # The club day the job runs on, not the cron tick's: a worker stalled
+      # past midnight would greet the next day's members (very unlikely).
       today = ClubDay.today
       BirthdayPost.transaction do
         greeted = record_posts(due(today), today)
