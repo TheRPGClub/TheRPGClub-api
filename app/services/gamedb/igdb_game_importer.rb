@@ -39,7 +39,9 @@ module Gamedb
       5 => { code: "JP", name: "Japan" },
       6 => { code: "CN", name: "China" },
       7 => { code: "AS", name: "Asia" },
-      8 => { code: "WW", name: "Worldwide" }
+      8 => { code: "WW", name: "Worldwide" },
+      9 => { code: "KR", name: "Korea" },
+      10 => { code: "BR", name: "Brazil" }
     }.freeze
 
     # The fallback region applied when a release date carries none (WW).
