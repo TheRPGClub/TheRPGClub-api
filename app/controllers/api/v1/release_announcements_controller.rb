@@ -20,52 +20,12 @@ module Api
       before_action :require_service!, only: %i[due]
       before_action :require_admin_or_service!, only: %i[create update destroy skip sync]
 
-      # Skip reasons shared with the bot (GameReleaseAnnouncement.ts). `port-only`
-      # / `same-day` are the canonicality skips applied by #sync; the missed-window
-      # reason is stamped by #due once a release's announce window has lapsed.
-      PORT_ONLY_RELEASE_REASON = "port-only-release"
-      SAME_DAY_DUPLICATE_REASON = "same-day-platform-duplicate"
+      # Stamped by #due once a release's announce window has lapsed. The
+      # canonicality skips live in Gamedb::ReleaseAnnouncementSchedule.
       MISSED_WINDOW_REASON = "release-window-missed"
 
       DEFAULT_DUE_LIMIT = 25
       MAX_DUE_LIMIT = 100
-
-      # Region whose Releases only become canonical when a game has no other
-      # (ADR 0009): announcements go out for the release most members get.
-      JAPAN_REGION_CODE = "JP"
-
-      # Every exact-day Release ranked for canonicality within its game: only
-      # Date Precision `day` is announced (api#392), so a vague or TBA Release
-      # is never a candidate, never skipped, and never shifts the canonical
-      # date. The canonical Release (`canonical_rank` 1) is the earliest outside
-      # Japan, or the earliest Japanese one when the game has nothing else, with
-      # the lowest `release_id` breaking a same-day tie. `canonical_date` is that
-      # Release's date, so the others can be told apart as same-day duplicates
-      # (any region, Japan included) or port-only Releases (any other date).
-      # Split around its WHERE clause so #sync can narrow it to one game.
-      RANKED_RELEASES_SELECT_SQL = <<~SQL.squish
-        SELECT r.release_id,
-               r.release_date,
-               FIRST_VALUE(r.release_date) OVER canonical_order AS canonical_date,
-               ROW_NUMBER() OVER canonical_order AS canonical_rank
-        FROM gamedb_releases r
-        JOIN gamedb_regions g ON g.region_id = r.region_id
-        WHERE r.date_precision = 'day'
-      SQL
-      RANKED_RELEASES_WINDOW_SQL = <<~SQL.squish
-        WINDOW canonical_order AS (
-          PARTITION BY r.game_id
-          ORDER BY (g.region_code = '#{JAPAN_REGION_CODE}') ASC, r.release_date ASC, r.release_id ASC
-        )
-      SQL
-
-      # Canonical release per game across every game, used as the
-      # `release_id IN (…)` filter on #due.
-      CANONICAL_RELEASE_IDS_SQL = <<~SQL.squish
-        SELECT ranked.release_id
-        FROM (#{RANKED_RELEASES_SELECT_SQL} #{RANKED_RELEASES_WINDOW_SQL}) ranked
-        WHERE ranked.canonical_rank = 1
-      SQL
 
       # A game is announced once (ADR 0009). Its sent announcement lives on the
       # announced Release, and `gamedb_games.release_announced_at` keeps it
@@ -155,29 +115,17 @@ module Api
       # PATCH/PUT /api/v1/games/:id/release_announcements
       #
       # Admin/service-only. Rebuilds the game's announcement schedule from its
-      # releases and applies canonicality (the bot's `syncReleaseAnnouncements` +
-      # `markNonCanonicalAnnouncements`). Server-side and body-less — everything is
-      # computed from `gamedb_releases`. Runs three steps, scoped to the path game,
-      # in one transaction:
-      #   1. upsert: for every release with a `release_date`, schedule
-      #      `announce_at = release_date - 7 days` (insert, or move a pending row
-      #      whose time changed; rows already sent/skipped are left alone)
-      #   2. restore: clear the canonicality skip on rows that were skipped as
-      #      port-only / same-day-duplicate but no longer qualify
-      #   3. mark: skip rows that are now non-canonical (`port-only-release` for a
-      #      later release date, `same-day-platform-duplicate` for a same-day tie)
+      # releases and applies canonicality (Gamedb::ReleaseAnnouncementSchedule:
+      # upsert, restore, mark), in one transaction. Body-less: everything is
+      # computed from `gamedb_releases`. An IGDB refresh runs the same steps,
+      # so this is the bot's catch-up for Releases changed any other way.
       # Returns the row counts written by each step.
       def sync
-        game_id = params[:id].to_i
-        result = {}
-
-        GamedbReleaseAnnouncement.transaction do
-          result[:upserted] = upsert_announcements(game_id)
-          result[:restored] = restore_non_canonical(game_id)
-          result[:skipped]  = mark_non_canonical(game_id)
+        result = GamedbReleaseAnnouncement.transaction do
+          Gamedb::ReleaseAnnouncementSchedule.call(params[:id].to_i)
         end
 
-        render json: { data: result }
+        render json: { data: result.to_h }
       end
 
       private
@@ -196,7 +144,7 @@ module Api
           .where(sent_at: nil, skipped_at: nil)
           .where("gamedb_release_announcements.announce_at <= :now", now: now)
           .where("gamedb_releases.release_date > :today", today: now.utc.to_date)
-          .where("gamedb_release_announcements.release_id IN (#{CANONICAL_RELEASE_IDS_SQL})")
+          .where("gamedb_release_announcements.release_id IN (#{Gamedb::ReleaseAnnouncementSchedule::CANONICAL_RELEASE_IDS_SQL})")
           .where.not(GAME_ALREADY_ANNOUNCED_SQL)
           .select(
             "gamedb_release_announcements.release_id AS release_id",
@@ -228,78 +176,6 @@ module Api
         [ raw, MAX_DUE_LIMIT ].min
       end
 
-      # Step 1 of #sync. Upsert announcements for every exact-day (Date
-      # Precision `day`) release of the game, scheduling `announce_at =
-      # release_date - 7 days` (UTC midnight). On conflict (release_id PK) only a
-      # pending row whose time actually changed is moved — rows the send loop
-      # already owns (`sent_at`/`skipped_at` set) are never touched.
-      def upsert_announcements(game_id)
-        exec_update(<<~SQL.squish)
-          INSERT INTO gamedb_release_announcements
-            (release_id, announce_at, sent_at, skipped_at, skip_reason, created_at, updated_at)
-          SELECT r.release_id, r.release_date - INTERVAL '7 days', NULL, NULL, NULL,
-                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            FROM gamedb_releases r
-           WHERE r.date_precision = 'day'
-             AND r.game_id = #{game_id}
-          ON CONFLICT (release_id) DO UPDATE SET
-            announce_at = EXCLUDED.announce_at,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE gamedb_release_announcements.sent_at IS NULL
-            AND gamedb_release_announcements.skipped_at IS NULL
-            AND gamedb_release_announcements.announce_at <> EXCLUDED.announce_at
-        SQL
-      end
-
-      # Step 2 of #sync. Clear the canonicality skip on the game's rows that were
-      # skipped as port-only / same-day-duplicate but no longer qualify as
-      # non-canonical. The `release_id IN (…this game…)` guard is required: the
-      # `NOT EXISTS` is over this game's ranked releases only, so without it a
-      # different game's skip would falsely qualify for restore.
-      def restore_non_canonical(game_id)
-        exec_update(<<~SQL.squish)
-          UPDATE gamedb_release_announcements
-             SET skipped_at = NULL,
-                 skip_reason = NULL,
-                 updated_at = CURRENT_TIMESTAMP
-           WHERE sent_at IS NULL
-             AND skip_reason IN (#{quote(PORT_ONLY_RELEASE_REASON)}, #{quote(SAME_DAY_DUPLICATE_REASON)})
-             AND release_id IN (SELECT release_id FROM gamedb_releases WHERE game_id = #{game_id})
-             AND NOT EXISTS (
-               SELECT 1
-               FROM (#{ranked_releases_sql(game_id)}) ranked
-               WHERE ranked.canonical_rank > 1
-                 AND ranked.release_id = gamedb_release_announcements.release_id
-             )
-        SQL
-      end
-
-      # Step 3 of #sync. Skip the game's now-non-canonical rows:
-      # `same-day-platform-duplicate` for a Release on the canonical Release's
-      # date (any platform or region), `port-only-release` for any other date,
-      # including a Japanese Release earlier than a canonical one outside
-      # Japan. `src` is the game's ranked non-canonical releases, so the join
-      # self-scopes to this game; only pending rows are touched.
-      def mark_non_canonical(game_id)
-        exec_update(<<~SQL.squish)
-          UPDATE gamedb_release_announcements a
-             SET skipped_at = CURRENT_TIMESTAMP,
-                 skip_reason = src.skip_reason,
-                 updated_at = CURRENT_TIMESTAMP
-            FROM (
-              SELECT ranked.release_id,
-                     CASE WHEN ranked.release_date = ranked.canonical_date
-                          THEN #{quote(SAME_DAY_DUPLICATE_REASON)}
-                          ELSE #{quote(PORT_ONLY_RELEASE_REASON)} END AS skip_reason
-              FROM (#{ranked_releases_sql(game_id)}) ranked
-              WHERE ranked.canonical_rank > 1
-            ) src
-           WHERE a.release_id = src.release_id
-             AND a.sent_at IS NULL
-             AND a.skipped_at IS NULL
-        SQL
-      end
-
       # Fold the bot's `markMissedAnnouncements` into #due: stamp any pending
       # announcement whose window has already passed (its release has shipped) as
       # skipped with `release-window-missed`, so it drops out of the due feed.
@@ -318,14 +194,6 @@ module Api
                  AND r.release_date <= #{quote(now.utc.to_date)}
              )
         SQL
-      end
-
-      # The game's releases ranked for canonicality (RANKED_RELEASES_*_SQL).
-      # Scoped to the game; the window partitions are by `game_id`, so
-      # restricting the rows here yields the same ranks as the global query
-      # #due uses for this game.
-      def ranked_releases_sql(game_id)
-        "#{RANKED_RELEASES_SELECT_SQL} AND r.game_id = #{Integer(game_id)} #{RANKED_RELEASES_WINDOW_SQL}"
       end
 
       def exec_update(sql)

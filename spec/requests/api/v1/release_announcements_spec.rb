@@ -56,7 +56,8 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
                   '`port-only-release` for any other date). Releases that are not an exact day are never ' \
                   'announced or skipped. The canonical release is the game\'s earliest exact-day release outside ' \
                   'Japan, or its earliest Japanese one when it has no other, with the lowest `release_id` breaking ' \
-                  'a same-day tie.'
+                  'a same-day tie. Every IGDB refresh of the game (POST /api/v1/games/{id}/refresh-releases, ' \
+                  'import and the weekly refresh) runs the same steps.'
       produces 'application/json'
 
       response '200', 'schedule synced' do

@@ -17,18 +17,19 @@ module Gamedb
   # it is never announced again. Manual Releases are never updated or removed.
   #
   # Because a Release keeps its id, its announcement keeps its delivery state:
-  # a pending announcement follows a moved date (`announce_at` = date - 7 days),
   # an unsent one is dropped when its Release stops being an exact day, and a
   # sent or skipped one is never reset, so a refresh inside the 7-day
   # window can no longer make the due feed offer the game again.
   #
+  # It then rebuilds the game's announcement schedule
+  # (Gamedb::ReleaseAnnouncementSchedule): new or newly exact `day` Releases
+  # are scheduled, a pending announcement follows a moved date, and
+  # canonicality is re-ranked, so the weekly refresh does not wait for the
+  # bot's PATCH /games/:id/release_announcements.
+  #
   # Choosing which IGDB dates to report (and touching the game for the
   # relations cache) is the caller's job.
   class ReleaseSync
-    # The release announcement goes out this long before the Release's date
-    # (matches ReleaseAnnouncementsController#upsert_announcements).
-    ANNOUNCEMENT_LEAD = 7.days
-
     # One Release as IGDB reports it, already resolved to local ids, with its
     # plain date at its Date Precision (no date for `tba`).
     Reported = Data.define(:platform_id, :region_id, :release_date, :date_precision) do
@@ -53,6 +54,7 @@ module Gamedb
 
         kept = reported.uniq(&:key).map { |release| apply!(release, candidates.fetch(release.key, [])) }
         remove!(releases.select(&:source_igdb?) - kept)
+        ReleaseAnnouncementSchedule.call(@game.game_id)
       end
       @game.releases.reset
     end
@@ -69,7 +71,7 @@ module Gamedb
       release.release_date = reported.release_date
       release.date_precision = reported.date_precision
       release.save!
-      follow_date!(release) if release.saved_change_to_release_date? || release.saved_change_to_date_precision?
+      drop_unsent_announcement!(release) unless release.date_precision_day?
       release
     end
 
@@ -85,17 +87,12 @@ module Gamedb
       )
     end
 
-    # Only `day` Releases are announced, so a Release that turned vague or
-    # TBA loses its unsent announcement (pending or skipped; a later exact day
-    # schedules a fresh one). Otherwise only a pending announcement moves with
-    # its date; the send loop owns sent/skipped rows.
-    def follow_date!(release)
+    # Only `day` Releases are announced, so a Release that is vague or TBA
+    # loses its unsent announcement (pending or skipped; a later exact day
+    # schedules a fresh one). A sent one stays as the game's announcement.
+    def drop_unsent_announcement!(release)
       announcement = release.announcement
-      return if announcement.nil? || announcement.sent_at
-      return announcement.destroy! unless release.date_precision_day?
-      return if announcement.skipped_at
-
-      announcement.update!(announce_at: release.release_date - ANNOUNCEMENT_LEAD)
+      announcement.destroy! if announcement && announcement.sent_at.nil?
     end
 
     # The announcement row FKs to the Release, so it goes too, whatever its

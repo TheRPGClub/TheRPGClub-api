@@ -492,9 +492,10 @@ RSpec.describe 'api/v1/games', type: :request do
                   'on platform + region: an IGDB Release takes IGDB\'s date and Date Precision, else the oldest matching Manual ' \
                   'Release is adopted (becomes `source` "igdb"), else a new IGDB Release is added. IGDB ' \
                   'Releases IGDB no longer reports are removed with their announcement; Manual Releases are ' \
-                  'never changed or removed. A pending announcement follows its Release\'s moved date, an ' \
-                  'unsent one is dropped when its Release stops being an exact day, and a sent one is never ' \
-                  'reset. IGDB dates kept: one per platform per region (earliest date, exact or vague, Japan ' \
+                  'never changed or removed. An unsent announcement is dropped when its Release stops being an ' \
+                  'exact day, and a sent one is never reset; then the game\'s announcement schedule is rebuilt ' \
+                  'as PATCH /api/v1/games/{id}/release_announcements does (new or newly exact `day` Releases ' \
+                  'scheduled, a pending announcement moved with its date, canonicality re-ranked). IGDB dates kept: one per platform per region (earliest date, exact or vague, Japan ' \
                   'included, except that a more precise date beats the vague one it falls in, so "Q3 2027" and ' \
                   '2027-08-14 keep 2027-08-14; TBA only when the platform and region has nothing dated; ' \
                   '`format` left null). ' \
