@@ -88,6 +88,22 @@ module Api
           render json: { fun_fact: entry_payload(entry) }
         end
 
+        # GET /api/v1/codex/fun_facts/today
+        #
+        # Today's Daily Fun Fact: the Fun Fact posted for the club date
+        # (America/New_York), or before today's post the latest earlier one,
+        # as `{ fun_fact: <entry>, club_date: "YYYY-MM-DD" }` with the date it
+        # was posted for. `{ fun_fact: null, club_date: null }` when nothing
+        # has been posted, or that Fun Fact has since been deleted. A pure
+        # read: it draws nothing and posts nothing.
+        def today
+          post = DailyFunFactPost.where(club_date: ..Challenges.today).order(club_date: :desc).first
+          entry = post&.entry
+          return render(json: { fun_fact: nil, club_date: nil }) unless entry
+
+          render json: { fun_fact: entry_payload(entry), club_date: post.club_date.iso8601 }
+        end
+
         private
 
         def part = CodexEntry::FUN_FACT

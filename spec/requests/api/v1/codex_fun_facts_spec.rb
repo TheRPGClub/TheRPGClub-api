@@ -134,6 +134,37 @@ RSpec.describe 'api/v1/codex/fun_facts', type: :request do
     end
   end
 
+  path '/api/v1/codex/fun_facts/today' do
+    get "Today's Daily Fun Fact" do
+      tags 'Club Codex'
+      description 'Members (any signed-in caller); the bot may name the member it reads for with ' \
+                  '`acting_user_id`, without which `viewer` is all false. The Fun Fact the Daily Fun Fact posted ' \
+                  'for the club date (America/New_York). Before today\'s post (15:00 New York) it is the latest ' \
+                  'earlier one, so `club_date` is the day it was posted for, which may be before today. ' \
+                  '`{ "fun_fact": null, "club_date": null }` when nothing has been posted yet, or when that Fun Fact ' \
+                  'has since been deleted. A pure read: it draws nothing, so the Fun Fact queue does not move. ' \
+                  "#{gate}"
+      produces 'application/json'
+      parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string }
+
+      response '200', 'the posted Fun Fact and its club date, or both null' do
+        schema type: :object, properties: {
+          fun_fact: { allOf: [ { '$ref' => '#/components/schemas/CodexEntry' } ], nullable: true },
+          club_date: { type: :string, format: :date, nullable: true,
+                       description: 'The club date (America/New_York) the Daily Fun Fact was posted for.' }
+        }, required: %w[fun_fact club_date]
+      end
+
+      response '401', 'not signed in' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'the Feature is Off, or Preview and the caller is not an Admin or Superadmin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/codex/fun_facts/{id}' do
     parameter name: :id, in: :path, schema: { type: :integer }, required: true
 
