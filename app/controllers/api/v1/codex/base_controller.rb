@@ -26,10 +26,10 @@ module Api
 
         def find_entry = entries.find(params[:id])
 
-        # Newest first, paginated.
-        def render_entries(scope)
+        # Paginated, newest first unless the part orders otherwise.
+        def render_entries(scope, order: { created_at: :desc, id: :desc })
           render_collection(CodexEntryResource.preloaded(scope), resource: CodexEntryResource,
-            default_order: { created_at: :desc, id: :desc }, params: { actor: actor },
+            default_order: order, params: { actor: actor },
             prepare: ->(page) { { mentions: ClubCodex::Mentions.of(page) } })
         end
 
@@ -39,8 +39,8 @@ module Api
             status: status
         end
 
-        def destroy_entry(entry)
-          return forbid(ClubCodex::Refusals::DELETE) unless actor.can_delete?(entry)
+        def destroy_entry(entry, refusal: ClubCodex::Refusals::DELETE)
+          return forbid(refusal) unless actor.can_delete?(entry)
 
           entry.destroy!
           render json: { data: { id: entry.id, deleted: true } }

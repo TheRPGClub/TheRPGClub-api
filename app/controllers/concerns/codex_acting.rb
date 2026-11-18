@@ -10,7 +10,8 @@
 # service passes the feature gate (docs/adr/0005). `require_acting_member!`
 # is the `before_action` for writes: 400 without an acting member, 403
 # `feature_unavailable` when the Flag hides the Feature from them. A bot read
-# without one is answered as for any member, with no rights in `viewer`.
+# without one is answered as for any member, with no rights in `viewer`, as
+# is a signed-out Visitor where an endpoint lets one in (Club History).
 module CodexActing
   extend ActiveSupport::Concern
   include ActingMember
@@ -19,13 +20,15 @@ module CodexActing
 
   def actor
     @actor ||=
-      if current_principal.service?
+      if current_principal.nil?
+        ClubCodex::Actor.visitor
+      elsif current_principal.service?
         member = acting_member
         ClubCodex::Actor.new(user_id: acting_user_id, regular: member&.role_regular? ? true : false,
-          moderator: member&.moderator_or_above? ? true : false)
+          moderator: member&.moderator_or_above? ? true : false, admin: member&.admin_or_above? ? true : false)
       else
         ClubCodex::Actor.new(user_id: current_principal.id.to_s, regular: regular_role?,
-          moderator: moderator_or_above?)
+          moderator: moderator_or_above?, admin: admin_or_above?)
       end
   end
 

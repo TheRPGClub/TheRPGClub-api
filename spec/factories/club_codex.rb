@@ -10,5 +10,14 @@ FactoryBot.define do
     trait :fun_fact do
       part { "fun_fact" }
     end
+
+    trait :history_event do
+      part { "history_event" }
+      sequence(:title) { |n| "History Event #{n}" }
+      body { nil }
+      occurred_on { Date.new(2018, 3, 1) }
+      date_precision { "month" }
+      kind { "milestone" }
+    end
   end
 end

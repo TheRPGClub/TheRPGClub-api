@@ -18,12 +18,21 @@ class CodexEntry < ApplicationRecord
   # A Fun Fact's length, mention tokens included, so it reads well as a chat post.
   FUN_FACT_MAX = 300
 
+  include Dated
+
   belongs_to :author, -> { without_images }, class_name: "RpgClubUser", foreign_key: :author_user_id,
     primary_key: :user_id, inverse_of: false
   has_many :mentions, class_name: "CodexEntryMention", foreign_key: :entry_id, dependent: nil, inverse_of: :entry
 
   validates :part, inclusion: { in: PARTS, message: "must be one of #{PARTS.join(', ')}" }
   validates :body, presence: true, length: { maximum: FUN_FACT_MAX }, if: :fun_fact?
+  validates :title, presence: true, length: { maximum: TITLE_MAX }, unless: :fun_fact?
+  validates :body, presence: true, if: -> { rich_body.present? }
+  # History Events: dated, with a History Event Kind.
+  validates :kind, inclusion: { in: KINDS, message: "must be one of #{KINDS.join(', ')}" }, if: :history_event?
+  validates :kind, absence: true, unless: :history_event?
+  validates :occurred_on, presence: true, if: -> { history_event? && !unreadable_occurred_on? }
+  validates :date_precision, presence: true, if: :history_event?
 
   normalizes :body, with: ->(value) { value.strip }
 
@@ -32,6 +41,7 @@ class CodexEntry < ApplicationRecord
   scope :fun_facts, -> { where(part: "fun_fact") }
 
   def fun_fact? = part == "fun_fact"
+  def history_event? = part == "history_event"
 
   private
 
