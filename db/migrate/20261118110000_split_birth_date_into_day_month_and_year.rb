@@ -6,7 +6,10 @@
 # columns; every existing date keeps its day, month and year.
 #
 # Going down puts dated Birth Dates back in the old date column. A year-less
-# one can't be a date, so it is dropped.
+# one can't be a date, so it is dropped. In member_birth_date_changes that
+# leaves a null birth_date, which the old schema reads as "Birth Date
+# removed": after a rollback, such an audit row is a year-less Birth Date
+# that was set, not a removal.
 class SplitBirthDateIntoDayMonthAndYear < ActiveRecord::Migration[8.1]
   TABLES = {
     rpg_club_users: "The member's Birth Date",
@@ -32,7 +35,7 @@ class SplitBirthDateIntoDayMonthAndYear < ActiveRecord::Migration[8.1]
       remove_column table, :birth_date
       add_check_constraint table, <<~SQL.squish, name: "ck_#{table}_birth_date"
         (birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL)
-        OR (birth_month BETWEEN 1 AND 12
+        OR (birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month BETWEEN 1 AND 12
             AND birth_day BETWEEN 1 AND (CASE WHEN birth_month = 2 THEN 29
                                               WHEN birth_month IN (4, 6, 9, 11) THEN 30 ELSE 31 END))
       SQL
