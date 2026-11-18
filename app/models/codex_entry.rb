@@ -29,6 +29,11 @@ class CodexEntry < ApplicationRecord
   # A Lore Entry's story, and any entry's `rich_body`, needs its Discord text.
   validates :body, presence: true, if: -> { lore_entry? || !rich_body.nil? }
   validates :title, presence: true, length: { maximum: TITLE_MAX }, unless: :fun_fact?
+  # History Events: dated, with a History Event Kind.
+  validates :kind, inclusion: { in: KINDS, message: "must be one of #{KINDS.join(', ')}" }, if: :history_event?
+  validates :kind, absence: true, unless: :history_event?
+  validates :occurred_on, presence: true, if: -> { history_event? && !unreadable_occurred_on? }
+  validates :date_precision, presence: true, if: :history_event?
 
   normalizes :body, :title, with: ->(value) { value.strip }
 
@@ -37,7 +42,7 @@ class CodexEntry < ApplicationRecord
   scope :fun_facts, -> { where(part: "fun_fact") }
 
   def fun_fact? = part == "fun_fact"
-
+  def history_event? = part == "history_event"
   def lore_entry? = part == "lore_entry"
 
   private
