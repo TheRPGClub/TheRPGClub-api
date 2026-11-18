@@ -147,6 +147,63 @@ RSpec.describe "api/v1/birthdays/upcoming behavior", type: :request do
     end
   end
 
+  # Decision 11 (bot#1558's empty state): `next` is the first shared Birthday
+  # after the 30 days, with no member, and null when nobody shares one.
+  describe "the next Birthday beyond the 30 days" do
+    def next_birthday(on:)
+      on_club_day(on) do
+        get "/api/v1/birthdays/upcoming", headers: auth_headers_for(viewer)
+        expect(response).to have_http_status(:ok)
+        json.fetch("next")
+      end
+    end
+
+    it "is the first shared Birthday after the window, its day, month and date only" do
+      sharing_member("05-04", year: 1987, global_name: "Ava")
+      sharing_member("08-15")
+      sharing_member("07-01", global_name: "Bo")
+      create(:user, birth_date: BirthDate.new(month: 6, day: 2, year: nil))
+      sharing_member("06-03", server_left_at: 1.day.ago)
+
+      expect(next_birthday(on: "2026-05-01")).to eq("month" => 7, "day" => 1, "on" => "2026-07-01")
+      expect(response.body).not_to include("Bo")
+      expect(response.body).not_to include("1987")
+    end
+
+    it "starts the day after the window's last day" do
+      sharing_member("05-30")
+      sharing_member("05-31")
+
+      expect(next_birthday(on: "2026-05-01")).to eq("month" => 5, "day" => 31, "on" => "2026-05-31")
+    end
+
+    it "is next year's date when every shared Birthday is in the window" do
+      sharing_member("05-04")
+
+      expect(next_birthday(on: "2026-05-01")).to eq("month" => 5, "day" => 4, "on" => "2027-05-04")
+    end
+
+    it "crosses the year end" do
+      sharing_member("01-25")
+      sharing_member("12-10")
+
+      expect(next_birthday(on: "2026-12-20")).to eq("month" => 1, "day" => 25, "on" => "2027-01-25")
+    end
+
+    it "puts a 29 February Birthday on 28 February in a year that isn't a leap year" do
+      sharing_member("02-29")
+
+      expect(next_birthday(on: "2027-01-01")).to eq("month" => 2, "day" => 29, "on" => "2027-02-28")
+      expect(next_birthday(on: "2027-12-01")).to eq("month" => 2, "day" => 29, "on" => "2028-02-29")
+    end
+
+    it "is null when nobody shares a Birthday" do
+      create(:user, birth_date: BirthDate.new(month: 5, day: 4, year: nil))
+
+      expect(next_birthday(on: "2026-05-01")).to be_nil
+    end
+  end
+
   describe "access" do
     it "answers the bot's service token" do
       member = sharing_member("05-04")

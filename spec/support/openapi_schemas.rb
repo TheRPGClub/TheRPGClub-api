@@ -265,12 +265,9 @@ module OpenapiSchemas
         completions: array_of("CompletionEntry"),
         journal: array_of("JournaledGame"),
         counts: ref("UserCounts"),
-        birthday: obj(
-          month: int.merge(minimum: 1, maximum: 12, example: 5),
-          day: int.merge(minimum: 1, maximum: 31, example: 4),
-          _description: "The member's Birthday, the month and day of their Birth Date, when they share it " \
-                        "(api#399); null otherwise. Never the year."
-        ).merge(nullable: true)
+        birthday: ref("Birthday", nullable: true).merge(
+          description: "The member's Birthday when they share it (api#399); null otherwise. Never the year."
+        )
       ),
       # The members-list shape returned by users#index when filtered by
       # `has_platform` (#99, UserWithSocialsResource): UserSummary plus the
@@ -1541,17 +1538,33 @@ module OpenapiSchemas
           description: "Only when the member reached the limit: the first day of next month (US Eastern)."),
         _required: %w[error]
       ),
-      # Birthdays::Upcoming (spec #396, api#400). One shared Birthday in the
-      # next 30 club days. Never the year or the age.
-      UpcomingBirthday: extends("ChallengeMember", required: %w[display_name month day on today],
-        display_name: str(example: "Ava",
-          description: "The name the member goes by: their Discord display name, else their username."),
+      # A Birthday (spec #396): the month and day of a Birth Date, never the
+      # year.
+      Birthday: obj(
         month: int.merge(minimum: 1, maximum: 12, example: 5),
         day: int.merge(minimum: 1, maximum: 31, example: 4),
-        on: date(example: "2026-05-04",
-          description: "The date the Birthday falls on this time, in club days (America/New_York). A 29 " \
-                       "February Birthday falls on 28 February in years that aren't leap years."),
-        today: bool.merge(description: "Whether `on` is today in club time.")),
+        _description: "A Birthday: the month and day of a member's Birth Date, never the year."
+      ),
+      # Birthdays::Upcoming (spec #396, api#400). One shared Birthday in the
+      # next 30 club days. Never the year or the age.
+      UpcomingBirthday: { allOf: [
+        ref("ChallengeMember"), ref("Birthday"),
+        obj(display_name: str(example: "Ava",
+              description: "The name the member goes by: their Discord display name, else their username."),
+            on: date(example: "2026-05-04",
+              description: "The date the Birthday falls on this time, in club days (America/New_York). A 29 " \
+                           "February Birthday falls on 28 February in years that aren't leap years."),
+            today: bool.merge(description: "Whether `on` is today in club time."))
+      ] },
+      # Birthdays::Upcoming.next_beyond (owner decision 11): the first shared
+      # Birthday after the 30 days, without the member.
+      NextBirthday: extends("Birthday",
+        _description: "The first shared Birthday after the 30 days of Upcoming Birthdays, with no member: the " \
+                      "bot's empty /birthdays says when the next one is. A Birthday in the 30 days counts with " \
+                      "its date next year.",
+        on: date(example: "2026-07-01",
+          description: "The date it falls on, in club days (America/New_York). A 29 February Birthday falls " \
+                       "on 28 February in years that aren't leap years.")),
 
       # ---- News Hub (spec #355) --------------------------------------------
       # NewsCategory: the fixed, ordered list in code. Keys are stable.

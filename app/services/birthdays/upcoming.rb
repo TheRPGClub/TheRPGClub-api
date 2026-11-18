@@ -7,7 +7,8 @@ module Birthdays
   # Birthday falls on 28 February in other years).
   # Members are looked up by month and day directly (ADR 0011). Each entry is
   # the member, the month and day, the date it falls on and whether that is
-  # today; never the year or the age.
+  # today; never the year or the age. `next_beyond` gives the first one after
+  # the window, without the member.
   module Upcoming
     DAYS = 30
 
@@ -24,6 +25,24 @@ module Birthdays
         .map { |user| [ user, falls_on.fetch([ user.birth_month, user.birth_day ]) ] }
         .sort_by { |user, on| [ on, *Members.by_name(user) ] }
         .map { |user, on| entry(user, on, today) }
+    end
+
+    # The first shared Birthday after the window (owner decision 11, for the
+    # bot's empty /birthdays): its month, day and the date it falls on, never
+    # whose it is. A Birthday in the window counts with its date next year.
+    # nil when no member still in the server shares one.
+    def next_beyond(today)
+      last = today + DAYS - 1
+
+      RpgClubUser.active.where(birthday_shared: true).distinct.pluck(:birth_month, :birth_day)
+        .map { |month, day| [ next_after(month, day, last), month, day ] }
+        .min
+        &.then { |on, month, day| { month: month, day: day, on: on.iso8601 } }
+    end
+
+    # The first date after `last` a Birthday of `month` and `day` falls on.
+    def next_after(month, day, last)
+      [ last.year, last.year + 1 ].map { |year| Birthdays.falls_on(month, day, year) }.find { |on| on > last }
     end
 
     # [month, day] => the date in the window a Birthday on it falls on

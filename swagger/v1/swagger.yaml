@@ -765,24 +765,11 @@ components:
           counts:
             "$ref": "#/components/schemas/UserCounts"
           birthday:
-            type: object
-            properties:
-              month:
-                type: integer
-                minimum: 1
-                maximum: 12
-                example: 5
-              day:
-                type: integer
-                minimum: 1
-                maximum: 31
-                example: 4
-            required:
-            - month
-            - day
-            description: The member's Birthday, the month and day of their Birth Date,
-              when they share it (api#399); null otherwise. Never the year.
+            allOf:
+            - "$ref": "#/components/schemas/Birthday"
             nullable: true
+            description: The member's Birthday when they share it (api#399); null
+              otherwise. Never the year.
         description: The Feature-owned previews (now_playing, reviews, completions,
           journal) are left out, like their `counts`, when the viewer cannot use that
           Feature.
@@ -4275,14 +4262,22 @@ components:
             type: string
           description: 'The members to greet, by display name: Discord user ids, still
             in the server, sharing their Birthday. No year or age is sent.'
+        channel_id:
+          type: string
+          example: '191941851757019136'
+          description: 'The Discord channel to post in: general chat (the API''s DiscordChannels::GENERAL).'
       required:
       - club_date
       - user_ids
-      description: 'Kind `birthday_post`. Post one Birthday Post in the Birthday channel
-        greeting every member in `user_ids`, @mentioning each so they are pinged.
-        Queued at 10:00 America/New_York, only on a day with Birthdays. If `club_date`
-        is no longer today in New York, ack it done without posting. Birthdays are
-        not a Feature: no `feature_key`, and no Feature Flag routes it.'
+      - channel_id
+      description: 'Kind `birthday_post`. Post one Birthday Post in `channel_id` greeting
+        every member in `user_ids`, @mentioning each so they are pinged. Queued at
+        10:00 America/New_York, only on a day with Birthdays. If `club_date` is no
+        longer today in New York, ack it done without posting. Right before posting,
+        re-read GET /api/v1/birthdays/upcoming and greet only the `user_ids` listed
+        there with `today: true`, so a member who stopped sharing or left since it
+        was queued isn''t pinged. Birthdays are not a Feature: no `feature_key`, and
+        no Feature Flag routes it.'
     BotJobClaim:
       type: object
       properties:
@@ -4792,9 +4787,28 @@ components:
             month (US Eastern).'
       required:
       - error
+    Birthday:
+      type: object
+      properties:
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+          example: 5
+        day:
+          type: integer
+          minimum: 1
+          maximum: 31
+          example: 4
+      required:
+      - month
+      - day
+      description: 'A Birthday: the month and day of a member''s Birth Date, never
+        the year.'
     UpcomingBirthday:
       allOf:
       - "$ref": "#/components/schemas/ChallengeMember"
+      - "$ref": "#/components/schemas/Birthday"
       - type: object
         properties:
           display_name:
@@ -4802,16 +4816,6 @@ components:
             example: Ava
             description: 'The name the member goes by: their Discord display name,
               else their username.'
-          month:
-            type: integer
-            minimum: 1
-            maximum: 12
-            example: 5
-          day:
-            type: integer
-            minimum: 1
-            maximum: 31
-            example: 4
           'on':
             type: string
             format: date
@@ -4824,10 +4828,25 @@ components:
             description: Whether `on` is today in club time.
         required:
         - display_name
-        - month
-        - day
         - 'on'
         - today
+    NextBirthday:
+      allOf:
+      - "$ref": "#/components/schemas/Birthday"
+      - type: object
+        properties:
+          'on':
+            type: string
+            format: date
+            example: '2026-07-01'
+            description: The date it falls on, in club days (America/New_York). A
+              29 February Birthday falls on 28 February in years that aren't leap
+              years.
+        required:
+        - 'on'
+        description: 'The first shared Birthday after the 30 days of Upcoming Birthdays,
+          with no member: the bot''s empty /birthdays says when the next one is. A
+          Birthday in the 30 days counts with its date next year.'
     NewsCategory:
       type: object
       properties:
@@ -7634,8 +7653,9 @@ paths:
         '422':
           description: 'the member already changed it twice this month; birth_date
             and birthday_shared are both missing; birth_date is not a date from 1900
-            to today or a real MM-DD month and day; birthday_shared is not a boolean;
-            or `birth_date_required`: sharing a Birthday without a Birth Date'
+            to today or a real MM-DD month and day; birthday_shared is not true or
+            false (null included); or `birth_date_required`: sharing a Birthday without
+            a Birth Date'
           content:
             application/json:
               schema:
@@ -7685,7 +7705,7 @@ paths:
                     birthday_shared:
                       type: boolean
                       description: Share the member's Birthday (true) or stop sharing
-                        it (false). Only the member can send true.
+                        it (false). Only the member can send true. Null is refused.
                     acting_user_id:
                       type: string
                       description: 'Service token only (required): the Discord user
@@ -7704,8 +7724,9 @@ paths:
         the year end. Only members who share their Birthday and are still in the server
         are listed. A 29 February Birthday falls on 28 February in years that aren''t
         leap years. Ordered by `on`, then by `display_name`. Never the year or the
-        age. Any signed-in member or the service token; Birthdays aren''t a Feature,
-        so nothing gates it.'
+        age. `next` is the first shared Birthday after those 30 days, without the
+        member (null when nobody shares one). Any signed-in member or the service
+        token; Birthdays aren''t a Feature, so nothing gates it.'
       responses:
         '200':
           description: the Upcoming Birthdays, soonest first
@@ -7718,8 +7739,13 @@ paths:
                     type: array
                     items:
                       "$ref": "#/components/schemas/UpcomingBirthday"
+                  next:
+                    allOf:
+                    - "$ref": "#/components/schemas/NextBirthday"
+                    nullable: true
                 required:
                 - data
+                - next
         '401':
           description: unauthenticated
           content:
