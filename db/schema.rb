@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -65,6 +65,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
     t.string "tier", limit: 16
     t.datetime "updated_at", null: false
     t.index ["achievement_set_id", "external_id"], name: "ux_achievements_set_external", unique: true
+  end
+
+  create_table "birthday_posts", comment: "Each member's Birthday Post, at most one per calendar year.", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.integer "year", limit: 2, null: false, comment: "The calendar year of the club day it was queued for."
+    t.date "posted_on", null: false, comment: "The club day (America/New_York) it was queued for."
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.index ["user_id", "year"], name: "ux_birthday_posts_once", unique: true
   end
 
   create_table "bot_jobs", force: :cascade do |t|
@@ -1494,6 +1502,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
 
   add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
+  add_foreign_key "birthday_posts", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_birthday_posts_user", on_delete: :cascade
   add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "challenge_edition_signups", "challenge_editions", column: "edition_id", name: "fk_challenge_edition_signups_edition", on_delete: :cascade
   add_foreign_key "challenge_edition_signups", "gamedb_games", column: "picked_game_id", primary_key: "game_id", name: "fk_challenge_edition_signups_picked_game", on_delete: :nullify
