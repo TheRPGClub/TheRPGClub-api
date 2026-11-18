@@ -25,10 +25,9 @@ module ClubCodex
     def moderator_or_above? = moderator
     def admin_or_above? = admin
 
-    # Whether they may add an entry of `part` (a Lore Entry or Fun Fact when
-    # not given).
-    def can_create?(part = nil)
-      return admin_or_above? if part.to_s == "history_event"
+    # Whether they may add an entry of `part` (CodexEntry::PARTS).
+    def can_create?(part)
+      return admin_or_above? if part == CodexEntry::HISTORY_EVENT
 
       regular? || moderator_or_above?
     end
@@ -36,7 +35,7 @@ module ClubCodex
     def author_of?(entry) = user_id.present? && entry.author_user_id == user_id
 
     def can_edit?(entry)
-      return admin_or_above? if entry.part == "history_event"
+      return admin_or_above? if entry.history_event?
 
       moderator_or_above? || author_of?(entry)
     end
@@ -45,15 +44,15 @@ module ClubCodex
 
     # The entries of `scope` they may read: all of them, or a Visitor's
     # History Events.
-    def readable(scope) = member ? scope : scope.where(part: "history_event")
+    def readable(scope) = member ? scope : scope.where(part: CodexEntry::HISTORY_EVENT)
 
     # The entries of `scope` they may edit, by the rules above.
     def editable(scope)
       return scope if admin_or_above?
-      return scope.where.not(part: "history_event") if moderator_or_above?
+      return scope.where.not(part: CodexEntry::HISTORY_EVENT) if moderator_or_above?
       return scope.none if user_id.blank?
 
-      scope.where(author_user_id: user_id).where.not(part: "history_event")
+      scope.where(author_user_id: user_id).where.not(part: CodexEntry::HISTORY_EVENT)
     end
 
     # The `viewer` flags every entry payload carries, so clients don't

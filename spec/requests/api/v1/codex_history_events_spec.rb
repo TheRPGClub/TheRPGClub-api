@@ -38,7 +38,8 @@ RSpec.describe 'api/v1/codex/history_events', type: :request do
                 'History is found only while the Club Codex Feature is Live (not found in Preview and Off).'
   one_entry = { type: :object, properties: { data: { '$ref' => '#/components/schemas/CodexEntry' } } }
   invalid = 'invalid_entry: a missing or over-long title, a missing or unknown kind, a missing date or ' \
-            'precision, a date that is not YYYY-MM-DD, `rich_body` without `body`, or a field that is not text'
+            'precision, a date that is not YYYY-MM-DD, `rich_body` without `body`, a field that is not text, a ' \
+            'NUL character in any field, or a field a History Event does not take'
 
   path '/api/v1/codex/history_events' do
     get 'List History Events (Club History)' do

@@ -23,14 +23,14 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
 
   describe "reading Club History signed out" do
     it "lists and shows History Events to a Visitor when Live" do
-      event = create(:codex_entry, :history_event, author: admin, title: "The club moves to Discord",
+      history_event = create(:codex_entry, :history_event, author: admin, title: "The club moves to Discord",
         kind: "platform", occurred_on: Date.new(2018, 3, 1), date_precision: "month")
 
       get "/api/v1/codex/history_events"
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data").map { |entry| entry["title"] }).to eq([ "The club moves to Discord" ])
 
-      get "/api/v1/codex/history_events/#{event.id}"
+      get "/api/v1/codex/history_events/#{history_event.id}"
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("part" => "history_event", "title" => "The club moves to Discord",
         "kind" => "platform", "occurred_on" => "2018-03-01", "date_precision" => "month",
@@ -40,7 +40,7 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
     end
 
     it "hides Club History from a Visitor in Preview and Off" do
-      event = create(:codex_entry, :history_event, author: admin)
+      history_event = create(:codex_entry, :history_event, author: admin)
 
       %w[preview off].each do |state|
         set_feature_flag("club_codex", state)
@@ -49,7 +49,7 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
         expect(response).to have_http_status(:not_found), "the list was #{response.status} in #{state}"
         expect(json).to eq("error" => "not_found")
 
-        get "/api/v1/codex/history_events/#{event.id}"
+        get "/api/v1/codex/history_events/#{history_event.id}"
         expect(response).to have_http_status(:not_found), "the History Event was #{response.status} in #{state}"
       end
     end
@@ -66,15 +66,15 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
     end
 
     it "still needs a sign-in to write" do
-      event = create(:codex_entry, :history_event, author: admin)
+      history_event = create(:codex_entry, :history_event, author: admin)
 
       post "/api/v1/codex/history_events", params: { data: { title: "T" } }, as: :json
       expect(response).to have_http_status(:unauthorized)
 
-      patch "/api/v1/codex/history_events/#{event.id}", params: { data: { title: "T" } }, as: :json
+      patch "/api/v1/codex/history_events/#{history_event.id}", params: { data: { title: "T" } }, as: :json
       expect(response).to have_http_status(:unauthorized)
 
-      delete "/api/v1/codex/history_events/#{event.id}"
+      delete "/api/v1/codex/history_events/#{history_event.id}"
       expect(response).to have_http_status(:unauthorized)
     end
   end
@@ -127,15 +127,15 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
   end
 
   describe "editing and deleting a History Event" do
-    let!(:event) { create(:codex_entry, :history_event, author: admin, title: "Staff change") }
+    let!(:history_event) { create(:codex_entry, :history_event, author: admin, title: "Staff change") }
 
     def edit(as:, is_dev: false, **data)
-      patch "/api/v1/codex/history_events/#{event.id}", params: { data: { title: "Staff changes" }.merge(data) },
+      patch "/api/v1/codex/history_events/#{history_event.id}", params: { data: { title: "Staff changes" }.merge(data) },
         headers: auth_headers_for(as, is_dev: is_dev), as: :json
     end
 
     def delete_it(as:)
-      delete "/api/v1/codex/history_events/#{event.id}", headers: auth_headers_for(as)
+      delete "/api/v1/codex/history_events/#{history_event.id}", headers: auth_headers_for(as)
     end
 
     it "lets another Admin edit and delete it" do
@@ -146,9 +146,9 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
 
       delete_it(as: other_admin)
       expect(response).to have_http_status(:ok)
-      expect(json.fetch("data")).to eq("id" => event.id, "deleted" => true)
+      expect(json.fetch("data")).to eq("id" => history_event.id, "deleted" => true)
 
-      get "/api/v1/codex/history_events/#{event.id}"
+      get "/api/v1/codex/history_events/#{history_event.id}"
       expect(response).to have_http_status(:not_found)
     end
 
@@ -156,7 +156,7 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
       edit(as: member, is_dev: true)
       expect(response).to have_http_status(:ok)
 
-      delete "/api/v1/codex/history_events/#{event.id}", headers: auth_headers_for(member, is_dev: true)
+      delete "/api/v1/codex/history_events/#{history_event.id}", headers: auth_headers_for(member, is_dev: true)
       expect(response).to have_http_status(:ok)
     end
 
@@ -172,38 +172,38 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
         expect(response).to have_http_status(:forbidden)
       end
 
-      get "/api/v1/codex/history_events/#{event.id}"
+      get "/api/v1/codex/history_events/#{history_event.id}"
       expect(json.dig("data", "title")).to eq("Staff change")
     end
 
     it "edits and deletes for the Admin the bot names" do
-      patch "/api/v1/codex/history_events/#{event.id}",
+      patch "/api/v1/codex/history_events/#{history_event.id}",
         params: { data: { title: "From Discord", acting_user_id: moderator.user_id } },
         headers: service_headers, as: :json
       expect(response).to have_http_status(:forbidden)
 
-      patch "/api/v1/codex/history_events/#{event.id}",
+      patch "/api/v1/codex/history_events/#{history_event.id}",
         params: { data: { title: "From Discord", acting_user_id: other_admin.user_id } },
         headers: service_headers, as: :json
       expect(response).to have_http_status(:ok)
 
-      delete "/api/v1/codex/history_events/#{event.id}", headers: service_headers
+      delete "/api/v1/codex/history_events/#{history_event.id}", headers: service_headers
       expect(response).to have_http_status(:bad_request)
 
-      delete "/api/v1/codex/history_events/#{event.id}", params: { acting_user_id: other_admin.user_id },
+      delete "/api/v1/codex/history_events/#{history_event.id}", params: { acting_user_id: other_admin.user_id },
         headers: service_headers
       expect(response).to have_http_status(:ok)
     end
   end
 
   describe "the viewer flags" do
-    let!(:event) { create(:codex_entry, :history_event, author: admin) }
+    let!(:history_event) { create(:codex_entry, :history_event, author: admin) }
 
     it "show edit and delete rights to Admins and Superadmins only" do
       yes = { "can_edit" => true, "can_delete" => true }
       no = { "can_edit" => false, "can_delete" => false }
       viewer_for = lambda do |headers, params = {}|
-        get "/api/v1/codex/history_events/#{event.id}", params: params, headers: headers
+        get "/api/v1/codex/history_events/#{history_event.id}", params: params, headers: headers
         json.dig("data", "viewer")
       end
 
@@ -287,6 +287,11 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
     it "refuses a field that isn't text" do
       add_history_event(as: admin, title: { "a" => 1 })
       refused_with("title must be text")
+    end
+
+    it "refuses a field a History Event doesn't take, rather than dropping it" do
+      add_history_event(as: admin, summary: "Not a field.")
+      refused_with("A History Event doesn't take summary")
     end
 
     it "pulls mentions from body" do

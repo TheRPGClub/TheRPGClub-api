@@ -27,7 +27,7 @@ module Api
         def index
           scope = entries
           if params[:kind].present?
-            return refuse_kind unless CodexEntry::KINDS.include?(params[:kind])
+            return refuse_choice("invalid_kind", "Kind", CodexEntry::KINDS) unless CodexEntry::KINDS.include?(params[:kind])
 
             scope = scope.where(kind: params[:kind])
           end
@@ -74,16 +74,11 @@ module Api
 
         private
 
-        def part = "history_event"
+        def part = CodexEntry::HISTORY_EVENT
 
         # The History Event fields the request gives; 422 when a text field
         # isn't text.
         def entry_fields = entry_attributes(request_data, text: TEXT_FIELDS, json: JSON_FIELDS)
-
-        def refuse_kind
-          render json: { error: "invalid_kind", message: "Kind must be one of #{CodexEntry::KINDS.join(', ')}" },
-            status: :bad_request
-        end
       end
     end
   end

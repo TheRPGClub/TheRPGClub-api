@@ -304,6 +304,28 @@ RSpec.describe "api/v1/codex entry images behavior", type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
+    it "removes the file of an image an upload records while the entry is being deleted" do
+      upload_image(lore_entry, as: regular)
+      raced = false
+      allow(client).to receive(:delete_file) do |object_key:|
+        stored.delete(object_key)
+        next if raced
+
+        # An upload that passed its gallery check records its image while the
+        # entry's files are being removed.
+        raced = true
+        stored["codex/entries/#{lore_entry.id}/raced.png"] = { bytes: "raced", content_type: "image/png" }
+        CodexEntryImage.create!(entry_id: lore_entry.id, object_key: "codex/entries/#{lore_entry.id}/raced.png",
+          position: 2, uploaded_by_user_id: regular.user_id)
+      end
+
+      delete "/api/v1/codex/lore_entries/#{lore_entry.id}", headers: auth_headers_for(regular)
+
+      expect(response).to have_http_status(:ok)
+      expect(stored).to be_empty
+      expect(CodexEntryImage.where(entry_id: lore_entry.id)).to be_empty
+    end
+
     it "keeps the entry when storage refuses to remove a file, so the delete can be retried" do
       upload_image(lore_entry, as: regular)
       allow(client).to receive(:delete_file).and_raise(Backblaze::Client::RequestError, "B2 down")

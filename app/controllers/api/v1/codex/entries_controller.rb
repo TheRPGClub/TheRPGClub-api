@@ -19,7 +19,7 @@ module Api
         def index
           scope = actor.readable(CodexEntry.all)
           if params[:part].present?
-            return refuse_part unless CodexEntry::PARTS.include?(params[:part])
+            return refuse_choice("invalid_part", "Part", CodexEntry::PARTS) unless CodexEntry::PARTS.include?(params[:part])
 
             scope = scope.where(part: params[:part])
           end
@@ -27,13 +27,6 @@ module Api
           render_collection(ClubCodex::EntrySearch.matching(scope, params[:q]), resource: CodexEntryLinkResource,
             default_order: ClubCodex::EntrySearch.order(params[:q]),
             prepare: ->(page) { { names: ClubCodex::Links.mentioned_names(page.select(&:fun_fact?)) } })
-        end
-
-        private
-
-        def refuse_part
-          render json: { error: "invalid_part", message: "Part must be one of #{CodexEntry::PARTS.join(', ')}" },
-            status: :bad_request
         end
       end
     end

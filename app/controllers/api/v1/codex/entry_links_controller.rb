@@ -21,18 +21,12 @@ module Api
         # Returns the entry.
         def update
           entry = CodexEntry.find(params[:id])
-          return forbid(refusal(entry)) unless actor.can_edit?(entry)
+          return forbid(edit_refusal(entry)) unless actor.can_edit?(entry)
 
           ClubCodex::Links.replace!(entry, request_data["entry_ids"])
           render_entry(entry)
         rescue ClubCodex::Links::Invalid => error
           render json: { error: "invalid_links", message: error.message }, status: :unprocessable_content
-        end
-
-        private
-
-        def refusal(entry)
-          entry.history_event? ? ClubCodex::Refusals::HISTORY : ClubCodex::Refusals::EDIT
         end
       end
     end

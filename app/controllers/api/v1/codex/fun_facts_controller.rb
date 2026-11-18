@@ -12,6 +12,7 @@ module Api
       # `data.acting_user_id` (a DELETE: `acting_user_id` in the query).
       class FunFactsController < BaseController
         WRITES = %i[create update destroy draw].freeze
+        TEXT_FIELDS = %w[body].freeze
 
         before_action :require_acting_member!, only: WRITES
 
@@ -41,14 +42,14 @@ module Api
         # Body: { "data": { "body": "..." } }
         #
         # `body` is the Fun Fact, up to 300 characters with its `<@id>`
-        # mention tokens.
+        # mention tokens. Any other entry field is refused (422).
         def create
-          return forbid(ClubCodex::Refusals::CREATE) unless actor.can_create?
+          return forbid(ClubCodex::Refusals::CREATE) unless actor.can_create?(part)
 
-          body = text_field(request_data, "body")
+          attributes = entry_attributes(request_data, text: TEXT_FIELDS)
           return if performed?
 
-          entry = CodexEntry.create!(part: part, body: body, author_user_id: actor.user_id)
+          entry = CodexEntry.create!(attributes.merge(part: part, author_user_id: actor.user_id))
           render_entry(entry, status: :created)
         end
 
@@ -60,11 +61,10 @@ module Api
           entry = find_entry
           return forbid(ClubCodex::Refusals::EDIT) unless actor.can_edit?(entry)
 
-          data = request_data
-          body = text_field(data, "body")
+          attributes = entry_attributes(request_data, text: TEXT_FIELDS)
           return if performed?
 
-          entry.update!(body: body) if data.key?("body")
+          entry.update!(attributes)
           render_entry(entry)
         end
 
@@ -88,15 +88,25 @@ module Api
           render json: { fun_fact: entry_payload(entry) }
         end
 
+        # GET /api/v1/codex/fun_facts/today
+        #
+        # Today's Daily Fun Fact: the Fun Fact posted for the club date
+        # (America/New_York), or before today's post the latest earlier one,
+        # as `{ fun_fact: <entry>, club_date: "YYYY-MM-DD" }` with the date it
+        # was posted for. `{ fun_fact: null, club_date: null }` when nothing
+        # has been posted, or that Fun Fact has since been deleted. A pure
+        # read: it draws nothing and posts nothing.
+        def today
+          post = DailyFunFactPost.where(club_date: ..Challenges.today).order(club_date: :desc).first
+          entry = post&.entry
+          return render(json: { fun_fact: nil, club_date: nil }) unless entry
+
+          render json: { fun_fact: entry_payload(entry), club_date: post.club_date.iso8601 }
+        end
+
         private
 
-        def part = "fun_fact"
-
-        # The entry payload render_entry sends, outside its `data` envelope.
-        def entry_payload(entry)
-          entry = CodexEntryResource.preloaded(CodexEntry.where(id: entry.id)).first!
-          CodexEntryResource.new(entry, params: { actor: actor }).serializable_hash
-        end
+        def part = CodexEntry::FUN_FACT
       end
     end
   end

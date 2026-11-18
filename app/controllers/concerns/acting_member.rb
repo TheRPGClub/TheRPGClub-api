@@ -17,12 +17,15 @@ module ActingMember
 
   private
 
-  # The acting member's Discord user id; nil when the bot names none.
+  # The acting member's Discord user id; nil when the bot names none, or
+  # nobody is signed in.
   def acting_user_id
     return @acting_user_id if defined?(@acting_user_id)
 
     @acting_user_id =
-      if current_principal.service?
+      if current_principal.nil?
+        nil
+      elsif current_principal.service?
         source = request.get? ? params : params[:data]
         source[:acting_user_id].presence&.to_s if source.respond_to?(:permit)
       else

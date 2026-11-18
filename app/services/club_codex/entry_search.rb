@@ -10,19 +10,21 @@ module ClubCodex
     module_function
 
     # The entries of `scope` that `query` matches; all of them when it is
-    # blank.
+    # blank, and none when it holds a NUL character, which no entry can
+    # hold (Postgres refuses it in text).
     def matching(scope, query)
       query = query.to_s.strip
       return scope if query.empty?
+      return scope.none if query.include?("\u0000")
 
       scope.where("codex_entries.title ILIKE :pattern OR codex_entries.body ILIKE :pattern", pattern: pattern(query))
     end
 
     # Title matches first, then the newest; newest first when `query` is
-    # blank.
+    # blank or matches nothing (a NUL character).
     def order(query)
       query = query.to_s.strip
-      return { created_at: :desc, id: :desc } if query.empty?
+      return { created_at: :desc, id: :desc } if query.empty? || query.include?("\u0000")
 
       Arel.sql(CodexEntry.sanitize_sql_array(
         [ "CASE WHEN codex_entries.title ILIKE ? THEN 0 ELSE 1 END, codex_entries.created_at DESC, " \

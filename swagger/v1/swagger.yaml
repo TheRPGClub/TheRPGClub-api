@@ -10972,7 +10972,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: 'invalid_entry: `body` blank, not text, or over 300 characters'
+          description: 'invalid_entry: `body` blank, not text, over 300 characters
+            or holding a NUL character, or a field a Fun Fact does not take'
           content:
             application/json:
               schema:
@@ -11074,6 +11075,62 @@ paths:
                       description: 'Service only, required on every write: the Discord
                         user id of the member the bot acts for. Their stored roles
                         decide what they may do, and the Feature Flag applies to them.'
+  "/api/v1/codex/fun_facts/today":
+    get:
+      summary: Today's Daily Fun Fact
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller); the bot may name the member it
+        reads for with `acting_user_id`, without which `viewer` is all false. The
+        Fun Fact the Daily Fun Fact posted for the club date (America/New_York). Before
+        today''s post (15:00 New York) it is the latest earlier one, so `club_date`
+        is the day it was posted for, which may be before today. `{ "fun_fact": null,
+        "club_date": null }` when nothing has been posted yet, or when that Fun Fact
+        has since been deleted. A pure read: it draws nothing, so the Fun Fact queue
+        does not move. Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the posted Fun Fact and its club date, or both null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fun_fact:
+                    allOf:
+                    - "$ref": "#/components/schemas/CodexEntry"
+                    nullable: true
+                  club_date:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: The club date (America/New_York) the Daily Fun Fact
+                      was posted for.
+                required:
+                - fun_fact
+                - club_date
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/codex/fun_facts/{id}":
     parameters:
     - name: id
@@ -11153,7 +11210,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: 'invalid_entry: `body` blank, not text, or over 300 characters'
+          description: 'invalid_entry: `body` blank, not text, over 300 characters
+            or holding a NUL character, or a field a Fun Fact does not take'
           content:
             application/json:
               schema:
@@ -11352,7 +11410,8 @@ paths:
         '422':
           description: 'invalid_entry: a missing or over-long title, a missing or
             unknown kind, a missing date or precision, a date that is not YYYY-MM-DD,
-            `rich_body` without `body`, or a field that is not text'
+            `rich_body` without `body`, a field that is not text, a NUL character
+            in any field, or a field a History Event does not take'
           content:
             application/json:
               schema:
@@ -11511,7 +11570,8 @@ paths:
         '422':
           description: 'invalid_entry: a missing or over-long title, a missing or
             unknown kind, a missing date or precision, a date that is not YYYY-MM-DD,
-            `rich_body` without `body`, or a field that is not text'
+            `rich_body` without `body`, a field that is not text, a NUL character
+            in any field, or a field a History Event does not take'
           content:
             application/json:
               schema:
@@ -11744,7 +11804,8 @@ paths:
         '422':
           description: 'invalid_entry: `title` blank or over 100 characters, `body`
             blank, a field not text, a date and precision not given together, an unknown
-            precision, or a date that is not `YYYY-MM-DD`'
+            precision, a date that is not `YYYY-MM-DD`, a NUL character in any field,
+            or a field a Lore Entry does not take (`kind`, or any other)'
           content:
             application/json:
               schema:
@@ -11895,7 +11956,8 @@ paths:
         '422':
           description: 'invalid_entry: `title` blank or over 100 characters, `body`
             blank, a field not text, a date and precision not given together, an unknown
-            precision, or a date that is not `YYYY-MM-DD`'
+            precision, a date that is not `YYYY-MM-DD`, a NUL character in any field,
+            or a field a Lore Entry does not take (`kind`, or any other)'
           content:
             application/json:
               schema:

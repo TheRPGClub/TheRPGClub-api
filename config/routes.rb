@@ -430,6 +430,8 @@ Rails.application.routes.draw do
         resources :fun_facts, only: %i[index show create update destroy] do
           # The Fun Fact queue (ticket #405): the next one, marked shown.
           post :draw, on: :collection
+          # Today's Daily Fun Fact, or the latest earlier one (a pure read).
+          get :today, on: :collection
         end
         resources :history_events, only: %i[index show create update destroy]
         resources :lore_entries, only: %i[index show create update destroy]
