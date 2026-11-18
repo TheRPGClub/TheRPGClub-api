@@ -38,16 +38,18 @@ module Api
           return render(json: { error: "birth_date or birthday_shared required" }, status: :unprocessable_content)
         end
 
-        shared = data[:birthday_shared] if data.key?(:birthday_shared)
-        unless shared.nil? || [ true, false ].include?(shared)
+        sharing = data.key?(:birthday_shared)
+        shared = data[:birthday_shared]
+        # null too: a client that sends it must not be told sharing was saved.
+        if sharing && ![ true, false ].include?(shared)
           return render(json: { error: "birthday_shared must be true or false" }, status: :unprocessable_content)
         end
-        return gate_or_forbid(false) if shared && !own?
+        return render(json: { error: "forbidden" }, status: :forbidden) if shared && !own?
 
         user = own? ? RpgClubUser.find_or_create_by!(user_id: params[:user_id].to_s) : RpgClubUser.find(params[:user_id])
         RpgClubUser.transaction do
           BirthDates.change!(user, data[:birth_date], by: acting_user_id, staff: staff?) if data.key?(:birth_date)
-          BirthDates.share!(user, shared) unless shared.nil?
+          BirthDates.share!(user, shared) if sharing
         end
 
         render json: { data: BirthDates.document(user.user_id, user) }

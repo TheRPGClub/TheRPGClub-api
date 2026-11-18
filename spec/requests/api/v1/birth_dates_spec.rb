@@ -66,7 +66,7 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
                                          'sharing its Birthday.' },
               birthday_shared: { type: :boolean,
                                  description: 'Share the member\'s Birthday (true) or stop sharing it (false). ' \
-                                              'Only the member can send true.' },
+                                              'Only the member can send true. Null is refused.' },
               acting_user_id: { type: :string,
                                 description: 'Service token only (required): the Discord user the bot acts for.' }
             },
@@ -83,7 +83,7 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
 
       response '422', 'the member already changed it twice this month; birth_date and birthday_shared are ' \
                       'both missing; birth_date is not a date from 1900 to today or a real MM-DD month and ' \
-                      'day; birthday_shared is not a boolean; or `birth_date_required`: sharing a Birthday ' \
+                      'day; birthday_shared is not true or false (null included); or `birth_date_required`: sharing a Birthday ' \
                       'without a Birth Date' do
         schema '$ref' => '#/components/schemas/BirthDateRefusal'
       end

@@ -217,6 +217,17 @@ RSpec.describe "api/v1/birth_date behavior", type: :request do
       expect(json).to eq("error" => "birthday_shared must be true or false")
     end
 
+    it "refuses null rather than saving nothing" do
+      member.update!(birth_date: BirthDate.new(month: 5, day: 4, year: nil), birthday_shared: true)
+
+      share(nil, as: auth_headers_for(member), birth_date: "05-06")
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to eq("error" => "birthday_shared must be true or false")
+      expect(member.reload).to have_attributes(birth_date: BirthDate.new(month: 5, day: 4, year: nil),
+        birthday_shared: true)
+    end
+
     it "doesn't count toward the limit, even after both of the month's changes" do
       travel_to Time.utc(2026, 11, 17, 15) do
         set_birth_date("1990-05-04", as: auth_headers_for(member))
