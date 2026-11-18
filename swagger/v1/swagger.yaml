@@ -512,6 +512,12 @@ components:
         first_released_precision:
           type: string
           nullable: true
+          enum:
+          - day
+          - month
+          - quarter
+          - year
+          -
           description: The Date Precision of `first_released_on` (day, month, quarter
             or year); null with it.
         releases:

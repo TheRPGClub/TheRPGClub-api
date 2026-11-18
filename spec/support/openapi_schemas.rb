@@ -182,7 +182,8 @@ module OpenapiSchemas
           "or region, earliest date, then the more precise Date Precision) whose whole period ended before " \
           "this entry's date (any dated Release for a TBA entry), so a vague Release still running on the " \
           "entry's date does not count. Null otherwise, so the game's first entry has none."),
-        first_released_precision: str(nullable: true, description: "The Date Precision of " \
+        first_released_precision: str(nullable: true, enum: [ *(GamedbRelease::DATE_PRECISIONS - %w[tba]), nil ],
+          description: "The Date Precision of " \
           "`first_released_on` (day, month, quarter or year); null with it."),
         releases: array_of("UpcomingReleaseRelease"),
         _required: %w[game date date_precision section first_released_on first_released_precision releases]
