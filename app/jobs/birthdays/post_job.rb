@@ -5,7 +5,8 @@ module Birthdays
   # at 10:00 America/New_York in config/recurring.yml. Queues one
   # `birthday_post` bot job greeting every member still in the server whose
   # shared Birthday it is today (Birthdays.falling_on), or nothing on a day
-  # with none.
+  # with none. The job names the channel to post in, general chat
+  # (DiscordChannels::GENERAL), so the API owns where the post goes.
   #
   # A member gets at most one Birthday Post a calendar year: a BirthdayPost row
   # per member and year is written with the bot job, in one transaction, and a
@@ -55,7 +56,7 @@ module Birthdays
     def enqueue(user_ids, today)
       BotJob.enqueue!(kind: KIND,
         summary: "Birthday Post for #{user_ids.size} #{'member'.pluralize(user_ids.size)} on #{today.iso8601}",
-        payload: { club_date: today.iso8601, user_ids: user_ids })
+        payload: { club_date: today.iso8601, user_ids: user_ids, channel_id: DiscordChannels::GENERAL })
     end
   end
 end

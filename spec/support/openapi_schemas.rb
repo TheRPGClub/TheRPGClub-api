@@ -1355,18 +1355,22 @@ module OpenapiSchemas
       ),
       # The Birthday Post bot job payload (#401), as BotJobClaim.payload carries it.
       BirthdayPostJobPayload: obj(
-        _description: "Kind `birthday_post`. Post one Birthday Post in the Birthday channel greeting every " \
-                      "member in `user_ids`, @mentioning each so they are pinged. Queued at 10:00 " \
-                      "America/New_York, only on a day with Birthdays. If `club_date` is no longer today in " \
-                      "New York, ack it done without posting. Birthdays are not a Feature: no `feature_key`, " \
+        _description: "Kind `birthday_post`. Post one Birthday Post in `channel_id` greeting every member in " \
+                      "`user_ids`, @mentioning each so they are pinged. Queued at 10:00 America/New_York, only " \
+                      "on a day with Birthdays. If `club_date` is no longer today in New York, ack it done " \
+                      "without posting. Right before posting, re-read GET /api/v1/birthdays/upcoming and greet " \
+                      "only the `user_ids` listed there with `today: true`, so a member who stopped sharing or " \
+                      "left since it was queued isn't pinged. Birthdays are not a Feature: no `feature_key`, " \
                       "and no Feature Flag routes it.",
-        _required: %w[club_date user_ids],
+        _required: %w[club_date user_ids channel_id],
         club_date: str(format: "date", example: "2026-05-04").merge(
           description: "The club day (America/New_York) whose Birthdays these are."
         ),
         user_ids: { type: :array, minItems: 1, items: str,
                     description: "The members to greet, by display name: Discord user ids, still in the server, " \
-                                 "sharing their Birthday. No year or age is sent." }
+                                 "sharing their Birthday. No year or age is sent." },
+        channel_id: str(example: "191941851757019136",
+          description: "The Discord channel to post in: general chat (the API's DiscordChannels::GENERAL).")
       ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(

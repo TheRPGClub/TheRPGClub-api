@@ -39,13 +39,17 @@ RSpec.describe "api/v1/birthday post behavior", type: :request do
     member
   end
 
-  it "queues one Birthday Post for the club day, carrying the member due today" do
+  # The general chat channel (DiscordChannels::GENERAL), where the bot posts.
+  let(:general_chat) { "191941851757019136" }
+
+  it "queues one Birthday Post for the club day in general chat, carrying the member due today" do
     member = member_born("1990-05-04")
 
     post_birthdays_at("2026-05-04 10:00")
 
     job = claim_birthday_posts.sole
-    expect(job.fetch("payload")).to eq("club_date" => "2026-05-04", "user_ids" => [ member.user_id ])
+    expect(job.fetch("payload"))
+      .to eq("club_date" => "2026-05-04", "user_ids" => [ member.user_id ], "channel_id" => general_chat)
   end
 
   it "greets everyone due today in one Birthday Post, by name, whether or not they gave a year" do
@@ -94,7 +98,7 @@ RSpec.describe "api/v1/birthday post behavior", type: :request do
 
     post_birthdays_at("2027-06-10 10:00")
     expect(claim_birthday_posts.sole.fetch("payload"))
-      .to eq("club_date" => "2027-06-10", "user_ids" => [ member.user_id ])
+      .to eq("club_date" => "2027-06-10", "user_ids" => [ member.user_id ], "channel_id" => general_chat)
   end
 
   describe "a 29 February Birthday" do
@@ -106,7 +110,7 @@ RSpec.describe "api/v1/birthday post behavior", type: :request do
 
       post_birthdays_at("2027-02-28 10:00")
       expect(claim_birthday_posts.sole.fetch("payload"))
-        .to eq("club_date" => "2027-02-28", "user_ids" => [ member.user_id ])
+        .to eq("club_date" => "2027-02-28", "user_ids" => [ member.user_id ], "channel_id" => general_chat)
 
       post_birthdays_at("2027-03-01 10:00")
       expect(claim_birthday_posts).to be_empty
@@ -121,7 +125,7 @@ RSpec.describe "api/v1/birthday post behavior", type: :request do
 
       post_birthdays_at("2028-02-29 10:00")
       expect(claim_birthday_posts.sole.fetch("payload"))
-        .to eq("club_date" => "2028-02-29", "user_ids" => [ leap.user_id ])
+        .to eq("club_date" => "2028-02-29", "user_ids" => [ leap.user_id ], "channel_id" => general_chat)
     end
   end
 
