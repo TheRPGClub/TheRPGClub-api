@@ -10587,6 +10587,77 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/codex/fun_facts/draw":
+    post:
+      summary: Draw the next Fun Fact
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller); the bot calls it for the member
+        using /funfact, naming them with `data.acting_user_id`. Returns the next Fun
+        Fact in the queue and marks it shown: never-shown Fun Facts first, newest
+        first; then the one shown longest ago; ties go to the lowest id. So every
+        Fun Fact is shown once before any repeats, and a new one goes next. Editing
+        a Fun Fact keeps its place; the Daily Fun Fact draws from the same queue.
+        Concurrent draws get different Fun Facts while there are enough to go round.
+        `{ "fun_fact": null }` when there are none. Belongs to the Club Codex Feature:
+        not found for non-staff in Preview and for everyone when Off; the service
+        token is not gated, but a bot write gets 403 `feature_unavailable` when the
+        Flag hides the Feature from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the drawn Fun Fact, or null when there are none
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fun_fact:
+                    allOf:
+                    - "$ref": "#/components/schemas/CodexEntry"
+                    nullable: true
+                required:
+                - fun_fact
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: "(bot) `feature_unavailable`: the Flag hides the Feature from
+            the member it acts for"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
   "/api/v1/codex/fun_facts/{id}":
     parameters:
     - name: id

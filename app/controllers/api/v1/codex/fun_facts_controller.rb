@@ -11,7 +11,7 @@ module Api
       # The bot acts for the member it names (CodexActing): writes need
       # `data.acting_user_id` (a DELETE: `acting_user_id` in the query).
       class FunFactsController < BaseController
-        WRITES = %i[create update destroy].freeze
+        WRITES = %i[create update destroy draw].freeze
 
         before_action :require_acting_member!, only: WRITES
 
@@ -65,9 +65,28 @@ module Api
           destroy_entry(find_entry)
         end
 
+        # POST /api/v1/codex/fun_facts/draw
+        #
+        # The next Fun Fact in the queue (ClubCodex::FunFactQueue), marked
+        # shown: `{ fun_fact: <entry> }`, or `{ fun_fact: null }` when there
+        # are none. Members call it; the bot calls it for the member using
+        # /funfact (`data.acting_user_id`).
+        def draw
+          entry = ClubCodex::FunFactQueue.draw!
+          return render(json: { fun_fact: nil }) unless entry
+
+          render json: { fun_fact: entry_payload(entry) }
+        end
+
         private
 
         def part = "fun_fact"
+
+        # The entry payload render_entry sends, outside its `data` envelope.
+        def entry_payload(entry)
+          entry = CodexEntryResource.preloaded(CodexEntry.where(id: entry.id)).first!
+          CodexEntryResource.new(entry, params: { actor: actor }).serializable_hash
+        end
       end
     end
   end
