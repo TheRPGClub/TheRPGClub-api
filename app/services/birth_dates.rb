@@ -63,18 +63,22 @@ module BirthDates
   # Raises Invalid for a bad date and LimitReached for a member's third change
   # in a month.
   def change!(user, value, by:, staff:, now: Time.current)
-    date = parse(value, now: now)
+    birth_date = parse(value, now: now)
 
     user.with_lock do
-      next false if user.birth_date == date
+      next false if user.birth_date == birth_date
 
       if !staff && changes_left(user.user_id, now: now).zero?
         raise LimitReached, next_month_start(now)
       end
 
-      # Removing the Birth Date stops sharing its Birthday.
-      user.update!(birth_date: date, **(date.nil? ? { birthday_shared: false } : {}))
-      MemberBirthDateChange.create!(user_id: user.user_id, birth_date: date, changed_by: by, by_staff: staff,
+      if birth_date.nil?
+        # Removing the Birth Date stops sharing its Birthday.
+        user.update!(birth_date: nil, birthday_shared: false)
+      else
+        user.update!(birth_date: birth_date)
+      end
+      MemberBirthDateChange.create!(user_id: user.user_id, birth_date: birth_date, changed_by: by, by_staff: staff,
         changed_at: now)
       true
     end
@@ -98,15 +102,14 @@ module BirthDates
     [ CHANGES_PER_MONTH - used, 0 ].max
   end
 
-  # The calendar month `now` falls in, in the club's time zone (the one
-  # Challenge dates use).
+  # The calendar month `now` falls in, in the club's time zone (ClubDay).
   def month(now)
-    local = now.in_time_zone(Challenges::TIME_ZONE)
+    local = now.in_time_zone(ClubDay::TIME_ZONE)
     local.beginning_of_month..local.end_of_month
   end
 
   def next_month_start(now)
-    Challenges.today(now).next_month.beginning_of_month
+    ClubDay.today(now).next_month.beginning_of_month
   end
 
   # nil removes the Birth Date. Anything else is a YYYY-MM-DD date between
@@ -129,7 +132,7 @@ module BirthDates
     return unless birth_date.year?
 
     date = Date.new(birth_date.year, birth_date.month, birth_date.day)
-    raise Invalid, "birth_date can't be in the future" if date > Challenges.today(now)
+    raise Invalid, "birth_date can't be in the future" if date > ClubDay.today(now)
     raise Invalid, "birth_date can't be before #{EARLIEST.year}" if date < EARLIEST
   end
 end

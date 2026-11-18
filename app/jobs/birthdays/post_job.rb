@@ -20,13 +20,13 @@ module Birthdays
     queue_as :default
 
     KIND = "birthday_post"
-    # Members in the post by display name (Challenges.display_name), so the
+    # Members in the post by display name (Members.display_name), so the
     # bot greets them in a stable, readable order.
     BY_NAME = Arel.sql("LOWER(COALESCE(NULLIF(rpg_club_users.global_name, ''), " \
                        "NULLIF(rpg_club_users.username, ''), rpg_club_users.user_id)), rpg_club_users.user_id")
 
     def perform
-      today = Birthdays.today
+      today = ClubDay.today
       BirthdayPost.transaction do
         greeted = record_posts(due(today), today)
         enqueue(greeted, today) if greeted.any?

@@ -11,7 +11,7 @@ module Api
       # The shared Birthdays from today through today + 29 days in club days
       # (America/New_York), by date, then display name. See Birthdays::Upcoming.
       def upcoming
-        render json: { data: Birthdays::Upcoming.entries(Birthdays.today) }
+        render json: { data: Birthdays::Upcoming.entries(ClubDay.today) }
       end
     end
   end

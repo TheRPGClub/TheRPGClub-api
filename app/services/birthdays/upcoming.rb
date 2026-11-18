@@ -13,7 +13,7 @@ module Birthdays
 
     module_function
 
-    # `today` is the club's date (Birthdays.today). Ordered by the date the
+    # `today` is the club day (ClubDay.today). Ordered by the date the
     # Birthday falls on, then by the member's display name.
     def entries(today)
       falls_on = window(today)
@@ -33,8 +33,8 @@ module Birthdays
     end
 
     def entry(user, on, today)
-      Challenges.member(user).merge(
-        display_name: Challenges.display_name(user),
+      Members.summary(user).merge(
+        display_name: Members.display_name(user),
         month: user.birth_month, day: user.birth_day,
         on: on.iso8601, today: on == today
       )

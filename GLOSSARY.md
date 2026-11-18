@@ -119,6 +119,10 @@ _Avoid_: Veteran, trusted member
 The day and month of a member's Birth Date. The club celebrates it only if the member chooses to share it; until then nobody but the member and staff sees it. Sharing never reveals the year or the member's age. Birthdays are a utility, not a Feature: the only way to switch one off is for its member to stop sharing it.
 _Avoid_: Birth Date (when meaning only the day and month), anniversary, cake day
 
+**Club day**:
+A calendar day in the club's time zone, America/New_York. Challenge dates, the Birth Date change limit and Birthdays all count in club days, so a day starts and ends at midnight New York time whatever the member's own time zone.
+_Avoid_: Server day, UTC day
+
 **Birthday Post**:
 The bot's one message on a club day that greets every member whose shared Birthday it is. A member gets at most one Birthday Post a calendar year, however their Birth Date changes; a 29 February Birthday is celebrated on 28 February in other years.
 _Avoid_: Birthday reminder, birthday announcement
