@@ -29,18 +29,20 @@ class ChallengeRunResource
   end
 
   # Assignment only (null otherwise): the game picked for the member, and
-  # whether at random, once revealed (or to staff, `params[:staff]`); and
-  # their Santa, which nobody but staff sees before the Edition ends.
+  # whether at random, once revealed (or to staff, `params[:staff]`, but for
+  # their own Run); and their Santa, which nobody but staff not drawn in the
+  # Edition sees before it ends (ChallengeEdition#pick_shown?, #santas_shown?;
+  # `params[:user_id]` is the member reading).
   attribute :assignment do |run|
     edition = run.edition
     next nil unless edition
 
     signup = run.assignment
-    staff = params[:staff] ? true : false
-    shown = signup && (edition.revealed? || staff)
+    viewer = { user_id: params[:user_id], staff: params[:staff] ? true : false }
+    shown = signup && edition.pick_shown?(run.user_id, **viewer)
     { game: shown && signup.picked_game ? GameSummaryResource.new(signup.picked_game).serializable_hash : nil,
       picked_randomly: shown ? signup.picked_randomly : nil,
-      santa: signup && (staff || edition.ended?) ? Challenges.member(signup.user) : nil }
+      santa: signup && edition.santas_shown?(**viewer) ? Challenges.member(signup.user) : nil }
   end
 
   attribute :window do |run|

@@ -3383,16 +3383,19 @@ components:
                 allOf:
                 - "$ref": "#/components/schemas/GameSummary"
                 nullable: true
-                description: The game picked; null while nothing is.
+                description: The game picked; null while nothing is, and before the
+                  reveal on the reader's own row.
               picked_randomly:
                 type: boolean
+                nullable: true
                 description: 'A random pick at the deadline: the Santa didn''t pick,
-                  withdrew or left the server.'
+                  withdrew or left the server. Null while the game is hidden.'
               santa:
                 allOf:
                 - "$ref": "#/components/schemas/ChallengeMember"
                 nullable: true
-                description: Null before the Edition ends, except to staff.
+                description: Null before the Edition ends, except to staff the draw
+                  didn't give a Santa in it.
               run:
                 type: object
                 properties:
@@ -3641,7 +3644,7 @@ components:
               - "$ref": "#/components/schemas/GameSummary"
               nullable: true
               description: 'The game picked for the member: null before the reveal
-                (except to staff).'
+                (except to staff, on Runs not their own).'
             picked_randomly:
               type: boolean
               nullable: true
@@ -3650,7 +3653,8 @@ components:
               allOf:
               - "$ref": "#/components/schemas/ChallengeMember"
               nullable: true
-              description: Null before the Edition ends, except to staff.
+              description: Null before the Edition ends, except to staff the draw
+                didn't give a Santa in it.
           nullable: true
           description: 'Assignment only: the member''s assigned game and their Santa.'
         status:
@@ -7991,9 +7995,11 @@ paths:
         reveal date `assignments` lists every game picked, and the Edition ends on
         the next reveal date, when unFinished Runs Expire. Dates are the club''s (America/New_York).
         A Santa is served to nobody but staff (Moderators and above, who also see
-        `assignments` from the draw on) before the Edition ends. Editions of a hidden
-        Challenge are found only by Moderators and above and its Host. The bot may
-        name the member it reads for with `acting_user_id` (for `signed_up`).'
+        `assignments` from the draw on) before the Edition ends; staff drawn in the
+        Edition see no Santas before it ends and not their own game before the reveal.
+        Editions of a hidden Challenge are found only by Moderators and above and
+        its Host. The bot may name the member it reads for with `acting_user_id` (for
+        `signed_up`).'
       parameters:
       - name: acting_user_id
         in: query
@@ -8056,8 +8062,9 @@ paths:
         picked, and the Edition ends on the next reveal date, when unFinished Runs
         Expire. Dates are the club''s (America/New_York). A Santa is served to nobody
         but staff (Moderators and above, who also see `assignments` from the draw
-        on) before the Edition ends. Editions of a hidden Challenge are found only
-        by Moderators and above and its Host.'
+        on) before the Edition ends; staff drawn in the Edition see no Santas before
+        it ends and not their own game before the reveal. Editions of a hidden Challenge
+        are found only by Moderators and above and its Host.'
       parameters:
       - name: acting_user_id
         in: query

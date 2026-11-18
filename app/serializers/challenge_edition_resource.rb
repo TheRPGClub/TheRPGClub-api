@@ -4,7 +4,7 @@
 # and dates (the club's), and the members signed up, each marked when the
 # draw left them out or they withdrew after it. From the reveal on it serves
 # the assignments (ticket #384), with the Santas only once the Edition ends,
-# except to staff. `params[:user_id]` is the member reading, for `signed_up`,
+# except to staff not drawn in it. `params[:user_id]` is the member reading, for `signed_up`,
 # `params[:staff]` whether they are staff (a Moderator or above), and
 # `params[:viewer]` their backlog size against the sign-up minimum.
 #
@@ -58,19 +58,25 @@ class ChallengeEditionResource
   # to staff (`params[:staff]`) from the draw on: each recipient, the game
   # picked for them (null while nothing is), whether it was a random pick,
   # their Run and its progress, and their Santa, which nobody but staff
-  # sees before the Edition ends. Null when not served.
+  # sees before the Edition ends. A staff member drawn in the Edition sees
+  # it as a member would for themselves: no game of their own before the
+  # reveal and no Santas before the end (ChallengeEdition#pick_shown?,
+  # #santas_shown?). Null when not served.
   attribute :assignments do |edition|
     staff = params[:staff] ? true : false
     next nil unless edition.revealed? || (staff && edition.drawn?)
 
+    viewer = { user_id: params[:user_id], staff: staff }
+    santas = edition.santas_shown?(**viewer)
     runs = edition.runs.index_by(&:user_id)
     edition.signups.select(&:recipient_user_id).sort_by { |signup| signup.recipient.username.to_s.downcase }
       .map do |signup|
         run = runs[signup.recipient_user_id]
+        pick = edition.pick_shown?(signup.recipient_user_id, **viewer)
         { recipient: Challenges.member(signup.recipient),
-          game: signup.picked_game && GameSummaryResource.new(signup.picked_game).serializable_hash,
-          picked_randomly: signup.picked_randomly,
-          santa: (Challenges.member(signup.user) if staff || edition.ended?),
+          game: pick && signup.picked_game ? GameSummaryResource.new(signup.picked_game).serializable_hash : nil,
+          picked_randomly: (signup.picked_randomly if pick),
+          santa: (Challenges.member(signup.user) if santas),
           run: run && { id: run.id, status: run.status, progress: Challenges::Progress.summary(run).as_json } }
       end
   end

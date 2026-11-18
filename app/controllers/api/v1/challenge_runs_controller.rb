@@ -167,8 +167,9 @@ module Api
       end
 
       # Staff (Moderators and above) see an Assignment Run's Santa before
-      # the Edition ends.
-      def resource_params = { staff: actor.moderator_or_above? }
+      # the Edition ends, unless the draw gave them one in it, and its game
+      # before the reveal, unless the Run is theirs.
+      def resource_params = { user_id: actor.user_id, staff: actor.moderator_or_above? }
 
       # `status` filters by one status, or "ended" by every status but Active
       # (Finished, Expired, Abandoned).
