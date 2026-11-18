@@ -2,8 +2,8 @@
 
 # An Upcoming Release on the Release Calendar (Gamedb::UpcomingReleases::Entry):
 # the game, the shared date and Date Precision, the `section` a client renders
-# it under, its Releases, and when the game first released if that was
-# earlier.
+# it under, its Releases, and when the game first came out if that was
+# before this entry.
 class UpcomingReleaseResource
   include BaseResource
 
@@ -12,8 +12,8 @@ class UpcomingReleaseResource
   end
   attribute(:date) { |entry| entry.date&.iso8601 }
   attributes :date_precision, :section
-  attribute(:first_released_on) { |entry| entry.first_released_before&.date&.iso8601 }
-  attribute(:first_released_precision) { |entry| entry.first_released_before&.date_precision }
+  attribute(:first_released_on) { |entry| entry.first_released&.date&.iso8601 }
+  attribute(:first_released_precision) { |entry| entry.first_released&.date_precision }
   attribute(:releases) do |entry|
     entry.releases.map do |release|
       {

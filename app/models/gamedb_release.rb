@@ -45,11 +45,10 @@ class GamedbRelease < ApplicationRecord
     "(#{table}.release_date + CASE #{table}.date_precision #{vague} ELSE INTERVAL '1 day' END - INTERVAL '1 day')::date"
   end
 
-  # SQL ranking the Date Precision of the Release row `table` from most to
-  # least precise (DATE_PRECISIONS order: day first, TBA last).
-  def self.precision_rank_sql(table)
-    ranks = DATE_PRECISIONS.each_with_index.map { |precision, rank| "WHEN '#{precision}' THEN #{rank}" }.join(" ")
-    "CASE #{table}.date_precision #{ranks} END"
+  # Ranks a Date Precision from most to least precise (DATE_PRECISIONS
+  # order: day first, TBA last), for "the more precise one wins a tie".
+  def self.precision_rank(date_precision)
+    DATE_PRECISIONS.index(date_precision)
   end
 
   # This Release's period (::period); nil for TBA.

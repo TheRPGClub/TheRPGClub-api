@@ -309,11 +309,45 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
 
     it "carries the earliest Release's Date Precision" do
       game = create(:game, title: "Vague")
-      release(game, "2027-07-01", precision: "quarter", platform: pc)
+      release(game, "2027-04-01", precision: "quarter", platform: pc)
       release(game, "2027-08-14", platform: switch)
 
       expect(upcoming.map { |entry| [ entry["date"], entry["first_released_on"], entry["first_released_precision"] ] })
-        .to eq([ [ "2027-08-14", "2027-07-01", "quarter" ], [ "2027-07-01", nil, nil ] ])
+        .to eq([ [ "2027-04-01", nil, nil ], [ "2027-08-14", "2027-04-01", "quarter" ] ])
+    end
+
+    it "counts a vague Release as first only once its whole period has ended before the entry" do
+      game = create(:game, title: "Overlap")
+      release(game, "2027-03-01", precision: "month", region: japan)
+      release(game, "2027-03-25", region: na)
+      release(game, "2027-07-01", precision: "quarter", platform: pc)
+      release(game, "2027-08-14", platform: switch)
+      release(game, "2027-10-02", platform: switch, region: eu)
+
+      expect(upcoming.map { |entry| [ entry["date"], entry["first_released_on"], entry["first_released_precision"] ] })
+        .to eq([
+          [ "2027-03-01", nil, nil ],
+          [ "2027-03-25", nil, nil ],
+          [ "2027-08-14", "2027-03-01", "month" ],
+          [ "2027-07-01", "2027-03-01", "month" ],
+          [ "2027-10-02", "2027-03-01", "month" ]
+        ])
+    end
+
+    it "names an exact day inside an earlier vague Release's period when only the day came before the entry" do
+      game = create(:game, title: "Sharpened")
+      release(game, "2027-01-01", precision: "year", region: japan)
+      release(game, "2027-04-02", region: eu)
+      release(game, "2027-11-20", region: na)
+      release(game, "2028-02-01", platform: pc)
+
+      expect(upcoming.map { |entry| [ entry["date"], entry["first_released_on"], entry["first_released_precision"] ] })
+        .to eq([
+          [ "2027-04-02", nil, nil ],
+          [ "2027-11-20", "2027-04-02", "day" ],
+          [ "2027-01-01", nil, nil ],
+          [ "2028-02-01", "2027-01-01", "year" ]
+        ])
     end
 
     it "prefers the more precise Release when two share the earliest date" do

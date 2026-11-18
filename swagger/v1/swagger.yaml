@@ -505,9 +505,10 @@ components:
           format: date
           nullable: true
           description: The game's earliest dated Release (any platform or region,
-            earliest date, then the more precise Date Precision) when it is before
-            this entry's date, or the entry is TBA. Null otherwise, so the game's
-            first entry has none.
+            earliest date, then the more precise Date Precision) whose whole period
+            ended before this entry's date (any dated Release for a TBA entry), so
+            a vague Release still running on the entry's date does not count. Null
+            otherwise, so the game's first entry has none.
         first_released_precision:
           type: string
           nullable: true

@@ -179,8 +179,9 @@ module OpenapiSchemas
         section: str(example: "July 2027", description: "The heading to list the entry under: the month " \
           "(\"July 2027\") for day and month entries, \"Q3 2027\" for a quarter, \"2027\" for a year, \"TBA\"."),
         first_released_on: date(nullable: true, description: "The game's earliest dated Release (any platform " \
-          "or region, earliest date, then the more precise Date Precision) when it is before this entry's " \
-          "date, or the entry is TBA. Null otherwise, so the game's first entry has none."),
+          "or region, earliest date, then the more precise Date Precision) whose whole period ended before " \
+          "this entry's date (any dated Release for a TBA entry), so a vague Release still running on the " \
+          "entry's date does not count. Null otherwise, so the game's first entry has none."),
         first_released_precision: str(nullable: true, description: "The Date Precision of " \
           "`first_released_on` (day, month, quarter or year); null with it."),
         releases: array_of("UpcomingReleaseRelease"),

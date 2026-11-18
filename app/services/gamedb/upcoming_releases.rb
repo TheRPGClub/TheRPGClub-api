@@ -23,16 +23,9 @@ module Gamedb
   # past or future: its days, the month itself, a quarter ending in it and,
   # for December, the year. TBA is never in a month.
   class UpcomingReleases
+    # `first_released` is the game's earliest Release that had come out before
+    # this entry (FirstRelease), or nil.
     Entry = Data.define(:game, :date, :date_precision, :releases, :first_released) do
-      # The game's earliest dated Release, when it comes before this entry
-      # (always, for a TBA entry); otherwise nil.
-      def first_released_before
-        return nil if first_released.nil?
-        return first_released if date.nil? || first_released.date < date
-
-        nil
-      end
-
       # The heading a client renders the entry under: the month for `day` and
       # `month` entries, "Q3 2027", "2027" or "TBA".
       def section
@@ -45,7 +38,7 @@ module Gamedb
       end
     end
 
-    # A game's earliest dated Release: its date and Date Precision.
+    # A game's first release before an entry: its date and Date Precision.
     FirstRelease = Data.define(:date, :date_precision)
 
     # The order of each Date Precision among entries placed on the same day.
@@ -158,26 +151,32 @@ module Gamedb
       game_ids = rows.map { |row| row.fetch("game_id") }.uniq
       games = GamedbGame.where(game_id: game_ids).preload(:images).index_by(&:game_id)
       releases = GamedbRelease.where(game_id: game_ids).includes(:platform, :region).to_a
-        .group_by { |release| [ release.game_id, release.release_date, release.date_precision ] }
-      firsts = first_releases(game_ids)
+      grouped = releases.group_by { |release| [ release.game_id, release.release_date, release.date_precision ] }
+      dated = releases.select(&:release_date)
+        .sort_by { |release| [ release.release_date, GamedbRelease.precision_rank(release.date_precision) ] }
+        .group_by(&:game_id)
 
       rows.map do |row|
-        key = [ row.fetch("game_id"), row["release_date"] && Date.parse(row["release_date"].to_s), row.fetch("date_precision") ]
+        game_id = row.fetch("game_id")
+        date = row["release_date"] && Date.parse(row["release_date"].to_s)
+        date_precision = row.fetch("date_precision")
         Entry.new(
-          game: games.fetch(key[0]), date: key[1], date_precision: key[2],
-          releases: releases.fetch(key, []).sort_by { |r| [ r.platform.platform_name, r.region.region_name, r.release_id ] },
-          first_released: firsts[key[0]]
+          game: games.fetch(game_id), date: date, date_precision: date_precision,
+          releases: grouped.fetch([ game_id, date, date_precision ], [])
+            .sort_by { |release| [ release.platform.platform_name, release.region.region_name, release.release_id ] },
+          first_released: first_released_before(dated.fetch(game_id, []), date)
         )
       end
     end
 
-    # Each game's earliest dated Release: the earliest stored date, the more
-    # precise Date Precision on a tie.
-    def first_releases(game_ids)
-      GamedbRelease.where(game_id: game_ids).where.not(release_date: nil)
-        .select("DISTINCT ON (game_id) game_id, release_date, date_precision")
-        .order(Arel.sql("game_id, release_date, #{GamedbRelease.precision_rank_sql("gamedb_releases")}"))
-        .to_h { |release| [ release.game_id, FirstRelease.new(date: release.release_date, date_precision: release.date_precision) ] }
+    # The game's earliest dated Release (earliest stored date, then the more
+    # precise Date Precision) whose whole period ended before `date`; any dated
+    # Release for a TBA entry (no date). A vague Release whose period is still
+    # running on the entry's date has not come out before it, so a JP "Mar
+    # 2027" is not "first released" for a NA 2027-03-25.
+    def first_released_before(dated, date)
+      first = dated.find { |release| date.nil? || release.period.end < date }
+      first && FirstRelease.new(date: first.release_date, date_precision: first.date_precision)
     end
   end
 end
