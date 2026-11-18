@@ -51,7 +51,8 @@ RSpec.describe 'api/v1/release_announcements', type: :request do
                   'it (1) upserts an announcement for every exact-day release (Date Precision `day`), scheduling ' \
                   '`announce_at = release_date - 7 days` (a pending row is moved only when its time changes; rows ' \
                   'already sent/skipped are left alone); (2) clears the canonicality skip on rows that no longer ' \
-                  'qualify as port-only / same-day-duplicate; and (3) skips rows that are now non-canonical ' \
+                  'qualify as port-only / same-day-duplicate, rescheduling each from its release\'s current ' \
+                  'date; and (3) skips rows that are now non-canonical ' \
                   '(`same-day-platform-duplicate` for a release on the canonical release\'s date, in any region, ' \
                   '`port-only-release` for any other date). Releases that are not an exact day are never ' \
                   'announced or skipped. The canonical release is the game\'s earliest exact-day release outside ' \

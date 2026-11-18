@@ -1096,6 +1096,19 @@ RSpec.describe "api/v1/games behavior", type: :request do
         )
         expect(due_feed.map { |row| row.fetch("release_id") }).to eq([ release_id_in("EU") ])
       end
+
+      it "reschedules a skipped Release that moved before it becomes canonical, so it is not announced early" do
+        igdb_reports_rows([ 2, in_window_date ], [ 1, in_window_date + 1 ])
+        refresh!
+
+        igdb_reports_rows([ 2, in_window_date + 120 ], [ 1, in_window_date + 60 ])
+        refresh!
+
+        expect(announcements_of(game).find { |row| row.fetch("release_id") == release_id_in("EU") }).to include(
+          "announce_at" => "#{(in_window_date + 53).iso8601}T00:00:00.000Z", "skipped_at" => nil
+        )
+        expect(due_feed).to eq([])
+      end
     end
 
     it "allows a Members role holder" do

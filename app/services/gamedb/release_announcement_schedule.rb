@@ -12,7 +12,8 @@ module Gamedb
   #      (insert, or move a pending row whose time changed; rows already
   #      sent or skipped are left alone);
   #   2. restore: clear the canonicality skip on rows that were skipped as
-  #      port-only / same-day-duplicate but no longer qualify;
+  #      port-only / same-day-duplicate but no longer qualify, rescheduling
+  #      them from their Release's current date;
   #   3. mark: skip rows that are now non-canonical (`port-only-release` for
   #      another date, `same-day-platform-duplicate` for the canonical date).
   #
@@ -87,7 +88,7 @@ module Gamedb
       exec_update(<<~SQL.squish)
         INSERT INTO gamedb_release_announcements
           (release_id, announce_at, sent_at, skipped_at, skip_reason, created_at, updated_at)
-        SELECT r.release_id, r.release_date - INTERVAL '#{LEAD.in_days.to_i} days', NULL, NULL, NULL,
+        SELECT r.release_id, #{announce_at_sql('r')}, NULL, NULL, NULL,
                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
           FROM gamedb_releases r
          WHERE r.date_precision = #{quote(GamedbRelease.date_precisions[:day])}
@@ -101,23 +102,29 @@ module Gamedb
       SQL
     end
 
-    # Step 2. The `release_id IN (...this game...)` guard is required: the
-    # `NOT EXISTS` is over this game's ranked Releases only, so without it a
-    # different game's skip would falsely qualify for restore.
+    # Step 2. A restored row is rescheduled from its Release's current date:
+    # step 1 never moves a skipped row, so a Release that moved while skipped
+    # would otherwise come back with its old, possibly long-past `announce_at`
+    # and be announced months early. Only this game's `day` Releases qualify;
+    # the `NOT EXISTS` is over this game's ranked Releases only.
     def restore_non_canonical
       exec_update(<<~SQL.squish)
-        UPDATE gamedb_release_announcements
+        UPDATE gamedb_release_announcements a
            SET skipped_at = NULL,
                skip_reason = NULL,
+               announce_at = #{announce_at_sql('r')},
                updated_at = CURRENT_TIMESTAMP
-         WHERE sent_at IS NULL
-           AND skip_reason IN (#{quote(PORT_ONLY_RELEASE_REASON)}, #{quote(SAME_DAY_DUPLICATE_REASON)})
-           AND release_id IN (SELECT release_id FROM gamedb_releases WHERE game_id = #{@game_id})
+          FROM gamedb_releases r
+         WHERE r.release_id = a.release_id
+           AND r.game_id = #{@game_id}
+           AND r.date_precision = #{quote(GamedbRelease.date_precisions[:day])}
+           AND a.sent_at IS NULL
+           AND a.skip_reason IN (#{quote(PORT_ONLY_RELEASE_REASON)}, #{quote(SAME_DAY_DUPLICATE_REASON)})
            AND NOT EXISTS (
              SELECT 1
              FROM (#{ranked_releases_sql}) ranked
              WHERE ranked.canonical_rank > 1
-               AND ranked.release_id = gamedb_release_announcements.release_id
+               AND ranked.release_id = a.release_id
            )
       SQL
     end
@@ -152,6 +159,11 @@ module Gamedb
     # the due feed's global query.
     def ranked_releases_sql
       "#{RANKED_RELEASES_SELECT_SQL} AND r.game_id = #{@game_id} #{RANKED_RELEASES_WINDOW_SQL}"
+    end
+
+    # UTC midnight LEAD days before the Release row `table`'s date.
+    def announce_at_sql(table)
+      "#{table}.release_date - INTERVAL '#{LEAD.in_days.to_i} days'"
     end
 
     def exec_update(sql)
