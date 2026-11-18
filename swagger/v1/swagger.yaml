@@ -2822,6 +2822,7 @@ components:
           - news_catch_up
           - challenge_announce
           - challenge_dm
+          - daily_fun_fact
           - birthday_post
         summary:
           type: string
@@ -3086,6 +3087,167 @@ components:
       description: 'Kind `news_catch_up`. The News Hub''s Feature Flag went from Off
         to Preview or Live: record News Channel messages posted while it was Off and
         post missing News Copies. The lease is 30 minutes.'
+    CodexMember:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: Their Discord id, which is also their profile's id.
+        name:
+          type: string
+          description: 'The name they go by now: their Discord display name, else
+            their username (their last known one once they have left).'
+        avatar_url:
+          type: string
+          description: Path of their stored avatar (GET /api/v1/users/{id}/avatar,
+            404 without one).
+      required:
+      - user_id
+      - name
+      - avatar_url
+    CodexEntryViewer:
+      type: object
+      properties:
+        can_edit:
+          type: boolean
+        can_delete:
+          type: boolean
+      required:
+      - can_edit
+      - can_delete
+    CodexEntryLink:
+      type: object
+      properties:
+        id:
+          type: integer
+        part:
+          type: string
+          enum:
+          - history_event
+          - lore_entry
+          - fun_fact
+        title:
+          type: string
+          description: The entry's title, or a Fun Fact's opening words (at most 60
+            characters, ending in an ellipsis when cut, members mentioned as @name).
+      required:
+      - id
+      - part
+      - title
+    CodexEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        part:
+          type: string
+          enum:
+          - history_event
+          - lore_entry
+          - fun_fact
+          description: history_event (Club History), lore_entry (Club Lore) or fun_fact.
+        title:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: History Events and Lore Entries; null for a Fun Fact.
+        rich_body:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          nullable: true
+          description: The Plate.js story of a Lore Entry or description of a History
+            Event, as the website saved it (never checked by the API); null for a
+            Fun Fact.
+        body:
+          type: string
+          nullable: true
+          description: 'The Discord-readable text, members mentioned as `<@discord_id>`
+            tokens: a Fun Fact itself (up to 300 characters, tokens included), or
+            the Discord markdown the website made from `rich_body`. Show each token
+            as its member in `mentions`; a token not there names no known member and
+            stays as text.'
+        occurred_on:
+          type: string
+          format: date
+          nullable: true
+          description: 'When it happened, at `date_precision`: a month is its first
+            day, a year 1 January. Null for a Fun Fact and an undated Lore Entry.'
+        date_precision:
+          type: string
+          nullable: true
+          enum:
+          - day
+          - month
+          - year
+          -
+          description: day, month or year; null with `occurred_on`.
+        kind:
+          type: string
+          nullable: true
+          enum:
+          - founding
+          - staff
+          - platform
+          - rules
+          - milestone
+          -
+          description: The History Event Kind; null for other parts.
+        author:
+          "$ref": "#/components/schemas/CodexMember"
+        mentions:
+          type: object
+          additionalProperties:
+            "$ref": "#/components/schemas/CodexMember"
+          description: Each known member `body` mentions, keyed by Discord id, as
+            they are now.
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              url:
+                type: string
+              position:
+                type: integer
+            required:
+            - id
+            - url
+            - position
+          description: The entry's gallery, by position (History Events and Lore Entries).
+        links:
+          type: array
+          items:
+            "$ref": "#/components/schemas/CodexEntryLink"
+          description: 'Its "See also" entries, oldest first, as the caller may read
+            them: a Visitor sees only History Events.'
+        viewer:
+          "$ref": "#/components/schemas/CodexEntryViewer"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - part
+      - title
+      - rich_body
+      - body
+      - occurred_on
+      - date_precision
+      - kind
+      - author
+      - mentions
+      - images
+      - links
+      - viewer
+      - created_at
+      - updated_at
     Challenge:
       type: object
       properties:
@@ -4247,6 +4409,31 @@ components:
         2 days before an Edition''s pick deadline, a Santa who hasn''t picked for
         their `recipient` (with `edition` and `days_left`), sent only to members who
         keep Challenge DMs on.'
+    DailyFunFactJobPayload:
+      type: object
+      properties:
+        club_date:
+          type: string
+          format: date
+          example: '2026-11-18'
+          description: The club day it is for.
+        entry_id:
+          type: integer
+          description: The Fun Fact drawn for the day; the queue already counts it
+            shown.
+        feature_key:
+          type: string
+          enum:
+          - club_codex
+      required:
+      - club_date
+      - entry_id
+      - feature_key
+      description: Kind `daily_fun_fact`. Post the Fun Fact `entry_id` (GET /api/v1/codex/fun_facts/{id})
+        in general chat, or the staff test channel while the Club Codex is in Preview,
+        with no pings. Queued once per club day at 15:00 America/New_York. Drop it,
+        acked done, when `club_date` is no longer today in New York or the Fun Fact
+        has been deleted (404).
     BirthdayPostJobPayload:
       type: object
       properties:
@@ -4306,6 +4493,7 @@ components:
           - news_catch_up
           - challenge_announce
           - challenge_dm
+          - daily_fun_fact
           - birthday_post
         summary:
           type: string
@@ -4319,7 +4507,7 @@ components:
             carries it too (BotJob::FEATURE_WORK). birthday_post is a public post
             no Feature owns and carries none. Documented payloads: SayJobPayload,
             NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
-            ChallengeDmJobPayload, BirthdayPostJobPayload.'
+            ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload.'
         status:
           type: string
           enum:
@@ -10472,6 +10660,1589 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/codex/entries":
+    get:
+      summary: Search Club Codex entries
+      tags:
+      - Club Codex
+      description: 'The "See also" link picker''s search, across History Events, Lore
+        Entries and Fun Facts. Needs no sign-in, but finds only what the caller may
+        read: a Visitor (signed out) finds only History Events, and only while the
+        Feature is Live; members and the bot find every part. `q` matches titles and
+        text (`body`), any case, its characters taken literally; title matches come
+        first, then the newest. Without `q`, every readable entry, newest first. Each
+        result is the short link shape, as in an entry''s `links`. Belongs to the
+        Club Codex Feature: not found for non-staff in Preview and for everyone when
+        Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Words to find in titles and text.
+      - name: part
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - history_event
+          - lore_entry
+          - fun_fact
+        description: Keep one part.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: matching entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CodexEntryLink"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: 'invalid_part: `part` is not one of the three parts'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/codex/entries/{id}/links":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Replace an entry's "See also" links
+      tags:
+      - Club Codex
+      description: 'Replaces the entry''s links with links to `entry_ids`, entries
+        of any part; an empty list removes them all. A link belongs to both entries
+        and shows on both, one per pair. Whoever can edit this entry may (403 "Only
+        its author or a Moderator can edit this.", or "Only Admins can change Club
+        History." for a History Event), so a Regular can link their Lore Entry to
+        a History Event, and a link to an entry the caller can''t edit can still be
+        removed from this side. Deleting either entry removes the link. Returns the
+        entry. Refusals carry `{ error, message }`; `message` is written for members.
+        Belongs to the Club Codex Feature: not found for non-staff in Preview and
+        for everyone when Off; the service token is not gated, but a bot write gets
+        403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the entry, with its links
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the caller can't edit the entry, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_links: `entry_ids` isn''t a list of ids, names this
+            entry (a self-link), an unknown entry, or more than 50'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required: the Discord user id of
+                        the member the bot acts for.'
+                    entry_ids:
+                      type: array
+                      items:
+                        type: integer
+                      maxItems: 50
+                      description: Every entry this one links to, after the change.
+                  required:
+                  - entry_ids
+              required:
+              - data
+        required: true
+  "/api/v1/codex/entries/{entry_id}/images":
+    parameters:
+    - name: entry_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: A History Event or Lore Entry id (any part; a Fun Fact refuses
+        images).
+    post:
+      summary: Add an image to an entry
+      tags:
+      - Club Codex
+      description: 'Whoever can edit the entry: for a Lore Entry its author or a Moderator
+        and above (403 "Only its author or a Moderator can edit this."), for a History
+        Event an Admin or Superadmin (403 "Only Admins can change Club History.").
+        Adds the image at the end of the entry''s gallery, up to 4 per History Event
+        or Lore Entry; Fun Facts take none. The response gives its `id` and `url`,
+        so the website can also place it in the entry''s Plate story. Refusals carry
+        `{ error, message }`, `message` written for members. Send `multipart/form-data`;
+        the bot adds `data[acting_user_id]`. Files are kept in the Backblaze bucket
+        the GameDB game images use: 422 `backblaze_not_configured` when it is not
+        set up, 502 `backblaze_request_failed` when Backblaze refuses (nothing is
+        changed). Belongs to the Club Codex Feature: not found for non-staff in Preview
+        and for everyone when Off; the service token is not gated, but the bot gets
+        403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      url:
+                        type: string
+                        description: Where the file is served from (Backblaze public
+                          URL).
+                      position:
+                        type: integer
+                        minimum: 1
+                        maximum: 4
+                        description: Its place in the gallery, in upload order.
+                    required:
+                    - id
+                    - url
+                    - position
+                required:
+                - data
+        '400':
+          description: the bot named no `data[acting_user_id]`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: cannot edit the entry, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`too_many_images` (the gallery is full), `images_not_allowed`
+            (a Fun Fact), `invalid_image` (no file, not an image, empty or too large)
+            or `backblaze_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: nothing was added"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data[file]:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, WebP or GIF, at most 10 MB.
+                data[acting_user_id]:
+                  type: string
+                  description: 'Service only, required: the member the bot acts for.'
+              required:
+              - data[file]
+        required: true
+  "/api/v1/codex/entries/{entry_id}/images/{id}":
+    parameters:
+    - name: entry_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: The image id.
+    delete:
+      summary: Remove an image from an entry
+      tags:
+      - Club Codex
+      description: 'Whoever can edit the entry: for a Lore Entry its author or a Moderator
+        and above (403 "Only its author or a Moderator can edit this."), for a History
+        Event an Admin or Superadmin (403 "Only Admins can change Club History.").
+        Removes the file from storage, then the image; the images after it move up
+        one place. The bot sends `acting_user_id` as a query parameter. Files are
+        kept in the Backblaze bucket the GameDB game images use: 422 `backblaze_not_configured`
+        when it is not set up, 502 `backblaze_request_failed` when Backblaze refuses
+        (nothing is changed). Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        the bot gets 403 `feature_unavailable` when the Flag hides the Feature from
+        the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: cannot edit the entry, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such entry, no such image on it, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`backblaze_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: the image is kept, so the removal
+            can be retried"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/codex/fun_facts":
+    get:
+      summary: List Fun Facts
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller). Newest first. Each carries `viewer`
+        for the acting member; the bot may name the member it reads for with `acting_user_id`,
+        without which `viewer` is all false. `q` keeps the Fun Facts whose text matches,
+        any case, its characters taken literally. `editable=true` keeps those the
+        acting member may edit: their own, or every one for a Moderator and above
+        (the bot must name the member, else 400 `acting_user_id required`). Belongs
+        to the Club Codex Feature: not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Words to find in the Fun Fact text.
+      - name: editable
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: 'true: only the Fun Facts the acting member may edit.'
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Fun Facts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CodexEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: "`editable=true` and the bot named no `acting_user_id`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add a Fun Fact
+      tags:
+      - Club Codex
+      description: 'Regulars, Moderators, Admins and Superadmins (a member without
+        the Regulars role gets 403 "You need the Regulars role to add to the Club
+        Codex."). Published at once, credited to the acting member. Refusals carry
+        `{ error, message }`; `message` is written for members (403 `forbidden`, 422
+        `invalid_entry`). Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not a Regular or staff, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: `body` blank, not text, over 300 characters
+            or holding a NUL character, or a field a Fun Fact does not take'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    body:
+                      type: string
+                      maxLength: 300
+                      description: 'The Fun Fact: one or two sentences, up to 300
+                        characters with its mention tokens. Mention members as `<@discord_id>`;
+                        every save pulls them into `mentions`, and an id that is not
+                        a known member stays as text. Surrounding spaces are dropped.'
+                  required:
+                  - body
+              required:
+              - data
+        required: true
+  "/api/v1/codex/fun_facts/draw":
+    post:
+      summary: Draw the next Fun Fact
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller); the bot calls it for the member
+        using /funfact, naming them with `data.acting_user_id`. Returns the next Fun
+        Fact in the queue and marks it shown: never-shown Fun Facts first, newest
+        first; then the one shown longest ago; ties go to the lowest id. So every
+        Fun Fact is shown once before any repeats, and a new one goes next. Editing
+        a Fun Fact keeps its place; the Daily Fun Fact draws from the same queue.
+        Concurrent draws get different Fun Facts while there are enough to go round.
+        `{ "fun_fact": null }` when there are none. Belongs to the Club Codex Feature:
+        not found for non-staff in Preview and for everyone when Off; the service
+        token is not gated, but a bot write gets 403 `feature_unavailable` when the
+        Flag hides the Feature from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the drawn Fun Fact, or null when there are none
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fun_fact:
+                    allOf:
+                    - "$ref": "#/components/schemas/CodexEntry"
+                    nullable: true
+                required:
+                - fun_fact
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: "(bot) `feature_unavailable`: the Flag hides the Feature from
+            the member it acts for"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+  "/api/v1/codex/fun_facts/today":
+    get:
+      summary: Today's Daily Fun Fact
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller); the bot may name the member it
+        reads for with `acting_user_id`, without which `viewer` is all false. The
+        Fun Fact the Daily Fun Fact posted for the club date (America/New_York). Before
+        today''s post (15:00 New York) it is the latest earlier one, so `club_date`
+        is the day it was posted for, which may be before today. `{ "fun_fact": null,
+        "club_date": null }` when nothing has been posted yet, or when that Fun Fact
+        has since been deleted. A pure read: it draws nothing, so the Fun Fact queue
+        does not move. Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the posted Fun Fact and its club date, or both null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fun_fact:
+                    allOf:
+                    - "$ref": "#/components/schemas/CodexEntry"
+                    nullable: true
+                  club_date:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: The club date (America/New_York) the Daily Fun Fact
+                      was posted for.
+                required:
+                - fun_fact
+                - club_date
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/codex/fun_facts/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Fun Fact
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller). Belongs to the Club Codex Feature:
+        not found for non-staff in Preview and for everyone when Off; the service
+        token is not gated, but a bot write gets 403 `feature_unavailable` when the
+        Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Fun Fact
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '404':
+          description: no such Fun Fact, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Fun Fact
+      tags:
+      - Club Codex
+      description: 'Its author, or a Moderator and above, for anyone''s (403 "Only
+        its author or a Moderator can edit this."). A mentioned member gets no say.
+        Mentions are pulled again from the new `body`. Editing doesn''t move the Fun
+        Fact in the queue. Refusals carry `{ error, message }`; `message` is written
+        for members (403 `forbidden`, 422 `invalid_entry`). Belongs to the Club Codex
+        Feature: not found for non-staff in Preview and for everyone when Off; the
+        service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not its author or a Moderator, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Fun Fact, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: `body` blank, not text, over 300 characters
+            or holding a NUL character, or a field a Fun Fact does not take'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    body:
+                      type: string
+                      maxLength: 300
+                      description: 'The Fun Fact: one or two sentences, up to 300
+                        characters with its mention tokens. Mention members as `<@discord_id>`;
+                        every save pulls them into `mentions`, and an id that is not
+                        a known member stays as text. Surrounding spaces are dropped.'
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Fun Fact
+      tags:
+      - Club Codex
+      description: 'Its author, or a Moderator and above, for anyone''s (403 "Only
+        its author or a Moderator can delete this."). A hard delete: its mentions
+        go with it, and the author isn''t told. The bot sends `acting_user_id` as
+        a query parameter. Refusals carry `{ error, message }`; `message` is written
+        for members (403 `forbidden`, 422 `invalid_entry`). Belongs to the Club Codex
+        Feature: not found for non-staff in Preview and for everyone when Off; the
+        service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not its author or a Moderator, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Fun Fact, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/codex/history_events":
+    get:
+      summary: List History Events (Club History)
+      tags:
+      - Club Codex
+      description: 'Club History in date order: by `occurred_on`, then id, whatever
+        the precision. Each carries `viewer` for the caller (all false signed out);
+        the bot may name the member it reads for with `acting_user_id`. Public: no
+        sign-in needed. A signed-out caller is treated like any non-staff member,
+        so Club History is found only while the Club Codex Feature is Live (not found
+        in Preview and Off).'
+      security:
+      - {}
+      - bearerAuth: []
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - founding
+          - staff
+          - platform
+          - rules
+          - milestone
+        description: Keep only this History Event Kind.
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: History Events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CodexEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: 'invalid_kind: `kind` is not a History Event Kind'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add a History Event
+      tags:
+      - Club Codex
+      description: 'Admins and Superadmins, on any History Event whoever wrote it
+        (anyone else gets 403 "Only Admins can change Club History."). Credited to
+        the acting member. Refusals carry `{ error, message }`; `message` is written
+        for members (403 `forbidden`, 422 `invalid_entry`). Belongs to the Club Codex
+        Feature: not found for non-staff in Preview and for everyone when Off; the
+        service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: a missing or over-long title, a missing or
+            unknown kind, a missing date or precision, a date that is not YYYY-MM-DD,
+            `rich_body` without `body`, a field that is not text, a NUL character
+            in any field, or a field a History Event does not take'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    title:
+                      type: string
+                      maxLength: 100
+                      description: Required, up to 100 characters.
+                    occurred_on:
+                      type: string
+                      format: date
+                      description: When it happened (YYYY-MM-DD), required with `date_precision`.
+                        A `month` date is stored on the 1st of its month and a `year`
+                        date on 1 January, so any day in the period may be sent.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - year
+                      description: How precisely the club remembers the date. Required
+                        with `occurred_on`.
+                    kind:
+                      type: string
+                      enum:
+                      - founding
+                      - staff
+                      - platform
+                      - rules
+                      - milestone
+                      description: The History Event Kind. Required.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      nullable: true
+                      description: An optional description as Plate.js content, stored
+                        as given.
+                    body:
+                      type: string
+                      nullable: true
+                      description: The description as Discord markdown, made from
+                        `rich_body` by the website; required whenever `rich_body`
+                        is present. Mention members as `<@discord_id>`; every save
+                        pulls them into `mentions`.
+                  required:
+                  - title
+                  - occurred_on
+                  - date_precision
+                  - kind
+              required:
+              - data
+        required: true
+  "/api/v1/codex/history_events/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a History Event
+      tags:
+      - Club Codex
+      description: 'Public: no sign-in needed. A signed-out caller is treated like
+        any non-staff member, so Club History is found only while the Club Codex Feature
+        is Live (not found in Preview and Off).'
+      security:
+      - {}
+      - bearerAuth: []
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the History Event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '404':
+          description: no such History Event, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a History Event
+      tags:
+      - Club Codex
+      description: 'Admins and Superadmins, on any History Event whoever wrote it
+        (anyone else gets 403 "Only Admins can change Club History."). Changes only
+        the fields given; the author stays. Changing only `date_precision` moves the
+        stored date to the start of its new period. Refusals carry `{ error, message
+        }`; `message` is written for members (403 `forbidden`, 422 `invalid_entry`).
+        Belongs to the Club Codex Feature: not found for non-staff in Preview and
+        for everyone when Off; the service token is not gated, but a bot write gets
+        403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such History Event, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: a missing or over-long title, a missing or
+            unknown kind, a missing date or precision, a date that is not YYYY-MM-DD,
+            `rich_body` without `body`, a field that is not text, a NUL character
+            in any field, or a field a History Event does not take'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    title:
+                      type: string
+                      maxLength: 100
+                      description: Required, up to 100 characters.
+                    occurred_on:
+                      type: string
+                      format: date
+                      description: When it happened (YYYY-MM-DD), required with `date_precision`.
+                        A `month` date is stored on the 1st of its month and a `year`
+                        date on 1 January, so any day in the period may be sent.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - year
+                      description: How precisely the club remembers the date. Required
+                        with `occurred_on`.
+                    kind:
+                      type: string
+                      enum:
+                      - founding
+                      - staff
+                      - platform
+                      - rules
+                      - milestone
+                      description: The History Event Kind. Required.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      nullable: true
+                      description: An optional description as Plate.js content, stored
+                        as given.
+                    body:
+                      type: string
+                      nullable: true
+                      description: The description as Discord markdown, made from
+                        `rich_body` by the website; required whenever `rich_body`
+                        is present. Mention members as `<@discord_id>`; every save
+                        pulls them into `mentions`.
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a History Event
+      tags:
+      - Club Codex
+      description: 'Admins and Superadmins, on any History Event whoever wrote it
+        (anyone else gets 403 "Only Admins can change Club History."). A hard delete:
+        its mentions go with it. The bot sends `acting_user_id` as a query parameter.
+        Refusals carry `{ error, message }`; `message` is written for members (403
+        `forbidden`, 422 `invalid_entry`). Belongs to the Club Codex Feature: not
+        found for non-staff in Preview and for everyone when Off; the service token
+        is not gated, but a bot write gets 403 `feature_unavailable` when the Flag
+        hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such History Event, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: storage refused to remove one
+            of its images (ticket #410); the entry is kept, so the delete can be retried"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/codex/lore_entries":
+    get:
+      summary: List Lore Entries
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller). Newest first. Each carries `viewer`
+        for the acting member; the bot may name the member it reads for with `acting_user_id`,
+        without which `viewer` is all false. Belongs to the Club Codex Feature: not
+        found for non-staff in Preview and for everyone when Off; the service token
+        is not gated, but a bot write gets 403 `feature_unavailable` when the Flag
+        hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Lore Entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CodexEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Add a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Regulars, Moderators, Admins and Superadmins (a member without
+        the Regulars role gets 403 "You need the Regulars role to add to the Club
+        Codex."). Published at once, credited to the acting member. Refusals carry
+        `{ error, message }`; `message` is written for members (403 `forbidden`, 422
+        `invalid_entry`). Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not a Regular or staff, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: `title` blank or over 100 characters, `body`
+            blank, a field not text, a date and precision not given together, an unknown
+            precision, a date that is not `YYYY-MM-DD`, a NUL character in any field,
+            or a field a Lore Entry does not take (`kind`, or any other)'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    title:
+                      type: string
+                      maxLength: 100
+                      description: Required, up to 100 characters. Surrounding spaces
+                        are dropped.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      nullable: true
+                      description: The Plate.js story, stored and returned exactly
+                        as given; the API never checks it. The website sanitizes it
+                        and keeps it to 4000 characters of text.
+                    body:
+                      type: string
+                      description: 'Required: the story as Discord markdown, which
+                        the website makes from `rich_body` on every save. Mention
+                        members as `<@discord_id>`; every save pulls them into `mentions`,
+                        and an id that is not a known member stays as text.'
+                    occurred_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Optional, as `YYYY-MM-DD`, given together with
+                        `date_precision` (both null for none). A `month` date is stored
+                        as the 1st of its month and a `year` date as 1 January, whatever
+                        day is sent.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - year
+                      -
+                      nullable: true
+                      description: 'How precise `occurred_on` is: day, month or year.
+                        Given together with it.'
+                  required:
+                  - title
+                  - body
+              required:
+              - data
+        required: true
+  "/api/v1/codex/lore_entries/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Members (any signed-in caller). Belongs to the Club Codex Feature:
+        not found for non-staff in Preview and for everyone when Off; the service
+        token is not gated, but a bot write gets 403 `feature_unavailable` when the
+        Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the Lore Entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Lore Entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Its author, or a Moderator and above, for anyone''s (403 "Only
+        its author or a Moderator can edit this."). A mentioned member gets no say.
+        Only the fields given change; send `occurred_on` and `date_precision` as null
+        to remove the date. Mentions are pulled again from a new `body`. Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_entry`). Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not its author or a Moderator, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Lore Entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_entry: `title` blank or over 100 characters, `body`
+            blank, a field not text, a date and precision not given together, an unknown
+            precision, a date that is not `YYYY-MM-DD`, a NUL character in any field,
+            or a field a Lore Entry does not take (`kind`, or any other)'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    title:
+                      type: string
+                      maxLength: 100
+                      description: Required, up to 100 characters. Surrounding spaces
+                        are dropped.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      nullable: true
+                      description: The Plate.js story, stored and returned exactly
+                        as given; the API never checks it. The website sanitizes it
+                        and keeps it to 4000 characters of text.
+                    body:
+                      type: string
+                      description: 'Required: the story as Discord markdown, which
+                        the website makes from `rich_body` on every save. Mention
+                        members as `<@discord_id>`; every save pulls them into `mentions`,
+                        and an id that is not a known member stays as text.'
+                    occurred_on:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Optional, as `YYYY-MM-DD`, given together with
+                        `date_precision` (both null for none). A `month` date is stored
+                        as the 1st of its month and a `year` date as 1 January, whatever
+                        day is sent.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - year
+                      -
+                      nullable: true
+                      description: 'How precise `occurred_on` is: day, month or year.
+                        Given together with it.'
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Lore Entry
+      tags:
+      - Club Codex
+      description: 'Its author, or a Moderator and above, for anyone''s (403 "Only
+        its author or a Moderator can delete this."). A hard delete: its mentions
+        go with it, and the author isn''t told. The bot sends `acting_user_id` as
+        a query parameter. Refusals carry `{ error, message }`; `message` is written
+        for members (403 `forbidden`, 422 `invalid_entry`). Belongs to the Club Codex
+        Feature: not found for non-staff in Preview and for everyone when Off; the
+        service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not its author or a Moderator, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Lore Entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: storage refused to remove one
+            of its images (ticket #410); the entry is kept, so the delete can be retried"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/collection_csv_import_items/{id}":
     parameters:
     - name: id
@@ -14064,6 +15835,7 @@ paths:
         - news_hub
         - challenges
         - release_calendar
+        - club_codex
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
