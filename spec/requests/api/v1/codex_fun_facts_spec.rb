@@ -80,6 +80,47 @@ RSpec.describe 'api/v1/codex/fun_facts', type: :request do
     end
   end
 
+  path '/api/v1/codex/fun_facts/draw' do
+    post 'Draw the next Fun Fact' do
+      tags 'Club Codex'
+      description 'Members (any signed-in caller); the bot calls it for the member using /funfact, naming them ' \
+                  'with `data.acting_user_id`. Returns the next Fun Fact in the queue and marks it shown: never-' \
+                  'shown Fun Facts first, newest first; then the one shown longest ago; ties go to the lowest id. ' \
+                  'So every Fun Fact is shown once before any repeats, and a new one goes next. Editing a Fun ' \
+                  'Fact keeps its place; the Daily Fun Fact draws from the same queue. Concurrent draws get ' \
+                  'different Fun Facts while there are enough to go round. `{ "fun_fact": null }` when there are ' \
+                  "none. #{gate}"
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: false, schema: {
+        type: :object,
+        properties: { data: { type: :object, properties: { acting_user_id: acting_user_id } } }
+      }
+
+      response '200', 'the drawn Fun Fact, or null when there are none' do
+        schema type: :object, properties: {
+          fun_fact: { allOf: [ { '$ref' => '#/components/schemas/CodexEntry' } ], nullable: true }
+        }, required: %w[fun_fact]
+      end
+
+      response '400', 'the bot named no `acting_user_id`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'not signed in' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', '(bot) `feature_unavailable`: the Flag hides the Feature from the member it acts for' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'the Feature is Off, or Preview and the caller is not an Admin or Superadmin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/codex/fun_facts/{id}' do
     parameter name: :id, in: :path, schema: { type: :integer }, required: true
 

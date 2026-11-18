@@ -427,7 +427,10 @@ Rails.application.routes.draw do
       # Club Codex (spec #397): its three parts' entries, gated by the
       # `club_codex` Feature.
       namespace :codex do
-        resources :fun_facts, only: %i[index show create update destroy]
+        resources :fun_facts, only: %i[index show create update destroy] do
+          # The Fun Fact queue (ticket #405): the next one, marked shown.
+          post :draw, on: :collection
+        end
         resources :lore_entries, only: %i[index show create update destroy]
       end
       # News Hub (spec #355): the fixed News Categories; the members' feed of
