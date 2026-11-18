@@ -8,8 +8,8 @@
 # (Challenges::Announcements) and DMs (Challenges::DirectMessages), and its
 # timed side (Challenges::Lifecycle).
 module Challenges
-  # Every Challenge date is in the club's time zone, the one voting uses.
-  TIME_ZONE = Voting::Schedule::TIME_ZONE
+  # Every Challenge date is a club day (ClubDay).
+  TIME_ZONE = ClubDay::TIME_ZONE
 
   # A request the rules refuse: rendered 422 `{ error: "invalid_challenge",
   # message: }`.
@@ -54,21 +54,12 @@ module Challenges
     end
   end
 
-  # A member as Challenge JSON and bot payloads serve them: their names, the
-  # Discord avatar hash stored at their last login (null if unknown; with the
-  # user id it makes a Discord CDN URL), and the path of the avatar image the
-  # bot stores (GET /api/v1/users/{id}/avatar, which 404s when it has none).
-  def self.member(user)
-    { user_id: user.user_id, username: user.username, global_name: user.global_name,
-      discord_avatar: user.discord_avatar, avatar_url: "/api/v1/users/#{user.user_id}/avatar" }
-  end
+  # A member as Challenge JSON and bot payloads serve them (Members.summary).
+  def self.member(user) = Members.summary(user)
 
-  # The name a member goes by in job summaries: their Discord display name,
-  # else their username, else their id.
-  def self.display_name(user) = user.global_name.presence || user.username.presence || user.user_id
+  # The name a member goes by in job summaries (Members.display_name).
+  def self.display_name(user) = Members.display_name(user)
 
-  # The club's date today.
-  def self.today(now = Time.current)
-    now.in_time_zone(TIME_ZONE).to_date
-  end
+  # The club day today (ClubDay.today).
+  def self.today(now = Time.current) = ClubDay.today(now)
 end

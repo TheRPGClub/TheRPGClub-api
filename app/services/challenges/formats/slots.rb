@@ -105,23 +105,25 @@ module Challenges
 
       # Starting a Run (Challenges::Runs.start!): the Run copies its first
       # year, the fixed one or the member's birth year, and keeps it even if
-      # the Birth Date changes later. A birth-year Run needs the Birth Date.
+      # the Birth Date changes later. A birth-year Run needs the Birth Date's
+      # year: one without a year counts as no birth year (ADR 0011).
       def self.run_attributes(challenge, user_id, today:)
         settings = load(challenge)
         return { first_year: settings.first_year } unless settings.birth_year?
 
-        birth_date = RpgClubUser.where(user_id: user_id).pick(:birth_date)
-        raise RunRefused.new("birth_date_required", BIRTH_DATE_REQUIRED) unless birth_date
+        birth_year = RpgClubUser.where(user_id: user_id).pick(:birth_year)
+        raise RunRefused.new("birth_date_required", BIRTH_DATE_REQUIRED) unless birth_year
 
         last_year = settings.last_year || today.year
-        if birth_date.year > last_year
+        if birth_year > last_year
           raise RunRefused.new("no_slots", format(NO_SLOTS, last_year: last_year), status: :unprocessable_content)
         end
 
-        { first_year: birth_date.year }
+        { first_year: birth_year }
       end
 
-      BIRTH_DATE_REQUIRED = "This Challenge starts at your birth year, so it needs your Birth Date. " \
+      BIRTH_DATE_REQUIRED = "This Challenge starts at your birth year, so it needs your birth year: " \
+                            "enter your Birth Date with its year. " \
                             "Other members will see your birth year on your Run, never the full date."
       NO_SLOTS = "This Challenge ends in %<last_year>d, before your birth year, so it has no slots for you."
 

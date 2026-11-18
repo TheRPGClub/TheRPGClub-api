@@ -264,7 +264,10 @@ module OpenapiSchemas
         reviews: array_of("ReviewEntry"),
         completions: array_of("CompletionEntry"),
         journal: array_of("JournaledGame"),
-        counts: ref("UserCounts")
+        counts: ref("UserCounts"),
+        birthday: ref("Birthday", nullable: true).merge(
+          description: "The member's Birthday when they share it (api#399); null otherwise. Never the year."
+        )
       ),
       # The members-list shape returned by users#index when filtered by
       # `has_platform` (#99, UserWithSocialsResource): UserSummary plus the
@@ -1347,6 +1350,25 @@ module OpenapiSchemas
         entry_id: int.merge(description: "The Fun Fact drawn for the day; the queue already counts it shown."),
         feature_key: str(enum: %w[club_codex])
       ),
+      # The Birthday Post bot job payload (#401), as BotJobClaim.payload carries it.
+      BirthdayPostJobPayload: obj(
+        _description: "Kind `birthday_post`. Post one Birthday Post in `channel_id` greeting every member in " \
+                      "`user_ids`, @mentioning each so they are pinged. Queued at 10:00 America/New_York, only " \
+                      "on a day with Birthdays. If `club_date` is no longer today in New York, ack it done " \
+                      "without posting. Right before posting, re-read GET /api/v1/birthdays/upcoming and greet " \
+                      "only the `user_ids` listed there with `today: true`, so a member who stopped sharing or " \
+                      "left since it was queued isn't pinged. Birthdays are not a Feature: no `feature_key`, " \
+                      "and no Feature Flag routes it.",
+        _required: %w[club_date user_ids channel_id],
+        club_date: str(format: "date", example: "2026-05-04").merge(
+          description: "The club day (America/New_York) whose Birthdays these are."
+        ),
+        user_ids: { type: :array, minItems: 1, items: str,
+                    description: "The members to greet, by display name: Discord user ids, still in the server, " \
+                                 "sharing their Birthday. No year or age is sent." },
+        channel_id: str(example: "191941851757019136",
+          description: "The Discord channel to post in: general chat (the API's DiscordChannels::GENERAL).")
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
@@ -1355,8 +1377,10 @@ module OpenapiSchemas
                        "carries `feature_key`, the key of the Feature that owns the post " \
                        "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
                        "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
+                       "birthday_post is a public post no Feature owns and carries none. " \
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
-                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload."
+                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload, " \
+                       "BirthdayPostJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
@@ -1489,8 +1513,13 @@ module OpenapiSchemas
       # served only to the member and staff, and the member's changes left.
       BirthDate: obj(
         user_id: str,
-        birth_date: str(nullable: true, format: "date", example: "1990-05-04",
-          description: "The member's Birth Date; null until they enter it."),
+        birth_date: str(nullable: true, pattern: '^(\\d{4}-)?\\d{2}-\\d{2}$', example: "1990-05-04",
+          description: "The member's Birth Date: \"1990-05-04\", or \"05-04\" when they gave only the day and " \
+                       "month (api#398). Null until they enter it."),
+        birthday_shared: bool.merge(
+          description: "Whether the member shares their Birthday, the day and month (never the year). Off until " \
+                       "the member turns it on; removing the Birth Date turns it off (api#399)."
+        ),
         changes_left_this_month: int.merge(
           example: 1,
           description: "How many more times the member may set or change it this calendar month (US Eastern), " \
@@ -1499,14 +1528,43 @@ module OpenapiSchemas
         next_change_on: str(nullable: true, format: "date", example: "2026-12-01",
           description: "When changes_left_this_month is 0, the first day of next month, when the member may " \
                        "change it again; null otherwise."),
-        _required: %w[user_id birth_date changes_left_this_month next_change_on]
+        _required: %w[user_id birth_date birthday_shared changes_left_this_month next_change_on]
       ),
       BirthDateRefusal: obj(
-        error: str(description: "Why it was refused. For the limit, names the date the member may change it again."),
+        error: str(description: "Why it was refused. For the limit, names the date the member may change it " \
+                                "again. `birth_date_required` when sharing a Birthday without a Birth Date."),
+        message: str(description: "Only with `birth_date_required`: what the member is told."),
         next_change_on: str(format: "date", example: "2026-12-01",
           description: "Only when the member reached the limit: the first day of next month (US Eastern)."),
         _required: %w[error]
       ),
+      # A Birthday (spec #396): the month and day of a Birth Date, never the
+      # year.
+      Birthday: obj(
+        month: int.merge(minimum: 1, maximum: 12, example: 5),
+        day: int.merge(minimum: 1, maximum: 31, example: 4),
+        _description: "A Birthday: the month and day of a member's Birth Date, never the year."
+      ),
+      # Birthdays::Upcoming (spec #396, api#400). One shared Birthday in the
+      # next 30 club days. Never the year or the age.
+      UpcomingBirthday: { allOf: [
+        ref("ChallengeMember"), ref("Birthday"),
+        obj(display_name: str(example: "Ava",
+              description: "The name the member goes by: their Discord display name, else their username."),
+            on: date(example: "2026-05-04",
+              description: "The date the Birthday falls on this time, in club days (America/New_York). A 29 " \
+                           "February Birthday falls on 28 February in years that aren't leap years."),
+            today: bool.merge(description: "Whether `on` is today in club time."))
+      ] },
+      # Birthdays::Upcoming.next_beyond (owner decision 11): the first shared
+      # Birthday after the 30 days, without the member.
+      NextBirthday: extends("Birthday",
+        _description: "The first shared Birthday after the 30 days of Upcoming Birthdays, with no member: the " \
+                      "bot's empty /birthdays says when the next one is. A Birthday in the 30 days counts with " \
+                      "its date next year.",
+        on: date(example: "2026-07-01",
+          description: "The date it falls on, in club days (America/New_York). A 29 February Birthday falls " \
+                       "on 28 February in years that aren't leap years.")),
 
       # ---- News Hub (spec #355) --------------------------------------------
       # NewsCategory: the fixed, ordered list in code. Keys are stable.

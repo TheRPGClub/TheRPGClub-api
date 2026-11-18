@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -65,6 +65,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
     t.string "tier", limit: 16
     t.datetime "updated_at", null: false
     t.index ["achievement_set_id", "external_id"], name: "ux_achievements_set_external", unique: true
+  end
+
+  create_table "birthday_posts", comment: "Each member's Birthday Post, at most one per calendar year.", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.integer "year", limit: 2, null: false, comment: "The calendar year of the club day it was queued for."
+    t.date "posted_on", null: false, comment: "The club day (America/New_York) it was queued for."
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.index ["user_id", "year"], name: "ux_birthday_posts_once", unique: true
   end
 
   create_table "bot_jobs", force: :cascade do |t|
@@ -656,11 +664,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
 
   create_table "member_birth_date_changes", force: :cascade do |t|
     t.string "user_id", limit: 30, null: false
-    t.date "birth_date", comment: "The Birth Date it was set to (null when removed)."
     t.string "changed_by", limit: 30, comment: "Discord user id of whoever changed it; null for the bot."
     t.boolean "by_staff", default: false, null: false, comment: "Changed by staff, which doesn't count toward the member's limit."
     t.datetime "changed_at", null: false
+    t.integer "birth_month", limit: 2, comment: "The Birth Date it was set to (null when removed): its month, 1 to 12."
+    t.integer "birth_day", limit: 2, comment: "The Birth Date it was set to (null when removed): its day of the month (29 February allowed without a year)."
+    t.integer "birth_year", limit: 2, comment: "The Birth Date it was set to (null when removed): its year, or null when the member gave only the day and month."
     t.index ["user_id", "changed_at"], name: "index_member_birth_date_changes_on_user_id_and_changed_at"
+    t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_member_birth_date_changes_birth_date"
   end
 
   create_table "member_feature_preferences", force: :cascade do |t|
@@ -1144,8 +1155,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
     t.string "username", limit: 100
     t.boolean "role_dev", default: false, null: false
     t.boolean "show_preview_features", default: true, null: false, comment: "Staff setting: show Preview Features on the website (on by default)."
-    t.date "birth_date", comment: "The member's Birth Date. Only the member and staff see the full date."
     t.boolean "challenge_dms", default: true, null: false, comment: "Whether the member wants Challenge reminder DMs (on by default)."
+    t.integer "birth_month", limit: 2, comment: "The member's Birth Date: its month, 1 to 12."
+    t.integer "birth_day", limit: 2, comment: "The member's Birth Date: its day of the month (29 February allowed without a year)."
+    t.integer "birth_year", limit: 2, comment: "The member's Birth Date: its year, or null when the member gave only the day and month."
+    t.boolean "birthday_shared", default: false, null: false, comment: "Whether the member shares their Birthday (the day and month of their Birth Date, never the year). Only the member turns it on; staff can turn it off; removing the Birth Date turns it off."
+    t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
+    t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
@@ -1486,6 +1502,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
 
   add_foreign_key "achievement_sets", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_achievement_sets_game", on_delete: :nullify
   add_foreign_key "achievements", "achievement_sets", name: "fk_achievements_set", on_delete: :cascade
+  add_foreign_key "birthday_posts", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_birthday_posts_user", on_delete: :cascade
   add_foreign_key "bot_jobs", "rpg_club_users", column: "requested_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "challenge_edition_signups", "challenge_editions", column: "edition_id", name: "fk_challenge_edition_signups_edition", on_delete: :cascade
   add_foreign_key "challenge_edition_signups", "gamedb_games", column: "picked_game_id", primary_key: "game_id", name: "fk_challenge_edition_signups_picked_game", on_delete: :nullify

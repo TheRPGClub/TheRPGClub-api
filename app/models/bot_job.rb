@@ -18,7 +18,8 @@
 # (PUBLIC_POST_FEATURES), and its payload carries that Feature's key as
 # `feature_key`, so the bot can route the post by its Feature Flag. A kind
 # that does a Feature's work without posting can carry its key the same way
-# (FEATURE_WORK).
+# (FEATURE_WORK). The Birthday Post (`birthday_post`) is the one public post
+# no Feature owns: Birthdays are a utility, so it carries no key.
 class BotJob < ApplicationRecord
   KINDS = %w[
     completion_announce
@@ -42,11 +43,12 @@ class BotJob < ApplicationRecord
     challenge_announce
     challenge_dm
     daily_fun_fact
+    birthday_post
   ].freeze
   # The kinds that post, and the Feature each post belongs to (the posts in
   # Features::REGISTRY's coverage): the claim notice's claim log and the
   # submitted Suggestion's announcement included. The other kinds post to a
-  # staff channel or post nothing.
+  # staff channel, post nothing, or (birthday_post) post for no Feature.
   PUBLIC_POST_FEATURES = {
     "completion_announce" => "game_completions",
     "giveaway_claim_notice" => "giveaways",

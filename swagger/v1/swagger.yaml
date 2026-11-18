@@ -764,6 +764,12 @@ components:
               "$ref": "#/components/schemas/JournaledGame"
           counts:
             "$ref": "#/components/schemas/UserCounts"
+          birthday:
+            allOf:
+            - "$ref": "#/components/schemas/Birthday"
+            nullable: true
+            description: The member's Birthday when they share it (api#399); null
+              otherwise. Never the year.
         description: The Feature-owned previews (now_playing, reviews, completions,
           journal) are left out, like their `counts`, when the viewer cannot use that
           Feature.
@@ -2817,6 +2823,7 @@ components:
           - challenge_announce
           - challenge_dm
           - daily_fun_fact
+          - birthday_post
         summary:
           type: string
           maxLength: 200
@@ -4427,6 +4434,37 @@ components:
         with no pings. Queued once per club day at 15:00 America/New_York. Drop it,
         acked done, when `club_date` is no longer today in New York or the Fun Fact
         has been deleted (404).
+    BirthdayPostJobPayload:
+      type: object
+      properties:
+        club_date:
+          type: string
+          format: date
+          example: '2026-05-04'
+          description: The club day (America/New_York) whose Birthdays these are.
+        user_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: 'The members to greet, by display name: Discord user ids, still
+            in the server, sharing their Birthday. No year or age is sent.'
+        channel_id:
+          type: string
+          example: '191941851757019136'
+          description: 'The Discord channel to post in: general chat (the API''s DiscordChannels::GENERAL).'
+      required:
+      - club_date
+      - user_ids
+      - channel_id
+      description: 'Kind `birthday_post`. Post one Birthday Post in `channel_id` greeting
+        every member in `user_ids`, @mentioning each so they are pinged. Queued at
+        10:00 America/New_York, only on a day with Birthdays. If `club_date` is no
+        longer today in New York, ack it done without posting. Right before posting,
+        re-read GET /api/v1/birthdays/upcoming and greet only the `user_ids` listed
+        there with `today: true`, so a member who stopped sharing or left since it
+        was queued isn''t pinged. Birthdays are not a Feature: no `feature_key`, and
+        no Feature Flag routes it.'
     BotJobClaim:
       type: object
       properties:
@@ -4456,6 +4494,7 @@ components:
           - challenge_announce
           - challenge_dm
           - daily_fun_fact
+          - birthday_post
         summary:
           type: string
           maxLength: 200
@@ -4465,9 +4504,10 @@ components:
             posts publicly also carries `feature_key`, the key of the Feature that
             owns the post (BotJob::PUBLIC_POST_FEATURES), so the bot can route it
             by that Feature''s Flag. A kind that does a Feature''s work without posting
-            carries it too (BotJob::FEATURE_WORK). Documented payloads: SayJobPayload,
+            carries it too (BotJob::FEATURE_WORK). birthday_post is a public post
+            no Feature owns and carries none. Documented payloads: SayJobPayload,
             NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
-            ChallengeDmJobPayload, DailyFunFactJobPayload.'
+            ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload.'
         status:
           type: string
           enum:
@@ -4888,9 +4928,15 @@ components:
         birth_date:
           type: string
           nullable: true
-          format: date
+          pattern: "^(\\d{4}-)?\\d{2}-\\d{2}$"
           example: '1990-05-04'
-          description: The member's Birth Date; null until they enter it.
+          description: 'The member''s Birth Date: "1990-05-04", or "05-04" when they
+            gave only the day and month (api#398). Null until they enter it.'
+        birthday_shared:
+          type: boolean
+          description: Whether the member shares their Birthday, the day and month
+            (never the year). Off until the member turns it on; removing the Birth
+            Date turns it off (api#399).
         changes_left_this_month:
           type: integer
           example: 1
@@ -4907,6 +4953,7 @@ components:
       required:
       - user_id
       - birth_date
+      - birthday_shared
       - changes_left_this_month
       - next_change_on
     BirthDateRefusal:
@@ -4915,7 +4962,11 @@ components:
         error:
           type: string
           description: Why it was refused. For the limit, names the date the member
-            may change it again.
+            may change it again. `birth_date_required` when sharing a Birthday without
+            a Birth Date.
+        message:
+          type: string
+          description: 'Only with `birth_date_required`: what the member is told.'
         next_change_on:
           type: string
           format: date
@@ -4924,6 +4975,66 @@ components:
             month (US Eastern).'
       required:
       - error
+    Birthday:
+      type: object
+      properties:
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+          example: 5
+        day:
+          type: integer
+          minimum: 1
+          maximum: 31
+          example: 4
+      required:
+      - month
+      - day
+      description: 'A Birthday: the month and day of a member''s Birth Date, never
+        the year.'
+    UpcomingBirthday:
+      allOf:
+      - "$ref": "#/components/schemas/ChallengeMember"
+      - "$ref": "#/components/schemas/Birthday"
+      - type: object
+        properties:
+          display_name:
+            type: string
+            example: Ava
+            description: 'The name the member goes by: their Discord display name,
+              else their username.'
+          'on':
+            type: string
+            format: date
+            example: '2026-05-04'
+            description: The date the Birthday falls on this time, in club days (America/New_York).
+              A 29 February Birthday falls on 28 February in years that aren't leap
+              years.
+          today:
+            type: boolean
+            description: Whether `on` is today in club time.
+        required:
+        - display_name
+        - 'on'
+        - today
+    NextBirthday:
+      allOf:
+      - "$ref": "#/components/schemas/Birthday"
+      - type: object
+        properties:
+          'on':
+            type: string
+            format: date
+            example: '2026-07-01'
+            description: The date it falls on, in club days (America/New_York). A
+              29 February Birthday falls on 28 February in years that aren't leap
+              years.
+        required:
+        - 'on'
+        description: 'The first shared Birthday after the 30 days of Upcoming Birthdays,
+          with no member: the bot''s empty /birthdays says when the next one is. A
+          Birthday in the 30 days counts with its date next year.'
     NewsCategory:
       type: object
       properties:
@@ -7697,16 +7808,23 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
     put:
-      summary: Set a member's Birth Date
+      summary: Set a member's Birth Date or share its Birthday
       tags:
       - Users
-      description: Sets the member's Birth Date, or removes it with null. A member
-        may set or change their own at most twice per calendar month (US Eastern),
-        and entering it the first time counts; a third change that month gets 422
-        with `next_change_on`, the first day of next month. Setting the date it already
-        has changes nothing and doesn't count. Staff (Moderators and above) may set
-        anyone's at any time, and their changes don't use up the member's. Returns
-        the whole document, as GET does.
+      description: 'Sets the member''s Birth Date, or removes it with null, and/or
+        turns sharing its Birthday (the day and month, never the year) on or off with
+        `birthday_shared`; send either or both, and the request is applied whole or
+        not at all. Only the member can turn sharing on, and only with a Birth Date
+        (422 `birth_date_required`); staff can turn it off for anyone, and get 403
+        turning it on for another member. Sharing never counts toward the limit below,
+        and removing the Birth Date turns it off. The year is optional: `MM-DD` sets
+        a day and month alone, served back as `"05-04"`. A member may set or change
+        their own at most twice per calendar month (US Eastern), and entering it the
+        first time counts; a third change that month gets 422 with `next_change_on`,
+        the first day of next month. Setting the date it already has changes nothing
+        and doesn''t count. Staff (Moderators and above) may set anyone''s at any
+        time, and their changes don''t use up the member''s. Returns the whole document,
+        as GET does.'
       parameters: []
       responses:
         '200':
@@ -7721,8 +7839,11 @@ paths:
                 required:
                 - data
         '422':
-          description: the member already changed it twice this month, or birth_date
-            is missing or not a date from 1900 to today
+          description: 'the member already changed it twice this month; birth_date
+            and birthday_shared are both missing; birth_date is not a date from 1900
+            to today or a real MM-DD month and day; birthday_shared is not true or
+            false (null included); or `birth_date_required`: sharing a Birthday without
+            a Birth Date'
           content:
             application/json:
               schema:
@@ -7734,7 +7855,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: 'forbidden: caller is neither the member nor staff'
+          description: 'forbidden: caller is neither the member nor staff, or staff
+            turning sharing on for another member'
           content:
             application/json:
               schema:
@@ -7762,19 +7884,62 @@ paths:
                   properties:
                     birth_date:
                       type: string
-                      format: date
                       nullable: true
+                      pattern: "^(\\d{4}-)?\\d{1,2}-\\d{1,2}$"
                       example: '1990-05-04'
-                      description: YYYY-MM-DD, from 1900 to today; null removes it.
+                      description: YYYY-MM-DD, from 1900 to today, or MM-DD without
+                        the year (any real month and day, 29 February included); null
+                        removes it and stops sharing its Birthday.
+                    birthday_shared:
+                      type: boolean
+                      description: Share the member's Birthday (true) or stop sharing
+                        it (false). Only the member can send true. Null is refused.
                     acting_user_id:
                       type: string
                       description: 'Service token only (required): the Discord user
                         the bot acts for.'
-                  required:
-                  - birth_date
+                  description: At least one of birth_date and birthday_shared.
               required:
               - data
         required: true
+  "/api/v1/birthdays/upcoming":
+    get:
+      summary: List Upcoming Birthdays
+      tags:
+      - Users
+      description: 'Upcoming Birthdays (spec #396): the shared Birthdays falling from
+        today through today + 29 days, counted in club days (America/New_York), across
+        the year end. Only members who share their Birthday and are still in the server
+        are listed. A 29 February Birthday falls on 28 February in years that aren''t
+        leap years. Ordered by `on`, then by `display_name`. Never the year or the
+        age. `next` is the first shared Birthday after those 30 days, without the
+        member (null when nobody shares one). Any signed-in member or the service
+        token; Birthdays aren''t a Feature, so nothing gates it.'
+      responses:
+        '200':
+          description: the Upcoming Birthdays, soonest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/UpcomingBirthday"
+                  next:
+                    allOf:
+                    - "$ref": "#/components/schemas/NextBirthday"
+                    nullable: true
+                required:
+                - data
+                - next
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/bot_jobs":
     get:
       summary: List bot jobs (activity list)
@@ -8929,12 +9094,12 @@ paths:
         has at most one Run of a Seasonal Challenge per Season, whatever its status:
         409 `season_run_exists` (with `run_id`) until the next Season. A Slots Run
         copies its first year: a birth-year one is 409 `birth_date_required` without
-        a Birth Date and 422 `no_slots` when the birth year comes after the last year,
-        and `meta.notices` tells the member their birth year shows on the Run. An
-        Assignment (Secret Santa) Challenge is 409 `signup_required`: its Runs come
-        from an Edition''s draw. The bot sends `{ "data": { "acting_user_id": "..."
-        } }` (400 without; 403 `feature_unavailable` when the Feature Flag hides the
-        Feature from that member).'
+        a Birth Date or with one that has no year, and 422 `no_slots` when the birth
+        year comes after the last year, and `meta.notices` tells the member their
+        birth year shows on the Run. An Assignment (Secret Santa) Challenge is 409
+        `signup_required`: its Runs come from an Edition''s draw. The bot sends `{
+        "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
+        when the Feature Flag hides the Feature from that member).'
       parameters: []
       responses:
         '201':

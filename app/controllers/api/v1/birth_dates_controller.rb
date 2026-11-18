@@ -23,21 +23,40 @@ module Api
       end
 
       # PUT /api/v1/users/:user_id/birth_date
-      # Body: { "data": { "birth_date": "1990-05-04" | null, "acting_user_id": "..." } }
+      # Body: { "data": { "birth_date": "1990-05-04" | "05-04" | null,
+      #                   "birthday_shared": true | false, "acting_user_id": "..." } }
       #
-      # Sets the Birth Date, or removes it with null. A member's third change
+      # Sets the Birth Date, or removes it with null, and/or turns sharing its
+      # Birthday on or off (api#399); either or both. A member's third change
       # in a calendar month is refused with 422 and `next_change_on`, the first
-      # day of next month.
+      # day of next month. Only the member turns sharing on, and only with a
+      # Birth Date (422 `birth_date_required`); staff turning it on for someone
+      # else get 403. Sharing never counts toward the limit. All or nothing.
       def update
         data = params.require(:data)
-        return render(json: { error: "birth_date required" }, status: :unprocessable_content) unless data.key?(:birth_date)
+        unless data.key?(:birth_date) || data.key?(:birthday_shared)
+          return render(json: { error: "birth_date or birthday_shared required" }, status: :unprocessable_content)
+        end
+
+        sharing = data.key?(:birthday_shared)
+        shared = data[:birthday_shared]
+        # null too: a client that sends it must not be told sharing was saved.
+        if sharing && ![ true, false ].include?(shared)
+          return render(json: { error: "birthday_shared must be true or false" }, status: :unprocessable_content)
+        end
+        return render(json: { error: "forbidden" }, status: :forbidden) if shared && !own?
 
         user = own? ? RpgClubUser.find_or_create_by!(user_id: params[:user_id].to_s) : RpgClubUser.find(params[:user_id])
-        BirthDates.change!(user, data[:birth_date], by: acting_user_id, staff: staff?)
+        RpgClubUser.transaction do
+          BirthDates.change!(user, data[:birth_date], by: acting_user_id, staff: staff?) if data.key?(:birth_date)
+          BirthDates.share!(user, shared) if sharing
+        end
 
         render json: { data: BirthDates.document(user.user_id, user) }
       rescue BirthDates::Invalid => e
         render json: { error: e.message }, status: :unprocessable_content
+      rescue BirthDates::BirthDateRequired => e
+        render json: { error: e.code, message: e.message }, status: :unprocessable_content
       rescue BirthDates::LimitReached => e
         render json: { error: e.message, next_change_on: e.next_change_on.iso8601 }, status: :unprocessable_content
       end

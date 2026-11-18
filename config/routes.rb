@@ -443,6 +443,9 @@ Rails.application.routes.draw do
           resources :images, only: %i[create destroy], controller: "entry_images"
         end
       end
+      # Upcoming Birthdays (spec #396, api#400): the shared Birthdays in the
+      # next 30 club days.
+      get "birthdays/upcoming", to: "birthdays#upcoming"
       # News Hub (spec #355): the fixed News Categories; the members' feed of
       # News Items; the bot records (PUT, an upsert) and removes News Items
       # by their Discord message id (service-only), lists those with no

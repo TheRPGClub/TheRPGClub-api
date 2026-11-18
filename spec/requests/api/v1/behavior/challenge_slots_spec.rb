@@ -120,6 +120,25 @@ RSpec.describe "api/v1/challenges Slots behavior", type: :request do
       expect(json.fetch("message")).to include("Birth Date").and include("birth year")
     end
 
+    it "refuses a birth-year Run for a Birth Date without a year, saying it needs the birth year" do
+      set_birth_date("05-04")
+
+      start(slots)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("birth_date_required")
+      expect(json.fetch("message")).to include("needs your birth year")
+    end
+
+    it "keeps a started Run's first year when the Birth Date loses its year" do
+      set_birth_date("1990-05-04")
+      run_id = start_run(slots)
+
+      set_birth_date("05-04")
+
+      expect(run_json(run_id).dig("slots", "first_year")).to eq(1990)
+    end
+
     it "copies the birth year as the first year, tells the member it will show, and keeps it" do
       set_birth_date("1990-05-04")
 

@@ -108,12 +108,28 @@ _Avoid_: Roadmap, feedback board
 ## Members
 
 **Birth Date**:
-The date of birth a member enters on their own profile, if they choose to. Only the member and staff see the full date. Other members see the year only through a Run that starts at the member's birth year, which the member is told before starting it. A member can set or change it at most twice in a calendar month, counting the first time they enter it; staff can change it at any time.
+The date of birth a member enters on their own profile, if they choose to. The year is optional: a Birth Date without one is a Birthday alone, and counts as having no birth year. Only the member and staff see the full date. Other members see the day and month only as a Birthday the member chose to share, and the year only through a Run that starts at the member's birth year, which the member is told before starting it. A member can set or change it at most twice in a calendar month, counting the first time they enter it; staff can change it at any time.
 _Avoid_: Birthday (when meaning the full date), age, DOB
 
 **Regular**:
 A member holding the club's regulars role in Discord, trusted to add to the club's shared records without staff review.
 _Avoid_: Veteran, trusted member
+
+**Birthday**:
+The day and month of a member's Birth Date. The club celebrates it only if the member chooses to share it; until then nobody but the member and staff sees it. Sharing never reveals the year or the member's age. Birthdays are a utility, not a Feature: the only way to switch one off is for its member to stop sharing it.
+_Avoid_: Birth Date (when meaning only the day and month), anniversary, cake day
+
+**Club day**:
+A calendar day in the club's time zone, America/New_York. Challenge dates, the Birth Date change limit and Birthdays all count in club days, so a day starts and ends at midnight New York time whatever the member's own time zone.
+_Avoid_: Server day, UTC day
+
+**Birthday Post**:
+The bot's one message on a club day that greets every member whose shared Birthday it is. A member gets at most one Birthday Post a calendar year, however their Birth Date changes; a 29 February Birthday is celebrated on 28 February in other years.
+_Avoid_: Birthday reminder, birthday announcement
+
+**Upcoming Birthdays**:
+The shared Birthdays falling in the next 30 days, as members see them on the website and through the bot.
+_Avoid_: Birthday calendar, birthday list
 
 ## Staff
 

@@ -36,9 +36,15 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
       end
     end
 
-    put 'Set a member\'s Birth Date' do
+    put 'Set a member\'s Birth Date or share its Birthday' do
       tags 'Users'
-      description 'Sets the member\'s Birth Date, or removes it with null. A member may set or change their ' \
+      description 'Sets the member\'s Birth Date, or removes it with null, and/or turns sharing its Birthday ' \
+                  '(the day and month, never the year) on or off with `birthday_shared`; send either or both, ' \
+                  'and the request is applied whole or not at all. Only the member can turn sharing on, and ' \
+                  'only with a Birth Date (422 `birth_date_required`); staff can turn it off for anyone, and ' \
+                  'get 403 turning it on for another member. Sharing never counts toward the limit below, and ' \
+                  'removing the Birth Date turns it off. The year is optional: `MM-DD` ' \
+                  'sets a day and month alone, served back as `"05-04"`. A member may set or change their ' \
                   'own at most twice per calendar month (US Eastern), and entering it the first time counts; ' \
                   'a third change that month gets 422 with `next_change_on`, the first day of next month. ' \
                   'Setting the date it already has changes nothing and doesn\'t count. Staff (Moderators and ' \
@@ -53,12 +59,18 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
           data: {
             type: :object,
             properties: {
-              birth_date: { type: :string, format: :date, nullable: true, example: '1990-05-04',
-                            description: 'YYYY-MM-DD, from 1900 to today; null removes it.' },
+              birth_date: { type: :string, nullable: true, pattern: '^(\\d{4}-)?\\d{1,2}-\\d{1,2}$',
+                            example: '1990-05-04',
+                            description: 'YYYY-MM-DD, from 1900 to today, or MM-DD without the year (any real ' \
+                                         'month and day, 29 February included); null removes it and stops ' \
+                                         'sharing its Birthday.' },
+              birthday_shared: { type: :boolean,
+                                 description: 'Share the member\'s Birthday (true) or stop sharing it (false). ' \
+                                              'Only the member can send true. Null is refused.' },
               acting_user_id: { type: :string,
                                 description: 'Service token only (required): the Discord user the bot acts for.' }
             },
-            required: %w[birth_date]
+            description: 'At least one of birth_date and birthday_shared.'
           }
         },
         required: %w[data]
@@ -69,8 +81,10 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
           required: %w[data]
       end
 
-      response '422', 'the member already changed it twice this month, or birth_date is missing or not a ' \
-                      'date from 1900 to today' do
+      response '422', 'the member already changed it twice this month; birth_date and birthday_shared are ' \
+                      'both missing; birth_date is not a date from 1900 to today or a real MM-DD month and ' \
+                      'day; birthday_shared is not true or false (null included); or `birth_date_required`: sharing a Birthday ' \
+                      'without a Birth Date' do
         schema '$ref' => '#/components/schemas/BirthDateRefusal'
       end
 
@@ -78,7 +92,8 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'forbidden: caller is neither the member nor staff' do
+      response '403', 'forbidden: caller is neither the member nor staff, or staff turning sharing on for ' \
+                      'another member' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

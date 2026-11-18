@@ -48,3 +48,12 @@ production:
     class: ClubCodex::DailyFunFactJob
     queue: default
     schedule: "0 15 * * * America/New_York"
+  # The Birthday Post (ticket #401): at 10:00 New York time, whatever the
+  # season, queue one birthday_post bot job greeting every member whose shared
+  # Birthday it is that club day. One run a day, deliberately: a run missed
+  # (API down or deploying at 10:00) is not retried, and those members are
+  # greeted next year. Avoid deploying the API around 10:00 New York time.
+  birthday_post:
+    class: Birthdays::PostJob
+    queue: default
+    schedule: "0 10 * * * America/New_York"
