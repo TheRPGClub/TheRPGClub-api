@@ -37,14 +37,7 @@ module Gamedb
 
     # A Release is still due while its period has not ended: an exact day
     # through that day, a month, quarter or year through its last day.
-    PERIOD_NOT_ENDED_SQL = <<~SQL.squish.freeze
-      gamedb_releases.release_date + CASE gamedb_releases.date_precision
-        WHEN 'month' THEN INTERVAL '1 month'
-        WHEN 'quarter' THEN INTERVAL '3 months'
-        WHEN 'year' THEN INTERVAL '1 year'
-        ELSE INTERVAL '1 day'
-      END > :today
-    SQL
+    PERIOD_NOT_ENDED_SQL = "#{GamedbRelease.period_ends_on_sql('gamedb_releases')} >= :today".freeze
 
     # Every game with an IGDB id that has a Release dated today or later, a
     # vague Release whose period has not ended, a TBA Release, or no Releases

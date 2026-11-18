@@ -58,25 +58,13 @@ module Gamedb
     # The day an entry is placed on: a quarter or year on its last day, a
     # month or day on its stored date, TBA on none.
     PLACED_ON_SQL = <<~SQL.squish
-      CASE e.date_precision
-        WHEN 'quarter' THEN (e.release_date + INTERVAL '3 months' - INTERVAL '1 day')::date
-        WHEN 'year' THEN (e.release_date + INTERVAL '1 year' - INTERVAL '1 day')::date
+      CASE WHEN e.date_precision IN ('quarter', 'year') THEN #{GamedbRelease.period_ends_on_sql('e')}
         ELSE e.release_date
       END
     SQL
 
     # The last day an entry is still upcoming on.
-    PERIOD_ENDS_ON_SQL = <<~SQL.squish
-      CASE e.date_precision
-        WHEN 'month' THEN (e.release_date + INTERVAL '1 month' - INTERVAL '1 day')::date
-        ELSE #{PLACED_ON_SQL}
-      END
-    SQL
-
-    # Earliest first among a game's dated Releases on the same day.
-    PRECISION_RANK_SQL = <<~SQL.squish
-      CASE date_precision WHEN 'day' THEN 0 WHEN 'month' THEN 1 WHEN 'quarter' THEN 2 ELSE 3 END
-    SQL
+    PERIOD_ENDS_ON_SQL = GamedbRelease.period_ends_on_sql("e")
 
     def initialize(today:, month: nil, platform_ids: [], game_ids: [], next_per_game: false)
       @today = today
@@ -188,7 +176,7 @@ module Gamedb
     def first_releases(game_ids)
       GamedbRelease.where(game_id: game_ids).where.not(release_date: nil)
         .select("DISTINCT ON (game_id) game_id, release_date, date_precision")
-        .order(Arel.sql("game_id, release_date, #{PRECISION_RANK_SQL}"))
+        .order(Arel.sql("game_id, release_date, #{GamedbRelease.precision_rank_sql("gamedb_releases")}"))
         .to_h { |release| [ release.game_id, FirstRelease.new(date: release.release_date, date_precision: release.date_precision) ] }
     end
   end

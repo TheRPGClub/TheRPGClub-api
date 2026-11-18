@@ -21,6 +21,42 @@ class GamedbRelease < ApplicationRecord
 
   enum :date_precision, DATE_PRECISIONS.index_with(&:itself), prefix: true, validate: true
 
+  # How many months a vague Date Precision's period spans. A `day` is its own
+  # one-day period; `tba` has none.
+  PERIOD_MONTHS = { "month" => 1, "quarter" => 3, "year" => 12 }.freeze
+
+  # The calendar period a date at a Date Precision covers, first..last day: the
+  # day itself, or the whole month, quarter or year it starts. Nil for TBA.
+  def self.period(date, date_precision)
+    return nil if date.nil? || date_precision == "tba"
+
+    months = PERIOD_MONTHS[date_precision]
+    return date..date if months.nil?
+
+    start = date.beginning_of_month.prev_month((date.month - 1) % months)
+    start..(start.next_month(months) - 1)
+  end
+
+  # SQL for the last day of the period of the Release row `table` (an alias
+  # with `release_date` and `date_precision`); NULL for TBA. The SQL twin of
+  # ::period, so every "has this period ended" check agrees.
+  def self.period_ends_on_sql(table)
+    vague = PERIOD_MONTHS.map { |precision, months| "WHEN '#{precision}' THEN INTERVAL '#{months} months'" }.join(" ")
+    "(#{table}.release_date + CASE #{table}.date_precision #{vague} ELSE INTERVAL '1 day' END - INTERVAL '1 day')::date"
+  end
+
+  # SQL ranking the Date Precision of the Release row `table` from most to
+  # least precise (DATE_PRECISIONS order: day first, TBA last).
+  def self.precision_rank_sql(table)
+    ranks = DATE_PRECISIONS.each_with_index.map { |precision, rank| "WHEN '#{precision}' THEN #{rank}" }.join(" ")
+    "CASE #{table}.date_precision #{ranks} END"
+  end
+
+  # This Release's period (::period); nil for TBA.
+  def period
+    self.class.period(release_date, date_precision)
+  end
+
   # A Release with no date is TBA, whoever wrote it (a Manual Release from POST
   # /games/:id/releases or an import that knows no date).
   before_validation { self.date_precision = "tba" if release_date.nil? }
@@ -56,17 +92,8 @@ class GamedbRelease < ApplicationRecord
   def release_date_matches_precision
     return if release_date.nil? || !date_precision.in?(DATE_PRECISIONS)
     return errors.add(:release_date, "must be empty for a TBA Release") if date_precision_tba?
-    return if release_date == period_start
+    return if release_date == period.begin
 
     errors.add(:release_date, "must be the first day of its #{date_precision}")
-  end
-
-  def period_start
-    case date_precision
-    when "month" then release_date.beginning_of_month
-    when "quarter" then release_date.beginning_of_quarter
-    when "year" then release_date.beginning_of_year
-    else release_date
-    end
   end
 end
