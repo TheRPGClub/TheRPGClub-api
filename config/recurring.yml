@@ -41,3 +41,10 @@ production:
     class: Gamedb::ReleaseRefreshJob
     queue: default
     schedule: "0 5 * * 1"
+  # The Daily Fun Fact (ticket #406): at 15:00 New York time, whatever the
+  # season, draw the next Fun Fact and queue one daily_fun_fact bot job for
+  # that club day. Skipped while the Club Codex is Off.
+  daily_fun_fact:
+    class: ClubCodex::DailyFunFactJob
+    queue: default
+    schedule: "0 15 * * * America/New_York"
