@@ -23,7 +23,7 @@ module Api
       end
 
       # PUT /api/v1/users/:user_id/birth_date
-      # Body: { "data": { "birth_date": "1990-05-04" | null, "acting_user_id": "..." } }
+      # Body: { "data": { "birth_date": "1990-05-04" | "05-04" | null, "acting_user_id": "..." } }
       #
       # Sets the Birth Date, or removes it with null. A member's third change
       # in a calendar month is refused with 422 and `next_change_on`, the first

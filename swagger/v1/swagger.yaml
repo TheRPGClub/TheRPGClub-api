@@ -4888,9 +4888,10 @@ components:
         birth_date:
           type: string
           nullable: true
-          format: date
+          pattern: "^(\\d{4}-)?\\d{2}-\\d{2}$"
           example: '1990-05-04'
-          description: The member's Birth Date; null until they enter it.
+          description: 'The member''s Birth Date: "1990-05-04", or "05-04" when they
+            gave only the day and month (api#398). Null until they enter it.'
         changes_left_this_month:
           type: integer
           example: 1
@@ -7700,13 +7701,14 @@ paths:
       summary: Set a member's Birth Date
       tags:
       - Users
-      description: Sets the member's Birth Date, or removes it with null. A member
-        may set or change their own at most twice per calendar month (US Eastern),
-        and entering it the first time counts; a third change that month gets 422
-        with `next_change_on`, the first day of next month. Setting the date it already
-        has changes nothing and doesn't count. Staff (Moderators and above) may set
-        anyone's at any time, and their changes don't use up the member's. Returns
-        the whole document, as GET does.
+      description: 'Sets the member''s Birth Date, or removes it with null. The year
+        is optional: `MM-DD` sets a day and month alone, served back as `"05-04"`.
+        A member may set or change their own at most twice per calendar month (US
+        Eastern), and entering it the first time counts; a third change that month
+        gets 422 with `next_change_on`, the first day of next month. Setting the date
+        it already has changes nothing and doesn''t count. Staff (Moderators and above)
+        may set anyone''s at any time, and their changes don''t use up the member''s.
+        Returns the whole document, as GET does.'
       parameters: []
       responses:
         '200':
@@ -7722,7 +7724,8 @@ paths:
                 - data
         '422':
           description: the member already changed it twice this month, or birth_date
-            is missing or not a date from 1900 to today
+            is missing, not a date from 1900 to today, or not a real MM-DD month and
+            day
           content:
             application/json:
               schema:
@@ -7762,10 +7765,12 @@ paths:
                   properties:
                     birth_date:
                       type: string
-                      format: date
                       nullable: true
+                      pattern: "^(\\d{4}-)?\\d{1,2}-\\d{1,2}$"
                       example: '1990-05-04'
-                      description: YYYY-MM-DD, from 1900 to today; null removes it.
+                      description: YYYY-MM-DD, from 1900 to today, or MM-DD without
+                        the year (any real month and day, 29 February included); null
+                        removes it.
                     acting_user_id:
                       type: string
                       description: 'Service token only (required): the Discord user
@@ -8929,12 +8934,12 @@ paths:
         has at most one Run of a Seasonal Challenge per Season, whatever its status:
         409 `season_run_exists` (with `run_id`) until the next Season. A Slots Run
         copies its first year: a birth-year one is 409 `birth_date_required` without
-        a Birth Date and 422 `no_slots` when the birth year comes after the last year,
-        and `meta.notices` tells the member their birth year shows on the Run. An
-        Assignment (Secret Santa) Challenge is 409 `signup_required`: its Runs come
-        from an Edition''s draw. The bot sends `{ "data": { "acting_user_id": "..."
-        } }` (400 without; 403 `feature_unavailable` when the Feature Flag hides the
-        Feature from that member).'
+        a Birth Date or with one that has no year, and 422 `no_slots` when the birth
+        year comes after the last year, and `meta.notices` tells the member their
+        birth year shows on the Run. An Assignment (Secret Santa) Challenge is 409
+        `signup_required`: its Runs come from an Edition''s draw. The bot sends `{
+        "data": { "acting_user_id": "..." } }` (400 without; 403 `feature_unavailable`
+        when the Feature Flag hides the Feature from that member).'
       parameters: []
       responses:
         '201':

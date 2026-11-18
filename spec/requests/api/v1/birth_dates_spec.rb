@@ -38,7 +38,8 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
 
     put 'Set a member\'s Birth Date' do
       tags 'Users'
-      description 'Sets the member\'s Birth Date, or removes it with null. A member may set or change their ' \
+      description 'Sets the member\'s Birth Date, or removes it with null. The year is optional: `MM-DD` ' \
+                  'sets a day and month alone, served back as `"05-04"`. A member may set or change their ' \
                   'own at most twice per calendar month (US Eastern), and entering it the first time counts; ' \
                   'a third change that month gets 422 with `next_change_on`, the first day of next month. ' \
                   'Setting the date it already has changes nothing and doesn\'t count. Staff (Moderators and ' \
@@ -53,8 +54,10 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
           data: {
             type: :object,
             properties: {
-              birth_date: { type: :string, format: :date, nullable: true, example: '1990-05-04',
-                            description: 'YYYY-MM-DD, from 1900 to today; null removes it.' },
+              birth_date: { type: :string, nullable: true, pattern: '^(\\d{4}-)?\\d{1,2}-\\d{1,2}$',
+                            example: '1990-05-04',
+                            description: 'YYYY-MM-DD, from 1900 to today, or MM-DD without the year (any real ' \
+                                         'month and day, 29 February included); null removes it.' },
               acting_user_id: { type: :string,
                                 description: 'Service token only (required): the Discord user the bot acts for.' }
             },
@@ -69,8 +72,8 @@ RSpec.describe 'api/v1/birth_dates', type: :request do
           required: %w[data]
       end
 
-      response '422', 'the member already changed it twice this month, or birth_date is missing or not a ' \
-                      'date from 1900 to today' do
+      response '422', 'the member already changed it twice this month, or birth_date is missing, not a ' \
+                      'date from 1900 to today, or not a real MM-DD month and day' do
         schema '$ref' => '#/components/schemas/BirthDateRefusal'
       end
 

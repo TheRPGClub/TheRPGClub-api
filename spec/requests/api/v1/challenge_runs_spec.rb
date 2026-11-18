@@ -95,7 +95,8 @@ RSpec.describe 'api/v1/challenge_runs', type: :request do
                   '`run_active` (with `run_id`) when the member already has an Active Run of it. A member has at ' \
                   'most one Run of a Seasonal Challenge per Season, whatever its status: 409 `season_run_exists` ' \
                   '(with `run_id`) until the next Season. A Slots Run copies ' \
-                  'its first year: a birth-year one is 409 `birth_date_required` without a Birth Date and 422 ' \
+                  'its first year: a birth-year one is 409 `birth_date_required` without a Birth Date or with one ' \
+                  'that has no year, and 422 ' \
                   '`no_slots` when the birth year comes after the last year, and `meta.notices` tells the member ' \
                   'their birth year shows on the Run. An Assignment (Secret Santa) Challenge is 409 ' \
                   '`signup_required`: its Runs come from an Edition\'s draw. The bot sends ' \
