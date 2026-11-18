@@ -936,6 +936,48 @@ module OpenapiSchemas
         to_state: str(enum: %w[preview live]),
         feature_key: str(enum: %w[news_hub])
       ),
+      # A member as Club Codex payloads show them (ClubCodex.member, spec #397).
+      CodexMember: obj(
+        user_id: str(description: "Their Discord id, which is also their profile's id."),
+        name: str(description: "The name they go by now: their Discord display name, else their username " \
+          "(their last known one once they have left)."),
+        avatar_url: str(description: "Path of their stored avatar (GET /api/v1/users/{id}/avatar, 404 without one).")
+      ),
+      # What the acting member may do with a Club Codex entry (ClubCodex::Actor).
+      CodexEntryViewer: obj(can_edit: bool, can_delete: bool),
+      # CodexEntryResource (spec #397, ticket #404): a Club Codex entry, the
+      # same shape for every part; fields a part doesn't use are null.
+      CodexEntry: obj(
+        id: int,
+        part: str(enum: CodexEntry::PARTS, description: "history_event (Club History), lore_entry (Club Lore) " \
+          "or fun_fact."),
+        title: str(nullable: true, maxLength: CodexEntry::TITLE_MAX,
+          description: "History Events and Lore Entries; null for a Fun Fact."),
+        rich_body: { type: :object, nullable: true, additionalProperties: true,
+                     description: "The Plate.js story of a Lore Entry or description of a History Event, as the " \
+                                  "website saved it (never checked by the API); null for a Fun Fact." },
+        body: str(nullable: true, description: "The Discord-readable text, members mentioned as `<@discord_id>` " \
+          "tokens: a Fun Fact itself (up to #{CodexEntry::FUN_FACT_MAX} characters, tokens included), or the " \
+          "Discord markdown the website made from `rich_body`. Show each token as its member in `mentions`; a " \
+          "token not there names no known member and stays as text."),
+        occurred_on: date(nullable: true, description: "When it happened, at `date_precision`: a month is its " \
+          "first day, a year 1 January. Null for a Fun Fact and an undated Lore Entry."),
+        date_precision: str(nullable: true, enum: [ *CodexEntry::DATE_PRECISIONS, nil ],
+          description: "day, month or year; null with `occurred_on`."),
+        kind: str(nullable: true, enum: [ *CodexEntry::KINDS, nil ],
+          description: "The History Event Kind; null for other parts."),
+        author: ref("CodexMember"),
+        mentions: { type: :object, additionalProperties: ref("CodexMember"),
+                    description: "Each known member `body` mentions, keyed by Discord id, as they are now." },
+        images: { type: :array, items: obj(id: int, url: str, position: int),
+                  description: "The entry's gallery, by position (History Events and Lore Entries)." },
+        links: { type: :array, items: obj(id: int, part: str(enum: CodexEntry::PARTS), title: str),
+                 description: "Its \"See also\" entries: each one's title, or a Fun Fact's opening words." },
+        viewer: ref("CodexEntryViewer"),
+        created_at: ts, updated_at: ts,
+        _required: %w[id part title rich_body body occurred_on date_precision kind author mentions images links
+                      viewer created_at updated_at]
+      ),
       # ChallengeResource (spec #376, ticket #377): a Challenge with its
       # Challenge Format's settings under the Format's key.
       Challenge: obj(
