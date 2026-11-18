@@ -1520,6 +1520,17 @@ module OpenapiSchemas
           description: "Only when the member reached the limit: the first day of next month (US Eastern)."),
         _required: %w[error]
       ),
+      # Birthdays::Upcoming (spec #396, api#400). One shared Birthday in the
+      # next 30 club days. Never the year or the age.
+      UpcomingBirthday: extends("ChallengeMember", required: %w[display_name month day on today],
+        display_name: str(example: "Ava",
+          description: "The name the member goes by: their Discord display name, else their username."),
+        month: int.merge(minimum: 1, maximum: 12, example: 5),
+        day: int.merge(minimum: 1, maximum: 31, example: 4),
+        on: date(example: "2026-05-04",
+          description: "The date the Birthday falls on this time, in club days (America/New_York). A 29 " \
+                       "February Birthday falls on 28 February in years that aren't leap years."),
+        today: bool.merge(description: "Whether `on` is today in club time.")),
 
       # ---- News Hub (spec #355) --------------------------------------------
       # NewsCategory: the fixed, ordered list in code. Keys are stable.
