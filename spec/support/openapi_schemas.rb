@@ -1326,6 +1326,17 @@ module OpenapiSchemas
         minimum: int.merge(example: 5, description: "left_out_of_draw only: the backlog minimum."),
         feature_key: str(enum: %w[challenges])
       ),
+      # The Daily Fun Fact bot job payload (#406), as BotJobClaim.payload carries it.
+      DailyFunFactJobPayload: obj(
+        _description: "Kind `daily_fun_fact`. Post the Fun Fact `entry_id` (GET /api/v1/codex/fun_facts/{id}) " \
+                      "in general chat, or the staff test channel while the Club Codex is in Preview, with no " \
+                      "pings. Queued once per club day at 15:00 America/New_York. Drop it, acked done, when " \
+                      "`club_date` is no longer today in New York or the Fun Fact has been deleted (404).",
+        _required: %w[club_date entry_id feature_key],
+        club_date: str(format: "date", example: "2026-11-18").merge(description: "The club day it is for."),
+        entry_id: int.merge(description: "The Fun Fact drawn for the day; the queue already counts it shown."),
+        feature_key: str(enum: %w[club_codex])
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
@@ -1335,7 +1346,7 @@ module OpenapiSchemas
                        "(BotJob::PUBLIC_POST_FEATURES), so the bot can route it by that Feature's Flag. A kind " \
                        "that does a Feature's work without posting carries it too (BotJob::FEATURE_WORK). " \
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
-                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload."
+                       "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
