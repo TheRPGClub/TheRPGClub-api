@@ -2,7 +2,8 @@
 
 # A member's Birth Date (spec #376, ticket #380) and the limit on changing it.
 # Its year is optional (api#398, ADR 0011): a BirthDate of a month, a day and
-# maybe a year.
+# maybe a year. The member may share its Birthday, the day and month
+# (api#399).
 #
 # A member may set or change their own Birth Date at most CHANGES_PER_MONTH
 # times per calendar month in the club's time zone, and entering it the first
@@ -34,6 +35,13 @@ module BirthDates
   # that don't exist.
   class Invalid < StandardError; end
 
+  # Sharing a Birthday (api#399) for a member with no Birth Date.
+  class BirthDateRequired < StandardError
+    def code = "birth_date_required"
+
+    def initialize = super("Enter your Birth Date before you share your Birthday.")
+  end
+
   module_function
 
   # The member's Birth Date and how many changes they have left this month,
@@ -43,6 +51,7 @@ module BirthDates
     {
       user_id: user_id.to_s,
       birth_date: user&.birth_date&.to_s,
+      birthday_shared: user&.birthday_shared == true,
       changes_left_this_month: left,
       next_change_on: left.zero? ? next_month_start(now).iso8601 : nil
     }
@@ -63,10 +72,24 @@ module BirthDates
         raise LimitReached, next_month_start(now)
       end
 
-      user.update!(birth_date: date)
+      # Removing the Birth Date stops sharing its Birthday.
+      user.update!(birth_date: date, **(date.nil? ? { birthday_shared: false } : {}))
       MemberBirthDateChange.create!(user_id: user.user_id, birth_date: date, changed_by: by, by_staff: staff,
         changed_at: now)
       true
+    end
+  end
+
+  # Turns sharing the member's Birthday (the day and month of their Birth
+  # Date) on or off (api#399). Who may do which is the caller's to check: only
+  # the member turns it on, staff may turn it off. Never recorded as a Birth
+  # Date change, so it never counts toward the limit. Raises
+  # BirthDateRequired turning it on without a Birth Date.
+  def share!(user, shared)
+    user.with_lock do
+      raise BirthDateRequired if shared && user.birth_date.nil?
+
+      user.update!(birthday_shared: shared)
     end
   end
 

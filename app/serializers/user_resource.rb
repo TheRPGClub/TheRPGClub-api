@@ -2,8 +2,8 @@
 
 # The full user-profile payload served by users#show. Replaces the hand-built
 # `user.as_json.merge(...)`: the consumer-audited UserFields columns plus
-# `membership`, the embedded `socials`, the four embedded preview lists and the
-# `counts` summary.
+# `membership`, the shared `birthday` (api#399), the embedded `socials`, the
+# four embedded preview lists and the `counts` summary.
 #
 # The previews and counts are not associations on the user — the controller
 # pre-fetches limited, preloaded, ordered slices (and the count tallies) and
@@ -18,6 +18,9 @@ class UserResource
   include UserFields
 
   attributes :membership
+
+  # The member's shared Birthday, `{ month, day }`, or null (api#399).
+  attribute :birthday, &:shared_birthday
   many :socials, resource: UserSocialResource
 
   # A preview the controller left out (its Feature is one the viewer cannot

@@ -1151,7 +1151,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
     t.integer "birth_month", limit: 2, comment: "The member's Birth Date: its month, 1 to 12."
     t.integer "birth_day", limit: 2, comment: "The member's Birth Date: its day of the month (29 February allowed without a year)."
     t.integer "birth_year", limit: 2, comment: "The member's Birth Date: its year, or null when the member gave only the day and month."
+    t.boolean "birthday_shared", default: false, null: false, comment: "Whether the member shares their Birthday (the day and month of their Birth Date, never the year). Only the member turns it on; staff can turn it off; removing the Birth Date turns it off."
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
+    t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
