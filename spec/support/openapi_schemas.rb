@@ -1028,11 +1028,15 @@ module OpenapiSchemas
           items: obj(
             _required: %w[recipient picked_randomly],
             recipient: ref("ChallengeMember"),
-            game: ref("GameSummary", nullable: true).merge(description: "The game picked; null while nothing is."),
-            picked_randomly: bool.merge(description: "A random pick at the deadline: the Santa didn't pick, " \
-                                                     "withdrew or left the server."),
+            game: ref("GameSummary", nullable: true).merge(description: "The game picked; null while nothing " \
+                                                                         "is, and before the reveal on the " \
+                                                                         "reader's own row."),
+            picked_randomly: bool(nullable: true).merge(description: "A random pick at the deadline: the Santa " \
+                                                                     "didn't pick, withdrew or left the server. " \
+                                                                     "Null while the game is hidden."),
             santa: ref("ChallengeMember", nullable: true).merge(description: "Null before the Edition ends, " \
-                                                                             "except to staff."),
+                                                                             "except to staff the draw didn't " \
+                                                                             "give a Santa in it."),
             run: obj(id: int, status: str(enum: ChallengeRun::STATUSES), progress: json(nullable: false))
               .merge(nullable: true, description: "The recipient's Run of the Edition.")
           )
@@ -1095,10 +1099,12 @@ module OpenapiSchemas
           description: "Assignment only: the Edition the Run was drawn in."),
         assignment: obj(
           game: ref("GameSummary", nullable: true).merge(description: "The game picked for the member: null " \
-                                                                       "before the reveal (except to staff)."),
+                                                                       "before the reveal (except to staff, " \
+                                                                       "on Runs not their own)."),
           picked_randomly: bool(nullable: true).merge(description: "Null until the game is shown."),
           santa: ref("ChallengeMember", nullable: true).merge(description: "Null before the Edition ends, " \
-                                                                           "except to staff.")
+                                                                           "except to staff the draw didn't " \
+                                                                           "give a Santa in it.")
         ).merge(nullable: true, description: "Assignment only: the member's assigned game and their Santa."),
         status: str(enum: ChallengeRun::STATUSES),
         started_at: ts,

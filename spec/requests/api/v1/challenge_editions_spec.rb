@@ -12,7 +12,8 @@ RSpec.describe 'api/v1/challenge_editions', type: :request do
              'deadline day; at the deadline the others get a random pick. On the reveal date `assignments` lists ' \
              'every game picked, and the Edition ends on the next reveal date, when unFinished Runs Expire. ' \
              'Dates are the club\'s (America/New_York). A Santa is served to nobody but staff (Moderators and ' \
-             'above, who also see `assignments` from the draw on) before the Edition ends.'
+             'above, who also see `assignments` from the draw on) before the Edition ends; staff drawn in the ' \
+             'Edition see no Santas before it ends and not their own game before the reveal.'
   hidden = 'Editions of a hidden Challenge are found only by Moderators and above and its Host.'
 
   path '/api/v1/challenges/{challenge_id}/editions' do

@@ -37,6 +37,21 @@ class ChallengeEdition < ApplicationRecord
 
   def ended? = phase == "ended"
 
+  # Whether the draw gave the member `user_id` a Santa in this Edition.
+  # Reads the loaded signups.
+  def drawn_member?(user_id) = user_id.present? && signups.any? { |signup| signup.recipient_user_id == user_id }
+
+  # Whether the Santas are served to the member reading (`user_id`, and
+  # `staff`: a Moderator or above): to everyone once the Edition ends, and
+  # before that to staff the draw didn't give a Santa, so a staff member
+  # taking part can't learn theirs, not even by elimination from the others'.
+  def santas_shown?(user_id:, staff:) = ended? || (staff && !drawn_member?(user_id))
+
+  # Whether the game picked for `recipient_user_id` (and whether at random)
+  # is served to the member reading: to everyone from the reveal, and before
+  # that to staff, except for the game picked for themselves.
+  def pick_shown?(recipient_user_id, user_id:, staff:) = revealed? || (staff && recipient_user_id != user_id)
+
   # The sign-up opening post the bot stored, { channel_id, message_id }, or nil.
   def signup_post
     return unless signup_post_message_id

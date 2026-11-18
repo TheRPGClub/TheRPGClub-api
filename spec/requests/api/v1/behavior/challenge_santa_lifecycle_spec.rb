@@ -360,4 +360,99 @@ RSpec.describe "api/v1/challenge santa lifecycle behavior", type: :request do
       expect(run_of(bob, as: moderator).dig("assignment", "santa", "user_id")).to eq(alice.user_id)
     end
   end
+
+  # A staff member who takes part sees the Edition as a member does for
+  # themselves: no Santas until it ends (not even the others', which would
+  # give theirs away by elimination) and not their own game until the
+  # reveal. They still see the other rows and the games picked for others.
+  describe "a staff member drawn in the Edition" do
+    let(:carol) do
+      member_with_backlog("Ico", "Rez", "Vib-Ribbon", "Gitaroo Man", "Mr. Mosquito").tap do |user|
+        user.update!(role_moderator: true)
+      end
+    end
+    let(:circle) { [ alice, bob, carol ] }
+
+    before do
+      draw(*circle)
+      pick(backlog_game(carol, "Rez"), as: santa_of(carol, circle))
+      pick(backlog_game(alice, "Okami"), as: santa_of(alice, circle))
+    end
+
+    def rows(shown) = shown.fetch("assignments").to_h { |row| [ row.dig("recipient", "user_id"), row ] }
+
+    def own_run(at:)
+      run_id = run_of(carol, at: at).fetch("id")
+      travel_to(club_time(at)) do
+        get "/api/v1/challenge_runs/#{run_id}", headers: auth_headers_for(carol)
+        json.fetch("data")
+      end
+    end
+
+    def challenge_runs(as:, at:)
+      travel_to(club_time(at)) do
+        get "/api/v1/challenges/#{santa_challenge}/runs", headers: auth_headers_for(as)
+        json.fetch("data").to_h { |run| [ run.dig("user", "user_id"), run ] }
+      end
+    end
+
+    it "hides their own game and every Santa from them while Santas pick" do
+      at = "2026-12-05 12:00"
+      shown = edition(as: carol, at: at)
+      expect(shown).to include("phase" => "picking")
+      expect(rows(shown).keys).to contain_exactly(alice.user_id, bob.user_id, carol.user_id)
+      expect(rows(shown).fetch(carol.user_id)).to include("game" => nil, "picked_randomly" => nil, "santa" => nil)
+      expect(rows(shown).fetch(alice.user_id)).to include("game" => include("title" => "Okami"))
+      expect(shown.fetch("assignments")).to all(include("santa" => nil))
+      expect(response.body).not_to include("Rez")
+
+      hidden = { "game" => nil, "picked_randomly" => nil, "santa" => nil }
+      expect(own_run(at: at).fetch("assignment")).to eq(hidden)
+      expect(run_of(carol, at: at).fetch("assignment")).to eq(hidden)
+      expect(run_of(alice, as: carol, at: at).fetch("assignment"))
+        .to include("game" => include("title" => "Okami"), "santa" => nil)
+
+      runs = challenge_runs(as: carol, at: at)
+      expect(runs.fetch(carol.user_id).fetch("assignment")).to eq(hidden)
+      expect(runs.values.map { |run| run.dig("assignment", "santa") }).to all(be_nil)
+    end
+
+    it "shows them their game from the reveal, and the Santas only once the Edition ends" do
+      santa = santa_of(carol, circle).user_id
+      tick("2026-12-25 00:01")
+      at = "2026-12-26 12:00"
+      shown = edition(as: carol, at: at)
+      expect(rows(shown).fetch(carol.user_id)).to include("game" => include("title" => "Rez"), "santa" => nil)
+      expect(shown.fetch("assignments")).to all(include("santa" => nil))
+      expect(own_run(at: at).fetch("assignment")).to include("game" => include("title" => "Rez"), "santa" => nil)
+      expect(run_of(carol, at: at).dig("assignment", "santa")).to be_nil
+      expect(challenge_runs(as: carol, at: at).values.map { |run| run.dig("assignment", "santa") }).to all(be_nil)
+
+      tick("2027-12-25 00:01")
+      at = "2027-12-25 12:00"
+      expect(rows(edition(as: carol, at: at)).fetch(carol.user_id)).to include("santa" => include("user_id" => santa))
+      expect(own_run(at: at).dig("assignment", "santa", "user_id")).to eq(santa)
+      expect(run_of(carol, at: at).dig("assignment", "santa", "user_id")).to eq(santa)
+    end
+
+    it "leaves no Santa to work out by elimination from the other rows and Runs" do
+      [ "2026-12-05 12:00", "2026-12-26 12:00" ].each do |at|
+        tick(at)
+        expect(edition(as: carol, at: at).fetch("assignments").map { |row| row["santa"] }).to all(be_nil)
+        [ alice, bob ].each do |member|
+          expect(run_of(member, as: carol, at: at).dig("assignment", "santa")).to be_nil
+        end
+        expect(challenge_runs(as: carol, at: at).values.map { |run| run.dig("assignment", "santa") }).to all(be_nil)
+      end
+    end
+
+    it "still shows staff who aren't drawn every Santa and every game" do
+      at = "2026-12-05 12:00"
+      expect(rows(edition(as: moderator, at: at)).transform_values { |row| row.dig("santa", "user_id") })
+        .to eq(circle.to_h { |user| [ user.user_id, santa_of(user, circle).user_id ] })
+      expect(rows(edition(as: moderator, at: at)).dig(carol.user_id, "game", "title")).to eq("Rez")
+      expect(run_of(carol, as: moderator, at: at).dig("assignment", "santa", "user_id"))
+        .to eq(santa_of(carol, circle).user_id)
+    end
+  end
 end
