@@ -30,7 +30,7 @@ module Api
         def render_entries(scope, order: { created_at: :desc, id: :desc })
           render_collection(CodexEntryResource.preloaded(scope), resource: CodexEntryResource,
             default_order: order, params: { actor: actor },
-            prepare: ->(page) { { mentions: ClubCodex::Mentions.of(page) } })
+            prepare: ->(page) { { mentions: ClubCodex::Mentions.of(page), links: ClubCodex::Links.of(page, actor: actor) } })
         end
 
         def render_entry(entry, status: :ok)

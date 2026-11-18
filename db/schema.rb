@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_120404) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_120409) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -286,6 +286,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120404) do
     t.check_constraint "part::text = 'history_event'::text OR body IS NOT NULL", name: "ck_codex_entries_body_part"
     t.check_constraint "part::text = ANY (ARRAY['history_event'::character varying, 'lore_entry'::character varying, 'fun_fact'::character varying]::text[])", name: "ck_codex_entries_part"
     t.check_constraint "rich_body IS NULL OR body IS NOT NULL", name: "ck_codex_entries_body_with_rich_body"
+  end
+
+  create_table "codex_entry_links", primary_key: ["low_entry_id", "high_entry_id"], force: :cascade do |t|
+    t.bigint "low_entry_id", null: false
+    t.bigint "high_entry_id", null: false
+    t.timestamptz "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["high_entry_id"], name: "ix_codex_entry_links_high"
+    t.check_constraint "low_entry_id < high_entry_id", name: "ck_codex_entry_links_ordered_pair"
   end
 
   create_table "codex_entry_mentions", primary_key: ["entry_id", "user_id"], force: :cascade do |t|
@@ -1480,6 +1488,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120404) do
   add_foreign_key "challenge_runs", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_runs_user", on_delete: :cascade
   add_foreign_key "challenges", "rpg_club_users", column: "host_user_id", primary_key: "user_id", name: "fk_challenges_host", on_delete: :nullify
   add_foreign_key "codex_entries", "rpg_club_users", column: "author_user_id", primary_key: "user_id", name: "fk_codex_entries_author"
+  add_foreign_key "codex_entry_links", "codex_entries", column: "high_entry_id", name: "fk_codex_entry_links_high", on_delete: :cascade
+  add_foreign_key "codex_entry_links", "codex_entries", column: "low_entry_id", name: "fk_codex_entry_links_low", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "codex_entries", column: "entry_id", name: "fk_codex_entry_mentions_entry", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_codex_entry_mentions_user", on_delete: :cascade
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"

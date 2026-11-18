@@ -7,12 +7,13 @@
 #              last known one once they have left)
 #   mentions   each member `body` mentions, by Discord id
 #   images     the entry's gallery (ticket #410); [] until then
-#   links      its "See also" entries (ticket #409); [] until then
+#   links      its "See also" entries (ClubCodex::Links), as the acting
+#              member may read them: a Visitor sees only History Events
 #   viewer     what the acting member may do with it (ClubCodex::Actor)
 #
-# Pass `params[:actor]`, and for a page of entries
-# `params[:mentions]` (ClubCodex::Mentions.of the page); a single entry
-# reads its own. Load entries through CodexEntryResource.preloaded.
+# Pass `params[:actor]`, and for a page of entries `params[:mentions]`
+# (ClubCodex::Mentions.of the page) and `params[:links]` (ClubCodex::Links.of
+# it); a single entry reads its own. Load entries through CodexEntryResource.preloaded.
 class CodexEntryResource
   include BaseResource
 
@@ -37,8 +38,9 @@ class CodexEntryResource
     []
   end
 
-  attribute :links do |_entry|
-    []
+  attribute :links do |entry|
+    links = params[:links] || ClubCodex::Links.of([ entry ], actor: params.fetch(:actor))
+    links.fetch(entry.id, [])
   end
 
   attribute :viewer do |entry|

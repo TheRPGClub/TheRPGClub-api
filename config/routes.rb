@@ -433,6 +433,10 @@ Rails.application.routes.draw do
         end
         resources :history_events, only: %i[index show create update destroy]
         resources :lore_entries, only: %i[index show create update destroy]
+        # Across the three parts (ticket #409): the entry search, and an
+        # entry's "See also" links.
+        get "entries", to: "entries#index"
+        put "entries/:id/links", to: "entry_links#update"
       end
       # News Hub (spec #355): the fixed News Categories; the members' feed of
       # News Items; the bot records (PUT, an upsert) and removes News Items

@@ -12,10 +12,14 @@ module ClubCodex
   #   create          Regulars, Moderators, Admins and Superadmins
   #   edit, delete    the author, for their own; a Moderator or above, for any
   #
-  # A signed-out Visitor (Actor.visitor) may only read.
-  Actor = Data.define(:user_id, :regular, :moderator, :admin) do
-    # A signed-out Visitor (Club History is public): reads, and nothing else.
-    def self.visitor = new(user_id: nil, regular: false, moderator: false, admin: false)
+  # A signed-out Visitor (Actor.visitor) may only read, and only Club History.
+  # Everyone else (`member`), the bot included, reads all three parts.
+  Actor = Data.define(:user_id, :regular, :moderator, :admin, :member) do
+    # A signed-out Visitor (Club History is public): reads History Events,
+    # and nothing else.
+    def self.visitor = new(user_id: nil, regular: false, moderator: false, admin: false, member: false)
+
+    def initialize(user_id:, regular:, moderator:, admin:, member: true) = super
 
     def regular? = regular
     def moderator_or_above? = moderator
@@ -38,6 +42,19 @@ module ClubCodex
     end
 
     def can_delete?(entry) = can_edit?(entry)
+
+    # The entries of `scope` they may read: all of them, or a Visitor's
+    # History Events.
+    def readable(scope) = member ? scope : scope.where(part: "history_event")
+
+    # The entries of `scope` they may edit, by the rules above.
+    def editable(scope)
+      return scope if admin_or_above?
+      return scope.where.not(part: "history_event") if moderator_or_above?
+      return scope.none if user_id.blank?
+
+      scope.where(author_user_id: user_id).where.not(part: "history_event")
+    end
 
     # The `viewer` flags every entry payload carries, so clients don't
     # re-implement these rules.
