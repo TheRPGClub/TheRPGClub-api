@@ -15813,7 +15813,7 @@ paths:
       - Games
       description: 'Members role holders, staff (Moderator and above) and the service.
         Re-fetches the game''s release dates from IGDB and refreshes its Releases
-        in place (ADR 0009), matching on platform + region: an IGDB Release takes
+        in place (ADR 0010), matching on platform + region: an IGDB Release takes
         IGDB''s date and Date Precision, else the oldest matching Manual Release is
         adopted (becomes `source` "igdb"), else a new IGDB Release is added. IGDB
         Releases IGDB no longer reports are removed with their announcement; Manual

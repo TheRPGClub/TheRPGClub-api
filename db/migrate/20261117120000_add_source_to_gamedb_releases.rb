@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Release Calendar (api#390, ADR 0009): every Release records whether it is an
+# Release Calendar (api#390, ADR 0010): every Release records whether it is an
 # IGDB Release (kept in step by the in-place IGDB refresh) or a Manual Release
 # (added by staff or another import, never touched by a refresh). Existing
 # Releases are backfilled as Manual Releases through the column default; a

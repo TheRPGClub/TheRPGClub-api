@@ -3,7 +3,7 @@
 require "rails_helper"
 require "fugit"
 
-# The weekly IGDB refresh (api#393, ADR 0009): which GameDB games it picks and
+# The weekly IGDB refresh (api#393, ADR 0010): which GameDB games it picks and
 # that one game failing does not stop the rest. The in-place sync itself is
 # covered through POST /games/:id/refresh-releases, so the importer is faked
 # here and only records the games it was asked to refresh.

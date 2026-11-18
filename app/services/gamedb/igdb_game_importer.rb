@@ -10,7 +10,7 @@ module Gamedb
   # is indistinguishable from a bot-created one: missing lookup rows (genre,
   # company, platform, …) are created on the fly keyed by their `igdb_*_id`.
   # Releases are one per platform per region (the earliest, Japan included,
-  # ADR 0009), carry IGDB's Date Precision (a TBA Release when IGDB has no
+  # ADR 0010), carry IGDB's Date Precision (a TBA Release when IGDB has no
   # date yet, api#392) and leave `format` null (IGDB carries no physical/digital
   # signal); they are written through Gamedb::ReleaseSync, the in-place
   # refresh shared by import and refresh.
@@ -68,7 +68,7 @@ module Gamedb
     end
 
     # Re-fetch the game's release dates from IGDB and refresh its Releases in
-    # place (ADR 0009) through the same sync #import! uses: IGDB Releases are
+    # place (ADR 0010) through the same sync #import! uses: IGDB Releases are
     # updated, added or removed, Manual Releases are adopted or left alone, and
     # announcements keep their delivery state. Touches Releases only, never
     # images or the game's metadata/taxonomy. Returns the GamedbGame so the
@@ -210,7 +210,7 @@ module Gamedb
 
     # IGDB can return several release_dates for one platform and region (a
     # re-release, an edition, a TBA placeholder). Keep the earliest per platform
-    # per region, Japan included (ADR 0009): any dated row, exact or vague,
+    # per region, Japan included (ADR 0010): any dated row, exact or vague,
     # beats TBA, and on the same date the more precise row wins. A vague row is
     # passed over when a more precise row falls inside its period, so IGDB's
     # "Q3 2027" never hides the 2027-08-14 it also knows (a "Q2 2027" still

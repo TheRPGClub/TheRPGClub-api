@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Gamedb
-  # The in-place IGDB refresh of one game's Releases (ADR 0009). Game import,
+  # The in-place IGDB refresh of one game's Releases (ADR 0010). Game import,
   # POST /games/:id/refresh-releases and anything else that syncs Releases from
   # IGDB hand it the Releases IGDB reports, and it matches each one on game +
   # platform + region:

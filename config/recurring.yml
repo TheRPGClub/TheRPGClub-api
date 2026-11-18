@@ -34,7 +34,7 @@ production:
     class: Achievements::SyncWindowJob
     queue: default
     schedule: "0 0,6,12,18 * * *"
-  # The weekly IGDB refresh (api#393, ADR 0009): re-syncs the Releases of every
+  # The weekly IGDB refresh (api#393, ADR 0010): re-syncs the Releases of every
   # game with an upcoming, imprecise or missing date, so delayed games move on
   # the Release Calendar and their announcements move with them.
   weekly_release_refresh:

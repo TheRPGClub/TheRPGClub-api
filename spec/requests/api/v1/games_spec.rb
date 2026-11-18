@@ -489,7 +489,7 @@ RSpec.describe 'api/v1/games', type: :request do
     post 'Refresh releases from IGDB' do
       tags 'Games'
       description 'Members role holders, staff (Moderator and above) and the service. Re-fetches the ' \
-                  'game\'s release dates from IGDB and refreshes its Releases in place (ADR 0009), matching ' \
+                  'game\'s release dates from IGDB and refreshes its Releases in place (ADR 0010), matching ' \
                   'on platform + region: an IGDB Release takes IGDB\'s date and Date Precision, else the oldest matching Manual ' \
                   'Release is adopted (becomes `source` "igdb"), else a new IGDB Release is added. IGDB ' \
                   'Releases IGDB no longer reports are removed with their announcement; Manual Releases are ' \

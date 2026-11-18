@@ -3,7 +3,7 @@
 module Gamedb
   # One game's release-announcement schedule, rebuilt from its Releases (the
   # bot's `syncReleaseAnnouncements` + `markNonCanonicalAnnouncements`, #109;
-  # ADR 0009). Run by PATCH /games/:id/release_announcements and at the end of
+  # ADR 0010). Run by PATCH /games/:id/release_announcements and at the end of
   # every in-place IGDB refresh (Gamedb::ReleaseSync), so the weekly refresh
   # schedules and re-ranks announcements without waiting for the bot.
   #
@@ -27,7 +27,7 @@ module Gamedb
     SAME_DAY_DUPLICATE_REASON = "same-day-platform-duplicate"
 
     # Region whose Releases only become canonical when a game has no other
-    # (ADR 0009): announcements go out for the release most members get.
+    # (ADR 0010): announcements go out for the release most members get.
     JAPAN_REGION_CODE = "JP"
 
     # A Japanese Release waits while its game has any Release outside Japan,

@@ -4,7 +4,7 @@ class GamedbRelease < ApplicationRecord
   self.table_name = "gamedb_releases"
   self.primary_key = "release_id"
 
-  # Where a Release comes from (ADR 0009). An IGDB Release is kept in step by
+  # Where a Release comes from (ADR 0010). An IGDB Release is kept in step by
   # the in-place IGDB refresh (Gamedb::ReleaseSync): its date can move and it
   # can be removed. A Manual Release (staff, the Completionator import, any
   # other writer) is never changed or removed by a refresh, only adopted when

@@ -27,7 +27,7 @@ module Api
       DEFAULT_DUE_LIMIT = 25
       MAX_DUE_LIMIT = 100
 
-      # A game is announced once (ADR 0009). Its sent announcement lives on the
+      # A game is announced once (ADR 0010). Its sent announcement lives on the
       # announced Release, and `gamedb_games.release_announced_at` keeps it
       # when an IGDB refresh removes that Release. Either one keeps every other
       # Release of the game out of #due.

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Gamedb
-  # The weekly IGDB refresh (api#393, ADR 0009): refreshes the Releases of every
+  # The weekly IGDB refresh (api#393, ADR 0010): refreshes the Releases of every
   # GameDB game that still has an upcoming, imprecise or missing date through
   # the same in-place sync as POST /games/:id/refresh-releases, so a delayed
   # game moves on the Release Calendar, and in its announcement, without anyone

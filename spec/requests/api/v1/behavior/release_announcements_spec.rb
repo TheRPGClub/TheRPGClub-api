@@ -96,7 +96,7 @@ RSpec.describe "api/v1/release_announcements behavior", type: :request do
       expect(json.fetch("data")).to eq([])
     end
 
-    context "with a Japanese Release (ADR 0009)" do
+    context "with a Japanese Release (ADR 0010)" do
       let(:japan) { GamedbRegion.create_with(region_name: "Japan").find_or_create_by!(region_code: "JP") }
       let(:game) { create(:game) }
 
