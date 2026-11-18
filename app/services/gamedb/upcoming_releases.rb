@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Gamedb
-  # The Release Calendar's entries (spec #389, ticket #394; GLOSSARY.md
+  # The Release Calendar's Upcoming Releases (spec #389, ticket #394; GLOSSARY.md
   # "Release Calendar", "Upcoming Release").
   #
   # An Upcoming Release is one game's Releases that share a date and Date
@@ -24,10 +24,10 @@ module Gamedb
   # for December, the year. TBA is never in a month.
   class UpcomingReleases
     # `first_released` is the game's earliest Release that had come out before
-    # this entry (FirstRelease), or nil.
-    Entry = Data.define(:game, :date, :date_precision, :releases, :first_released) do
-      # The heading a client renders the entry under: the month for `day` and
-      # `month` entries, "Q3 2027", "2027" or "TBA".
+    # this Upcoming Release (FirstRelease), or nil.
+    UpcomingRelease = Data.define(:game, :date, :date_precision, :releases, :first_released) do
+      # The heading a client renders it under: the month for `day` and
+      # `month` Upcoming Releases, "Q3 2027", "2027" or "TBA".
       def section
         case date_precision
         when "tba" then "TBA"
@@ -38,7 +38,7 @@ module Gamedb
       end
     end
 
-    # A game's first release before an entry: its date and Date Precision.
+    # A game's first release before an Upcoming Release: its date and Date Precision.
     FirstRelease = Data.define(:date, :date_precision)
 
     # The order of each Date Precision among Upcoming Releases placed on the
@@ -59,7 +59,7 @@ module Gamedb
       END
     SQL
 
-    # The last day an entry is still upcoming on.
+    # The last day an Upcoming Release is still upcoming on.
     PERIOD_ENDS_ON_SQL = GamedbRelease.period_ends_on_sql("e")
 
     def initialize(today:, month: nil, platform_ids: [], game_ids: [], next_per_game: false)
@@ -70,16 +70,16 @@ module Gamedb
       @next_per_game = next_per_game
     end
 
-    # [total entry count, the page's Entries in calendar order].
+    # [total count, the page's UpcomingReleases in calendar order].
     def page(page:, limit:)
       rows = select_rows(page_sql(page: page, limit: limit))
-      count = rows.first&.fetch("entries_count") || (page > 1 ? total : 0)
-      [ count.to_i, entries(rows) ]
+      count = rows.first&.fetch("upcoming_releases_count") || (page > 1 ? total : 0)
+      [ count.to_i, upcoming_releases(rows) ]
     end
 
     private
 
-    # The entry count, for a page past the end (which has no rows to carry it).
+    # The total count, for a page past the end (which has no rows to carry it).
     def total
       GamedbRelease.connection.select_value("SELECT COUNT(*) FROM (#{chosen_sql}) chosen")
     end
@@ -94,14 +94,14 @@ module Gamedb
 
     def page_sql(page:, limit:)
       sanitize(<<~SQL.squish, limit: limit, offset: limit * (page - 1))
-        SELECT c.game_id, c.release_date, c.date_precision, COUNT(*) OVER () AS entries_count
+        SELECT c.game_id, c.release_date, c.date_precision, COUNT(*) OVER () AS upcoming_releases_count
         FROM (#{chosen_sql}) c
         ORDER BY c.placed_on ASC NULLS LAST, c.placement, c.title, c.game_id
         LIMIT :limit OFFSET :offset
       SQL
     end
 
-    # The window's entries, each with its placement, the game's title, and
+    # The window's Upcoming Releases, each with its placement, the game's title, and
     # (with `next_per_game`) only each game's earliest one.
     def chosen_sql
       windowed = <<~SQL.squish
@@ -148,7 +148,7 @@ module Gamedb
       end
     end
 
-    def entries(rows)
+    def upcoming_releases(rows)
       return [] if rows.empty?
 
       game_ids = rows.map { |row| row.fetch("game_id") }.uniq
@@ -163,7 +163,7 @@ module Gamedb
         game_id = row.fetch("game_id")
         date = row["release_date"] && Date.parse(row["release_date"].to_s)
         date_precision = row.fetch("date_precision")
-        Entry.new(
+        UpcomingRelease.new(
           game: games.fetch(game_id), date: date, date_precision: date_precision,
           releases: grouped.fetch([ game_id, date, date_precision ], [])
             .sort_by { |release| [ release.platform.platform_name, release.region.region_name, release.release_id ] },
@@ -174,8 +174,8 @@ module Gamedb
 
     # The game's earliest dated Release (earliest stored date, then the more
     # precise Date Precision) whose whole period ended before `date`; any dated
-    # Release for a TBA entry (no date). A vague Release whose period is still
-    # running on the entry's date has not come out before it, so a JP "Mar
+    # Release for a TBA Upcoming Release (no date). A vague Release whose period is still
+    # running on the Upcoming Release's date has not come out before it, so a JP "Mar
     # 2027" is not "first released" for a NA 2027-03-25.
     def first_released_before(dated, date)
       first = dated.find { |release| date.nil? || release.period.end < date }

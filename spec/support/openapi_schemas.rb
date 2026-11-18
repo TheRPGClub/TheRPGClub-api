@@ -176,12 +176,12 @@ module OpenapiSchemas
         date: date(nullable: true, description: "Plain calendar date (YYYY-MM-DD) shared by the Releases, at " \
           "their Date Precision: the first day of the month or quarter, 1 January of the year, null when TBA."),
         date_precision: str(enum: GamedbRelease::DATE_PRECISIONS),
-        section: str(example: "July 2027", description: "The heading to list the entry under: the month " \
-          "(\"July 2027\") for day and month entries, \"Q3 2027\" for a quarter, \"2027\" for a year, \"TBA\"."),
+        section: str(example: "July 2027", description: "The heading to list it under: the month " \
+          "(\"July 2027\") for day and month Upcoming Releases, \"Q3 2027\" for a quarter, \"2027\" for a year, \"TBA\"."),
         first_released_on: date(nullable: true, description: "The game's earliest dated Release (any platform " \
           "or region, earliest date, then the more precise Date Precision) whose whole period ended before " \
-          "this entry's date (any dated Release for a TBA entry), so a vague Release still running on the " \
-          "entry's date does not count. Null otherwise, so the game's first entry has none."),
+          "this Upcoming Release's date (any dated Release for a TBA one), so a vague Release still running on the " \
+          "Upcoming Release's date does not count. Null otherwise, so the game's first Upcoming Release has none."),
         first_released_precision: str(nullable: true, enum: [ *(GamedbRelease::DATE_PRECISIONS - %w[tba]), nil ],
           description: "The Date Precision of " \
           "`first_released_on` (day, month, quarter or year); null with it."),

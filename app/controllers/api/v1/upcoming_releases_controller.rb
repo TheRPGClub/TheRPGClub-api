@@ -15,9 +15,9 @@ module Api
       #
       # Without `month`, every Upcoming Release from today (UTC) on, TBA last;
       # with it, those placed in that calendar month, past or future.
-      # `platform_id` keeps an entry with any Release on one of the platforms,
+      # `platform_id` keeps an Upcoming Release with any Release on one of the platforms,
       # `game_id` limits to those games, `per_game=next` keeps each game's
-      # earliest entry. Ids are repeated (`platform_id=1&platform_id=2` or
+      # earliest one. Ids are repeated (`platform_id=1&platform_id=2` or
       # `platform_id[]=1&platform_id[]=2`) or comma-separated. A malformed
       # `month`, id or `per_game` is a 422.
       def index
@@ -25,11 +25,11 @@ module Api
         return if performed?
 
         options = pagy_options(default_per: 50, max_per: 100)
-        count, entries = Gamedb::UpcomingReleases.new(today: Time.current.utc.to_date, **filters)
+        count, upcoming_releases = Gamedb::UpcomingReleases.new(today: Time.current.utc.to_date, **filters)
           .page(page: options[:page], limit: options[:limit])
 
         render json: {
-          data: UpcomingReleaseResource.new(entries).serializable_hash,
+          data: UpcomingReleaseResource.new(upcoming_releases).serializable_hash,
           meta: pagy_meta(Pagy::Offset.new(count: count, **options))
         }
       end

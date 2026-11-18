@@ -38,8 +38,8 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
   end
 
   # Each Upcoming Release as [title, date, precision].
-  def entries(**params)
-    upcoming(**params).map { |entry| [ entry.dig("game", "title"), entry["date"], entry["date_precision"] ] }
+  def calendar(**params)
+    upcoming(**params).map { |listed| [ listed.dig("game", "title"), listed["date"], listed["date_precision"] ] }
   end
 
   describe "the Release Calendar Feature" do
@@ -84,13 +84,13 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       expect(upcoming.first.fetch("releases")).to contain_exactly(include("region_code" => "JP"))
     end
 
-    it "keeps a game's Releases on different dates, or at different precisions, as separate entries" do
+    it "keeps a game's Releases on different dates, or at different precisions, as separate Upcoming Releases" do
       game = create(:game, title: "Tides")
       release(game, "2027-05-01", region: na)
       release(game, "2027-05-02", region: eu)
       release(game, "2027-05-01", precision: "month", platform: switch)
 
-      expect(entries).to eq([
+      expect(calendar).to eq([
         [ "Tides", "2027-05-01", "month" ], [ "Tides", "2027-05-01", "day" ], [ "Tides", "2027-05-02", "day" ]
       ])
     end
@@ -110,7 +110,7 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       release(create(:game, title: "India"), nil, precision: "tba")
       release(create(:game, title: "Juliet"), "2028-01-01", precision: "month")
 
-      expect(upcoming.map { |entry| [ entry.dig("game", "title"), entry["section"] ] }).to eq([
+      expect(upcoming.map { |listed| [ listed.dig("game", "title"), listed["section"] ] }).to eq([
         [ "Beta", "July 2027" ],
         [ "Aardvark", "July 2027" ],
         [ "Alpha", "July 2027" ],
@@ -125,7 +125,7 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       ])
     end
 
-    it "returns a TBA entry with no date" do
+    it "returns a TBA Upcoming Release with no date" do
       release(create(:game, title: "Someday"), nil, precision: "tba")
 
       expect(upcoming.first).to include("date" => nil, "date_precision" => "tba", "section" => "TBA")
@@ -137,7 +137,7 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       second_twin = create(:game, title: "Twin")
       [ zeta, second_twin, first_twin ].each { |game| release(game, "2027-04-01") }
 
-      expect(upcoming.map { |entry| entry.dig("game", "game_id") })
+      expect(upcoming.map { |listed| listed.dig("game", "game_id") })
         .to eq([ first_twin.game_id, second_twin.game_id, zeta.game_id ])
     end
   end
@@ -154,21 +154,21 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       release(create(:game, title: "Year 2027"), "2027-01-01", precision: "year")
       release(create(:game, title: "Unknown"), nil, precision: "tba")
 
-      expect(entries.map(&:first)).to eq([ "March", "Today", "Q1 2027", "Year 2027", "Unknown" ])
+      expect(calendar.map(&:first)).to eq([ "March", "Today", "Q1 2027", "Year 2027", "Unknown" ])
     end
 
     it "still returns a day Release all through its own date" do
       release(create(:game, title: "Launch"), "2027-03-10")
 
-      at(Time.utc(2027, 3, 10, 23, 59)) { expect(entries.map(&:first)).to eq([ "Launch" ]) }
-      at(Time.utc(2027, 3, 11, 0, 1)) { expect(entries).to eq([]) }
+      at(Time.utc(2027, 3, 10, 23, 59)) { expect(calendar.map(&:first)).to eq([ "Launch" ]) }
+      at(Time.utc(2027, 3, 11, 0, 1)) { expect(calendar).to eq([]) }
     end
 
     it "still returns a quarter Release on the quarter's last day" do
       release(create(:game, title: "Spring"), "2027-01-01", precision: "quarter")
 
-      at(Time.utc(2027, 3, 31, 23)) { expect(entries.map(&:first)).to eq([ "Spring" ]) }
-      at(Time.utc(2027, 4, 1, 1)) { expect(entries).to eq([]) }
+      at(Time.utc(2027, 3, 31, 23)) { expect(calendar.map(&:first)).to eq([ "Spring" ]) }
+      at(Time.utc(2027, 4, 1, 1)) { expect(calendar).to eq([]) }
     end
   end
 
@@ -183,16 +183,16 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       release(create(:game, title: "Unknown"), nil, precision: "tba")
     end
 
-    it "returns a past month's entries" do
-      expect(entries(month: "2026-11").map(&:first)).to eq([ "November month", "November day" ])
+    it "returns a past month's Upcoming Releases" do
+      expect(calendar(month: "2026-11").map(&:first)).to eq([ "November month", "November day" ])
     end
 
     it "returns the quarter and year that end in the month after its days" do
-      expect(entries(month: "2026-12").map(&:first)).to eq([ "December day", "Q4 2026", "Year 2026" ])
+      expect(calendar(month: "2026-12").map(&:first)).to eq([ "December day", "Q4 2026", "Year 2026" ])
     end
 
-    it "returns a future month's entries" do
-      expect(entries(month: "2027-04").map(&:first)).to eq([ "Upcoming" ])
+    it "returns a future month's Upcoming Releases" do
+      expect(calendar(month: "2027-04").map(&:first)).to eq([ "Upcoming" ])
     end
 
     it "is a 422 when it is not a YYYY-MM month" do
@@ -217,21 +217,21 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
     it "keeps an Upcoming Release when any of its Releases is on one of the platforms, with all its Releases" do
       data = upcoming(platform_id: [ switch.platform_id ])
 
-      expect(data.map { |entry| entry.dig("game", "title") }).to eq([ "Duo" ])
+      expect(data.map { |listed| listed.dig("game", "title") }).to eq([ "Duo" ])
       expect(data.first.fetch("releases").map { |r| r["platform_id"] })
         .to contain_exactly(ps5.platform_id, switch.platform_id)
     end
 
     it "takes several platforms, repeated or comma-separated" do
-      expect(entries(platform_id: [ switch.platform_id, pc.platform_id ]).map(&:first)).to eq([ "Duo", "Solo" ])
-      expect(entries(platform_id: "#{switch.platform_id},#{pc.platform_id}").map(&:first)).to eq([ "Duo", "Solo" ])
+      expect(calendar(platform_id: [ switch.platform_id, pc.platform_id ]).map(&:first)).to eq([ "Duo", "Solo" ])
+      expect(calendar(platform_id: "#{switch.platform_id},#{pc.platform_id}").map(&:first)).to eq([ "Duo", "Solo" ])
     end
 
     it "takes the bare repeated form (platform_id=1&platform_id=2) as several platforms" do
       get "/api/v1/upcoming_releases?platform_id=#{switch.platform_id}&platform_id=#{pc.platform_id}",
         headers: auth_headers_for(member)
 
-      expect(json.fetch("data").map { |entry| entry.dig("game", "title") }).to eq([ "Duo", "Solo" ])
+      expect(json.fetch("data").map { |listed| listed.dig("game", "title") }).to eq([ "Duo", "Solo" ])
     end
 
     it "is a 422 for an id that is not a number" do
@@ -254,8 +254,8 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       release(other, "2027-01-01", precision: "year", platform: pc)
     end
 
-    it "limits the entries to the given games" do
-      expect(entries(game_id: [ sequel.game_id ])).to eq([
+    it "limits the Upcoming Releases to the given games" do
+      expect(calendar(game_id: [ sequel.game_id ])).to eq([
         [ "Sequel", "2027-06-01", "day" ], [ "Sequel", "2027-08-01", "day" ], [ "Sequel", nil, "tba" ]
       ])
     end
@@ -264,19 +264,19 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       get "/api/v1/upcoming_releases?game_id=#{sequel.game_id}&game_id=#{other.game_id}&per_game=next",
         headers: auth_headers_for(member)
 
-      expect(json.fetch("data").map { |entry| entry.dig("game", "title") }).to eq([ "Other", "Sequel" ])
+      expect(json.fetch("data").map { |listed| listed.dig("game", "title") }).to eq([ "Other", "Sequel" ])
     end
 
     it "keeps only each game's earliest Upcoming Release" do
-      expect(entries(per_game: "next")).to eq([ [ "Other", "2027-04-01", "day" ], [ "Sequel", "2027-06-01", "day" ] ])
+      expect(calendar(per_game: "next")).to eq([ [ "Other", "2027-04-01", "day" ], [ "Sequel", "2027-06-01", "day" ] ])
     end
 
     it "combines with game_id" do
-      expect(entries(per_game: "next", game_id: [ sequel.game_id ])).to eq([ [ "Sequel", "2027-06-01", "day" ] ])
+      expect(calendar(per_game: "next", game_id: [ sequel.game_id ])).to eq([ [ "Sequel", "2027-06-01", "day" ] ])
     end
 
-    it "picks each game's earliest entry among those on the filtered platforms" do
-      expect(entries(per_game: "next", platform_id: [ switch.platform_id, pc.platform_id ]))
+    it "picks each game's earliest Upcoming Release among those on the filtered platforms" do
+      expect(calendar(per_game: "next", platform_id: [ switch.platform_id, pc.platform_id ]))
         .to eq([ [ "Other", "2027-01-01", "year" ], [ "Sequel", nil, "tba" ] ])
     end
 
@@ -289,13 +289,13 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
   end
 
   describe "first_released_on" do
-    it "is the game's earliest dated Release on a later-region or later-platform entry, and null on the first" do
+    it "is the game's earliest dated Release on a later-region or later-platform Upcoming Release, and null on the first" do
       game = create(:game, title: "Staggered")
       release(game, "2027-04-20", region: japan)
       release(game, "2027-05-20", region: na)
       release(game, nil, precision: "tba", platform: switch)
 
-      expect(upcoming.map { |entry| [ entry["date"], entry["first_released_on"], entry["first_released_precision"] ] })
+      expect(upcoming.map { |listed| [ listed["date"], listed["first_released_on"], listed["first_released_precision"] ] })
         .to eq([ [ "2027-04-20", nil, nil ], [ "2027-05-20", "2027-04-20", "day" ], [ nil, "2027-04-20", "day" ] ])
     end
 
@@ -312,11 +312,11 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       release(game, "2027-04-01", precision: "quarter", platform: pc)
       release(game, "2027-08-14", platform: switch)
 
-      expect(upcoming.map { |entry| [ entry["date"], entry["first_released_on"], entry["first_released_precision"] ] })
+      expect(upcoming.map { |listed| [ listed["date"], listed["first_released_on"], listed["first_released_precision"] ] })
         .to eq([ [ "2027-04-01", nil, nil ], [ "2027-08-14", "2027-04-01", "quarter" ] ])
     end
 
-    it "counts a vague Release as first only once its whole period has ended before the entry" do
+    it "counts a vague Release as first only once its whole period has ended before the Upcoming Release" do
       game = create(:game, title: "Overlap")
       release(game, "2027-03-01", precision: "month", region: japan)
       release(game, "2027-03-25", region: na)
@@ -324,7 +324,7 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
       release(game, "2027-08-14", platform: switch)
       release(game, "2027-10-02", platform: switch, region: eu)
 
-      expect(upcoming.map { |entry| [ entry["date"], entry["first_released_on"], entry["first_released_precision"] ] })
+      expect(upcoming.map { |listed| [ listed["date"], listed["first_released_on"], listed["first_released_precision"] ] })
         .to eq([
           [ "2027-03-01", nil, nil ],
           [ "2027-03-25", nil, nil ],
@@ -334,14 +334,14 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
         ])
     end
 
-    it "names an exact day inside an earlier vague Release's period when only the day came before the entry" do
+    it "names an exact day inside an earlier vague Release's period when only the day came before the Upcoming Release" do
       game = create(:game, title: "Sharpened")
       release(game, "2027-01-01", precision: "year", region: japan)
       release(game, "2027-04-02", region: eu)
       release(game, "2027-11-20", region: na)
       release(game, "2028-02-01", platform: pc)
 
-      expect(upcoming.map { |entry| [ entry["date"], entry["first_released_on"], entry["first_released_precision"] ] })
+      expect(upcoming.map { |listed| [ listed["date"], listed["first_released_on"], listed["first_released_precision"] ] })
         .to eq([
           [ "2027-04-02", nil, nil ],
           [ "2027-11-20", "2027-04-02", "day" ],
@@ -367,11 +367,11 @@ RSpec.describe "api/v1/upcoming_releases behavior", type: :request do
 
       get "/api/v1/upcoming_releases", params: { page: 2, per: 2 }, headers: auth_headers_for(member)
 
-      expect(json.fetch("data").map { |entry| entry.dig("game", "title") }).to eq([ "Three" ])
+      expect(json.fetch("data").map { |listed| listed.dig("game", "title") }).to eq([ "Three" ])
       expect(json.fetch("meta")).to include("page" => 2, "pages" => 2, "count" => 3, "per" => 2, "prev" => 1, "next" => nil)
     end
 
-    it "still counts the entries on a page past the end" do
+    it "still counts the Upcoming Releases on a page past the end" do
       release(create(:game, title: "Only"), "2027-04-01")
 
       get "/api/v1/upcoming_releases", params: { page: 3, per: 1 }, headers: auth_headers_for(member)

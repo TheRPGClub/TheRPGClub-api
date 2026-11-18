@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
-# An Upcoming Release on the Release Calendar (Gamedb::UpcomingReleases::Entry):
+# An Upcoming Release on the Release Calendar (Gamedb::UpcomingReleases::UpcomingRelease):
 # the game, the shared date and Date Precision, the `section` a client renders
 # it under, its Releases, and when the game first came out if that was
-# before this entry.
+# before this one.
 class UpcomingReleaseResource
   include BaseResource
 
-  attribute(:game) do |entry|
-    { game_id: entry.game.game_id, title: entry.game.title, cover_url: entry.game.cover_url }
+  attribute(:game) do |upcoming|
+    { game_id: upcoming.game.game_id, title: upcoming.game.title, cover_url: upcoming.game.cover_url }
   end
-  attribute(:date) { |entry| entry.date&.iso8601 }
+  attribute(:date) { |upcoming| upcoming.date&.iso8601 }
   attributes :date_precision, :section
-  attribute(:first_released_on) { |entry| entry.first_released&.date&.iso8601 }
-  attribute(:first_released_precision) { |entry| entry.first_released&.date_precision }
-  attribute(:releases) do |entry|
-    entry.releases.map do |release|
+  attribute(:first_released_on) { |upcoming| upcoming.first_released&.date&.iso8601 }
+  attribute(:first_released_precision) { |upcoming| upcoming.first_released&.date_precision }
+  attribute(:releases) do |upcoming|
+    upcoming.releases.map do |release|
       {
         release_id: release.release_id,
         platform_id: release.platform_id,
