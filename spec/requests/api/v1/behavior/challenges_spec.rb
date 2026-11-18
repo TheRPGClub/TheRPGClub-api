@@ -579,6 +579,15 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
   end
 
   describe "the key art" do
+    # Image URLs need a public base URL, which CI doesn't set.
+    around do |example|
+      original = ENV["BACKBLAZE_PUBLIC_BASE_URL"]
+      ENV["BACKBLAZE_PUBLIC_BASE_URL"] = "https://cdn.example.test/club"
+      example.run
+    ensure
+      original.nil? ? ENV.delete("BACKBLAZE_PUBLIC_BASE_URL") : ENV["BACKBLAZE_PUBLIC_BASE_URL"] = original
+    end
+
     def in_pool(title)
       create(:game, title: title).tap { |game| GamedbGameFranchise.create!(game: game, franchise: franchise) }
     end
