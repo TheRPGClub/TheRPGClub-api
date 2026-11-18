@@ -6,7 +6,7 @@
 #   author     the member who wrote it, under the name they go by now (their
 #              last known one once they have left)
 #   mentions   each member `body` mentions, by Discord id
-#   images     the entry's gallery (ticket #410); [] until then
+#   images     the entry's gallery by position, each { id, url, position } (ticket #410)
 #   links      its "See also" entries (ticket #409); [] until then
 #   viewer     what the acting member may do with it (ClubCodex::Actor)
 #
@@ -33,8 +33,8 @@ class CodexEntryResource
     mentions.fetch(entry.id, {})
   end
 
-  attribute :images do |_entry|
-    []
+  attribute :images do |entry|
+    entry.images.map(&:payload)
   end
 
   attribute :links do |_entry|
@@ -47,5 +47,5 @@ class CodexEntryResource
 
   attributes :created_at, :updated_at
 
-  def self.preloaded(scope) = scope.preload(:author)
+  def self.preloaded(scope) = scope.preload(:author, :images)
 end

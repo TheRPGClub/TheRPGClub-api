@@ -191,6 +191,11 @@ RSpec.describe 'api/v1/codex/history_events', type: :request do
       response '404', 'no such History Event, or the Feature is hidden from the caller' do
         schema '$ref' => '#/components/schemas/Error'
       end
+
+      response '502', '`backblaze_request_failed`: storage refused to remove one of its images (ticket #410); ' \
+                      'the entry is kept, so the delete can be retried' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
     end
   end
 end

@@ -19,6 +19,13 @@ module Api
           render json: { error: "invalid_entry", message: error.record.errors.full_messages.to_sentence },
             status: :unprocessable_content
         end
+        # Image storage (ticket #410), as for game images.
+        rescue_from Backblaze::Client::ConfigurationError do |error|
+          render json: { error: "backblaze_not_configured", message: error.message }, status: :unprocessable_content
+        end
+        rescue_from Backblaze::Client::RequestError do |error|
+          render json: { error: "backblaze_request_failed", message: error.message }, status: :bad_gateway
+        end
 
         private
 
@@ -42,6 +49,7 @@ module Api
         def destroy_entry(entry, refusal: ClubCodex::Refusals::DELETE)
           return forbid(refusal) unless actor.can_delete?(entry)
 
+          ClubCodex::Images.new.remove_all!(entry)
           entry.destroy!
           render json: { data: { id: entry.id, deleted: true } }
         end

@@ -10464,6 +10464,206 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/codex/entries/{entry_id}/images":
+    parameters:
+    - name: entry_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: A History Event or Lore Entry id (any part; a Fun Fact refuses
+        images).
+    post:
+      summary: Add an image to an entry
+      tags:
+      - Club Codex
+      description: 'Whoever can edit the entry: for a Lore Entry its author or a Moderator
+        and above (403 "Only its author or a Moderator can edit this."), for a History
+        Event an Admin or Superadmin (403 "Only Admins can change Club History.").
+        Adds the image at the end of the entry''s gallery, up to 4 per History Event
+        or Lore Entry; Fun Facts take none. The response gives its `id` and `url`,
+        so the website can also place it in the entry''s Plate story. Refusals carry
+        `{ error, message }`, `message` written for members. Send `multipart/form-data`;
+        the bot adds `data[acting_user_id]`. Files are kept in the Backblaze bucket
+        the GameDB game images use: 422 `backblaze_not_configured` when it is not
+        set up, 502 `backblaze_request_failed` when Backblaze refuses (nothing is
+        changed). Belongs to the Club Codex Feature: not found for non-staff in Preview
+        and for everyone when Off; the service token is not gated, but the bot gets
+        403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      url:
+                        type: string
+                        description: Where the file is served from (Backblaze public
+                          URL).
+                      position:
+                        type: integer
+                        minimum: 1
+                        maximum: 4
+                        description: Its place in the gallery, in upload order.
+                    required:
+                    - id
+                    - url
+                    - position
+                required:
+                - data
+        '400':
+          description: the bot named no `data[acting_user_id]`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: cannot edit the entry, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`too_many_images` (the gallery is full), `images_not_allowed`
+            (a Fun Fact), `invalid_image` (no file, not an image, empty or too large)
+            or `backblaze_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: nothing was added"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data[file]:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, WebP or GIF, at most 10 MB.
+                data[acting_user_id]:
+                  type: string
+                  description: 'Service only, required: the member the bot acts for.'
+              required:
+              - data[file]
+        required: true
+  "/api/v1/codex/entries/{entry_id}/images/{id}":
+    parameters:
+    - name: entry_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: The image id.
+    delete:
+      summary: Remove an image from an entry
+      tags:
+      - Club Codex
+      description: 'Whoever can edit the entry: for a Lore Entry its author or a Moderator
+        and above (403 "Only its author or a Moderator can edit this."), for a History
+        Event an Admin or Superadmin (403 "Only Admins can change Club History.").
+        Removes the file from storage, then the image; the images after it move up
+        one place. The bot sends `acting_user_id` as a query parameter. Files are
+        kept in the Backblaze bucket the GameDB game images use: 422 `backblaze_not_configured`
+        when it is not set up, 502 `backblaze_request_failed` when Backblaze refuses
+        (nothing is changed). Belongs to the Club Codex Feature: not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        the bot gets 403 `feature_unavailable` when the Flag hides the Feature from
+        the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: cannot edit the entry, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such entry, no such image on it, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`backblaze_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: the image is kept, so the removal
+            can be retried"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/codex/fun_facts":
     get:
       summary: List Fun Facts
@@ -11221,6 +11421,13 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: storage refused to remove one
+            of its images (ticket #410); the entry is kept, so the delete can be retried"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/codex/lore_entries":
     get:
       summary: List Lore Entries
@@ -11584,6 +11791,13 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: no such Lore Entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: storage refused to remove one
+            of its images (ticket #410); the entry is kept, so the delete can be retried"
           content:
             application/json:
               schema:
