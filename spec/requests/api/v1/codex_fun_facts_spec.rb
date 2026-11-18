@@ -25,9 +25,17 @@ RSpec.describe 'api/v1/codex/fun_facts', type: :request do
     get 'List Fun Facts' do
       tags 'Club Codex'
       description 'Members (any signed-in caller). Newest first. Each carries `viewer` for the acting member; the ' \
-                  "bot may name the member it reads for with `acting_user_id`, without which `viewer` is all false. #{gate}"
+                  "bot may name the member it reads for with `acting_user_id`, without which `viewer` is all false. " \
+                  '`q` keeps the Fun Facts whose text matches, any case, its characters taken literally. ' \
+                  '`editable=true` keeps those the acting member may edit: their own, or every one for a ' \
+                  'Moderator and above (the bot must name the member, else 400 `acting_user_id required`). ' \
+                  "#{gate}"
       produces 'application/json'
       parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string }
+      parameter name: :q, in: :query, required: false, schema: { type: :string },
+        description: 'Words to find in the Fun Fact text.'
+      parameter name: :editable, in: :query, required: false, schema: { type: :boolean },
+        description: 'true: only the Fun Facts the acting member may edit.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
@@ -36,6 +44,10 @@ RSpec.describe 'api/v1/codex/fun_facts', type: :request do
           data: { type: :array, items: { '$ref' => '#/components/schemas/CodexEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
+      end
+
+      response '400', '`editable=true` and the bot named no `acting_user_id`' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '401', 'not signed in' do

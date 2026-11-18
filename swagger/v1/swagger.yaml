@@ -3108,6 +3108,25 @@ components:
       required:
       - can_edit
       - can_delete
+    CodexEntryLink:
+      type: object
+      properties:
+        id:
+          type: integer
+        part:
+          type: string
+          enum:
+          - history_event
+          - lore_entry
+          - fun_fact
+        title:
+          type: string
+          description: The entry's title, or a Fun Fact's opening words (at most 60
+            characters, ending in an ellipsis when cut, members mentioned as @name).
+      required:
+      - id
+      - part
+      - title
     CodexEntry:
       type: object
       properties:
@@ -3195,24 +3214,9 @@ components:
         links:
           type: array
           items:
-            type: object
-            properties:
-              id:
-                type: integer
-              part:
-                type: string
-                enum:
-                - history_event
-                - lore_entry
-                - fun_fact
-              title:
-                type: string
-            required:
-            - id
-            - part
-            - title
-          description: 'Its "See also" entries: each one''s title, or a Fun Fact''s
-            opening words.'
+            "$ref": "#/components/schemas/CodexEntryLink"
+          description: 'Its "See also" entries, oldest first, as the caller may read
+            them: a Visitor sees only History Events.'
         viewer:
           "$ref": "#/components/schemas/CodexEntryViewer"
         created_at:
@@ -10491,6 +10495,168 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/codex/entries":
+    get:
+      summary: Search Club Codex entries
+      tags:
+      - Club Codex
+      description: 'The "See also" link picker''s search, across History Events, Lore
+        Entries and Fun Facts. Needs no sign-in, but finds only what the caller may
+        read: a Visitor (signed out) finds only History Events, and only while the
+        Feature is Live; members and the bot find every part. `q` matches titles and
+        text (`body`), any case, its characters taken literally; title matches come
+        first, then the newest. Without `q`, every readable entry, newest first. Each
+        result is the short link shape, as in an entry''s `links`. Belongs to the
+        Club Codex Feature: not found for non-staff in Preview and for everyone when
+        Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Words to find in titles and text.
+      - name: part
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - history_event
+          - lore_entry
+          - fun_fact
+        description: Keep one part.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: matching entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CodexEntryLink"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: 'invalid_part: `part` is not one of the three parts'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/codex/entries/{id}/links":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Replace an entry's "See also" links
+      tags:
+      - Club Codex
+      description: 'Replaces the entry''s links with links to `entry_ids`, entries
+        of any part; an empty list removes them all. A link belongs to both entries
+        and shows on both, one per pair. Whoever can edit this entry may (403 "Only
+        its author or a Moderator can edit this.", or "Only Admins can change Club
+        History." for a History Event), so a Regular can link their Lore Entry to
+        a History Event, and a link to an entry the caller can''t edit can still be
+        removed from this side. Deleting either entry removes the link. Returns the
+        entry. Refusals carry `{ error, message }`; `message` is written for members.
+        Belongs to the Club Codex Feature: not found for non-staff in Preview and
+        for everyone when Off; the service token is not gated, but a bot write gets
+        403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the entry, with its links
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/CodexEntry"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the caller can't edit the entry, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such entry, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_links: `entry_ids` isn''t a list of ids, names this
+            entry (a self-link), an unknown entry, or more than 50'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required: the Discord user id of
+                        the member the bot acts for.'
+                    entry_ids:
+                      type: array
+                      items:
+                        type: integer
+                      maxItems: 50
+                      description: Every entry this one links to, after the change.
+                  required:
+                  - entry_ids
+              required:
+              - data
+        required: true
   "/api/v1/codex/entries/{entry_id}/images":
     parameters:
     - name: entry_id
@@ -10698,16 +10864,31 @@ paths:
       - Club Codex
       description: 'Members (any signed-in caller). Newest first. Each carries `viewer`
         for the acting member; the bot may name the member it reads for with `acting_user_id`,
-        without which `viewer` is all false. Belongs to the Club Codex Feature: not
-        found for non-staff in Preview and for everyone when Off; the service token
-        is not gated, but a bot write gets 403 `feature_unavailable` when the Flag
-        hides the Feature from the member it acts for.'
+        without which `viewer` is all false. `q` keeps the Fun Facts whose text matches,
+        any case, its characters taken literally. `editable=true` keeps those the
+        acting member may edit: their own, or every one for a Moderator and above
+        (the bot must name the member, else 400 `acting_user_id required`). Belongs
+        to the Club Codex Feature: not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
       parameters:
       - name: acting_user_id
         in: query
         required: false
         schema:
           type: string
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Words to find in the Fun Fact text.
+      - name: editable
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: 'true: only the Fun Facts the acting member may edit.'
       - name: page
         in: query
         schema:
@@ -10736,6 +10917,12 @@ paths:
                       "$ref": "#/components/schemas/CodexEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: "`editable=true` and the bot named no `acting_user_id`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: not signed in
           content:

@@ -15,11 +15,21 @@ module Api
 
         before_action :require_acting_member!, only: WRITES
 
-        # GET /api/v1/codex/fun_facts?page=&per=
+        # GET /api/v1/codex/fun_facts?q=&editable=&page=&per=
         #
-        # Newest first.
+        # Newest first. `q` keeps those whose text matches
+        # (ClubCodex::EntrySearch); `editable=true` keeps those the acting
+        # member may edit: their own, or all for a Moderator and above (the
+        # bot's autocomplete names the member with `acting_user_id`).
         def index
-          render_entries(entries)
+          scope = ClubCodex::EntrySearch.matching(entries, params[:q])
+          if params[:editable] == "true"
+            return render(json: { error: "acting_user_id required" }, status: :bad_request) if acting_user_id.blank?
+
+            scope = actor.editable(scope)
+          end
+
+          render_entries(scope)
         end
 
         # GET /api/v1/codex/fun_facts/:id

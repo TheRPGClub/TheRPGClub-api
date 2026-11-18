@@ -945,6 +945,15 @@ module OpenapiSchemas
       ),
       # What the acting member may do with a Club Codex entry (ClubCodex::Actor).
       CodexEntryViewer: obj(can_edit: bool, can_delete: bool),
+      # CodexEntryLinkResource (spec #397, ticket #409): an entry's short link
+      # shape, in "See also" links and the entry search.
+      CodexEntryLink: obj(
+        id: int,
+        part: str(enum: CodexEntry::PARTS),
+        title: str(description: "The entry's title, or a Fun Fact's opening words (at most " \
+          "#{ClubCodex::Links::OPENING_WORDS_MAX} characters, ending in an ellipsis when cut, members " \
+          "mentioned as @name).")
+      ),
       # CodexEntryResource (spec #397, ticket #404): a Club Codex entry, the
       # same shape for every part; fields a part doesn't use are null.
       CodexEntry: obj(
@@ -971,8 +980,9 @@ module OpenapiSchemas
                     description: "Each known member `body` mentions, keyed by Discord id, as they are now." },
         images: { type: :array, items: obj(id: int, url: str, position: int),
                   description: "The entry's gallery, by position (History Events and Lore Entries)." },
-        links: { type: :array, items: obj(id: int, part: str(enum: CodexEntry::PARTS), title: str),
-                 description: "Its \"See also\" entries: each one's title, or a Fun Fact's opening words." },
+        links: { type: :array, items: ref("CodexEntryLink"),
+                 description: "Its \"See also\" entries, oldest first, as the caller may read them: a Visitor " \
+                              "sees only History Events." },
         viewer: ref("CodexEntryViewer"),
         created_at: ts, updated_at: ts,
         _required: %w[id part title rich_body body occurred_on date_precision kind author mentions images links

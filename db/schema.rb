@@ -301,6 +301,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
     t.unique_constraint ["entry_id", "position"], deferrable: :deferred, name: "uq_codex_entry_images_entry_position"
   end
 
+  create_table "codex_entry_links", primary_key: ["low_entry_id", "high_entry_id"], force: :cascade do |t|
+    t.bigint "low_entry_id", null: false
+    t.bigint "high_entry_id", null: false
+    t.timestamptz "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["high_entry_id"], name: "ix_codex_entry_links_high"
+    t.check_constraint "low_entry_id < high_entry_id", name: "ck_codex_entry_links_ordered_pair"
+  end
+
   create_table "codex_entry_mentions", primary_key: ["entry_id", "user_id"], force: :cascade do |t|
     t.bigint "entry_id", null: false
     t.string "user_id", limit: 30, null: false
@@ -1503,6 +1511,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
   add_foreign_key "codex_entries", "rpg_club_users", column: "author_user_id", primary_key: "user_id", name: "fk_codex_entries_author"
   add_foreign_key "codex_entry_images", "codex_entries", column: "entry_id", name: "fk_codex_entry_images_entry", on_delete: :cascade
   add_foreign_key "codex_entry_images", "rpg_club_users", column: "uploaded_by_user_id", primary_key: "user_id", name: "fk_codex_entry_images_uploader"
+  add_foreign_key "codex_entry_links", "codex_entries", column: "high_entry_id", name: "fk_codex_entry_links_high", on_delete: :cascade
+  add_foreign_key "codex_entry_links", "codex_entries", column: "low_entry_id", name: "fk_codex_entry_links_low", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "codex_entries", column: "entry_id", name: "fk_codex_entry_mentions_entry", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_codex_entry_mentions_user", on_delete: :cascade
   add_foreign_key "daily_fun_fact_posts", "codex_entries", column: "entry_id", name: "fk_daily_fun_fact_posts_entry", on_delete: :nullify

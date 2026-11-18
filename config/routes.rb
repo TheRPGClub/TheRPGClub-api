@@ -433,7 +433,10 @@ Rails.application.routes.draw do
         end
         resources :history_events, only: %i[index show create update destroy]
         resources :lore_entries, only: %i[index show create update destroy]
-        # Any entry's images (ticket #410).
+        # Across the three parts: the entry search and an entry's "See also"
+        # links (ticket #409), and any entry's images (ticket #410).
+        get "entries", to: "entries#index"
+        put "entries/:id/links", to: "entry_links#update"
         resources :entries, only: [] do
           resources :images, only: %i[create destroy], controller: "entry_images"
         end
