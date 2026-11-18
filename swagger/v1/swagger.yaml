@@ -15688,7 +15688,9 @@ paths:
       summary: List game releases
       tags:
       - Games
-      description: Returns release rows for a game, sorted by date then platform/region.
+      description: Returns release rows for a game in Release Calendar placement order
+        (a `month` before day 1 of its month, a `quarter` or `year` after the last
+        day of its period, `tba` last), then platform/region.
       responses:
         '200':
           description: releases list

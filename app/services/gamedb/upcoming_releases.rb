@@ -41,17 +41,20 @@ module Gamedb
     # A game's first release before an entry: its date and Date Precision.
     FirstRelease = Data.define(:date, :date_precision)
 
-    # The order of each Date Precision among entries placed on the same day.
+    # The order of each Date Precision among Upcoming Releases placed on the
+    # same day (GamedbRelease::PLACEMENT_ORDER).
     PLACEMENT_SQL = <<~SQL.squish
       CASE e.date_precision
-        WHEN 'month' THEN 0 WHEN 'day' THEN 1 WHEN 'quarter' THEN 2 WHEN 'year' THEN 3 ELSE 4
+        #{GamedbRelease::PLACEMENT_ORDER.each_with_index.map { |precision, rank| "WHEN '#{precision}' THEN #{rank}" }.join(' ')}
       END
     SQL
 
-    # The day an entry is placed on: a quarter or year on its last day, a
-    # month or day on its stored date, TBA on none.
+    # The day an Upcoming Release is placed on (GamedbRelease#placed_on): a
+    # quarter or year on its last day, a month or day on its stored date, TBA
+    # on none.
     PLACED_ON_SQL = <<~SQL.squish
-      CASE WHEN e.date_precision IN ('quarter', 'year') THEN #{GamedbRelease.period_ends_on_sql('e')}
+      CASE WHEN e.date_precision IN (#{GamedbRelease::PLACED_AT_PERIOD_END.map { |precision| "'#{precision}'" }.join(', ')})
+        THEN #{GamedbRelease.period_ends_on_sql('e')}
         ELSE e.release_date
       END
     SQL

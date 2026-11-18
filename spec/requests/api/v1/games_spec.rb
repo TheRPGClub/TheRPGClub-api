@@ -413,7 +413,8 @@ RSpec.describe 'api/v1/games', type: :request do
 
     get 'List game releases' do
       tags 'Games'
-      description 'Returns release rows for a game, sorted by date then platform/region.'
+      description 'Returns release rows for a game in Release Calendar placement order (a `month` before day 1 of ' \
+                  'its month, a `quarter` or `year` after the last day of its period, `tba` last), then platform/region.'
       produces 'application/json'
 
       response '200', 'releases list' do

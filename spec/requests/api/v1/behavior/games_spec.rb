@@ -1182,6 +1182,23 @@ RSpec.describe "api/v1/games behavior", type: :request do
       )
     end
 
+    it "orders the releases as the Release Calendar places them" do
+      game = create(:game)
+      platform = create(:platform, platform_name: "Only Platform")
+      at = ->(date, precision) { create(:release, game: game, platform: platform, release_date: date, date_precision: precision) }
+      tba = at.call(nil, "tba")
+      year = at.call(Date.new(2027, 1, 1), "year")
+      quarter = at.call(Date.new(2027, 7, 1), "quarter")
+      day = at.call(Date.new(2027, 8, 14), "day")
+      month = at.call(Date.new(2027, 8, 1), "month")
+      late_day = at.call(Date.new(2027, 9, 30), "day")
+
+      get "/api/v1/games/#{game.game_id}/releases", headers: auth_headers_for(create(:user))
+
+      expect(json.fetch("data").map { |r| r.fetch("release_id") })
+        .to eq([ month, day, late_day, quarter, year, tba ].map(&:release_id))
+    end
+
     it "404s for an unknown game" do
       get "/api/v1/games/999999999/releases", headers: service_headers
 

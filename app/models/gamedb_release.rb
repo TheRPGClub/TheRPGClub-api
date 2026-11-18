@@ -25,6 +25,13 @@ class GamedbRelease < ApplicationRecord
   # one-day period; `tba` has none.
   PERIOD_MONTHS = { "month" => 1, "quarter" => 3, "year" => 12 }.freeze
 
+  # Release Calendar placement (GLOSSARY "Release Calendar"): a quarter or
+  # year is placed on the last day of its period, a month or day on its
+  # stored date; on one day a month comes first (before day 1 of its month),
+  # then the days, then a quarter, then a year. TBA goes after everything.
+  PLACED_AT_PERIOD_END = %w[quarter year].freeze
+  PLACEMENT_ORDER = %w[month day quarter year tba].freeze
+
   # The calendar period a date at a Date Precision covers, first..last day: the
   # day itself, or the whole month, quarter or year it starts. Nil for TBA.
   def self.period(date, date_precision)
@@ -54,6 +61,16 @@ class GamedbRelease < ApplicationRecord
   # This Release's period (::period); nil for TBA.
   def period
     self.class.period(release_date, date_precision)
+  end
+
+  # The day the Release Calendar places this Release on; nil for TBA.
+  def placed_on
+    date_precision.in?(PLACED_AT_PERIOD_END) ? period.end : release_date
+  end
+
+  # Sorts Releases in Release Calendar placement order, TBA last.
+  def placement_key
+    [ placed_on ? 0 : 1, placed_on || Date.new(0), PLACEMENT_ORDER.index(date_precision) || PLACEMENT_ORDER.size ]
   end
 
   # A Release with no date is TBA, whoever wrote it (a Manual Release from POST
