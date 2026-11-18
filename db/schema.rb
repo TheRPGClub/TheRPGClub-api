@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_120406) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_18_120410) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -286,6 +286,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120406) do
     t.check_constraint "part::text = 'history_event'::text OR body IS NOT NULL", name: "ck_codex_entries_body_part"
     t.check_constraint "part::text = ANY (ARRAY['history_event'::character varying, 'lore_entry'::character varying, 'fun_fact'::character varying]::text[])", name: "ck_codex_entries_part"
     t.check_constraint "rich_body IS NULL OR body IS NOT NULL", name: "ck_codex_entries_body_with_rich_body"
+  end
+
+  create_table "codex_entry_images", force: :cascade do |t|
+    t.bigint "entry_id", null: false
+    t.string "object_key", null: false
+    t.integer "position", limit: 2, null: false
+    t.string "uploaded_by_user_id", limit: 30, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["object_key"], name: "ux_codex_entry_images_object_key", unique: true
+    t.index ["uploaded_by_user_id"], name: "ix_codex_entry_images_uploader"
+    t.check_constraint "\"position\" >= 1 AND \"position\" <= 4", name: "ck_codex_entry_images_position"
+    t.unique_constraint ["entry_id", "position"], deferrable: :deferred, name: "uq_codex_entry_images_entry_position"
   end
 
   create_table "codex_entry_mentions", primary_key: ["entry_id", "user_id"], force: :cascade do |t|
@@ -1488,6 +1501,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_120406) do
   add_foreign_key "challenge_runs", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_runs_user", on_delete: :cascade
   add_foreign_key "challenges", "rpg_club_users", column: "host_user_id", primary_key: "user_id", name: "fk_challenges_host", on_delete: :nullify
   add_foreign_key "codex_entries", "rpg_club_users", column: "author_user_id", primary_key: "user_id", name: "fk_codex_entries_author"
+  add_foreign_key "codex_entry_images", "codex_entries", column: "entry_id", name: "fk_codex_entry_images_entry", on_delete: :cascade
+  add_foreign_key "codex_entry_images", "rpg_club_users", column: "uploaded_by_user_id", primary_key: "user_id", name: "fk_codex_entry_images_uploader"
   add_foreign_key "codex_entry_mentions", "codex_entries", column: "entry_id", name: "fk_codex_entry_mentions_entry", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_codex_entry_mentions_user", on_delete: :cascade
   add_foreign_key "daily_fun_fact_posts", "codex_entries", column: "entry_id", name: "fk_daily_fun_fact_posts_entry", on_delete: :nullify

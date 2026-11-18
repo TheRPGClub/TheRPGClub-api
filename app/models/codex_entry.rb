@@ -23,6 +23,10 @@ class CodexEntry < ApplicationRecord
   belongs_to :author, -> { without_images }, class_name: "RpgClubUser", foreign_key: :author_user_id,
     primary_key: :user_id, inverse_of: false
   has_many :mentions, class_name: "CodexEntryMention", foreign_key: :entry_id, dependent: nil, inverse_of: :entry
+  # The gallery, by position. Rows go with the entry; ClubCodex::Images
+  # removes their files from storage first.
+  has_many :images, -> { order(:position) }, class_name: "CodexEntryImage", foreign_key: :entry_id, dependent: nil,
+    inverse_of: :entry
 
   validates :part, inclusion: { in: PARTS, message: "must be one of #{PARTS.join(', ')}" }
   validates :body, presence: true, length: { maximum: FUN_FACT_MAX }, if: :fun_fact?

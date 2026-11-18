@@ -433,6 +433,10 @@ Rails.application.routes.draw do
         end
         resources :history_events, only: %i[index show create update destroy]
         resources :lore_entries, only: %i[index show create update destroy]
+        # Any entry's images (ticket #410).
+        resources :entries, only: [] do
+          resources :images, only: %i[create destroy], controller: "entry_images"
+        end
       end
       # News Hub (spec #355): the fixed News Categories; the members' feed of
       # News Items; the bot records (PUT, an upsert) and removes News Items
