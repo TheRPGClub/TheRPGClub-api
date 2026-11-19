@@ -37,7 +37,8 @@ RSpec.describe 'api/v1/pinned_pages', type: :request do
       description 'Replaces the list the member sees with `pages`, in order: pin, unpin and reorder all ' \
                   'send the whole list. Pins the member can\'t see right now are kept, after the sent ones ' \
                   'and in their existing order. An unknown key, a key sent twice, or more than 6 pins ' \
-                  '(counting the kept hidden ones) returns 422 and changes nothing. A key the member can\'t ' \
+                  '(counting the kept hidden ones) returns 422 and changes nothing; its `error` says why in a ' \
+                  'sentence the website shows the member. A key the member can\'t ' \
                   'see right now is accepted and kept. Saved keys the API no longer knows are dropped. The ' \
                   'first save makes the list the member\'s own, so later changes to the club default no ' \
                   'longer reach them. Returns the whole document, as GET does.'

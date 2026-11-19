@@ -26,11 +26,9 @@ module Api
       # right now are kept (PinnedPages::List). An unknown key, a duplicate or
       # more than PinnedPages::LIMIT pins refuses the whole change with 422.
       def update
-        pages = request_data["pages"]
-        error = list.error_for(pages)
+        error = list.save(request_data["pages"])
         return render(json: { error: error }, status: :unprocessable_content) if error
 
-        list.replace!(pages)
         render json: { data: document }
       end
 
@@ -49,7 +47,10 @@ module Api
       end
 
       def list
-        @list ||= PinnedPages::List.new(params[:user_id], pinned_viewer(RpgClubUser.find_by(user_id: params[:user_id])))
+        @list ||= begin
+          user = RpgClubUser.find_by(user_id: params[:user_id])
+          PinnedPages::List.new(params[:user_id], pinned_viewer(pinned_access(user)), user)
+        end
       end
 
       def document
