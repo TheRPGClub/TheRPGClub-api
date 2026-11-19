@@ -146,8 +146,22 @@ module Api
         render json: { count: count }
       end
 
+      # The bot stopped writing `avatar_blob` once avatars moved to stored
+      # URLs (bot#1073), so the blob is frozen at whatever it last held.
+      # Redirect to the latest avatar-history URL (Backblaze B2 or the Discord
+      # CDN) and stream the blob only for members with no URL on record. The
+      # redirect is cached for an hour, not a day, so a changed avatar shows
+      # up on the website soon after the bot logs it.
       def avatar
-        send_user_image("avatar_blob")
+        url = RpgClubUserAvatarHistory
+          .where(user_id: params[:user_id])
+          .where.not(avatar_url: [ nil, "" ])
+          .order(changed_at: :desc, event_id: :desc)
+          .pick(:avatar_url)
+        return send_user_image("avatar_blob") if url.blank?
+
+        expires_in 1.hour, public: true
+        redirect_to url, allow_other_host: true
       end
 
       def profile_image

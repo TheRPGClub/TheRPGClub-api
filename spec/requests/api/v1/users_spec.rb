@@ -363,11 +363,17 @@ RSpec.describe 'api/v1/users', type: :request do
 
     get 'Stream user avatar' do
       tags 'Users'
-      description 'Returns the cached PNG avatar blob for the user. Public — does not require authentication.'
+      description 'Redirects to the latest avatar URL in the user\'s avatar history (Backblaze B2 or the Discord ' \
+                  'CDN). Falls back to the legacy PNG avatar blob when no URL is on record. Public — does not ' \
+                  'require authentication.'
       produces 'image/png', 'application/json'
       security []
 
-      response '200', 'avatar PNG' do
+      response '302', 'redirect to the latest stored avatar URL' do
+        header 'Location', schema: { type: :string }, description: 'avatar image URL'
+      end
+
+      response '200', 'avatar PNG (no stored URL)' do
         header 'Content-Type', schema: { type: :string }, description: 'image/png'
       end
 

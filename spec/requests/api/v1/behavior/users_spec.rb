@@ -419,6 +419,30 @@ RSpec.describe "api/v1/users behavior", type: :request do
   end
 
   describe "GET /api/v1/users/:user_id/avatar" do
+    it "redirects to the latest avatar-history URL over the legacy blob" do
+      user = create(:user)
+      user.update_column(:avatar_blob, "stale-avatar-bytes")
+      create(:avatar_history_event, user: user, avatar_url: "https://cdn.example.test/old.png", changed_at: 2.days.ago)
+      create(:avatar_history_event, user: user, avatar_url: "https://cdn.example.test/new.png", changed_at: 1.hour.ago)
+
+      get "/api/v1/users/#{user.user_id}/avatar"
+
+      expect(response).to have_http_status(:found)
+      expect(response.location).to eq("https://cdn.example.test/new.png")
+      expect(response.headers["Cache-Control"]).to include("public")
+      expect(response.headers["Cache-Control"]).to include("max-age=3600")
+    end
+
+    it "skips history rows without a URL" do
+      user = create(:user)
+      create(:avatar_history_event, user: user, avatar_url: "https://cdn.example.test/kept.png", changed_at: 2.days.ago)
+      create(:avatar_history_event, user: user, avatar_url: nil, changed_at: 1.hour.ago)
+
+      get "/api/v1/users/#{user.user_id}/avatar"
+
+      expect(response).to redirect_to("https://cdn.example.test/kept.png")
+    end
+
     it "streams the stored PNG without authentication" do
       user = create(:user)
       user.update_column(:avatar_blob, "fake-avatar-bytes")
