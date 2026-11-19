@@ -74,8 +74,38 @@ RSpec.describe 'api/v1/sessions', type: :request do
               },
               required: %w[key name state hideable shown preview]
             }
+          },
+          pinned_pages: {
+            type: :array,
+            items: { type: :string, example: 'voting' },
+            description: 'The viewer\'s Pinned Pages they can see right now, in their order (as GET ' \
+                         '/api/v1/users/{user_id}/pinned_pages). Empty for the service token.'
+          },
+          pinned_pages_customised: {
+            type: :boolean,
+            description: 'Whether the viewer saved their own Pinned Pages (`customised` in GET ' \
+                         '/api/v1/users/{user_id}/pinned_pages). False while they follow the club default, and ' \
+                         'for the service token.'
+          },
+          pinned_pages_room: {
+            type: :integer, minimum: 0, example: 5,
+            description: 'How many Pinned Pages the viewer can see room for: `pinned_pages_limit` less the pins ' \
+                         'they can\'t see right now (a Feature Off or hidden, a staff role lost), which a save ' \
+                         'keeps and the limit counts. The website treats the list as full once `pinned_pages` ' \
+                         'reaches it. The whole limit for the service token.'
+          },
+          pinned_pages_default: {
+            type: :array,
+            items: { type: :string, example: 'voting' },
+            description: 'The club default Pinned Pages, in order, that a member follows until they save their ' \
+                         'own list (and again after a reset). Every key, seen by the viewer or not.'
+          },
+          pinned_pages_limit: {
+            type: :integer, example: 6,
+            description: 'The most Pinned Pages a member may keep, counting the ones they can\'t see right now.'
           }
-        }, required: %w[principal features]
+        }, required: %w[principal features pinned_pages pinned_pages_customised pinned_pages_room
+                        pinned_pages_default pinned_pages_limit]
       end
 
       response '401', 'unauthenticated' do

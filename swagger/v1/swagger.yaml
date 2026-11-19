@@ -4908,6 +4908,29 @@ components:
       - hidden
       - show_preview_features
       - features
+    PinnedPages:
+      type: object
+      properties:
+        user_id:
+          type: string
+        pages:
+          type: array
+          items:
+            type: string
+            example: voting
+          description: 'Pinned Page keys the member can see right now, in their order:
+            the club default (voting, games, members, news) until they save their
+            own list. Keys: voting, gotm_history, challenges, games, releases, achievements,
+            journals, members, news, codex, giveaways, suggestions, staff_desk, voting_console,
+            synonyms, live_events, public_reminders, suggestion_review.'
+        customised:
+          type: boolean
+          description: Whether the member saved their own list. False while they follow
+            the club default, which then reaches them when it changes.
+      required:
+      - user_id
+      - pages
+      - customised
     ChallengeSettings:
       type: object
       properties:
@@ -23468,6 +23491,157 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/pinned_pages":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's Pinned Pages
+      tags:
+      - Pinned Pages
+      description: 'The pages the member pinned to the top of their own sidebar, in
+        their order: only the pages they can see right now (a Feature they are shown,
+        or a staff page for their tier). A member who never saved a list gets the
+        club default (voting, games, members, news). Pins they can''t see right now
+        are left out but kept. Only the member themself may read it; another member,
+        staff and the bot''s service token get 403. `customised` says whether the
+        member saved their own list. The session carries the same list as `pinned_pages`,
+        and `customised` as `pinned_pages_customised`.'
+      responses:
+        '200':
+          description: pinned pages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PinnedPages"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Replace a member's Pinned Pages
+      tags:
+      - Pinned Pages
+      description: 'Replaces the list the member sees with `pages`, in order: pin,
+        unpin and reorder all send the whole list. Pins the member can''t see right
+        now are kept, after the sent ones and in their existing order. An unknown
+        key, a key sent twice, or more than 6 pins (counting the kept hidden ones)
+        returns 422 and changes nothing; its `error` says why in a sentence the website
+        shows the member. A key the member can''t see right now is accepted and kept.
+        Saved keys the API no longer knows are dropped. The first save makes the list
+        the member''s own, so later changes to the club default no longer reach them.
+        Returns the whole document, as GET does.'
+      parameters: []
+      responses:
+        '200':
+          description: saved pinned pages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PinnedPages"
+                required:
+                - data
+        '422':
+          description: not a list, unknown page, page sent twice, or more than 6 pins
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    pages:
+                      type: array
+                      items:
+                        type: string
+                      maxItems: 6
+                      description: Pinned Page keys, in order. May be empty.
+                      example:
+                      - voting
+                      - releases
+                      - members
+                  required:
+                  - pages
+              required:
+              - data
+        required: true
+    delete:
+      summary: Reset a member's Pinned Pages to the club default
+      tags:
+      - Pinned Pages
+      description: Drops the member's saved list, hidden pins included, so they follow
+        the club default (voting, games, members, news) again, and later changes to
+        it reach them. `customised` is false afterwards and true again after their
+        next save. Resetting a member who already follows the default changes nothing.
+        Returns the whole document, as GET does.
+      responses:
+        '200':
+          description: pinned pages, back to the club default
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PinnedPages"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/platforms":
     get:
       summary: List platforms
@@ -27120,9 +27294,49 @@ paths:
                       - hideable
                       - shown
                       - preview
+                  pinned_pages:
+                    type: array
+                    items:
+                      type: string
+                      example: voting
+                    description: The viewer's Pinned Pages they can see right now,
+                      in their order (as GET /api/v1/users/{user_id}/pinned_pages).
+                      Empty for the service token.
+                  pinned_pages_customised:
+                    type: boolean
+                    description: Whether the viewer saved their own Pinned Pages (`customised`
+                      in GET /api/v1/users/{user_id}/pinned_pages). False while they
+                      follow the club default, and for the service token.
+                  pinned_pages_room:
+                    type: integer
+                    minimum: 0
+                    example: 5
+                    description: 'How many Pinned Pages the viewer can see room for:
+                      `pinned_pages_limit` less the pins they can''t see right now
+                      (a Feature Off or hidden, a staff role lost), which a save keeps
+                      and the limit counts. The website treats the list as full once
+                      `pinned_pages` reaches it. The whole limit for the service token.'
+                  pinned_pages_default:
+                    type: array
+                    items:
+                      type: string
+                      example: voting
+                    description: The club default Pinned Pages, in order, that a member
+                      follows until they save their own list (and again after a reset).
+                      Every key, seen by the viewer or not.
+                  pinned_pages_limit:
+                    type: integer
+                    example: 6
+                    description: The most Pinned Pages a member may keep, counting
+                      the ones they can't see right now.
                 required:
                 - principal
                 - features
+                - pinned_pages
+                - pinned_pages_customised
+                - pinned_pages_room
+                - pinned_pages_default
+                - pinned_pages_limit
         '401':
           description: unauthenticated
           content:

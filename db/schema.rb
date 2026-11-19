@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_18_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_19_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -688,6 +688,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_130000) do
     t.index ["user_id", "category_key"], name: "index_member_news_category_preferences_on_user_and_category", unique: true
   end
 
+  create_table "member_pinned_pages", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.string "page_key", limit: 64, null: false
+    t.integer "position", null: false
+    t.datetime "created_at", null: false
+    t.index ["user_id", "page_key"], name: "index_member_pinned_pages_on_user_id_and_page_key", unique: true
+  end
+
   create_table "news_import_removals", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "message_id", limit: 30, null: false
@@ -1160,6 +1168,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_130000) do
     t.integer "birth_day", limit: 2, comment: "The member's Birth Date: its day of the month (29 February allowed without a year)."
     t.integer "birth_year", limit: 2, comment: "The member's Birth Date: its year, or null when the member gave only the day and month."
     t.boolean "birthday_shared", default: false, null: false, comment: "Whether the member shares their Birthday (the day and month of their Birth Date, never the year). Only the member turns it on; staff can turn it off; removing the Birth Date turns it off."
+    t.boolean "pinned_pages_customised", default: false, null: false, comment: "Whether the member saved their own Pinned Pages; false follows the club default."
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
     t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end
@@ -1561,6 +1570,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_18_130000) do
   add_foreign_key "member_birth_date_changes", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_feature_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify
