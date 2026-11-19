@@ -422,25 +422,51 @@ RSpec.describe "api/v1/users behavior", type: :request do
     it "redirects to the latest avatar-history URL over the legacy blob" do
       user = create(:user)
       user.update_column(:avatar_blob, "stale-avatar-bytes")
-      create(:avatar_history_event, user: user, avatar_url: "https://cdn.example.test/old.png", changed_at: 2.days.ago)
-      create(:avatar_history_event, user: user, avatar_url: "https://cdn.example.test/new.png", changed_at: 1.hour.ago)
+      create(:avatar_history_event, user: user, avatar_url: "https://cdn.discordapp.com/avatars/1/old.png", changed_at: 2.days.ago)
+      create(:avatar_history_event, user: user, avatar_url: "https://cdn.discordapp.com/avatars/1/new.png", changed_at: 1.hour.ago)
 
       get "/api/v1/users/#{user.user_id}/avatar"
 
       expect(response).to have_http_status(:found)
-      expect(response.location).to eq("https://cdn.example.test/new.png")
+      expect(response.location).to eq("https://cdn.discordapp.com/avatars/1/new.png")
       expect(response.headers["Cache-Control"]).to include("public")
       expect(response.headers["Cache-Control"]).to include("max-age=3600")
     end
 
+    it "redirects to Discord CDN and Backblaze URLs" do
+      user = create(:user)
+      %w[
+        https://cdn.discordapp.com/avatars/1/abc.png
+        https://f005.backblazeb2.com/file/bucket/avatars/1/abc
+      ].each_with_index do |url, i|
+        create(:avatar_history_event, user: user, avatar_url: url, changed_at: (10 - i).minutes.ago)
+
+        get "/api/v1/users/#{user.user_id}/avatar"
+
+        expect(response).to redirect_to(url)
+      end
+    end
+
+    it "never redirects off the trusted image hosts and streams the blob instead" do
+      user = create(:user)
+      user.update_column(:avatar_blob, "fake-avatar-bytes")
+      create(:avatar_history_event, user: user, avatar_url: "https://evil.example.com/a.png", changed_at: 2.hours.ago)
+      create(:avatar_history_event, user: user, avatar_url: "http://cdn.discordapp.com/avatars/1/a.png", changed_at: 1.hour.ago)
+
+      get "/api/v1/users/#{user.user_id}/avatar"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq("fake-avatar-bytes")
+    end
+
     it "skips history rows without a URL" do
       user = create(:user)
-      create(:avatar_history_event, user: user, avatar_url: "https://cdn.example.test/kept.png", changed_at: 2.days.ago)
+      create(:avatar_history_event, user: user, avatar_url: "https://cdn.discordapp.com/avatars/1/kept.png", changed_at: 2.days.ago)
       create(:avatar_history_event, user: user, avatar_url: nil, changed_at: 1.hour.ago)
 
       get "/api/v1/users/#{user.user_id}/avatar"
 
-      expect(response).to redirect_to("https://cdn.example.test/kept.png")
+      expect(response).to redirect_to("https://cdn.discordapp.com/avatars/1/kept.png")
     end
 
     it "streams the stored PNG without authentication" do
