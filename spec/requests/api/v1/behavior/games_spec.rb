@@ -87,6 +87,17 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(json.dig("meta", "count")).to eq(2)
     end
 
+    it "filters by platform_id" do
+      platform = create(:platform)
+      on_it = create(:game)
+      create(:game)
+      create(:game_platform, game: on_it, platform: platform)
+
+      get "/api/v1/games", params: { platform_id: platform.platform_id }, headers: service_headers
+
+      expect(json.fetch("data").map { |g| g.fetch("game_id") }).to eq([ on_it.game_id ])
+    end
+
     it "paginates with page/per" do
       3.times { |i| create(:game, title: "gamespage #{i} #{SecureRandom.hex(4)}") }
 

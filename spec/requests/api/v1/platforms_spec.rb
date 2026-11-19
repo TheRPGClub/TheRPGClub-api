@@ -18,6 +18,8 @@ RSpec.describe 'api/v1/platforms', type: :request do
         description: 'Filter to platforms with any of these `igdb_platform_id`s. Repeat the param: `igdb_ids[]=6&igdb_ids[]=48`.'
       parameter name: :igdb_id, in: :query, schema: { type: :integer }, required: false,
         description: 'Single-id convenience form of `igdb_ids[]` (filters on `igdb_platform_id`).'
+      parameter name: :with_games, in: :query, schema: { type: :boolean }, required: false,
+        description: 'Only the platforms at least one GameDB game is on.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,

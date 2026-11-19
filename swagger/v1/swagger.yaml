@@ -16860,7 +16860,7 @@ paths:
       tags:
       - Games
       description: 'Returns games from the local GameDB. Supports search, a `winner`
-        filter for GOTM / Non-Retro GOTM history, and taxonomy filters (genre/engine/theme/perspective/mode/franchise/company).
+        filter for GOTM / Non-Retro GOTM history, and taxonomy filters (genre/platform/engine/theme/perspective/mode/franchise/company).
         Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`)
         to match any of several. Discover valid ids via the `/genres`, `/themes`,
         … endpoints. Behind the Game Index Feature Flag, except a search (`q` present):
@@ -16904,6 +16904,16 @@ paths:
           items:
             type: integer
         description: Filter to games in this genre id (repeat to match any of several).
+      - name: platform_id
+        in: query
+        required: false
+        explode: true
+        style: form
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Filter to games on this platform id (repeat to match any of several).
       - name: engine_id
         in: query
         required: false
@@ -23497,6 +23507,12 @@ paths:
           type: integer
         required: false
         description: Single-id convenience form of `igdb_ids[]` (filters on `igdb_platform_id`).
+      - name: with_games
+        in: query
+        schema:
+          type: boolean
+        required: false
+        description: Only the platforms at least one GameDB game is on.
       - name: page
         in: query
         schema:

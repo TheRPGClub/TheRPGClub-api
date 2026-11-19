@@ -408,6 +408,7 @@ module Api
       # name (e.g. genre_id -> GamedbGameGenre#genre_id).
       TAXONOMY_FILTERS = {
         genre_id: GamedbGameGenre,
+        platform_id: GamedbGamePlatform,
         engine_id: GamedbGameEngine,
         theme_id: GamedbGameTheme,
         perspective_id: GamedbGamePerspective,

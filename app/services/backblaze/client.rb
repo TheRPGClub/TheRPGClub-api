@@ -14,6 +14,7 @@ module Backblaze
     AUTHORIZE_URL = "https://api.backblazeb2.com/b2api/v4/b2_authorize_account"
     API_VERSION_PATH = "/b2api/v4"
     RETRYABLE_STATUSES = [ 401, 408, 500, 502, 503, 504 ].freeze
+    CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800"
 
     def self.public_url_for(object_key)
       base_url = ENV.fetch("BACKBLAZE_PUBLIC_BASE_URL", "").to_s.strip
@@ -24,7 +25,7 @@ module Backblaze
     end
 
     def self.encode_path_part(value)
-      URI.encode_www_form_component(value.to_s).tr("+", "%20")
+      URI.encode_www_form_component(value.to_s).gsub("+", "%20")
     end
 
     def upload_bytes(object_key:, bytes:, content_type:)
@@ -55,6 +56,10 @@ module Backblaze
         request.headers["X-Bz-Content-Sha1"] = Digest::SHA1.hexdigest(bytes)
         request.headers["Content-Type"] = content_type.presence || "b2/x-auto"
         request.headers["Content-Length"] = bytes.bytesize.to_s
+        # B2 serves a file with no Cache-Control, ETag or Last-Modified unless
+        # told, so browsers refetched every cover on every page. A day, not
+        # immutable: an image refresh overwrites the same object key.
+        request.headers["X-Bz-Info-b2-cache-control"] = self.class.encode_path_part(CACHE_CONTROL)
         request.body = bytes
         request.options.timeout = 60
       end

@@ -37,6 +37,16 @@ RSpec.describe "api/v1/platforms behavior", type: :request do
       expect(row).not_to have_key("platform_checksum")
     end
 
+    it "lists only the platforms a GameDB game is on with with_games=true" do
+      used = create(:platform, platform_name: "withgames used #{SecureRandom.hex(4)}")
+      create(:platform, platform_name: "withgames unused #{SecureRandom.hex(4)}")
+      create(:game_platform, platform: used)
+
+      get "/api/v1/platforms", params: { q: "withgames", with_games: true }, headers: service_headers
+
+      expect(json.fetch("data").map { |p| p.fetch("platform_id") }).to eq([ used.platform_id ])
+    end
+
     it "matches q against the platform code too, case-insensitively" do
       match = create(:platform, platform_code: "XQCODE#{SecureRandom.hex(3)}".upcase)
       create(:platform)
