@@ -23543,10 +23543,11 @@ paths:
         unpin and reorder all send the whole list. Pins the member can''t see right
         now are kept, after the sent ones and in their existing order. An unknown
         key, a key sent twice, or more than 6 pins (counting the kept hidden ones)
-        returns 422 and changes nothing. A key the member can''t see right now is
-        accepted and kept. Saved keys the API no longer knows are dropped. The first
-        save makes the list the member''s own, so later changes to the club default
-        no longer reach them. Returns the whole document, as GET does.'
+        returns 422 and changes nothing; its `error` says why in a sentence the website
+        shows the member. A key the member can''t see right now is accepted and kept.
+        Saved keys the API no longer knows are dropped. The first save makes the list
+        the member''s own, so later changes to the club default no longer reach them.
+        Returns the whole document, as GET does.'
       parameters: []
       responses:
         '200':
@@ -27306,11 +27307,36 @@ paths:
                     description: Whether the viewer saved their own Pinned Pages (`customised`
                       in GET /api/v1/users/{user_id}/pinned_pages). False while they
                       follow the club default, and for the service token.
+                  pinned_pages_room:
+                    type: integer
+                    minimum: 0
+                    example: 5
+                    description: 'How many Pinned Pages the viewer can see room for:
+                      `pinned_pages_limit` less the pins they can''t see right now
+                      (a Feature Off or hidden, a staff role lost), which a save keeps
+                      and the limit counts. The website treats the list as full once
+                      `pinned_pages` reaches it. The whole limit for the service token.'
+                  pinned_pages_default:
+                    type: array
+                    items:
+                      type: string
+                      example: voting
+                    description: The club default Pinned Pages, in order, that a member
+                      follows until they save their own list (and again after a reset).
+                      Every key, seen by the viewer or not.
+                  pinned_pages_limit:
+                    type: integer
+                    example: 6
+                    description: The most Pinned Pages a member may keep, counting
+                      the ones they can't see right now.
                 required:
                 - principal
                 - features
                 - pinned_pages
                 - pinned_pages_customised
+                - pinned_pages_room
+                - pinned_pages_default
+                - pinned_pages_limit
         '401':
           description: unauthenticated
           content:

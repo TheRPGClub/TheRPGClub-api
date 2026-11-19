@@ -317,6 +317,30 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
       expect(json["pinned_pages_customised"]).to be(false)
     end
 
+    it "carries the club's default and limit" do
+      get "/api/v1/session", headers: auth_headers_for(member)
+
+      expect(json).to include("pinned_pages_default" => %w[voting games members news], "pinned_pages_limit" => 6)
+    end
+
+    it "gives the room for visible pins, less the pins the member can't see right now" do
+      get "/api/v1/session", headers: auth_headers_for(member)
+      expect(json["pinned_pages_room"]).to eq(6)
+
+      pin(member, %w[voting games releases journals])
+      set_feature_flag("release_calendar", "off")
+      MemberFeaturePreference.create!(user_id: member.user_id, feature_key: "journals")
+
+      get "/api/v1/session", headers: auth_headers_for(member)
+      expect(json).to include("pinned_pages" => %w[voting games], "pinned_pages_room" => 4)
+    end
+
+    it "gives the bot's service token the whole limit as room" do
+      get "/api/v1/session", headers: service_headers
+
+      expect(json).to include("pinned_pages_room" => 6, "pinned_pages_limit" => 6)
+    end
+
     it "is not customised for the bot's service token" do
       get "/api/v1/session", headers: service_headers
 

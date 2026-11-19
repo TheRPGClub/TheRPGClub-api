@@ -13,16 +13,15 @@ module PinnedPages
   # Saved keys the API no longer knows (a removed page) are ignored on read
   # and dropped on the member's next save (docs/adr/0012).
   class List
-    def initialize(user_id, viewer)
+    # `user` is the member's record, nil when they have none yet.
+    def initialize(user_id, viewer, user)
       @user_id = user_id
       @viewer = viewer
+      @user = user
     end
 
     # Whether the member saved their own list, rather than following DEFAULT.
-    def customised?
-      @customised = RpgClubUser.where(user_id: @user_id, pinned_pages_customised: true).exists? if @customised.nil?
-      @customised
-    end
+    def customised? = @user&.pinned_pages_customised || false
 
     # Every known key in the member's list, seen or not.
     def keys
@@ -37,57 +36,82 @@ module PinnedPages
     # The pages the member can see right now, in their order.
     def visible = keys.select { |key| @viewer.sees?(key) }
 
-    # Why `pages` (the list the member sees, in order) can't be saved, or nil.
-    def error_for(pages)
-      return "pages must be a list of page keys" unless pages.is_a?(Array)
+    # How many pins the member can see room for: LIMIT less the pins they
+    # can't see right now, which a save keeps and the limit counts.
+    def room = [ LIMIT - hidden.size, 0 ].max
 
-      unknown = pages.find { |key| !PinnedPages.known?(key) }
-      return "unknown page: #{unknown}" unless unknown.nil?
+    # Saves `pages` (the list the member sees, in order) plus the kept hidden
+    # pins as the member's whole list. Returns why it can't, changing
+    # nothing, or nil once saved.
+    #
+    # The member's row is locked first and the list read under it, so two
+    # saves at once run one after the other, and the second checks the limit
+    # against the pins the first kept.
+    def save(pages)
+      error = shape_error(pages)
+      return error if error
 
-      duplicate = pages.tally.find { |_key, count| count > 1 }&.first
-      return "#{duplicate} is pinned twice" if duplicate
-
-      hidden = kept_hidden(pages).size
-      return if pages.size + hidden <= LIMIT
-
-      "at most #{LIMIT} Pinned Pages, counting #{hidden} you can't see right now"
-    end
-
-    # Saves `pages` (checked with error_for first) plus the kept hidden pins
-    # as the member's whole list.
-    def replace!(pages)
-      saved = pages + kept_hidden(pages)
       RpgClubUser.transaction do
-        user = RpgClubUser.find_or_create_by!(user_id: @user_id)
-        MemberPinnedPage.where(user_id: @user_id).delete_all
-        unless saved.empty?
-          now = Time.current
-          MemberPinnedPage.insert_all!(saved.each_with_index.map do |key, position|
-            { user_id: @user_id, page_key: key, position: position, created_at: now }
-          end)
+        lock_member
+        hidden_now = kept_hidden(pages)
+        if pages.size + hidden_now.size > LIMIT
+          error = limit_error(hidden_now.size)
+        else
+          write(pages + hidden_now)
         end
-        user.update!(pinned_pages_customised: true)
       end
-      @customised = true
-      @keys = saved
+      error
     end
 
     # Drops the member's saved list, so they follow DEFAULT again, including
     # later changes to it.
     def reset!
       RpgClubUser.transaction do
+        @user = RpgClubUser.lock.find_by(user_id: @user_id)
         MemberPinnedPage.where(user_id: @user_id).delete_all
-        RpgClubUser.where(user_id: @user_id).update_all(pinned_pages_customised: false)
+        @user&.update!(pinned_pages_customised: false)
       end
-      @customised = false
       @keys = nil
     end
 
     private
 
-    # Pins in the member's list they can't see right now and didn't send.
-    def kept_hidden(pages)
-      keys.reject { |key| @viewer.sees?(key) || pages.include?(key) }
+    # The member's row, locked for this transaction (created on their first
+    # save), and their list as it stands under the lock.
+    def lock_member
+      @user = RpgClubUser.lock.find_by(user_id: @user_id) || RpgClubUser.create_or_find_by!(user_id: @user_id).lock!
+      @keys = nil
     end
+
+    def write(saved)
+      MemberPinnedPage.where(user_id: @user_id).delete_all
+      unless saved.empty?
+        now = Time.current
+        MemberPinnedPage.insert_all!(saved.each_with_index.map do |key, position|
+          { user_id: @user_id, page_key: key, position: position, created_at: now }
+        end)
+      end
+      @user.update!(pinned_pages_customised: true)
+      @keys = saved
+    end
+
+    # Why `pages` isn't a list of page keys to save at all, or nil.
+    def shape_error(pages)
+      return "pages must be a list of page keys" unless pages.is_a?(Array)
+
+      unknown = pages.find { |key| !PinnedPages.known?(key) }
+      return "unknown page: #{unknown}" unless unknown.nil?
+
+      duplicate = pages.tally.find { |_key, count| count > 1 }&.first
+      "#{duplicate} is pinned twice" if duplicate
+    end
+
+    def limit_error(hidden) = "at most #{LIMIT} Pinned Pages, counting #{hidden} you can't see right now"
+
+    # Pins in the member's list they can't see right now.
+    def hidden = keys.reject { |key| @viewer.sees?(key) }
+
+    # Those of them the member didn't send.
+    def kept_hidden(pages) = hidden - pages
   end
 end
