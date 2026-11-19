@@ -130,6 +130,9 @@ Rails.application.routes.draw do
           patch "giveaway_settings", to: "giveaway_settings#update"
           get "feature_preferences", to: "feature_preferences#show"
           patch "feature_preferences", to: "feature_preferences#update"
+          # Pinned Pages (ticket api#418): the member's own sidebar pins.
+          get "pinned_pages", to: "pinned_pages#show"
+          put "pinned_pages", to: "pinned_pages#update"
           # Challenges (ticket #380): the member's Birth Date.
           get "birth_date", to: "birth_dates#show"
           put "birth_date", to: "birth_dates#update"
