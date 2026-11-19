@@ -2,7 +2,7 @@
 
 module Api
   module V1
-    # A member's Pinned Pages (spec api#416, ticket api#418; docs/adr/0012):
+    # A member's Pinned Pages (spec api#416, tickets api#418, api#419; docs/adr/0012):
     # the pages they put at the top of their own sidebar, in their order.
     #
     # Only the member themself may read or change it. Pins only shape the
@@ -34,6 +34,14 @@ module Api
         render json: { data: document }
       end
 
+      # DELETE /api/v1/users/:user_id/pinned_pages (ticket api#419)
+      # Resets the member to the club default: their saved list is dropped, so
+      # later changes to the default reach them again. Returns the document.
+      def destroy
+        list.reset!
+        render json: { data: document }
+      end
+
       private
 
       def refuse_service!
@@ -45,7 +53,7 @@ module Api
       end
 
       def document
-        { user_id: params[:user_id], pages: list.visible }
+        { user_id: params[:user_id], pages: list.visible, customised: list.customised? }
       end
     end
   end

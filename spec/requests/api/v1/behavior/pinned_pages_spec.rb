@@ -26,8 +26,16 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
     it "gives a member with no saved list the club default" do
       expect(pinned_for(member)).to eq(
         "user_id" => member.user_id,
-        "pages" => %w[voting games members news]
+        "pages" => %w[voting games members news],
+        "customised" => false
       )
+    end
+
+    it "says the list is customised after any save, even one keeping the default" do
+      pin(member, %w[voting games members news])
+
+      expect(json.dig("data", "customised")).to be(true)
+      expect(pinned_for(member)["customised"]).to be(true)
     end
   end
 
@@ -75,6 +83,67 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(json["error"]).to eq("pages must be a list of page keys")
+    end
+  end
+
+  describe "DELETE /api/v1/users/:user_id/pinned_pages" do
+    def reset(user, headers = auth_headers_for(user))
+      delete path_for(user), headers: headers
+    end
+
+    it "resets the member to the club default, no longer customised" do
+      pin(member, %w[news releases])
+
+      reset(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to eq(
+        "user_id" => member.user_id,
+        "pages" => %w[voting games members news],
+        "customised" => false
+      )
+      expect(pinned_for(member)).to include("pages" => %w[voting games members news], "customised" => false)
+    end
+
+    it "lets later changes to the club default reach the member" do
+      pin(member, [])
+      reset(member)
+
+      stub_const("PinnedPages::DEFAULT", %w[releases members].freeze)
+
+      expect(pinned_for(member)["pages"]).to eq(%w[releases members])
+    end
+
+    it "makes the list customised again on the next save" do
+      pin(member, %w[news])
+      reset(member)
+
+      pin(member, %w[members])
+
+      expect(pinned_for(member)).to include("pages" => %w[members], "customised" => true)
+    end
+
+    it "is fine for a member who already follows the default" do
+      reset(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "customised")).to be(false)
+    end
+
+    it "refuses another member's list, changing nothing" do
+      other = create(:user, role_member: true)
+      pin(other, %w[news])
+
+      reset(other, auth_headers_for(member))
+
+      expect(response).to have_http_status(:forbidden)
+      expect(pinned_for(other)).to include("pages" => %w[news], "customised" => true)
+    end
+
+    it "refuses the bot's service token" do
+      reset(member, service_headers)
+
+      expect(response).to have_http_status(:forbidden)
     end
   end
 
@@ -233,6 +302,25 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
 
     it "is empty for the bot's service token" do
       expect(session_pins(nil, service_headers)).to eq([])
+    end
+
+    it "says whether the member customised their list" do
+      get "/api/v1/session", headers: auth_headers_for(member)
+      expect(json["pinned_pages_customised"]).to be(false)
+
+      pin(member, %w[news])
+      get "/api/v1/session", headers: auth_headers_for(member)
+      expect(json["pinned_pages_customised"]).to be(true)
+
+      delete path_for(member), headers: auth_headers_for(member)
+      get "/api/v1/session", headers: auth_headers_for(member)
+      expect(json["pinned_pages_customised"]).to be(false)
+    end
+
+    it "is not customised for the bot's service token" do
+      get "/api/v1/session", headers: service_headers
+
+      expect(json["pinned_pages_customised"]).to be(false)
     end
   end
 end

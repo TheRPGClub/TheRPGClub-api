@@ -80,8 +80,14 @@ RSpec.describe 'api/v1/sessions', type: :request do
             items: { type: :string, example: 'voting' },
             description: 'The viewer\'s Pinned Pages they can see right now, in their order (as GET ' \
                          '/api/v1/users/{user_id}/pinned_pages). Empty for the service token.'
+          },
+          pinned_pages_customised: {
+            type: :boolean,
+            description: 'Whether the viewer saved their own Pinned Pages (`customised` in GET ' \
+                         '/api/v1/users/{user_id}/pinned_pages). False while they follow the club default, and ' \
+                         'for the service token.'
           }
-        }, required: %w[principal features pinned_pages]
+        }, required: %w[principal features pinned_pages pinned_pages_customised]
       end
 
       response '401', 'unauthenticated' do
