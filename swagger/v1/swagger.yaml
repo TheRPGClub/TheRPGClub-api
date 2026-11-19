@@ -21455,6 +21455,37 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/news_items/stamp":
+    get:
+      summary: The News Feed Stamp
+      tags:
+      - News Hub
+      description: 'A number, as a string, that changes whenever a News Item is recorded,
+        edited, recategorised or removed. An open News page polls it and reloads the
+        feed when it changes. Read from a machine-local file, never Postgres, so a
+        steady poll lets the database sleep: it needs no authentication and is not
+        gated by the News Hub Feature (it tells nothing but that the feed changed).
+        Opaque: compare it for equality only. It also changes once when the API machine
+        is replaced. Answered with `Cache-Control: no-store`.'
+      security: []
+      responses:
+        '200':
+          description: the current stamp
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      stamp:
+                        type: string
+                        example: '1795006223125'
+                    required:
+                    - stamp
+                required:
+                - data
   "/api/v1/news_items/uncopied":
     get:
       summary: News Items without a News Copy

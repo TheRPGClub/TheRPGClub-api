@@ -13,7 +13,10 @@ module Api
     class NewsItemsController < ApplicationController
       include ActingMember
 
-      feature :news_hub
+      # The stamp answers anyone, unchecked, so its poll never reaches
+      # Postgres (a session or Feature Flag read would).
+      skip_before_action :require_authentication!, only: :stamp
+      feature :news_hub, except: :stamp
 
       before_action :require_service!, only: %i[uncopied update change_category destroy]
 
@@ -49,6 +52,18 @@ module Api
           data: news_item_json(items, now: now),
           meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden)
         }
+      end
+
+      # GET /api/v1/news_items/stamp
+      #
+      # The News Feed Stamp (NewsItem::FeedStamp): changes whenever a News
+      # Item is recorded, changed or removed. An open News page polls it and
+      # reloads the feed when it changes. Read from a machine-local file, not
+      # Postgres, so the poll lets Neon sleep; it tells nothing but that
+      # something changed.
+      def stamp
+        response.headers["Cache-Control"] = "no-store"
+        render json: { data: { stamp: NewsItem::FeedStamp.read.to_s } }
       end
 
       # GET /api/v1/news_items/uncopied?origin=live&page=1&per=50
