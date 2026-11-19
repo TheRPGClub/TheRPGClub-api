@@ -14,6 +14,10 @@ module Api
         # `?igdb_ids[]=6&igdb_ids[]=48`. `?igdb_id=6` is the single-id convenience
         # form; both fold into one `IN (...)` filter.
         scope = scope.where(igdb_platform_id: igdb_ids) if igdb_ids.present?
+        # Only the platforms some GameDB game is on (`?with_games=true`): the
+        # website's Game Index platform filter, which would otherwise list every
+        # IGDB platform ever imported.
+        scope = scope.where(platform_id: GamedbGamePlatform.select(:platform_id)) if ActiveModel::Type::Boolean.new.cast(params[:with_games])
 
         render_collection(scope, resource: PlatformResource, default_order: { platform_name: :asc })
       end

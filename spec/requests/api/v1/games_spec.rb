@@ -42,7 +42,7 @@ RSpec.describe 'api/v1/games', type: :request do
     get 'List games' do
       tags 'Games'
       description 'Returns games from the local GameDB. Supports search, a `winner` filter for GOTM / ' \
-                  'Non-Retro GOTM history, and taxonomy filters (genre/engine/theme/perspective/mode/franchise/company). ' \
+                  'Non-Retro GOTM history, and taxonomy filters (genre/platform/engine/theme/perspective/mode/franchise/company). ' \
                   'Taxonomy params AND across dimensions; repeat one (`genre_id[]=1&genre_id[]=2`) to match any of several. ' \
                   'Discover valid ids via the `/genres`, `/themes`, … endpoints. Behind the Game Index Feature ' \
                   'Flag, except a search (`q` present): the game picker other Features use stays open.'
@@ -56,6 +56,8 @@ RSpec.describe 'api/v1/games', type: :request do
                      'breaking ties). Ignored when `q` is present: search keeps its relevance order.'
       parameter name: :genre_id, in: :query, required: false, explode: true, style: :form,
         schema: { type: :array, items: { type: :integer } }, description: 'Filter to games in this genre id (repeat to match any of several).'
+      parameter name: :platform_id, in: :query, required: false, explode: true, style: :form,
+        schema: { type: :array, items: { type: :integer } }, description: 'Filter to games on this platform id (repeat to match any of several).'
       parameter name: :engine_id, in: :query, required: false, explode: true, style: :form,
         schema: { type: :array, items: { type: :integer } }, description: 'Filter to games using this engine id (repeat to match any of several).'
       parameter name: :theme_id, in: :query, required: false, explode: true, style: :form,
