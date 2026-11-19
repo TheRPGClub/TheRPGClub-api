@@ -59,6 +59,27 @@ RSpec.describe 'api/v1/news_items', type: :request do
     end
   end
 
+  path '/api/v1/news_items/stamp' do
+    get 'The News Feed Stamp' do
+      tags 'News Hub'
+      description 'A number, as a string, that changes whenever a News Item is recorded, edited, recategorised ' \
+                  'or removed. An open News page polls it and reloads the feed when it changes. Read from a ' \
+                  'machine-local file, never Postgres, so a steady poll lets the database sleep: it needs no ' \
+                  'authentication and is not gated by the News Hub Feature (it tells nothing but that the feed ' \
+                  'changed). Opaque: compare it for equality only. It also changes once when the API machine ' \
+                  'is replaced. Answered with `Cache-Control: no-store`.'
+      produces 'application/json'
+      security []
+
+      response '200', 'the current stamp' do
+        schema type: :object, properties: {
+          data: { type: :object, properties: { stamp: { type: :string, example: '1795006223125' } },
+                  required: %w[stamp] }
+        }, required: %w[data]
+      end
+    end
+  end
+
   path '/api/v1/news_items/uncopied' do
     get 'News Items without a News Copy' do
       tags 'News Hub'

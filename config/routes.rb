@@ -451,8 +451,10 @@ Rails.application.routes.draw do
       # by their Discord message id (service-only), lists those with no
       # News Copy yet (service-only, ticket #368), and changes a News Item's
       # News Category for its author or staff (service-only, ticket #369).
+      # The News Feed Stamp is open to anyone: the News page polls it.
       get "news_categories", to: "news_categories#index"
       get    "news_items",                      to: "news_items#index"
+      get    "news_items/stamp",                to: "news_items#stamp"
       get    "news_items/uncopied",             to: "news_items#uncopied"
       put    "news_items/:message_id",          to: "news_items#update"
       put    "news_items/:message_id/category", to: "news_items#change_category"

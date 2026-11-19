@@ -45,6 +45,10 @@ class NewsItem < ApplicationRecord
   validate :images_are_addresses_with_expiry
   validate :has_link_or_image
 
+  # Any change to a News Item may change what the feed shows: an open News
+  # page polls the stamp (NewsItem::FeedStamp). remove! bumps it itself.
+  after_commit { FeedStamp.bump! }
+
   normalizes :comment, :link_url, :link_title, :link_site_name, :link_description, :link_image_url,
     with: ->(value) { value.strip.presence }
 
@@ -110,11 +114,11 @@ class NewsItem < ApplicationRecord
   # removed item (its News Copy location still readable), or nil when none
   # was recorded.
   def self.remove!(message_id)
-    transaction do
-      item = lock.find_by(message_id: message_id.to_s)
-      item&.delete
-      item
+    item = transaction do
+      lock.find_by(message_id: message_id.to_s).tap { |found| found&.delete }
     end
+    FeedStamp.bump! if item
+    item
   end
 
   # Drops the null character from every string in the bot's payload. Discord
