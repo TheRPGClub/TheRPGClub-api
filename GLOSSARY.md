@@ -16,6 +16,10 @@ _Avoid_: Guest, non-member, anonymous user
 The look a Member chooses for the website, from colours and type to the shape of every control; the site's pages and what they do stay the same in every Theme. Visitors, and Members who have not chosen, see the club's default Theme.
 _Avoid_: Skin, style, dark mode, appearance
 
+**Pinned Page**:
+A page of the website that a Member has put at the top of their own sidebar so it is one click away. A Pinned Page is still listed in its usual place. Members who have pinned nothing see the club's default Pinned Pages, and a Pinned Page that the Member cannot currently see stays pinned and returns when they can.
+_Avoid_: Favourite, shortcut, bookmark
+
 ## Achievement Hub
 
 **Provider**:
