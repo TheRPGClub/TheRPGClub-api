@@ -15,22 +15,26 @@ module Api
           )
         end
 
+        pins = pinned_list(user)
         render json: {
           principal: current_principal,
           membership: membership,
           features: Features::Access.for_viewer(user, staff: admin_or_above?).session_features,
-          pinned_pages: pinned_pages(user)
+          pinned_pages: pins ? pins.visible : [],
+          pinned_pages_customised: pins ? pins.customised? : false
         }
       end
 
       private
 
-      # The member's visible Pinned Pages (ticket api#418), so the sidebar
-      # renders without another request. Empty for the service token.
-      def pinned_pages(user)
-        return [] unless current_principal.discord_user?
+      # The member's Pinned Pages (tickets api#418, api#419): the visible list,
+      # so the sidebar renders without another request, and whether they
+      # saved their own (Settings offers a reset then). None for the service
+      # token.
+      def pinned_list(user)
+        return unless current_principal.discord_user?
 
-        PinnedPages::List.new(current_principal.id.to_s, pinned_viewer(user)).visible
+        PinnedPages::List.new(current_principal.id.to_s, pinned_viewer(user))
       end
     end
   end

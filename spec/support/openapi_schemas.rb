@@ -1501,8 +1501,9 @@ module OpenapiSchemas
         _required: %w[user_id hidden show_preview_features features]
       ),
 
-      # PinnedPagesController (spec api#416, ticket api#418). A member's Pinned
-      # Pages: the ones they can see right now, in their order.
+      # PinnedPagesController (spec api#416, tickets api#418, api#419). A
+      # member's Pinned Pages: the ones they can see right now, in their order,
+      # and whether they saved their own list.
       PinnedPages: obj(
         user_id: str,
         pages: { type: :array, items: str(example: "voting"),
@@ -1511,7 +1512,9 @@ module OpenapiSchemas
                               "gotm_history, challenges, games, releases, achievements, journals, members, news, " \
                               "codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
                               "public_reminders, suggestion_review." },
-        _required: %w[user_id pages]
+        customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
+                                            "the club default, which then reaches them when it changes."),
+        _required: %w[user_id pages customised]
       ),
 
       # ChallengeSettingsController (spec #376, ticket #379): the member's

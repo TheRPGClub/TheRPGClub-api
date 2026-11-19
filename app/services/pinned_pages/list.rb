@@ -18,9 +18,15 @@ module PinnedPages
       @viewer = viewer
     end
 
+    # Whether the member saved their own list, rather than following DEFAULT.
+    def customised?
+      @customised = RpgClubUser.where(user_id: @user_id, pinned_pages_customised: true).exists? if @customised.nil?
+      @customised
+    end
+
     # Every known key in the member's list, seen or not.
     def keys
-      @keys ||= if RpgClubUser.where(user_id: @user_id, pinned_pages_customised: true).exists?
+      @keys ||= if customised?
         MemberPinnedPage.where(user_id: @user_id).order(:position).pluck(:page_key)
           .select { |key| PinnedPages.known?(key) }
       else
@@ -62,7 +68,19 @@ module PinnedPages
         end
         user.update!(pinned_pages_customised: true)
       end
+      @customised = true
       @keys = saved
+    end
+
+    # Drops the member's saved list, so they follow DEFAULT again, including
+    # later changes to it.
+    def reset!
+      RpgClubUser.transaction do
+        MemberPinnedPage.where(user_id: @user_id).delete_all
+        RpgClubUser.where(user_id: @user_id).update_all(pinned_pages_customised: false)
+      end
+      @customised = false
+      @keys = nil
     end
 
     private
