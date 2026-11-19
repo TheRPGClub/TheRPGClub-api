@@ -22,6 +22,29 @@
         915
       ],
       "note": "Acknowledged, not fixed. `request_data` is a generic JSON:API-style helper that permits the whole `data` payload; the controllers that consume it are responsible for whitelisting attributes before mass assignment. Tightening this into per-endpoint key allowlists is real security-hardening work tracked in issue #56 (suppression added alongside the CI setup in #55). Remove this entry when #56 lands."
+    },
+    {
+      "warning_type": "Redirect",
+      "warning_code": 18,
+      "fingerprint": "81af1f8f2f669c40a14a8fc4bca0bd960a6c7f4d085527d7deba4a2549915128",
+      "check_name": "Redirect",
+      "message": "Possible unprotected redirect",
+      "file": "app/controllers/api/v1/users_controller.rb",
+      "line": 173,
+      "link": "https://brakemanscanner.org/docs/warning_types/redirect/",
+      "code": "redirect_to(RpgClubUserAvatarHistory.where(:user_id => params[:user_id]).where.not(:avatar_url => ([nil, \"\"])).order(:changed_at => :desc, :event_id => :desc).pick(:avatar_url), :allow_other_host => true)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Api::V1::UsersController",
+        "method": "avatar"
+      },
+      "user_input": "RpgClubUserAvatarHistory.where(:user_id => params[:user_id]).where.not(:avatar_url => ([nil, \"\"])).order(:changed_at => :desc, :event_id => :desc).pick(:avatar_url)",
+      "confidence": "Weak",
+      "cwe_id": [
+        601
+      ],
+      "note": "False positive. The target is not request input: it is the stored avatar_url from avatar history, which only the bot's service token can write (UserAvatarHistoryController#create requires require_service!). params[:user_id] only picks the row. The action also redirects only when trusted_image_url? passes (https on cdn.discordapp.com, media.discordapp.net, *.backblazeb2.com or the BACKBLAZE_PUBLIC_BASE_URL host) and streams the blob otherwise. Brakeman cannot see that guard. Covered by the 'never redirects off the trusted image hosts' spec."
     }
   ],
   "brakeman_version": "8.0.4"

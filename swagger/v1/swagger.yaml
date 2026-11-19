@@ -31270,12 +31270,20 @@ paths:
       summary: Stream user avatar
       tags:
       - Users
-      description: Returns the cached PNG avatar blob for the user. Public — does
-        not require authentication.
+      description: Redirects to the latest avatar URL in the user's avatar history
+        (Backblaze B2 or the Discord CDN). Falls back to the legacy PNG avatar blob
+        when no URL is on record. Public — does not require authentication.
       security: []
       responses:
+        '302':
+          description: redirect to the latest stored avatar URL
+          headers:
+            Location:
+              schema:
+                type: string
+              description: avatar image URL
         '200':
-          description: avatar PNG
+          description: avatar PNG (no stored URL)
           headers:
             Content-Type:
               schema:

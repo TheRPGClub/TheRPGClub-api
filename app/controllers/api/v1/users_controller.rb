@@ -11,6 +11,15 @@ module Api
       PREVIEW_LIMIT_DEFAULT = 10
       PREVIEW_LIMIT_MAX = 50
 
+      # Hosts the bot stores avatar URLs on: the Discord CDN, Backblaze B2's
+      # own download hosts (`f000.backblazeb2.com` …), and whatever host
+      # BACKBLAZE_PUBLIC_BASE_URL names, in case the bucket sits behind a
+      # custom domain. Only the bot can write `avatar_url`, but the redirect
+      # still refuses any other host so a bad row can't turn this public
+      # endpoint into an open redirect.
+      TRUSTED_IMAGE_HOSTS = %w[cdn.discordapp.com media.discordapp.net].freeze
+      TRUSTED_IMAGE_HOST_SUFFIX = ".backblazeb2.com"
+
       # Canonical `has_platform` tokens mapped to the `social_platforms.label`
       # substrings they match (case-insensitively). This mirrors the Discord
       # bot's own `SOCIAL_MATCHERS` / `getMembersWithPlatforms` resolution
@@ -146,8 +155,22 @@ module Api
         render json: { count: count }
       end
 
+      # The bot stopped writing `avatar_blob` once avatars moved to stored
+      # URLs (bot#1073), so the blob is frozen at whatever it last held.
+      # Redirect to the latest avatar-history URL (Backblaze B2 or the Discord
+      # CDN) and stream the blob only for members with no URL on record. The
+      # redirect is cached for an hour, not a day, so a changed avatar shows
+      # up on the website soon after the bot logs it.
       def avatar
-        send_user_image("avatar_blob")
+        url = RpgClubUserAvatarHistory
+          .where(user_id: params[:user_id])
+          .where.not(avatar_url: [ nil, "" ])
+          .order(changed_at: :desc, event_id: :desc)
+          .pick(:avatar_url)
+        return send_user_image("avatar_blob") unless trusted_image_url?(url)
+
+        expires_in 1.hour, public: true
+        redirect_to url, allow_other_host: true
       end
 
       def profile_image
@@ -210,6 +233,26 @@ module Api
         raw = params[:preview_limit].to_i
         raw = PREVIEW_LIMIT_DEFAULT if raw <= 0
         [ raw, PREVIEW_LIMIT_MAX ].min
+      end
+
+      # Whether `url` is an https URL on a host the bot stores avatars on (see
+      # TRUSTED_IMAGE_HOSTS).
+      def trusted_image_url?(url)
+        return false if url.blank?
+
+        uri = URI.parse(url)
+        return false unless uri.is_a?(URI::HTTPS) && uri.host.present?
+
+        host = uri.host.downcase
+        TRUSTED_IMAGE_HOSTS.include?(host) || host.end_with?(TRUSTED_IMAGE_HOST_SUFFIX) || host == backblaze_public_host
+      rescue URI::InvalidURIError
+        false
+      end
+
+      def backblaze_public_host
+        URI.parse(ENV.fetch("BACKBLAZE_PUBLIC_BASE_URL", "")).host&.downcase
+      rescue URI::InvalidURIError
+        nil
       end
 
       def send_user_image(column)
