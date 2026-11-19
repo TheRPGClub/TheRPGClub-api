@@ -74,8 +74,14 @@ RSpec.describe 'api/v1/sessions', type: :request do
               },
               required: %w[key name state hideable shown preview]
             }
+          },
+          pinned_pages: {
+            type: :array,
+            items: { type: :string, example: 'voting' },
+            description: 'The viewer\'s Pinned Pages they can see right now, in their order (as GET ' \
+                         '/api/v1/users/{user_id}/pinned_pages). Empty for the service token.'
           }
-        }, required: %w[principal features]
+        }, required: %w[principal features pinned_pages]
       end
 
       response '401', 'unauthenticated' do

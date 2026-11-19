@@ -1501,6 +1501,19 @@ module OpenapiSchemas
         _required: %w[user_id hidden show_preview_features features]
       ),
 
+      # PinnedPagesController (spec api#416, ticket api#418). A member's Pinned
+      # Pages: the ones they can see right now, in their order.
+      PinnedPages: obj(
+        user_id: str,
+        pages: { type: :array, items: str(example: "voting"),
+                 description: "Pinned Page keys the member can see right now, in their order: the club default " \
+                              "(voting, games, members, news) until they save their own list. Keys: voting, " \
+                              "gotm_history, challenges, games, releases, achievements, journals, members, news, " \
+                              "codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
+                              "public_reminders, suggestion_review." },
+        _required: %w[user_id pages]
+      ),
+
       # ChallengeSettingsController (spec #376, ticket #379): the member's
       # Challenge DM opt-out.
       ChallengeSettings: obj(
