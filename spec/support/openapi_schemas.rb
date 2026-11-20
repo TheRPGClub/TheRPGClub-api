@@ -1248,6 +1248,28 @@ module OpenapiSchemas
           years: { type: :array, items: obj(year: int, game_id: int(nullable: true), title: str(nullable: true)) }
         ).merge(nullable: true, description: "Slots only: each year so far and the game filling it (null while open).")
       ),
+      # Challenges::Activity (spec api#421, ticket api#424): one event of the
+      # club-wide Challenge Activity feed.
+      ChallengeActivityEvent: obj(
+        _required: %w[kind occurred_on challenge],
+        kind: str(enum: Challenges::Activity::KINDS).merge(
+          description: "run_started: a Run started (an Assignment Run: at the draw). game_cleared: a game " \
+                       "Cleared on a Run, with `game`. run_finished: a Run Finished. signups_opened: an " \
+                       "Edition's sign-up opened. edition_revealed: an Edition's picks were revealed."
+        ),
+        occurred_on: date.merge(description: "The club date it happened on."),
+        occurred_at: ts(nullable: true).merge(description: "When it happened; null for game_cleared, " \
+                                                          "signups_opened and edition_revealed, which are " \
+                                                          "known only by their date."),
+        challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
+          tint: ref("ChallengeTint")),
+        user: ref("ChallengeMember", nullable: true).merge(description: "The Run's member; null for Edition " \
+                                                                        "events."),
+        game: ref("GameSummary", nullable: true).merge(description: "game_cleared only: the game Cleared."),
+        run_id: int(nullable: true).merge(description: "The Run's id; null for Edition events."),
+        edition: obj(id: int, year: int).merge(nullable: true, description: "The Edition: for Edition events " \
+                                                                            "and Assignment Runs.")
+      ),
       ChallengePoolGameProgress: obj(
         _description: "A Pool game with who Cleared it and who has it In Progress.",
         game_id: int, title: str, initial_release_date: ts(nullable: true),
