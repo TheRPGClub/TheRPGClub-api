@@ -1517,6 +1517,33 @@ module OpenapiSchemas
         _required: %w[user_id pages customised]
       ),
 
+      # DashboardPanelsController (spec api#421, ticket api#422). A member's
+      # Dashboard Panels: the ones they show and can see right now, in their
+      # order; every panel they can see; and whether they saved their own list.
+      DashboardPanels: obj(
+        user_id: str,
+        panels: { type: :array, items: str(example: "news"),
+                  description: "Dashboard Panel keys the member shows and can see right now, in their order: the " \
+                               "club default (news, now_playing_club, releases, achievements_club, " \
+                               "challenges_club) until they save their own list." },
+        catalogue: { type: :array, items: { "$ref" => "#/components/schemas/DashboardPanel" },
+                     description: "Every panel the member can see right now, shown or not, in the club's order." },
+        customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
+                                            "the club default, which then reaches them when it changes."),
+        _required: %w[user_id panels catalogue customised]
+      ),
+
+      DashboardPanel: obj(
+        key: str(description: "Panel key: news, now_playing_club, releases, achievements_club, challenges_club, " \
+                              "now_playing_mine, achievements_mine, challenge_runs_mine, completions_club, " \
+                              "completions_mine, backlog_pick, reviews, journals, giveaways, suggestions, codex, " \
+                              "birthdays.", example: "news"),
+        scope: str(enum: %w[club mine], description: "Whether the panel shows club activity or the member's own."),
+        new: bool.merge(description: "Whether the panel was added after the member last opened dashboard edit " \
+                                     "mode. Never true for a member who has not opened it yet."),
+        _required: %w[key scope new]
+      ),
+
       # ChallengeSettingsController (spec #376, ticket #379): the member's
       # Challenge DM opt-out.
       ChallengeSettings: obj(

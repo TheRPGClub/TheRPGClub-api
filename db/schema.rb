@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_19_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_20_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -674,6 +674,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_19_120000) do
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_member_birth_date_changes_birth_date"
   end
 
+  create_table "member_dashboard_panels", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.string "panel_key", limit: 64, null: false
+    t.integer "position", null: false
+    t.datetime "created_at", null: false
+    t.index ["user_id", "panel_key"], name: "index_member_dashboard_panels_on_user_id_and_panel_key", unique: true
+  end
+
   create_table "member_feature_preferences", force: :cascade do |t|
     t.string "user_id", limit: 30, null: false
     t.string "feature_key", limit: 64, null: false
@@ -1169,6 +1177,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_19_120000) do
     t.integer "birth_year", limit: 2, comment: "The member's Birth Date: its year, or null when the member gave only the day and month."
     t.boolean "birthday_shared", default: false, null: false, comment: "Whether the member shares their Birthday (the day and month of their Birth Date, never the year). Only the member turns it on; staff can turn it off; removing the Birth Date turns it off."
     t.boolean "pinned_pages_customised", default: false, null: false, comment: "Whether the member saved their own Pinned Pages; false follows the club default."
+    t.boolean "dashboard_panels_customised", default: false, null: false, comment: "Whether the member saved their own Dashboard Panels; false follows the club default."
+    t.datetime "dashboard_panels_seen_at", comment: "When the member last opened dashboard edit mode; panels added after it are new to them."
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
     t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end
@@ -1568,6 +1578,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_19_120000) do
   add_foreign_key "live_events", "bot_jobs", on_delete: :nullify
   add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "member_birth_date_changes", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "member_dashboard_panels", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_feature_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
