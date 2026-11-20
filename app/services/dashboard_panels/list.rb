@@ -15,10 +15,17 @@ module DashboardPanels
       end
     end
 
-    # Marks every panel on the site as seen (the member opened edit mode).
-    def seen!
+    # Marks panels as seen (the member opened edit mode): `shown`, the keys
+    # the website listed there, or every panel on the site when nil. Panels
+    # the website didn't list yet (the API deploys first) stay new. Returns
+    # why it can't, changing nothing, or nil once marked.
+    def seen!(shown = nil)
+      return "panels must be a list of panel keys" unless shown.nil? || shown.is_a?(Array)
+
       @user ||= RpgClubUser.create_or_find_by!(user_id: @user_id)
-      @user.update!(dashboard_panels_seen_keys: DashboardPanels.keys)
+      keys = shown.nil? ? DashboardPanels.keys : (seen_keys | shown).select { |key| DashboardPanels.known?(key) }
+      @user.update!(dashboard_panels_seen_keys: keys)
+      nil
     end
 
     private

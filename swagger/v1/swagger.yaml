@@ -15575,14 +15575,17 @@ paths:
       summary: Mark the Dashboard Panel catalogue as seen
       tags:
       - Dashboard Panels
-      description: Called when the member opens dashboard edit mode. Records every
-        panel on the site as seen, so no panel in the `catalogue` is `new` to them
-        until another panel is added. A member who has never called it has seen the
+      description: Called when the member opens dashboard edit mode. Records the panels
+        the website listed there (`data.panels`) as seen, or every panel on the site
+        without a body, so they are no longer `new` to them. A panel the website did
+        not list (the API knows it first) stays new. Unknown keys are ignored; `panels`
+        that is not a list is a 422. A member who has never called it has seen the
         panels the site launched with, so only panels added after launch are new to
         them. Returns the whole document, as GET does.
+      parameters: []
       responses:
         '200':
-          description: dashboard panels, nothing new
+          description: dashboard panels, the listed ones no longer new
           content:
             application/json:
               schema:
@@ -15592,6 +15595,12 @@ paths:
                     "$ref": "#/components/schemas/DashboardPanels"
                 required:
                 - data
+        '422':
+          description: "`panels` is not a list"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
           description: 'forbidden: caller is not the member'
           content:
@@ -15604,6 +15613,25 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    panels:
+                      type: array
+                      items:
+                        type: string
+                      description: Dashboard Panel keys the member was shown in edit
+                        mode, shown or not.
+                      example:
+                      - news
+                      - reviews
+                      - birthdays
   "/api/v1/dashboard":
     get:
       summary: Front-page dashboard

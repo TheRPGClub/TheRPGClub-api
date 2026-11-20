@@ -302,6 +302,24 @@ RSpec.describe "api/v1/dashboard_panels behavior", type: :request do
       end
     end
 
+    it "keeps a panel new when the website opening edit mode did not list it yet" do
+      ship_later_panel
+
+      post "#{path_for(member)}/seen", params: { data: { panels: %w[news birthdays] } },
+        headers: auth_headers_for(member), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(new_keys(member)).to eq(%w[later])
+    end
+
+    it "refuses panels to mark seen that are not a list" do
+      post "#{path_for(member)}/seen", params: { data: { panels: "news" } }, headers: auth_headers_for(member),
+        as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("panels must be a list of panel keys")
+    end
+
     it "clears them once the member opens edit mode again" do
       seen(member)
       ship_later_panel
