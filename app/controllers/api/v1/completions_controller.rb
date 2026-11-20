@@ -94,6 +94,20 @@ module Api
         }
       end
 
+      # GET /api/v1/completions/recent
+      #
+      # Every member's Game Completions, newest first, for the club Recent
+      # Completions Dashboard Panel. "Newest" is `completed_at` (so a backdated
+      # import doesn't read as recent), undated ones last, then the time they
+      # were logged. Members who have left the server are left out.
+      def recent
+        scope = UserGameCompletion.joins(:user).where(rpg_club_users: { server_left_at: nil })
+          .preload(:user, :platform, game: :images)
+        render_collection(scope, resource: CompletionMemberEntryResource,
+          default_order: Arel.sql("user_game_completions.completed_at DESC NULLS LAST, " \
+                                  "user_game_completions.created_at DESC, user_game_completions.completion_id DESC"))
+      end
+
       def show
         record = UserGameCompletion.includes(:game, :platform).find(params[:id])
         render json: { data: CompletionEntryResource.new(record).serializable_hash }

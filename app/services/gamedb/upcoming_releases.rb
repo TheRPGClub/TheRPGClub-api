@@ -62,8 +62,12 @@ module Gamedb
     # The last day an Upcoming Release is still upcoming on.
     PERIOD_ENDS_ON_SQL = GamedbRelease.period_ends_on_sql("e")
 
-    def initialize(today:, month: nil, platform_ids: [], game_ids: [], next_per_game: false)
+    # `hidden_platform_ids` are a member's Hidden Platforms (ticket api#427):
+    # their Releases are left out, and so is an Upcoming Release left with
+    # none. `first_released` still counts them: it is the game's history.
+    def initialize(today:, month: nil, platform_ids: [], game_ids: [], next_per_game: false, hidden_platform_ids: [])
       @today = today
+      @hidden_platform_ids = hidden_platform_ids
       @month = month
       @platform_ids = platform_ids
       @game_ids = game_ids
@@ -125,9 +129,11 @@ module Gamedb
     end
 
     # One row per game, date and Date Precision: the Upcoming Releases. With
-    # platform ids, only those with a Release on one of them.
+    # platform ids, only those with a Release on one of them. Releases on
+    # Hidden Platforms are not counted at all.
     def grouped_sql
       conditions = []
+      conditions << sanitize("r.platform_id NOT IN (:ids)", ids: @hidden_platform_ids) if @hidden_platform_ids.any?
       conditions << sanitize("r.game_id IN (:ids)", ids: @game_ids) if @game_ids.any?
       having = @platform_ids.any? ? sanitize("HAVING bool_or(r.platform_id IN (:ids))", ids: @platform_ids) : ""
 
@@ -154,7 +160,8 @@ module Gamedb
       game_ids = rows.map { |row| row.fetch("game_id") }.uniq
       games = GamedbGame.where(game_id: game_ids).preload(:images).index_by(&:game_id)
       releases = GamedbRelease.where(game_id: game_ids).includes(:platform, :region).to_a
-      grouped = releases.group_by { |release| [ release.game_id, release.release_date, release.date_precision ] }
+      grouped = releases.reject { |release| @hidden_platform_ids.include?(release.platform_id) }
+        .group_by { |release| [ release.game_id, release.release_date, release.date_precision ] }
       dated = releases.select(&:release_date)
         .sort_by { |release| [ release.release_date, GamedbRelease.precision_rank(release.date_precision) ] }
         .group_by(&:game_id)

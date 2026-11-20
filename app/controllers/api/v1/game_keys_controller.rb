@@ -20,6 +20,14 @@ module Api
 
       HUB_REFRESH_VERBS = { "donate" => "donated", "claim" => "claimed", "revoke" => "revoked" }.freeze
 
+      # The listing's orders: `title` (the default, like the bot's listing:
+      # case-insensitive title, then key_id) and `recent` (newest donation
+      # first, for the Open Giveaways Dashboard Panel).
+      SORTS = {
+        "title" => Arel.sql("UPPER(game_title) ASC, key_id ASC"),
+        "recent" => { created_at: :desc, key_id: :desc }
+      }.freeze
+
       # A donation that names no GameDB game it can be linked to (422).
       class GameRequired < StandardError
         attr_reader :code
@@ -38,15 +46,17 @@ module Api
       before_action :require_donor_or_admin!, only: :destroy
       before_action :require_claimer_or_admin!, only: :claimed_index
 
-      # GET /api/v1/game_keys
-      # The available (unclaimed) keys, ordered like the bot's listing
-      # (case-insensitive title, then key_id). Ordered by `game_title` (always
-      # present) rather than the linked game so unlinked keys are still listed;
-      # the linked game (with images) is preloaded so the embedded card resolves
-      # without an N+1.
+      # GET /api/v1/game_keys?sort=title|recent
+      # The available (unclaimed) keys, in a SORTS order (422 `invalid_sort`
+      # otherwise). The title order uses `game_title` (always present) rather
+      # than the linked game so unlinked keys are still listed; the linked game
+      # (with images) is preloaded so the embedded card resolves without an N+1.
       def index
+        order = sort_param(SORTS, default: "title")
+        return if performed?
+
         render_collection(RpgClubGameKey.available.preload(game: :images), resource: GameKeyResource,
-          default_order: Arel.sql("UPPER(game_title) ASC, key_id ASC"))
+          default_order: order)
       end
 
       # GET /api/v1/users/:user_id/game_keys

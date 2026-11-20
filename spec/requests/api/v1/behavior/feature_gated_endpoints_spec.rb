@@ -266,11 +266,13 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/challenge_runs" => "challenges",
     "api/v1/challenge_editions" => "challenges",
     "api/v1/challenge_settings" => "challenges",
+    "api/v1/challenge_activity" => "challenges",
     "api/v1/news_categories" => "news_hub",
     "api/v1/news_import" => "news_hub",
     "api/v1/news_category_preferences" => "news_hub",
     # Release Calendar
     "api/v1/upcoming_releases" => "release_calendar",
+    "api/v1/hidden_platforms" => "release_calendar",
     # Club Codex
     "api/v1/codex/fun_facts" => "club_codex",
     "api/v1/codex/history_events" => "club_codex",
@@ -287,6 +289,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/features" => nil,
     "api/v1/feature_preferences" => nil,
     "api/v1/pinned_pages" => nil,
+    # Dashboard Panels are part of how the site works, not a Feature (spec
+    # api#421); each panel needs its own Feature, checked per panel.
+    "api/v1/dashboard_panels" => nil,
     # The Birth Date is the member's, not the Challenges Feature's: Birthdays
     # and the Birthday Post use it too (ticket #380, spec #396).
     "api/v1/birth_dates" => nil,
