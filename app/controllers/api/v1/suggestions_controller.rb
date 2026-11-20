@@ -25,15 +25,12 @@ module Api
         statuses = status_filter
         return if performed?
 
-        sort = params[:sort].presence || "board"
-        unless SORTS.key?(sort)
-          return render json: { error: "invalid_sort", message: "sort must be one of: #{SORTS.keys.join(', ')}" },
-            status: :unprocessable_content
-        end
+        order = sort_param(SORTS, default: "board")
+        return if performed?
 
         scope = viewer_scope
         scope = scope.where(status: statuses) if statuses
-        render_collection(scope, resource: SuggestionResource, default_order: SORTS.fetch(sort))
+        render_collection(scope, resource: SuggestionResource, default_order: order)
       end
 
       def show

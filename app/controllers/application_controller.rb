@@ -122,6 +122,18 @@ class ApplicationController < ActionController::API
     params.require(:data).permit!.to_h
   end
 
+  # The order for `params[:sort]` from `sorts` (sort name => order), or for
+  # `default` when it is blank. An unknown sort renders 422 `invalid_sort`
+  # and returns nil; callers `return if performed?`.
+  def sort_param(sorts, default:)
+    sort = params[:sort].presence || default
+    return sorts.fetch(sort) if sorts.key?(sort)
+
+    render json: { error: "invalid_sort", message: "sort must be one of: #{sorts.keys.join(', ')}" },
+      status: :unprocessable_content
+    nil
+  end
+
   # Older names for StaffGates#require_admin_or_above! and #admin_or_above?
   # (the service token, a Superadmin, or a role_admin user), kept for the
   # endpoints that use them.
