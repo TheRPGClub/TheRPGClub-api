@@ -1618,6 +1618,35 @@ module OpenapiSchemas
         position: int.merge(example: 2, description: "1-based place in the list; the list is served in this order."),
         _required: %w[key name position]
       ),
+      # HiddenPlatformsController (spec api#421, ticket api#427). A member's
+      # Hidden Platforms: the platforms they leave out of their own Release
+      # Calendar and Upcoming Releases panel.
+      HiddenPlatform: obj(
+        platform_id: int,
+        platform_name: str(example: "PlayStation 5"),
+        platform_abbreviation: str(nullable: true, example: "PS5"),
+        _required: %w[platform_id platform_name platform_abbreviation]
+      ),
+      HiddenPlatforms: obj(
+        user_id: str,
+        platform_ids: { type: :array, items: int,
+                        description: "The member's Hidden Platform ids, in platform name order." },
+        platforms: array_of("HiddenPlatform").merge(
+          description: "The same platforms with their names, in platform name order."
+        ),
+        _required: %w[user_id platform_ids platforms]
+      ),
+      # UpcomingReleasesController#index meta: pagination plus the Hidden
+      # Platforms left out of this result (ticket api#427).
+      UpcomingReleasesMeta: extends("PaginationMeta",
+        hidden_platform_ids: {
+          type: :array, items: int,
+          description: "The signed-in member's Hidden Platforms left out of this result, sorted. Empty when " \
+                       "nothing was left out: the member hides nothing, `platform_id` or `show_hidden=1` was " \
+                       "given, or the caller is the service token."
+        },
+        required: %w[hidden_platform_ids]),
+
       # NewsCategoryPreferencesController (ticket #357): a member's News
       # Category Preferences, the News Categories they switched off.
       NewsCategoryPreference: extends("NewsCategory",

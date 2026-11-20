@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_20_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_20_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -687,6 +687,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_120000) do
     t.string "feature_key", limit: 64, null: false
     t.datetime "created_at", null: false
     t.index ["user_id", "feature_key"], name: "index_member_feature_preferences_on_user_id_and_feature_key", unique: true
+  end
+
+  create_table "member_hidden_platforms", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.bigint "platform_id", null: false
+    t.datetime "created_at", null: false
+    t.index ["user_id", "platform_id"], name: "index_member_hidden_platforms_on_user_id_and_platform_id", unique: true
   end
 
   create_table "member_news_category_preferences", force: :cascade do |t|
@@ -1580,6 +1587,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_120000) do
   add_foreign_key "member_birth_date_changes", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_dashboard_panels", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_feature_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "member_hidden_platforms", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", on_delete: :cascade
+  add_foreign_key "member_hidden_platforms", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
