@@ -134,6 +134,11 @@ Rails.application.routes.draw do
           get "pinned_pages", to: "pinned_pages#show"
           put "pinned_pages", to: "pinned_pages#update"
           delete "pinned_pages", to: "pinned_pages#destroy"
+          # Dashboard Panels (ticket api#422): the member's own dashboard panels.
+          get "dashboard_panels", to: "dashboard_panels#show"
+          put "dashboard_panels", to: "dashboard_panels#update"
+          delete "dashboard_panels", to: "dashboard_panels#destroy"
+          post "dashboard_panels/seen", to: "dashboard_panels#seen"
           # Challenges (ticket #380): the member's Birth Date.
           get "birth_date", to: "birth_dates#show"
           put "birth_date", to: "birth_dates#update"
