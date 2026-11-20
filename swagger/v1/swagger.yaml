@@ -4101,6 +4101,80 @@ components:
       - started_at
       - window
       - progress
+    ChallengeActivityEvent:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - run_started
+          - game_cleared
+          - run_finished
+          - signups_opened
+          - edition_revealed
+          description: 'run_started: a Run started (an Assignment Run: at the draw).
+            game_cleared: a game Cleared on a Run, with `game`. run_finished: a Run
+            Finished. signups_opened: an Edition''s sign-up opened. edition_revealed:
+            an Edition''s picks were revealed.'
+        occurred_on:
+          type: string
+          format: date
+          description: The club date it happened on.
+        occurred_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it happened; null for game_cleared, signups_opened and
+            edition_revealed, which are known only by their date.
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            challenge_format:
+              type: string
+              enum:
+              - slots
+              - pool
+              - assignment
+            tint:
+              "$ref": "#/components/schemas/ChallengeTint"
+          required:
+          - id
+          - name
+          - challenge_format
+        user:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: The Run's member; null for Edition events.
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameSummary"
+          nullable: true
+          description: 'game_cleared only: the game Cleared.'
+        run_id:
+          type: integer
+          nullable: true
+          description: The Run's id; null for Edition events.
+        edition:
+          type: object
+          properties:
+            id:
+              type: integer
+            year:
+              type: integer
+          required:
+          - id
+          - year
+          nullable: true
+          description: 'The Edition: for Edition events and Assignment Runs.'
+      required:
+      - kind
+      - occurred_on
+      - challenge
     ChallengePoolGameProgress:
       type: object
       properties:
@@ -8529,6 +8603,60 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/challenge_activity":
+    get:
+      summary: List recent Challenge Activity
+      tags:
+      - Challenges
+      description: 'Members (the `challenges` Feature). Recent Challenge happenings
+        club-wide, for the dashboard''s Challenge Activity panel: Runs started, games
+        Cleared on a Run, Runs Finished, and Secret Santa sign-ups opening and reveals.
+        Derived from what Runs and Editions store, so a deleted Run or Challenge takes
+        its events with it. Hidden Challenges are left out for everyone, staff included.
+        Newest first: by `occurred_on`, then `occurred_at`, where an event known only
+        by its date sorts as the start of its club day. One page of `per` events.'
+      parameters:
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 10
+          maximum: 50
+        required: false
+      responses:
+        '200':
+          description: events
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeActivityEvent"
+                  meta:
+                    type: object
+                    required:
+                    - per
+                    properties:
+                      per:
+                        type: integer
+        '404':
+          description: the caller cannot use the `challenges` Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/challenges/{challenge_id}/editions":
     parameters:
     - name: challenge_id
