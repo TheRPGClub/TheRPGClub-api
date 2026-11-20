@@ -3,8 +3,8 @@
 require "rails_helper"
 
 # Behavior specs for the now-playing endpoints: the per-user and game-scoped
-# lists are open to any authenticated principal, the cross-member index is
-# service/admin-only, and create/update/destroy are gated to the owner (or the
+# lists and the cross-member index are open to any authenticated principal
+# (the index feeds the dashboard's Club Now Playing panel, api#423), and create/update/destroy are gated to the owner (or the
 # service). `sort_order`/`note_updated_at`/`added_at` are server-managed on
 # create; update accepts only `note`, `platform_id` and `sort_order`.
 RSpec.describe "api/v1/now_playing behavior", type: :request do
@@ -213,10 +213,23 @@ RSpec.describe "api/v1/now_playing behavior", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
-    it "forbids a regular user" do
-      get "/api/v1/now_playing", headers: auth_headers_for(other_user)
+    it "lets any signed-in member list the club's entries, newest first, honouring per" do
+      create(:now_playing_entry, user: owner, added_at: 3.days.ago)
+      newest = create(:now_playing_entry, user: owner, added_at: 1.hour.ago)
+      middle = create(:now_playing_entry, user: create(:user), added_at: 1.day.ago)
+      create(:now_playing_entry, user: create(:user, server_left_at: 1.day.ago), added_at: 1.minute.ago)
 
-      expect(response).to have_http_status(:forbidden)
+      get "/api/v1/now_playing", params: { per: 2 }, headers: auth_headers_for(other_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").map { |e| e.fetch("entry_id") }).to eq([ newest.entry_id, middle.entry_id ])
+      expect(json.fetch("meta")).to include("per" => 2, "count" => 3)
+    end
+
+    it "requires authentication" do
+      get "/api/v1/now_playing"
+
+      expect(response).to have_http_status(:unauthorized)
     end
   end
 
