@@ -32,7 +32,7 @@ module Api
         error = platform_ids_error(ids)
         return render(json: { error: error }, status: :unprocessable_content) if error
 
-        user = RpgClubUser.find_or_create_by!(user_id: params[:user_id])
+        user = RpgClubUser.create_or_find_by!(user_id: params[:user_id])
         replace(user, ids.uniq)
 
         render json: { data: document(user.user_id) }
