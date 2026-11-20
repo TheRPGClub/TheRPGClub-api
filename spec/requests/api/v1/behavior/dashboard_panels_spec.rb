@@ -270,38 +270,47 @@ RSpec.describe "api/v1/dashboard_panels behavior", type: :request do
 
     def new_keys(user) = panels_for(user)["catalogue"].select { |panel| panel["new"] }.pluck("key")
 
-    # Birthdays added after launch, the rest at launch.
-    before do
-      later = DashboardPanels.all.map do |panel|
-        panel.key == "birthdays" ? panel.with(added_on: Date.new(2026, 12, 10)) : panel
-      end
-      stub_const("DashboardPanels::BY_KEY", later.index_by(&:key).freeze)
+    # Ships a panel added after launch, as a later deploy would.
+    def ship_later_panel
+      later = DashboardPanels::Panel.new(key: "later", scope: "club", feature: nil)
+      stub_const("DashboardPanels::BY_KEY", DashboardPanels::BY_KEY.merge("later" => later).freeze)
     end
 
-    it "shows nothing as new to a member who never opened edit mode" do
-      travel_to(Time.utc(2026, 12, 20)) do
-        expect(new_keys(member)).to eq([])
-      end
+    it "shows nothing as new at launch, to a member who never opened edit mode" do
+      expect(new_keys(member)).to eq([])
     end
 
-    it "marks panels added after the member last opened edit mode as new" do
-      travel_to(Time.utc(2026, 12, 1)) { seen(member) }
+    it "shows panels added after launch as new to a member who never opened edit mode" do
+      ship_later_panel
 
-      travel_to(Time.utc(2026, 12, 20)) do
-        expect(new_keys(member)).to eq(%w[birthdays])
+      expect(new_keys(member)).to eq(%w[later])
+    end
+
+    it "keeps a later panel new for a customised member whose seen call never landed" do
+      show(member, default)
+      ship_later_panel
+
+      expect(new_keys(member)).to eq(%w[later])
+    end
+
+    it "marks a panel new however long after the member's last edit mode it ships" do
+      travel_to(Time.utc(2026, 12, 20)) { seen(member) }
+      ship_later_panel
+
+      travel_to(Time.utc(2026, 12, 21)) do
+        expect(new_keys(member)).to eq(%w[later])
       end
     end
 
     it "clears them once the member opens edit mode again" do
-      travel_to(Time.utc(2026, 12, 1)) { seen(member) }
+      seen(member)
+      ship_later_panel
 
-      travel_to(Time.utc(2026, 12, 20)) do
-        seen(member)
+      seen(member)
 
-        expect(response).to have_http_status(:ok)
-        expect(json.dig("data", "catalogue").select { |panel| panel["new"] }).to eq([])
-        expect(new_keys(member)).to eq([])
-      end
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "catalogue").select { |panel| panel["new"] }).to eq([])
+      expect(new_keys(member)).to eq([])
     end
   end
 end

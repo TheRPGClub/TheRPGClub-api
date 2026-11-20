@@ -72,21 +72,21 @@ module DashboardPanels
       @keys = nil
     end
 
-    # Marks every panel as seen (the member opened edit mode).
+    # Marks every panel on the site as seen (the member opened edit mode).
     def seen!
       @user ||= RpgClubUser.create_or_find_by!(user_id: @user_id)
-      @user.update!(dashboard_panels_seen_at: Time.current)
+      @user.update!(dashboard_panels_seen_keys: DashboardPanels.keys)
     end
 
     private
 
-    # A panel is new when it was added after the member last opened edit
-    # mode. A member who never opened it has nothing new: every panel is.
-    def new?(panel)
-      seen_at = @user&.dashboard_panels_seen_at
-      return false if seen_at.nil?
+    # A panel is new until the member opens edit mode while it is on the site,
+    # however long after it was written it deploys. A member who never opened
+    # edit mode (or whose `seen` call failed) has seen the launch panels only.
+    def new?(panel) = !seen_keys.include?(panel.key)
 
-      panel.added_on.in_time_zone("UTC") > seen_at
+    def seen_keys
+      @user&.dashboard_panels_seen_keys || DashboardPanels::LAUNCH_KEYS
     end
 
     # The member's row, locked for this transaction (created on their first

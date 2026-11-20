@@ -113,9 +113,10 @@ RSpec.describe 'api/v1/dashboard_panels', type: :request do
 
     post 'Mark the Dashboard Panel catalogue as seen' do
       tags 'Dashboard Panels'
-      description 'Called when the member opens dashboard edit mode. Records the moment, so no panel in the ' \
-                  '`catalogue` is `new` to them until another panel is added to the site. A member who has ' \
-                  'never called it sees nothing as new. Returns the whole document, as GET does.'
+      description 'Called when the member opens dashboard edit mode. Records every panel on the site as seen, ' \
+                  'so no panel in the `catalogue` is `new` to them until another panel is added. A member who ' \
+                  'has never called it has seen the panels the site launched with, so only panels added after ' \
+                  'launch are new to them. Returns the whole document, as GET does.'
       produces 'application/json'
 
       response '200', 'dashboard panels, nothing new' do
