@@ -1571,8 +1571,9 @@ module OpenapiSchemas
                               "completions_mine, backlog_pick, reviews, journals, giveaways, suggestions, codex, " \
                               "birthdays.", example: "news"),
         scope: str(enum: %w[club mine], description: "Whether the panel shows club activity or the member's own."),
-        new: bool.merge(description: "Whether the panel was added after the member last opened dashboard edit " \
-                                     "mode. Never true for a member who has not opened it yet."),
+        new: bool.merge(description: "Whether the panel reached the site since the member last opened dashboard " \
+                                     "edit mode. For a member who never opened it, true only for panels added " \
+                                     "after launch."),
         _required: %w[key scope new]
       ),
 

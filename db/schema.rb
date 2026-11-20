@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_20_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_20_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1185,7 +1185,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_130000) do
     t.boolean "birthday_shared", default: false, null: false, comment: "Whether the member shares their Birthday (the day and month of their Birth Date, never the year). Only the member turns it on; staff can turn it off; removing the Birth Date turns it off."
     t.boolean "pinned_pages_customised", default: false, null: false, comment: "Whether the member saved their own Pinned Pages; false follows the club default."
     t.boolean "dashboard_panels_customised", default: false, null: false, comment: "Whether the member saved their own Dashboard Panels; false follows the club default."
-    t.datetime "dashboard_panels_seen_at", comment: "When the member last opened dashboard edit mode; panels added after it are new to them."
+    t.string "dashboard_panels_seen_keys", comment: "Dashboard Panel keys the member has seen in edit mode; NULL until they first open it.", array: true
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
     t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end
