@@ -416,6 +416,9 @@ module OpenapiSchemas
         final_playtime_hrs: num(nullable: true), created_at: ts,
         game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
+      # CompletionMemberEntryResource (CompletionEntry + user), the club-wide
+      # feed (CompletionsController#recent).
+      CompletionMemberEntry: extends("CompletionEntry", user: ref("UserSummary")),
       # CommonCompletionEntryResource (CompletionsController#common): a game both
       # members completed. `latest_shared_date` is the latest `completed_at`
       # across both members (null when every entry is undated); each side holds
@@ -552,6 +555,9 @@ module OpenapiSchemas
         facets: ref("ReviewFacets", nullable: true), created_at: ts,
         game: ref("GameSummary")
       ),
+      # ReviewMemberEntryResource (ReviewEntry + user), the club-wide feed
+      # (ReviewsController#recent).
+      ReviewMemberEntry: extends("ReviewEntry", user: ref("UserSummary")),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
       JournalEntryGame: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, entry_title: str(nullable: true),
