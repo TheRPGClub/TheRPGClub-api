@@ -14,7 +14,10 @@ RSpec.describe 'api/v1/upcoming_releases', type: :request do
                   'Without `month` the window runs from today (UTC calendar day) forward: a `day` one counts ' \
                   'on and after its date, `month`/`quarter`/`year` until their whole period has ended, `tba` ' \
                   'always. Any signed-in member; belongs to the Release Calendar Feature, so a member who ' \
-                  'cannot use it gets 404 `not_found`; the service token is not gated.'
+                  'cannot use it gets 404 `not_found`; the service token is not gated. For a signed-in member, ' \
+                  'Releases on their Hidden Platforms are left out, and so is an Upcoming Release left with ' \
+                  'none (`meta.hidden_platform_ids` lists them), unless `platform_id` or `show_hidden=1` is ' \
+                  'given. The service token is never filtered.'
       produces 'application/json'
       parameter name: :month, in: :query, required: false, schema: { type: :string, pattern: '^\d{4}-\d{2}$', example: '2027-07' },
         description: 'A calendar month, past or future: the Upcoming Releases placed in it (its days, the month itself, a ' \
@@ -32,13 +35,16 @@ RSpec.describe 'api/v1/upcoming_releases', type: :request do
       parameter name: :per_game, in: :query, required: false, schema: { type: :string, enum: %w[next] },
         description: '`next` keeps only each game\'s earliest Upcoming Release (after the other filters). Any other value ' \
                      'is a 422 `invalid_per_game`.'
+      parameter name: :show_hidden, in: :query, required: false, schema: { type: :boolean, default: false },
+        description: '`1` (or `true`) lists the member\'s Hidden Platforms too, for this request only. Without it a ' \
+                     'member\'s Hidden Platforms are left out unless `platform_id` is given.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 100 }, required: false
 
       response '200', 'the Upcoming Releases, in calendar order' do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/UpcomingRelease' } },
-          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+          meta: { '$ref' => '#/components/schemas/UpcomingReleasesMeta' }
         }, required: %w[data meta]
       end
 

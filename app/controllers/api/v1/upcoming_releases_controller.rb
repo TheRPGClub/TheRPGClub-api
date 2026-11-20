@@ -20,17 +20,24 @@ module Api
       # earliest one. Ids are repeated (`platform_id=1&platform_id=2` or
       # `platform_id[]=1&platform_id[]=2`) or comma-separated. A malformed
       # `month`, id or `per_game` is a 422.
+      #
+      # For a signed-in member, Releases on their Hidden Platforms are left out
+      # (ticket api#427), and so is an Upcoming Release left with none, unless
+      # `platform_id` is given or `show_hidden=1`. The service token is never
+      # filtered. `meta.hidden_platform_ids` lists the platforms left out.
       def index
         filters = filter_params
         return if performed?
 
+        hidden = hidden_platform_ids(filters[:platform_ids])
         options = pagy_options(default_per: 50, max_per: 100)
-        count, upcoming_releases = Gamedb::UpcomingReleases.new(today: Time.current.utc.to_date, **filters)
+        count, upcoming_releases = Gamedb::UpcomingReleases
+          .new(today: Time.current.utc.to_date, hidden_platform_ids: hidden, **filters)
           .page(page: options[:page], limit: options[:limit])
 
         render json: {
           data: UpcomingReleaseResource.new(upcoming_releases).serializable_hash,
-          meta: pagy_meta(Pagy::Offset.new(count: count, **options))
+          meta: pagy_meta(Pagy::Offset.new(count: count, **options)).merge(hidden_platform_ids: hidden)
         }
       end
 
@@ -44,6 +51,15 @@ module Api
         return if performed?
 
         { month: month, platform_ids: platform_ids, game_ids: game_ids, next_per_game: next_per_game }
+      end
+
+      # The caller's Hidden Platforms, sorted; none for the service token, with
+      # an explicit `platform_id`, or with `show_hidden=1`.
+      def hidden_platform_ids(platform_ids)
+        return [] unless current_principal.discord_user?
+        return [] if platform_ids.any? || ActiveModel::Type::Boolean.new.cast(params[:show_hidden])
+
+        MemberHiddenPlatform.platform_ids_for(current_principal.id).sort
       end
 
       def month_param

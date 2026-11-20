@@ -139,6 +139,9 @@ Rails.application.routes.draw do
           put "dashboard_panels", to: "dashboard_panels#update"
           delete "dashboard_panels", to: "dashboard_panels#destroy"
           post "dashboard_panels/seen", to: "dashboard_panels#seen"
+          # Hidden Platforms (ticket api#427): the member's own Release Calendar platforms to leave out.
+          get "hidden_platforms", to: "hidden_platforms#show"
+          put "hidden_platforms", to: "hidden_platforms#update"
           # Challenges (ticket #380): the member's Birth Date.
           get "birth_date", to: "birth_dates#show"
           put "birth_date", to: "birth_dates#update"
