@@ -518,6 +518,9 @@ Rails.application.routes.draw do
       get    "challenge_editions/:id/santa",      to: "challenge_editions#santa"
       put    "challenge_editions/:id/santa/pick", to: "challenge_editions#pick"
       put    "challenge_editions/:id/signup_post", to: "challenge_editions#signup_post"
+      # Challenge Activity (spec api#421, ticket api#424): the club-wide feed
+      # of recent Challenge happenings for the dashboard panel.
+      get    "challenge_activity",                to: "challenge_activity#index"
     end
   end
 end
