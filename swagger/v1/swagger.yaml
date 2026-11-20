@@ -5138,6 +5138,56 @@ components:
       - key
       - name
       - position
+    HiddenPlatform:
+      type: object
+      properties:
+        platform_id:
+          type: integer
+        platform_name:
+          type: string
+          example: PlayStation 5
+        platform_abbreviation:
+          type: string
+          nullable: true
+          example: PS5
+      required:
+      - platform_id
+      - platform_name
+      - platform_abbreviation
+    HiddenPlatforms:
+      type: object
+      properties:
+        user_id:
+          type: string
+        platform_ids:
+          type: array
+          items:
+            type: integer
+          description: The member's Hidden Platform ids, in platform name order.
+        platforms:
+          type: array
+          items:
+            "$ref": "#/components/schemas/HiddenPlatform"
+          description: The same platforms with their names, in platform name order.
+      required:
+      - user_id
+      - platform_ids
+      - platforms
+    UpcomingReleasesMeta:
+      allOf:
+      - "$ref": "#/components/schemas/PaginationMeta"
+      - type: object
+        properties:
+          hidden_platform_ids:
+            type: array
+            items:
+              type: integer
+            description: 'The signed-in member''s Hidden Platforms left out of this
+              result, sorted. Empty when nothing was left out: the member hides nothing,
+              `platform_id` or `show_hidden=1` was given, or the caller is the service
+              token.'
+        required:
+        - hidden_platform_ids
     NewsCategoryPreference:
       allOf:
       - "$ref": "#/components/schemas/NewsCategory"
@@ -19487,6 +19537,128 @@ paths:
                     example: true
                 required:
                 - ok
+  "/api/v1/users/{user_id}/hidden_platforms":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's Hidden Platforms
+      tags:
+      - Release Calendar
+      description: The platforms the member leaves out of their own Release Calendar
+        and Upcoming Releases panel (`GET /upcoming_releases`), in platform name order.
+        Empty until they hide one. Only the member themself may read it; another member,
+        staff and the bot's service token get 403. Belongs to the Release Calendar
+        Feature, so a member who cannot use it gets 404.
+      responses:
+        '200':
+          description: hidden platforms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/HiddenPlatforms"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the Release Calendar Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Replace a member's Hidden Platforms
+      tags:
+      - Release Calendar
+      description: 'Replaces the member''s whole set with `platform_ids`: hiding and
+        showing a platform both send the whole set, and an empty list clears it. An
+        id sent twice counts once. An unknown platform id, or anything but a list
+        of positive integer ids, returns 422 and changes nothing; its `error` says
+        why in a sentence the website shows the member. Returns the whole document,
+        as GET does.'
+      parameters: []
+      responses:
+        '200':
+          description: saved hidden platforms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/HiddenPlatforms"
+                required:
+                - data
+        '422':
+          description: not a list of platform ids, or an unknown platform
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the Release Calendar Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    platform_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: GameDB platform ids to hide. May be empty.
+                      example:
+                      - 6
+                      - 48
+                  required:
+                  - platform_ids
+              required:
+              - data
+        required: true
   "/api/v1/igdb/search":
     get:
       summary: Search IGDB for games
@@ -30717,7 +30889,10 @@ paths:
         counts on and after its date, `month`/`quarter`/`year` until their whole period
         has ended, `tba` always. Any signed-in member; belongs to the Release Calendar
         Feature, so a member who cannot use it gets 404 `not_found`; the service token
-        is not gated.'
+        is not gated. For a signed-in member, Releases on their Hidden Platforms are
+        left out, and so is an Upcoming Release left with none (`meta.hidden_platform_ids`
+        lists them), unless `platform_id` or `show_hidden=1` is given. The service
+        token is never filtered.'
       parameters:
       - name: month
         in: query
@@ -30763,6 +30938,15 @@ paths:
           - next
         description: "`next` keeps only each game's earliest Upcoming Release (after
           the other filters). Any other value is a 422 `invalid_per_game`."
+      - name: show_hidden
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+        description: "`1` (or `true`) lists the member's Hidden Platforms too, for
+          this request only. Without it a member's Hidden Platforms are left out unless
+          `platform_id` is given."
       - name: page
         in: query
         schema:
@@ -30790,7 +30974,7 @@ paths:
                     items:
                       "$ref": "#/components/schemas/UpcomingRelease"
                   meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
+                    "$ref": "#/components/schemas/UpcomingReleasesMeta"
                 required:
                 - data
                 - meta
