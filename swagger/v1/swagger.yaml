@@ -1238,6 +1238,13 @@ components:
       - gamedb_game_id
       - completion_type
       - created_at
+    CompletionMemberEntry:
+      allOf:
+      - "$ref": "#/components/schemas/CompletionEntry"
+      - type: object
+        properties:
+          user:
+            "$ref": "#/components/schemas/UserSummary"
     CommonCompletionSide:
       type: object
       properties:
@@ -1679,6 +1686,13 @@ components:
       - gamedb_game_id
       - rating
       - created_at
+    ReviewMemberEntry:
+      allOf:
+      - "$ref": "#/components/schemas/ReviewEntry"
+      - type: object
+        properties:
+          user:
+            "$ref": "#/components/schemas/UserSummary"
     JournalEntryGame:
       type: object
       properties:
@@ -14966,6 +14980,57 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/completions/recent":
+    get:
+      summary: Club recent completions
+      tags:
+      - Completions
+      description: Every member's Game Completions, newest first, for the club Recent
+        Completions Dashboard Panel. Open to any authenticated caller who can use
+        Game Completions. Newest is by `completed_at` (undated entries last), then
+        by when the entry was logged. Members who have left the server (`server_left_at`
+        set) are left out.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: recent completions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CompletionMemberEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: Game Completions is not available to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/completions/{id}":
     parameters:
     - name: id
@@ -25736,6 +25801,56 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/reviews":
+    get:
+      summary: Club latest reviews
+      tags:
+      - Reviews
+      description: Every member's shared reviews, newest first (by `created_at`),
+        for the Latest Reviews Dashboard Panel. Open to any authenticated caller who
+        can use Reviews. Unshared reviews are never listed here, whoever asks, and
+        members who have left the server (`server_left_at` set) are left out.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: latest reviews
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ReviewMemberEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: Reviews is not available to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/reviews/{id}":
     parameters:
     - name: id

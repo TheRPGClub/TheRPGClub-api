@@ -249,9 +249,15 @@ Rails.application.routes.draw do
       post "steam_app_gamedb_maps", to: "steam_app_gamedb_maps#create"
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
-        collection { get "leaderboard" }
+        collection do
+          get "leaderboard"
+          # The club-wide feed behind the `completions_club` Dashboard Panel.
+          get "recent"
+        end
       end
       resources :favorites, only: %i[show update destroy]
+      # The club-wide feed behind the `reviews` Dashboard Panel.
+      get "reviews", to: "reviews#recent"
       resources :reviews, only: %i[show update destroy]
       resources :backlog, only: %i[show update destroy]
       # Cross-member now-playing (bot parity, #104). `index` is the service/admin
