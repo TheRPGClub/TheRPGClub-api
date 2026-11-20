@@ -38,10 +38,13 @@ module Api
       end
 
       # POST /api/v1/users/:user_id/dashboard_panels/seen
-      # The member opened edit mode: nothing in the catalogue is new to them
-      # any more. Returns the document.
+      # Optional body: { "data": { "panels": ["<panel key>", ...] } }
+      # The member opened edit mode: the panels listed (every panel without a
+      # body) are no longer new to them. Returns the document.
       def seen
-        list.seen!
+        error = list.seen!(params.key?(:data) ? request_data["panels"] : nil)
+        return render(json: { error: error }, status: :unprocessable_content) if error
+
         render json: { data: document }
       end
 

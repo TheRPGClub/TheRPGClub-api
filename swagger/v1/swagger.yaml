@@ -5072,8 +5072,9 @@ components:
           description: Whether the panel shows club activity or the member's own.
         new:
           type: boolean
-          description: Whether the panel was added after the member last opened dashboard
-            edit mode. Never true for a member who has not opened it yet.
+          description: Whether the panel reached the site since the member last opened
+            dashboard edit mode. For a member who never opened it, true only for panels
+            added after launch.
       required:
       - key
       - scope
@@ -15574,13 +15575,17 @@ paths:
       summary: Mark the Dashboard Panel catalogue as seen
       tags:
       - Dashboard Panels
-      description: Called when the member opens dashboard edit mode. Records the moment,
-        so no panel in the `catalogue` is `new` to them until another panel is added
-        to the site. A member who has never called it sees nothing as new. Returns
-        the whole document, as GET does.
+      description: Called when the member opens dashboard edit mode. Records the panels
+        the website listed there (`data.panels`) as seen, or every panel on the site
+        without a body, so they are no longer `new` to them. A panel the website did
+        not list (the API knows it first) stays new. Unknown keys are ignored; `panels`
+        that is not a list is a 422. A member who has never called it has seen the
+        panels the site launched with, so only panels added after launch are new to
+        them. Returns the whole document, as GET does.
+      parameters: []
       responses:
         '200':
-          description: dashboard panels, nothing new
+          description: dashboard panels, the listed ones no longer new
           content:
             application/json:
               schema:
@@ -15590,6 +15595,12 @@ paths:
                     "$ref": "#/components/schemas/DashboardPanels"
                 required:
                 - data
+        '422':
+          description: "`panels` is not a list"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
           description: 'forbidden: caller is not the member'
           content:
@@ -15602,6 +15613,25 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    panels:
+                      type: array
+                      items:
+                        type: string
+                      description: Dashboard Panel keys the member was shown in edit
+                        mode, shown or not.
+                      example:
+                      - news
+                      - reviews
+                      - birthdays
   "/api/v1/dashboard":
     get:
       summary: Front-page dashboard
@@ -31175,8 +31205,8 @@ paths:
         Feature, so a member who cannot use it gets 404 `not_found`; the service token
         is not gated. For a signed-in member, Releases on their Hidden Platforms are
         left out, and so is an Upcoming Release left with none (`meta.hidden_platform_ids`
-        lists them), unless `platform_id` or `show_hidden=1` is given. The service
-        token is never filtered.'
+        lists them), unless `platform_id`, `game_id` or `show_hidden=1` is given.
+        The service token is never filtered.'
       parameters:
       - name: month
         in: query
@@ -31230,7 +31260,7 @@ paths:
           default: false
         description: "`1` (or `true`) lists the member's Hidden Platforms too, for
           this request only. Without it a member's Hidden Platforms are left out unless
-          `platform_id` is given."
+          `platform_id` or `game_id` is given."
       - name: page
         in: query
         schema:

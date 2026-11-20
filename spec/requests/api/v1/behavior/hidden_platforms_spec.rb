@@ -177,6 +177,20 @@ RSpec.describe "api/v1/hidden_platforms behavior", type: :request do
       ])
     end
 
+    it "counts and pages only what is left" do
+      release(create(:game, title: "Switch Only"), "2027-04-04", switch)
+
+      expect(calendar(per: 1).map(&:first)).to eq([ "Both" ])
+      expect(json.dig("meta", "count")).to eq(2)
+      expect(json.dig("meta", "pages")).to eq(2)
+      expect(calendar(per: 1, page: 2).map(&:first)).to eq([ "Switch Only" ])
+    end
+
+    it "is not filtered for one game's releases, as a game page asks" do
+      expect(calendar(game_id: ps5_only.game_id).map(&:first)).to eq([ "PS5 Only" ])
+      expect(json.dig("meta", "hidden_platform_ids")).to eq([])
+    end
+
     it "lists everything with show_hidden=1" do
       expect(calendar(show_hidden: "1")).to eq([
         [ "Both", "2027-04-02", [ switch.platform_id, ps5.platform_id ] ],

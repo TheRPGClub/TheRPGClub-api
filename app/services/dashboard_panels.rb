@@ -6,7 +6,8 @@
 #
 # The API owns this list. Each panel has a stable key, a scope (club activity
 # or the member's own), the Feature it needs (Features::Access#shown?; none
-# means everyone) and the date it was added, which drives the "New" marker.
+# means everyone). A panel is "New" to a member until they open edit mode with
+# it on the site (DashboardPanels::List).
 # Labels, icons, layout and items are the website's.
 #
 # A member with no saved list follows DEFAULT. Who sees which panel is decided
@@ -16,13 +17,10 @@ module DashboardPanels
   DEFAULT = %w[news now_playing_club releases achievements_club challenges_club].freeze
 
   # `scope` is "club" or "mine"; `feature` the Feature the panel needs, nil
-  # for none; `added_on` the day it was added to the site.
-  Panel = Data.define(:key, :scope, :feature, :added_on)
+  # for none.
+  Panel = Data.define(:key, :scope, :feature)
 
-  LAUNCH = Date.new(2026, 11, 20)
-
-  def self.panel(key, scope, feature, added_on: LAUNCH) =
-    Panel.new(key: key, scope: scope, feature: feature, added_on: added_on)
+  def self.panel(key, scope, feature) = Panel.new(key: key, scope: scope, feature: feature)
 
   PANELS = [
     panel("news", "club", "news_hub"),
@@ -45,6 +43,15 @@ module DashboardPanels
   ].freeze
 
   BY_KEY = PANELS.index_by(&:key).freeze
+
+  # The panels the site launched with. A member who never opened edit mode has
+  # seen these and nothing else, so none is New at launch and every panel
+  # added later is. Never add a key here: a later panel stays out so it is New.
+  LAUNCH_KEYS = %w[
+    news now_playing_club releases achievements_club challenges_club now_playing_mine achievements_mine
+    challenge_runs_mine completions_club completions_mine backlog_pick reviews journals giveaways
+    suggestions codex birthdays
+  ].freeze
 
   def self.all = BY_KEY.values
 

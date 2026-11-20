@@ -23,13 +23,14 @@ module Api
       #
       # For a signed-in member, Releases on their Hidden Platforms are left out
       # (ticket api#427), and so is an Upcoming Release left with none, unless
-      # `platform_id` is given or `show_hidden=1`. The service token is never
-      # filtered. `meta.hidden_platform_ids` lists the platforms left out.
+      # `platform_id` or `game_id` is given, or `show_hidden=1`. The service
+      # token is never filtered. `meta.hidden_platform_ids` lists the platforms
+      # left out.
       def index
         filters = filter_params
         return if performed?
 
-        hidden = hidden_platform_ids(filters[:platform_ids])
+        hidden = hidden_platform_ids(filters)
         options = pagy_options(default_per: 50, max_per: 100)
         count, upcoming_releases = Gamedb::UpcomingReleases
           .new(today: Time.current.utc.to_date, hidden_platform_ids: hidden, **filters)
@@ -54,10 +55,13 @@ module Api
       end
 
       # The caller's Hidden Platforms, sorted; none for the service token, with
-      # an explicit `platform_id`, or with `show_hidden=1`.
-      def hidden_platform_ids(platform_ids)
+      # an explicit `platform_id` or `game_id`, or with `show_hidden=1`. They
+      # shape the Release Calendar and the Upcoming Releases panel only, so a
+      # read of chosen games (a game page) lists every platform.
+      def hidden_platform_ids(filters)
         return [] unless current_principal.discord_user?
-        return [] if platform_ids.any? || ActiveModel::Type::Boolean.new.cast(params[:show_hidden])
+        return [] if filters[:platform_ids].any? || filters[:game_ids].any?
+        return [] if ActiveModel::Type::Boolean.new.cast(params[:show_hidden])
 
         MemberHiddenPlatform.platform_ids_for(current_principal.id).sort
       end
