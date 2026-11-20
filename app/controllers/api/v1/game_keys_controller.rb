@@ -52,14 +52,11 @@ module Api
       # than the linked game so unlinked keys are still listed; the linked game
       # (with images) is preloaded so the embedded card resolves without an N+1.
       def index
-        sort = params[:sort].presence || "title"
-        unless SORTS.key?(sort)
-          return render json: { error: "invalid_sort", message: "sort must be one of: #{SORTS.keys.join(', ')}" },
-            status: :unprocessable_content
-        end
+        order = sort_param(SORTS, default: "title")
+        return if performed?
 
         render_collection(RpgClubGameKey.available.preload(game: :images), resource: GameKeyResource,
-          default_order: SORTS.fetch(sort))
+          default_order: order)
       end
 
       # GET /api/v1/users/:user_id/game_keys
