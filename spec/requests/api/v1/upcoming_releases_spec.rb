@@ -16,8 +16,8 @@ RSpec.describe 'api/v1/upcoming_releases', type: :request do
                   'always. Any signed-in member; belongs to the Release Calendar Feature, so a member who ' \
                   'cannot use it gets 404 `not_found`; the service token is not gated. For a signed-in member, ' \
                   'Releases on their Hidden Platforms are left out, and so is an Upcoming Release left with ' \
-                  'none (`meta.hidden_platform_ids` lists them), unless `platform_id` or `show_hidden=1` is ' \
-                  'given. The service token is never filtered.'
+                  'none (`meta.hidden_platform_ids` lists them), unless `platform_id`, `game_id` or ' \
+                  '`show_hidden=1` is given. The service token is never filtered.'
       produces 'application/json'
       parameter name: :month, in: :query, required: false, schema: { type: :string, pattern: '^\d{4}-\d{2}$', example: '2027-07' },
         description: 'A calendar month, past or future: the Upcoming Releases placed in it (its days, the month itself, a ' \
@@ -37,7 +37,7 @@ RSpec.describe 'api/v1/upcoming_releases', type: :request do
                      'is a 422 `invalid_per_game`.'
       parameter name: :show_hidden, in: :query, required: false, schema: { type: :boolean, default: false },
         description: '`1` (or `true`) lists the member\'s Hidden Platforms too, for this request only. Without it a ' \
-                     'member\'s Hidden Platforms are left out unless `platform_id` is given.'
+                     'member\'s Hidden Platforms are left out unless `platform_id` or `game_id` is given.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 100 }, required: false
 

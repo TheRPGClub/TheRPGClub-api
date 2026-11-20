@@ -263,8 +263,9 @@ Rails.application.routes.draw do
       get "reviews", to: "reviews#recent"
       resources :reviews, only: %i[show update destroy]
       resources :backlog, only: %i[show update destroy]
-      # Cross-member now-playing (bot parity, #104). `index` is the service/admin
-      # all-members list with `game_ids[]` / `q` filters; `:id` is the entry_id
+      # Cross-member now-playing (bot parity, #104). `index` is the all-members
+      # list with `game_ids[]` / `q` filters, open to any signed-in member (the
+      # club Now Playing Dashboard Panel, api#423); `:id` is the entry_id
       # for the single-entry read, note/platform/sort update and delete. The
       # per-user list + create live under the `users` member block above.
       resources :now_playing, only: %i[index show update destroy]
