@@ -604,7 +604,11 @@ module OpenapiSchemas
                        "Null otherwise, or when GitHub cannot say."
         ),
         upvote_count: int,
-        viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service.")
+        viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service."),
+        last_activity_at: ts.merge(
+          description: "The latest activity: the newest of its last change (submitted, reviewed or " \
+                       "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
+        )
       ),
       # SuggestionsController#approve / #reject meta: the queued outcome job,
       # so the website can poll GET /api/v1/bot_jobs/{id}.
