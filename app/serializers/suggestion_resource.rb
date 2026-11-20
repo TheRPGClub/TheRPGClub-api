@@ -18,6 +18,12 @@ class SuggestionResource
     suggestion.attributes["viewer_upvoted"] == true
   end
 
+  # The newest of the row's last change and its newest upvote (see
+  # RpgClubSuggestion.with_upvotes); `sort=recent` orders by it.
+  attribute :last_activity_at do |suggestion|
+    suggestion.attributes["last_activity_at"]
+  end
+
   # "open" or "closed" for an approved Suggestion's issue; nil otherwise, or
   # when GitHub cannot say.
   attribute :github_issue_state do |suggestion|
