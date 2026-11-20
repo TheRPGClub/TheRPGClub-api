@@ -21,6 +21,20 @@ module Api
         render_collection(scope, resource: ReviewEntryResource, default_order: { created_at: :desc })
       end
 
+      # GET /api/v1/reviews
+      #
+      # Every member's shared reviews, newest first, for the Latest Reviews
+      # Dashboard Panel. Unshared reviews are never listed here, whoever asks
+      # (their author reads them on their own list). Members who have left the
+      # server are left out.
+      def recent
+        scope = UserGameReview.where(is_shared: true)
+          .joins(:user).where(rpg_club_users: { server_left_at: nil })
+          .preload(:user, game: :images)
+        render_collection(scope, resource: ReviewMemberEntryResource,
+          default_order: { created_at: :desc, review_id: :desc })
+      end
+
       def game_index
         scope = UserGameReview.where(gamedb_game_id: params[:id]).includes(:user)
         render_collection(scope, resource: ReviewUserEntryResource,

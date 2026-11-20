@@ -218,6 +218,34 @@ RSpec.describe 'api/v1/completions', type: :request do
     end
   end
 
+  path '/api/v1/completions/recent' do
+    get 'Club recent completions' do
+      tags 'Completions'
+      description 'Every member\'s Game Completions, newest first, for the club Recent Completions ' \
+                  'Dashboard Panel. Open to any authenticated caller who can use Game Completions. ' \
+                  'Newest is by `completed_at` (undated entries last), then by when the entry was ' \
+                  'logged. Members who have left the server (`server_left_at` set) are left out.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'recent completions' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/CompletionMemberEntry' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'Game Completions is not available to the caller' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/completions/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'UserGameCompletion completion_id.'
 
