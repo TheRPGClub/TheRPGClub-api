@@ -100,6 +100,57 @@ RSpec.describe "api/v1/suggestions behavior", type: :request do
       expect(json.fetch("meta")).to include("count" => 2, "pages" => 2)
     end
 
+    describe "sort=recent" do
+      let(:viewer) { create(:user) }
+
+      # Created `created` ago and last changed `changed` ago (default: never since).
+      def suggestion_at(created, changed = created, **attrs)
+        create(:suggestion, **attrs).tap do |s|
+          s.update_columns(created_at: created.ago, updated_at: changed.ago)
+        end
+      end
+
+      it "lists the latest activity first: a new Suggestion, a review or an upvote" do
+        quiet = suggestion_at(5.days)
+        created = suggestion_at(2.days)
+        reviewed = suggestion_at(6.days, 1.day, status: "rejected", rejection_reason: "No")
+        upvoted = suggestion_at(7.days)
+        create(:suggestion_upvote, suggestion: upvoted).update_column(:created_at, 3.hours.ago)
+        popular = suggestion_at(4.days)
+        3.times { create(:suggestion_upvote, suggestion: popular).update_column(:created_at, 4.days.ago) }
+
+        get "/api/v1/suggestions", params: { sort: "recent", per: 500 }, headers: auth_headers_for(viewer)
+
+        expect(response).to have_http_status(:ok)
+        rows = json.fetch("data")
+        expect(rows.map { |r| r.fetch("suggestion_id") })
+          .to eq([ upvoted, reviewed, created, popular, quiet ].map(&:suggestion_id))
+        expect(Time.zone.parse(rows.first.fetch("last_activity_at"))).to be_within(1.second).of(3.hours.ago)
+        expect(Time.zone.parse(rows.second.fetch("last_activity_at"))).to be_within(1.second).of(1.day.ago)
+      end
+
+      it "combines with the status filter and pages" do
+        older = suggestion_at(2.days)
+        newer = suggestion_at(1.day)
+        suggestion_at(1.hour, status: "withdrawn")
+
+        get "/api/v1/suggestions", params: { sort: "recent", status: "pending", per: 1 },
+          headers: auth_headers_for(viewer)
+
+        expect(json.fetch("data").map { |r| r.fetch("suggestion_id") }).to eq([ newer.suggestion_id ])
+        expect(json.fetch("meta")).to include("count" => 2, "pages" => 2)
+        expect(older.suggestion_id).to be < newer.suggestion_id
+      end
+
+      it "422s with invalid_sort on an unknown sort" do
+        get "/api/v1/suggestions", params: { sort: "bogus" }, headers: auth_headers_for(viewer)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json).to include("error" => "invalid_sort")
+        expect(json.fetch("message")).to include("board", "recent")
+      end
+    end
+
     it "requires authentication" do
       get "/api/v1/suggestions"
 

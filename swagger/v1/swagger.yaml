@@ -1882,6 +1882,12 @@ components:
         viewer_upvoted:
           type: boolean
           description: Whether the signed-in member upvoted it; false for the service.
+        last_activity_at:
+          type: string
+          format: date-time
+          description: 'The latest activity: the newest of its last change (submitted,
+            reviewed or withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent`
+            orders by it.'
       required:
       - suggestion_id
       - title
@@ -1890,6 +1896,7 @@ components:
       - status
       - upvote_count
       - viewer_upvoted
+      - last_activity_at
     SuggestionReviewMeta:
       type: object
       properties:
@@ -16678,12 +16685,25 @@ paths:
       summary: List available game keys
       tags:
       - Game Keys
-      description: The unclaimed keys in the giveaway, ordered by game title (case-insensitive)
-        then key_id. Each key embeds its `game` (name + cover/art/logo) when the title
-        is linked to a GamedbGame, else `game` is null and only `game_title` is set.
+      description: The unclaimed keys in the giveaway. By default (`sort=title`) ordered
+        by game title (case-insensitive) then key_id; `sort=recent` lists the newest
+        donations first (`created_at`, then key_id), for the Open Giveaways Dashboard
+        Panel. Each key embeds its `game` (name + cover/art/logo) when the title is
+        linked to a GamedbGame, else `game` is null and only `game_title` is set.
         The secret `key_value` is never included here — it is revealed only to the
         claimer on a successful claim.
       parameters:
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - title
+          - recent
+          default: title
+        required: false
+        description: "`title`: case-insensitive game title, then key_id. `recent`:
+          newest donation first."
       - name: page
         in: query
         schema:
@@ -16728,6 +16748,12 @@ paths:
                       "$ref": "#/components/schemas/GameKey"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: unknown sort (`invalid_sort`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -29557,9 +29583,11 @@ paths:
       summary: List suggestions
       tags:
       - Suggestions
-      description: Open to any authenticated caller. Most upvoted first, then newest.
-        Each row carries `upvote_count` and `viewer_upvoted` (always false for the
-        service).
+      description: Open to any authenticated caller. By default (`sort=board`) most
+        upvoted first, then newest; `sort=recent` lists the latest activity first
+        (`last_activity_at`, then newest suggestion_id), for the Suggestion Board
+        Dashboard Panel. Each row carries `upvote_count`, `viewer_upvoted` (always
+        false for the service) and `last_activity_at`.
       parameters:
       - name: status
         in: query
@@ -29568,6 +29596,17 @@ paths:
         required: false
         description: Comma-separated statuses to include (pending, approved, rejected,
           withdrawn). Absent = every status. The Suggestion Board default is `pending,approved`.
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - board
+          - recent
+          default: board
+        required: false
+        description: "`board`: most upvoted, then newest. `recent`: latest activity
+          first."
       - name: page
         in: query
         schema:
@@ -29614,6 +29653,12 @@ paths:
                     "$ref": "#/components/schemas/PaginationMeta"
         '400':
           description: unknown status
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unknown sort (`invalid_sort`)
           content:
             application/json:
               schema:
