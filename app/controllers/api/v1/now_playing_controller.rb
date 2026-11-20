@@ -7,13 +7,13 @@ module Api
     # are loaded through `UserNowPlaying.with_now_playing_details` so the journal
     # aggregates and derived `linked_thread_id` are populated.
     #
-    # Auth: per-user and game-scoped lists are open to any authenticated caller;
-    # the cross-member `index` is service/admin-only; create/update/destroy are
-    # owner-only (the bot's service token counts as the owner).
+    # Auth: every list is open to any authenticated caller (the cross-member
+    # `index` also feeds the dashboard's Club Now Playing panel, api#423);
+    # create/update/destroy are owner-only (the bot's service token counts as
+    # the owner).
     class NowPlayingController < ApplicationController
       feature :now_playing
 
-      before_action :require_admin_or_service!, only: %i[index]
       before_action :require_owner!, only: %i[create update destroy]
 
       # GET /api/v1/now_playing
@@ -23,7 +23,8 @@ module Api
       # `game_ids[]` filter narrows to entries of any of the given games (the
       # bot's ThreadLinkPromptService check); `q` keeps entries whose game title
       # matches (case-insensitive substring) for the `/now-playing search`
-      # autocomplete. Both serve from the same rich shape.
+      # autocomplete. Both serve from the same rich shape. Newest first, `per`
+      # honoured: the website's Club Now Playing panel asks for the latest few.
       def index
         scope = UserNowPlaying.with_now_playing_details
           .joins(:user)
