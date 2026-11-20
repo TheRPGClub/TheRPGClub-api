@@ -113,15 +113,38 @@ RSpec.describe 'api/v1/dashboard_panels', type: :request do
 
     post 'Mark the Dashboard Panel catalogue as seen' do
       tags 'Dashboard Panels'
-      description 'Called when the member opens dashboard edit mode. Records every panel on the site as seen, ' \
-                  'so no panel in the `catalogue` is `new` to them until another panel is added. A member who ' \
-                  'has never called it has seen the panels the site launched with, so only panels added after ' \
-                  'launch are new to them. Returns the whole document, as GET does.'
+      description 'Called when the member opens dashboard edit mode. Records the panels the website listed ' \
+                  'there (`data.panels`) as seen, or every panel on the site without a body, so they are no ' \
+                  'longer `new` to them. A panel the website did not list (the API knows it first) stays new. ' \
+                  'Unknown keys are ignored; `panels` that is not a list is a 422. A member who has never ' \
+                  'called it has seen the panels the site launched with, so only panels added after launch ' \
+                  'are new to them. Returns the whole document, as GET does.'
+      consumes 'application/json'
       produces 'application/json'
 
-      response '200', 'dashboard panels, nothing new' do
+      parameter name: :body, in: :body, required: false, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              panels: {
+                type: :array, items: { type: :string },
+                description: 'Dashboard Panel keys the member was shown in edit mode, shown or not.',
+                example: %w[news reviews birthdays]
+              }
+            }
+          }
+        }
+      }
+
+      response '200', 'dashboard panels, the listed ones no longer new' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/DashboardPanels' } },
           required: %w[data]
+      end
+
+      response '422', '`panels` is not a list' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '403', 'forbidden: caller is not the member' do
