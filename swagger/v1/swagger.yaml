@@ -23021,10 +23021,12 @@ paths:
       summary: List all members' now-playing entries
       tags:
       - Now Playing
-      description: Service/admin-only. Every active member's now-playing entries (bots
-        and members who have left are excluded), each with its embedded user, game
-        and platform. The optional `game_ids[]` filter narrows to entries of any of
-        the given games; `q` keeps entries whose game title matches (case-insensitive
+      description: Open to any authenticated caller (the bot's service token, or any
+        signed-in member for the dashboard's Club Now Playing panel). Every active
+        member's now-playing entries, newest first (`added_at` descending), `per`
+        honoured (bots and members who have left are excluded), each with its embedded
+        user, game and platform. The optional `game_ids[]` filter narrows to entries
+        of any of the given games; `q` keeps entries whose game title matches (case-insensitive
         substring) for the search autocomplete.
       parameters:
       - name: game_ids[]
@@ -23086,12 +23088,6 @@ paths:
                       "$ref": "#/components/schemas/NowPlayingMemberEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
-        '403':
-          description: forbidden — caller is not service/admin
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
