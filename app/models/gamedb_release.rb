@@ -73,9 +73,19 @@ class GamedbRelease < ApplicationRecord
     [ placed_on ? 0 : 1, placed_on || Date.new(0), PLACEMENT_ORDER.index(date_precision) || PLACEMENT_ORDER.size ]
   end
 
-  # A Release with no date is TBA, whoever wrote it (a Manual Release from POST
-  # /games/:id/releases or an import that knows no date).
-  before_validation { self.date_precision = "tba" if release_date.nil? }
+  # A writer that states no Date Precision gets one from the date: no date is
+  # TBA (a Manual Release sent without a date, or an import that knows no
+  # date), and a TBA Release given a date becomes an exact day. A stated Date
+  # Precision is kept as sent, so a mismatch is a validation error.
+  before_validation do
+    next if date_precision_came_from_user?
+
+    if release_date.nil?
+      self.date_precision = "tba"
+    elsif date_precision_tba?
+      self.date_precision = "day"
+    end
+  end
 
   belongs_to :game,
     class_name: "GamedbGame",
@@ -101,12 +111,21 @@ class GamedbRelease < ApplicationRecord
   validates :format, inclusion: { in: %w[Physical Digital] }, allow_nil: true
   validate :release_date_matches_precision
 
+  # Only `day` Releases are announced, so a Release that is vague or TBA
+  # loses its unsent announcement (pending or skipped; a later exact day
+  # schedules a fresh one). A sent one stays as the game's announcement.
+  def drop_unsent_announcement!
+    announcement.destroy! if announcement && announcement.sent_at.nil?
+  end
+
   private
 
-  # Mirrors the DB's TBA CHECK, and keeps a vague date on the first day of its
-  # period so the Release Calendar can place it.
+  # Mirrors the DB's TBA CHECK (only TBA has no date), and keeps a vague date
+  # on the first day of its period so the Release Calendar can place it.
   def release_date_matches_precision
-    return if release_date.nil? || !date_precision.in?(DATE_PRECISIONS)
+    return unless date_precision.in?(DATE_PRECISIONS)
+    return if release_date.nil? && date_precision_tba?
+    return errors.add(:release_date, "is required unless the Release is TBA") if release_date.nil?
     return errors.add(:release_date, "must be empty for a TBA Release") if date_precision_tba?
     return if release_date == period.begin
 

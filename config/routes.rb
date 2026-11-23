@@ -300,6 +300,8 @@ Rails.application.routes.draw do
       # Service-only "due" poll feed (#109). Declared before the resource so the
       # fixed `due` sub-path is never captured by the `:id` show route.
       get "release_announcements/due", to: "release_announcements#due"
+      # Manual Release edit/delete (api#439); create is POST /games/:id/releases.
+      resources :releases, only: %i[update destroy]
       resources :release_announcements, only: %i[show create update destroy] do
         member { post "skip" }
       end
