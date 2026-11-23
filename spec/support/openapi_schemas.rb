@@ -593,6 +593,7 @@ module OpenapiSchemas
         rating: int.merge(description: "The current score: the latest Published Revision's, else the " \
                                      "Review's own (spec api#430)."),
         original_rating: int.merge(description: "The original take's score, whatever Revisions followed."),
+        revised: bool.merge(description: "Whether it has Published Revisions (a newer take than the first)."),
         title: str(nullable: true, maxLength: 120), body: json,
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
@@ -606,6 +607,7 @@ module OpenapiSchemas
         rating: int.merge(description: "The current score: the latest Published Revision's, else the " \
                                      "Review's own (spec api#430)."),
         original_rating: int.merge(description: "The original take's score, whatever Revisions followed."),
+        revised: bool.merge(description: "Whether it has Published Revisions (a newer take than the first)."),
         title: str(nullable: true, maxLength: 120), body: json,
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \

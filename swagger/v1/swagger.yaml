@@ -1744,6 +1744,9 @@ components:
         original_rating:
           type: integer
           description: The original take's score, whatever Revisions followed.
+        revised:
+          type: boolean
+          description: Whether it has Published Revisions (a newer take than the first).
         title:
           type: string
           nullable: true
@@ -1776,6 +1779,7 @@ components:
       - gamedb_game_id
       - rating
       - original_rating
+      - revised
       - created_at
       - published_at
     ReviewEntry:
@@ -1794,6 +1798,9 @@ components:
         original_rating:
           type: integer
           description: The original take's score, whatever Revisions followed.
+        revised:
+          type: boolean
+          description: Whether it has Published Revisions (a newer take than the first).
         title:
           type: string
           nullable: true
@@ -1826,6 +1833,7 @@ components:
       - gamedb_game_id
       - rating
       - original_rating
+      - revised
       - created_at
       - published_at
     ReviewFeedEntry:

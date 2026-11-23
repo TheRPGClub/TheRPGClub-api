@@ -184,13 +184,21 @@ RSpec.describe "api/v1 review revisions behavior", type: :request do
       viewer = auth_headers_for(create(:user))
 
       get "/api/v1/users/#{owner.user_id}/reviews", headers: viewer
-      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72)
+      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72, "revised" => true)
 
       get "/api/v1/games/#{review.gamedb_game_id}/reviews", headers: viewer
-      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72)
+      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72, "revised" => true)
 
       get "/api/v1/users/#{owner.user_id}", headers: viewer
-      expect(json.dig("data", "reviews", 0)).to include("rating" => 85, "original_rating" => 72)
+      expect(json.dig("data", "reviews", 0)).to include("rating" => 85, "original_rating" => 72, "revised" => true)
+    end
+
+    it "marks a Review never revisited as not revised in the lists" do
+      review
+
+      get "/api/v1/games/#{review.gamedb_game_id}/reviews", headers: auth_headers_for(owner)
+
+      expect(json.dig("data", 0)).to include("revised" => false)
     end
 
     describe "editing the first take of a revisited Review" do

@@ -6,6 +6,7 @@
 #
 # The web frontend reads `review_id`, `user_id`, `gamedb_game_id`, `rating`
 # (the current score once Revisions exist, spec api#430), `original_rating`,
+# `revised` (whether it has Published Revisions),
 # `title`, `body`, `facets`, `created_at`, `published_at` (the date a
 # Review is shown with once Drafts exist, spec api#430) and `edited_at` (the
 # "Edited *date*" by the byline, ADR 0013). `facets` is here rather than in
@@ -22,6 +23,9 @@ module ReviewFields
     # own) and the original take's. Preload `latest_revision`.
     attribute(:rating, &:current_rating)
     attribute(:original_rating, &:rating)
+    # Whether it has Published Revisions, so a list can say a newer take
+    # exists (the game page's small editor edits only the first).
+    attribute(:revised) { |review| !review.latest_revision.nil? }
     attributes :title, :body, :facets, :created_at, :published_at, :edited_at
   end
 end
