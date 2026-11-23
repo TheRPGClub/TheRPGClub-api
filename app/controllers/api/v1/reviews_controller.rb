@@ -23,15 +23,19 @@ module Api
 
       # GET /api/v1/reviews
       #
-      # Every member's Published Reviews, newest published first, for the
-      # Latest Reviews Dashboard Panel. Drafts are never listed here, whoever
-      # asks. Members who have left the server are left out.
+      # The Review Feed, also behind the Latest Reviews Dashboard Panel:
+      # every member's Published Reviews, newest published first. Drafts are
+      # never listed here, whoever asks. Members who have left the server are
+      # left out. `written=1` keeps only the Reviews with text, dropping the
+      # score-only quick takes.
       def recent
-        scope = UserGameReview.published
+        scope = UserGameReview.published.with_written
           .joins(:user).where(rpg_club_users: { server_left_at: nil })
           .preload(:user, game: :images)
-        render_collection(scope, resource: ReviewMemberEntryResource,
-          default_order: { published_at: :desc, review_id: :desc })
+        scope = scope.written if ActiveModel::Type::Boolean.new.cast(params[:written])
+        render_collection(scope, resource: ReviewFeedEntryResource,
+          default_order: { published_at: :desc, review_id: :desc },
+          prepare: ->(page) { GameTrackSummaryResource.params_for(page.map(&:gamedb_game_id)) })
       end
 
       def game_index

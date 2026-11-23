@@ -840,4 +840,78 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(UserGameReview.exists?(review.review_id)).to be(true)
     end
   end
+
+  # The Review Feed (spec api#430, ticket api#432) extends the Latest Reviews
+  # Dashboard Panel's endpoint: same list, plus what a feed box needs.
+  describe "GET /api/v1/reviews, the Review Feed" do
+    def feed(params = {})
+      get "/api/v1/reviews", params: params, headers: auth_headers_for(other_user)
+      expect(response).to have_http_status(:ok)
+      json.fetch("data")
+    end
+
+    it "marks each Published Review as a review entry, with no Revision fields yet" do
+      review = create(:review, user: owner, rating: 80)
+
+      entry = feed.first
+
+      expect(entry).to include(
+        "kind" => "review", "review_id" => review.review_id, "revision_id" => nil,
+        "rating" => 80, "previous_rating" => nil
+      )
+    end
+
+    it "marks each game with its GOTM and NR-GOTM track, as the game endpoints do" do
+      gotm = create(:gotm_entry).game
+      nr_gotm = create(:nr_gotm_entry).game
+      gotm_review = create(:review, user: owner, game: gotm)
+      nr_gotm_review = create(:review, user: owner, game: nr_gotm)
+      plain_review = create(:review, user: owner)
+
+      games = feed.to_h { |entry| [ entry.fetch("review_id"), entry.fetch("game") ] }
+
+      expect(games.fetch(gotm_review.review_id)).to include("gotm_won" => true, "nr_gotm_won" => false)
+      expect(games.fetch(nr_gotm_review.review_id)).to include("gotm_won" => false, "nr_gotm_won" => true)
+      expect(games.fetch(plain_review.review_id)).to include("gotm_won" => false, "nr_gotm_won" => false,
+        "title" => plain_review.game.title)
+    end
+
+    describe "Written only" do
+      def paragraph(text) = [ { "type" => "p", "children" => [ { "text" => text } ] } ]
+
+      let!(:written) do
+        {
+          "an editor body" => create(:review, user: owner, body: paragraph("Loved the combat.")),
+          "a legacy string" => create(:review, user: owner, body: "Plain old text"),
+          "an imported summary" => create(:review, user: owner, body: { "summary" => "Imported take" })
+        }
+      end
+      let!(:quick_takes) do
+        {
+          "no body" => create(:review, user: owner, body: nil),
+          "an empty editor body" => create(:review, user: owner, body: paragraph("   ")),
+          "a blank string" => create(:review, user: owner, body: "  "),
+          "an empty object" => create(:review, user: owner, body: {})
+        }
+      end
+
+      it "flags every entry with whether it has any text" do
+        flags = feed.to_h { |entry| [ entry.fetch("review_id"), entry.fetch("written") ] }
+
+        written.each_value { |review| expect(flags.fetch(review.review_id)).to be(true) }
+        quick_takes.each_value { |review| expect(flags.fetch(review.review_id)).to be(false) }
+      end
+
+      it "drops the score-only quick takes with written=1" do
+        entries = feed(written: 1)
+
+        expect(entries.map { |entry| entry.fetch("review_id") }).to match_array(written.values.map(&:review_id))
+        expect(json.dig("meta", "count")).to eq(3)
+      end
+
+      it "keeps every entry without it" do
+        expect(feed(written: 0).length).to eq(7)
+      end
+    end
+  end
 end

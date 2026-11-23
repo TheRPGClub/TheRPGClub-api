@@ -559,9 +559,25 @@ module OpenapiSchemas
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         game: ref("GameSummary")
       ),
-      # ReviewMemberEntryResource (ReviewEntry + user), the club-wide feed
-      # (ReviewsController#recent).
-      ReviewMemberEntry: extends("ReviewEntry", user: ref("UserSummary")),
+      # ReviewFeedEntryResource, one entry of the Review Feed
+      # (ReviewsController#recent): a Published Review with its author and its
+      # game (with the GOTM / NR-GOTM track flags). A superset of the Latest
+      # Reviews Dashboard Panel's old shape (ReviewEntry plus the author).
+      ReviewFeedEntry: obj(
+        kind: str(enum: %w[review revision]).merge(
+          description: "`review` for a Published Review. `revision` is reserved for Published Revisions, " \
+                       "which will join the feed as their own entries."
+        ),
+        review_id: int,
+        revision_id: int(nullable: true).merge(description: "The Revision, on a `revision` entry; null on a `review`."),
+        user_id: str, gamedb_game_id: int, rating: int,
+        previous_rating: int(nullable: true).merge(description: "The score the Revision replaced, on a " \
+                                                                "`revision` entry; null on a `review`."),
+        title: str(nullable: true, maxLength: 120), body: json,
+        written: bool.merge(description: "Whether the body holds any text. False for a score-only quick take."),
+        facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
+        user: ref("UserSummary"), game: ref("Game")
+      ),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
       JournalEntryGame: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, entry_title: str(nullable: true),
@@ -1545,7 +1561,7 @@ module OpenapiSchemas
         pages: { type: :array, items: str(example: "voting"),
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
-                              "gotm_history, challenges, games, releases, achievements, journals, members, news, " \
+                              "gotm_history, challenges, games, reviews, releases, achievements, journals, members, news, " \
                               "codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
                               "public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \

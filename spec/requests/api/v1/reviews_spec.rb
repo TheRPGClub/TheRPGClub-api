@@ -89,19 +89,24 @@ RSpec.describe 'api/v1/reviews', type: :request do
   end
 
   path '/api/v1/reviews' do
-    get 'Club latest reviews' do
+    get 'The Review Feed' do
       tags 'Reviews'
-      description 'Every member\'s Published Reviews, newest published first (by `published_at`), for the ' \
-                  'Latest Reviews Dashboard Panel. Open to any authenticated caller who can use Reviews. ' \
-                  'Drafts are never listed here, whoever asks, and members who have left ' \
-                  'the server (`server_left_at` set) are left out.'
+      description 'The Review Feed, also behind the Latest Reviews Dashboard Panel: every member\'s Published ' \
+                  'Reviews, newest published first (by `published_at`), each with its author and its game ' \
+                  '(with the GOTM / NR-GOTM track flags). Open to any authenticated caller who can use ' \
+                  'Reviews. Drafts are never listed here, whoever asks, and members who have left the server ' \
+                  '(`server_left_at` set) are left out. Every entry is `kind: review` for now; Published ' \
+                  'Revisions will join as their own `kind: revision` entries.'
       produces 'application/json'
+      parameter name: :written, in: :query, schema: { type: :boolean }, required: false,
+        description: 'Written only: true keeps only the entries with text (`written: true`), dropping the ' \
+                     'score-only quick takes. `meta.count` counts the filtered list.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
-      response '200', 'latest reviews' do
+      response '200', 'review feed' do
         schema type: :object, properties: {
-          data: { type: :array, items: { '$ref' => '#/components/schemas/ReviewMemberEntry' } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/ReviewFeedEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
