@@ -2290,7 +2290,18 @@ module OpenapiSchemas
         name: str(nullable: true), url: str(nullable: true), image_url: str(nullable: true),
         main: str(nullable: true), main_sides: str(nullable: true), completionist: str(nullable: true),
         single_player: str(nullable: true), co_op: str(nullable: true), vs: str(nullable: true),
-        source_query: str(nullable: true), scraped_at: ts(nullable: true), updated_at: ts(nullable: true)
+        source_query: str(nullable: true), scraped_at: ts(nullable: true),
+        searched_at: ts(nullable: true).merge(description: "When HowLongToBeat was last searched for the game; " \
+                                                           "null for times entered by hand."),
+        next_forced_search_at: ts(nullable: true).merge(description: "When a member may next force a search " \
+                                                                     "(lookup `force: true`); null: now. Admins " \
+                                                                     "and above may at any time."),
+        updated_at: ts(nullable: true)
+      ),
+      HltbSearchTooSoon: obj(
+        error: str(example: "hltb_search_too_soon"), message: str,
+        next_forced_search_at: ts.merge(description: "When the next forced search is allowed."),
+        _required: %w[error message next_forced_search_at]
       ),
       # POST /games/{id}/hltb/lookup: where the times came from and whether
       # they are now in the HLTB cache.

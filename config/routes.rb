@@ -36,6 +36,7 @@ Rails.application.routes.draw do
           post "refresh-images", to: "games#refresh_images"
           post "refresh-releases", to: "games#refresh_releases"
           post "alternates", to: "game_alternates#create"
+          delete "alternates/:alt_game_id", to: "game_alternates#destroy"
           get "relations", to: "games#relations"
           post "hltb", to: "games#upsert_hltb"
           post "hltb/lookup", to: "game_hltb#lookup"
@@ -299,6 +300,8 @@ Rails.application.routes.draw do
       # Service-only "due" poll feed (#109). Declared before the resource so the
       # fixed `due` sub-path is never captured by the `:id` show route.
       get "release_announcements/due", to: "release_announcements#due"
+      # Manual Release edit/delete (api#439); create is POST /games/:id/releases.
+      resources :releases, only: %i[update destroy]
       resources :release_announcements, only: %i[show create update destroy] do
         member { post "skip" }
       end

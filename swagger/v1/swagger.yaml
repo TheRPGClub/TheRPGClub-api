@@ -7255,10 +7255,38 @@ components:
           type: string
           format: date-time
           nullable: true
+        searched_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When HowLongToBeat was last searched for the game; null for
+            times entered by hand.
+        next_forced_search_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'When a member may next force a search (lookup `force: true`);
+            null: now. Admins and above may at any time.'
         updated_at:
           type: string
           format: date-time
           nullable: true
+    HltbSearchTooSoon:
+      type: object
+      properties:
+        error:
+          type: string
+          example: hltb_search_too_soon
+        message:
+          type: string
+        next_forced_search_at:
+          type: string
+          format: date-time
+          description: When the next forced search is allowed.
+      required:
+      - error
+      - message
+      - next_forced_search_at
     HltbLookup:
       type: object
       properties:
@@ -16936,13 +16964,18 @@ paths:
       summary: Look up HowLongToBeat times
       tags:
       - Games
-      description: Members role, Moderator, Admin, Superadmin or service. Returns
-        the game's saved HLTB times when it has them (no scrape). Otherwise finds
-        the game's HowLongToBeat page through Google Custom Search ("How long is <title>?")
-        and scrapes it, as the bot's `/hltb` does. A fresh scrape is saved to the
-        HLTB cache only when the game's initial release is more than six months ago
-        (`meta.saved`). An unsaved result (or no match) is kept for about a day, then
-        served with `meta.source` `cache`. Takes no body.
+      description: 'Members role, Moderator, Admin, Superadmin or service. Returns
+        the game''s saved HLTB times when it has them (no scrape). Otherwise finds
+        the game''s HowLongToBeat page through Google Custom Search ("How long is
+        <title>?") and scrapes it, as the bot''s `/hltb` does. A fresh scrape is saved
+        to the HLTB cache only when the game''s initial release is more than six months
+        ago (`meta.saved`). An unsaved result (or no match) is kept for about a day,
+        then served with `meta.source` `cache`. With `force: true` and saved times,
+        it searches HowLongToBeat again and overwrites them (a no-match keeps them).
+        A member may force a search once every 30 days per game (`next_forced_search_at`
+        on the saved times); Admins and above at any time. Without saved times, `force`
+        changes nothing.'
+      parameters: []
       responses:
         '200':
           description: HLTB times
@@ -16969,6 +17002,13 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '429':
+          description: "`hltb_search_too_soon`: a forced search within 30 days of
+            the last search"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HltbSearchTooSoon"
         '502':
           description: "`hltb_lookup_failed`: Google Custom Search or HowLongToBeat
             failed"
@@ -16983,6 +17023,15 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  description: Search HowLongToBeat again even though times are saved.
   "/api/v1/games/{game_id}/images":
     parameters:
     - name: game_id
@@ -17025,8 +17074,8 @@ paths:
       tags:
       - Game Images
       description: Uploads an image to Backblaze B2 and links it to the game. Restricted
-        to admins or the service account. Send as `multipart/form-data` with the `image`
-        parameter.
+        to admins or the service account. Send as `multipart/form-data` with the fields
+        nested under `image` (`image[file]`, `image[kind]`).
       parameters: []
       responses:
         '201':
@@ -17068,20 +17117,20 @@ paths:
             schema:
               type: object
               properties:
-                file:
+                image[file]:
                   type: string
                   format: binary
                   description: Binary image data.
-                kind:
+                image[kind]:
                   type: string
                   description: Image kind, e.g. `cover`, `screenshot`, `artwork`.
-                is_primary:
+                image[is_primary]:
                   type: boolean
                   description: Whether this is the primary image for its kind. Defaults
                     to true on create.
               required:
-              - file
-              - kind
+              - image[file]
+              - image[kind]
         required: true
   "/api/v1/games/{game_id}/images/{id}":
     parameters:
@@ -18510,12 +18559,16 @@ paths:
       summary: Add a release
       tags:
       - Games
-      description: Admin/service-only. Adds a release row for the game (the bot's
+      description: 'Admin/service-only. Adds a release row for the game (the bot''s
         `addReleaseInfo`). `platform_id` and `region_id` are required; `format` must
         be `Physical`, `Digital` or null; `release_date` and `notes` are optional.
         A plain insert, so duplicates are allowed. Always creates a Manual Release
-        (`source` "manual"), which no IGDB refresh changes or removes. Its Date Precision
-        is `day`, or `tba` when no `release_date` is given.
+        (`source` "manual"), which no IGDB refresh changes or removes. `date_precision`
+        is optional: omitted or null, it is `day`, or `tba` when no `release_date`
+        is given. A `tba` Release has no date and every other one has one, a vague
+        date on the first day of its period (month, quarter or year); anything else
+        is a 422, as is a `release_date` that does not parse (it is never read as
+        TBA).'
       parameters: []
       responses:
         '201':
@@ -18541,7 +18594,8 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed (missing/unknown platform or region, bad
-            `format`)
+            `format`, unknown `date_precision`, an unparseable `release_date`, or
+            a date that does not fit its Date Precision)
           content:
             application/json:
               schema:
@@ -18580,6 +18634,17 @@ paths:
                       nullable: true
                       description: Release date (YYYY-MM-DD; a timestamp keeps its
                         calendar day). Omit or null for TBA.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - quarter
+                      - year
+                      - tba
+                      nullable: true
+                      description: 'Date Precision: day, month, quarter, year or tba.
+                        Omit or null for `day` (`tba` without a date).'
                     notes:
                       type: string
                       nullable: true
@@ -18590,6 +18655,137 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/releases/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Release id
+    patch:
+      summary: Edit a Manual Release
+      tags:
+      - Games
+      description: 'Admin/service-only. Edits a Manual Release; only the fields sent
+        change, with the same validation as POST /api/v1/games/{id}/releases. Clearing
+        `release_date` without a `date_precision` makes the Release `tba`; dating
+        a `tba` Release without one makes it `day`, and so does dating a `month`,
+        `quarter` or `year` Release on a day that is not the first of its period (the
+        first day of another period keeps the Date Precision). An unparseable `release_date`
+        is a 422. Rebuilds the game''s release-announcement schedule (a Release that
+        is no longer `day` loses its unsent announcement; one the due feed is offering
+        marks the game announced, so it is never announced twice) and refreshes the
+        game''s cached relations. An IGDB Release, including one an IGDB refresh adopted
+        mid-edit, is refused with 422 `igdb_release`: the IGDB refresh owns it.'
+      parameters: []
+      responses:
+        '200':
+          description: release updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Release"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: release not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: an IGDB Release (`igdb_release`), or validation failed as on
+            create
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    platform_id:
+                      type: integer
+                      description: GamedbPlatform id.
+                    region_id:
+                      type: integer
+                      description: GamedbRegion id.
+                    format:
+                      type: string
+                      enum:
+                      - Physical
+                      - Digital
+                      nullable: true
+                      description: Physical, Digital, or null.
+                    release_date:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Release date (YYYY-MM-DD), the first day of its
+                        period for a vague Date Precision. Null for TBA. Sent alone,
+                        a day inside a vague period makes the Release `day`.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - quarter
+                      - year
+                      - tba
+                      nullable: true
+                      description: Date Precision. Omit or null to keep it (see above).
+                    notes:
+                      type: string
+                      nullable: true
+                      description: Free-text notes.
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Manual Release
+      tags:
+      - Games
+      description: Admin/service-only. Deletes a Manual Release with its announcement
+        row (a sent one still leaves the game's `release_announced_at`, and so does
+        one the due feed is offering right now, since the bot may be posting it),
+        rebuilds the game's release-announcement schedule and refreshes its cached
+        relations. An IGDB Release is refused with 422 `igdb_release`.
+      responses:
+        '204':
+          description: release deleted
+        '403':
+          description: forbidden — admin or service required
+        '404':
+          description: release not found
+        '422':
+          description: an IGDB Release (`igdb_release`)
+        '401':
+          description: unauthenticated
   "/api/v1/games/{id}/refresh-releases":
     parameters:
     - name: id
@@ -18753,6 +18949,62 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/games/{id}/alternates/{alt_game_id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    - name: alt_game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    delete:
+      summary: Unlink an alternate version
+      tags:
+      - Games
+      description: Admin/service-only. Unlinks the path game and `alt_game_id` as
+        alternate versions. The link is stored once, so this works from either game's
+        side; both games' cached relations refresh. Returns the game's remaining alternates
+        (same shape as linking).
+      responses:
+        '200':
+          description: alternate unlinked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Game"
+        '400':
+          description: malformed `alt_game_id` (not an integer)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found, or the pair is not linked
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{id}/now_playing":
     parameters:
     - name: id

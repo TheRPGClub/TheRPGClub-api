@@ -107,6 +107,18 @@ _Avoid_: Calendar entry, event
 A platform a Member has chosen to leave out of their own Release Calendar and Upcoming Releases panel. It changes only what that Member sees; the club's release posts are unaffected.
 _Avoid_: Platform filter, muted console, blocked platform
 
+**Alternate Version**:
+Another GameDB game that is the same game in a different edition, port or remaster. Alternate Versions are linked so each one's page points to the others.
+_Avoid_: Variant, edition (when meaning the linked record), duplicate
+
+**Game Thread**:
+A Discord thread linked to a GameDB game as a place where the club discusses it.
+_Avoid_: Discussion, channel, forum post
+
+**Featured Video**:
+The one video staff choose to represent a game on its page.
+_Avoid_: Trailer (it need not be one), embed
+
 **Review**:
 A Member's rating of one Game, optionally with a written take and a scorecard. A Member has at most one Review per Game.
 _Avoid_: Rating (when meaning the whole Review), post

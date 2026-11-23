@@ -71,7 +71,7 @@ module Gamedb
       release.release_date = reported.release_date
       release.date_precision = reported.date_precision
       release.save!
-      drop_unsent_announcement!(release) unless release.date_precision_day?
+      release.drop_unsent_announcement! unless release.date_precision_day?
       release
     end
 
@@ -84,14 +84,6 @@ module Gamedb
         release_date: reported.release_date,
         date_precision: reported.date_precision
       )
-    end
-
-    # Only `day` Releases are announced, so a Release that is vague or TBA
-    # loses its unsent announcement (pending or skipped; a later exact day
-    # schedules a fresh one). A sent one stays as the game's announcement.
-    def drop_unsent_announcement!(release)
-      announcement = release.announcement
-      announcement.destroy! if announcement && announcement.sent_at.nil?
     end
 
     # The announcement row FKs to the Release, so it goes too, whatever its

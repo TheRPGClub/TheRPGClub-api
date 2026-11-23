@@ -440,7 +440,10 @@ RSpec.describe 'api/v1/games', type: :request do
                   '`platform_id` and `region_id` are required; `format` must be `Physical`, `Digital` or ' \
                   'null; `release_date` and `notes` are optional. A plain insert, so duplicates are allowed. ' \
                   'Always creates a Manual Release (`source` "manual"), which no IGDB refresh changes or removes. ' \
-                  'Its Date Precision is `day`, or `tba` when no `release_date` is given.'
+                  '`date_precision` is optional: omitted or null, it is `day`, or `tba` when no `release_date` is ' \
+                  'given. A `tba` Release has no date and every other one has one, a vague date on the first day ' \
+                  'of its period (month, quarter or year); anything else is a 422, as is a `release_date` that ' \
+                  'does not parse (it is never read as TBA).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -455,6 +458,9 @@ RSpec.describe 'api/v1/games', type: :request do
               format: { type: :string, enum: %w[Physical Digital], nullable: true, description: 'Physical, Digital, or null.' },
               release_date: { type: :string, format: 'date', nullable: true,
                               description: 'Release date (YYYY-MM-DD; a timestamp keeps its calendar day). Omit or null for TBA.' },
+              date_precision: { type: :string, enum: GamedbRelease::DATE_PRECISIONS, nullable: true,
+                                description: 'Date Precision: day, month, quarter, year or tba. Omit or null for ' \
+                                             '`day` (`tba` without a date).' },
               notes: { type: :string, nullable: true, description: 'Free-text notes.' }
             },
             required: %w[platform_id region_id]
@@ -475,7 +481,100 @@ RSpec.describe 'api/v1/games', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed (missing/unknown platform or region, bad `format`)' do
+      response '422', 'validation failed (missing/unknown platform or region, bad `format`, unknown ' \
+                      '`date_precision`, an unparseable `release_date`, or a date that does not fit its Date ' \
+                      'Precision)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/releases/{id}' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'Release id'
+
+    patch 'Edit a Manual Release' do
+      tags 'Games'
+      description 'Admin/service-only. Edits a Manual Release; only the fields sent change, with the same ' \
+                  'validation as POST /api/v1/games/{id}/releases. Clearing `release_date` without a ' \
+                  '`date_precision` makes the Release `tba`; dating a `tba` Release without one makes it `day`, ' \
+                  'and so does dating a `month`, `quarter` or `year` Release on a day that is not the first of ' \
+                  'its period (the first day of another period keeps the Date Precision). An unparseable ' \
+                  '`release_date` is a 422. Rebuilds the game\'s release-announcement schedule (a Release that is no longer `day` loses ' \
+                  'its unsent announcement; one the due feed is offering marks the game announced, so it is ' \
+                  'never announced twice) and refreshes the game\'s cached relations. An IGDB Release, including ' \
+                  'one an IGDB refresh adopted mid-edit, is refused with 422 `igdb_release`: the IGDB refresh owns it.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              platform_id: { type: :integer, description: 'GamedbPlatform id.' },
+              region_id: { type: :integer, description: 'GamedbRegion id.' },
+              format: { type: :string, enum: %w[Physical Digital], nullable: true, description: 'Physical, Digital, or null.' },
+              release_date: { type: :string, format: 'date', nullable: true,
+                              description: 'Release date (YYYY-MM-DD), the first day of its period for a vague ' \
+                                           'Date Precision. Null for TBA. Sent alone, a day inside a vague ' \
+                                           'period makes the Release `day`.' },
+              date_precision: { type: :string, enum: GamedbRelease::DATE_PRECISIONS, nullable: true,
+                                description: 'Date Precision. Omit or null to keep it (see above).' },
+              notes: { type: :string, nullable: true, description: 'Free-text notes.' }
+            }
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'release updated' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Release' } }
+      end
+
+      response '400', 'missing data envelope' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'release not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'an IGDB Release (`igdb_release`), or validation failed as on create' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    delete 'Delete a Manual Release' do
+      tags 'Games'
+      description 'Admin/service-only. Deletes a Manual Release with its announcement row (a sent one still ' \
+                  'leaves the game\'s `release_announced_at`, and so does one the due feed is offering right now, ' \
+                  'since the bot may be posting it), rebuilds the game\'s release-announcement schedule ' \
+                  'and refreshes its cached relations. An IGDB Release is refused with 422 `igdb_release`.'
+
+      response '204', 'release deleted'
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'release not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'an IGDB Release (`igdb_release`)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -587,6 +686,41 @@ RSpec.describe 'api/v1/games', type: :request do
       end
 
       response '400', 'missing `data` or `alt_game_id`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/games/{id}/alternates/{alt_game_id}' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true
+    parameter name: :alt_game_id, in: :path, schema: { type: :integer }, required: true
+
+    delete 'Unlink an alternate version' do
+      tags 'Games'
+      description 'Admin/service-only. Unlinks the path game and `alt_game_id` as alternate versions. The link ' \
+                  'is stored once, so this works from either game\'s side; both games\' cached relations ' \
+                  'refresh. Returns the game\'s remaining alternates (same shape as linking).'
+      produces 'application/json'
+
+      response '200', 'alternate unlinked' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Game' } }
+        }
+      end
+
+      response '400', 'malformed `alt_game_id` (not an integer)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'game not found, or the pair is not linked' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -29,18 +29,19 @@ RSpec.describe 'api/v1/game_images', type: :request do
     post 'Upload a game image' do
       tags 'Game Images'
       description 'Uploads an image to Backblaze B2 and links it to the game. Restricted to admins or the service account. ' \
-                  'Send as `multipart/form-data` with the `image` parameter.'
+                  'Send as `multipart/form-data` with the fields nested under `image` (`image[file]`, `image[kind]`).'
       consumes 'multipart/form-data'
       produces 'application/json'
 
       parameter name: :image, in: :formData, required: true, schema: {
         type: :object,
         properties: {
-          file:       { type: :string, format: :binary, description: 'Binary image data.' },
-          kind:       { type: :string, description: 'Image kind, e.g. `cover`, `screenshot`, `artwork`.' },
-          is_primary: { type: :boolean, description: 'Whether this is the primary image for its kind. Defaults to true on create.' }
+          'image[file]' => { type: :string, format: :binary, description: 'Binary image data.' },
+          'image[kind]' => { type: :string, description: 'Image kind, e.g. `cover`, `screenshot`, `artwork`.' },
+          'image[is_primary]' => { type: :boolean,
+                                   description: 'Whether this is the primary image for its kind. Defaults to true on create.' }
         },
-        required: %w[file kind]
+        required: [ 'image[file]', 'image[kind]' ]
       }
 
       response '201', 'image created' do

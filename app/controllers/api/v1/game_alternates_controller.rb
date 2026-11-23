@@ -3,11 +3,11 @@
 module Api
   module V1
     # Alternate-version links between two games (gamedb_game_alternates), the
-    # bot's `linkAlternateVersions`. Admin/service-only.
+    # bot's `linkAlternateVersions`, and their unlink. Admin/service-only.
     class GameAlternatesController < ApplicationController
       feature :game_index
 
-      before_action :require_admin_or_service!, only: %i[create]
+      before_action :require_admin_or_service!, only: %i[create destroy]
 
       # POST /api/v1/games/:id/alternates  { data: { alt_game_id } }
       #
@@ -45,6 +45,31 @@ module Api
 
         render json: { data: GameResource.new(game.alternate_games).serializable_hash },
           status: link.previously_new_record? ? :created : :ok
+      end
+
+      # DELETE /api/v1/games/:id/alternates/:alt_game_id
+      #
+      # Unlinks the path game and `alt_game_id`. The pair is stored once, low id
+      # first, so this works from either game's side. Touches both games so each
+      # side's cached relations drop the other. Returns the game's remaining
+      # alternates (same shape as #create); 400 for a malformed `alt_game_id`,
+      # 404 when the pair isn't linked.
+      def destroy
+        game = GamedbGame.find(params[:id])
+        alt_id = Integer(params[:alt_game_id], 10, exception: false)
+        raise ActionController::ParameterMissing, :alt_game_id if alt_id.nil?
+
+        low, high = [ game.game_id, alt_id ].minmax
+        link = GamedbGameAlternate.find_by!(game_id: low, alt_game_id: high)
+
+        GamedbGameAlternate.transaction do
+          link.destroy!
+          game.touch
+          # No FK on alt_game_id, so the other side may be a dangling id.
+          GamedbGame.find_by(game_id: alt_id)&.touch
+        end
+
+        render json: { data: GameResource.new(game.alternate_games).serializable_hash }
       end
 
       private
