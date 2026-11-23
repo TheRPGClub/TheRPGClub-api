@@ -875,6 +875,122 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(draft.reload.rating).to be_nil
     end
 
+    # ADR 0013: an Edit may change the score only in the first 7 days after
+    # publishing; title, text and scorecard stay editable forever.
+    describe "the 7-day score lock" do
+      let(:published_at) { Time.zone.parse("2026-11-01 12:00:00") }
+      let!(:review) { create(:review, user: owner, rating: 40, title: "First", published_at: published_at) }
+
+      def edit(data)
+        patch "/api/v1/reviews/#{review.review_id}", params: { data: data }, headers: auth_headers_for(owner), as: :json
+      end
+
+      it "lets an Edit change the score on the 7th day" do
+        travel_to(published_at + 7.days - 1.minute) { edit(rating: 85) }
+
+        expect(response).to have_http_status(:ok)
+        expect(review.reload.rating).to eq(85)
+      end
+
+      it "refuses an Edit that changes the score after 7 days, with score_locked" do
+        travel_to(published_at + 7.days + 1.minute) { edit(rating: 85, title: "Changed my mind") }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to eq("score_locked")
+        expect(review.reload).to have_attributes(rating: 40, title: "First")
+      end
+
+      it "still accepts the unchanged score alongside other fields after 7 days" do
+        travel_to(published_at + 30.days) { edit(rating: 40, title: "Typo fixed") }
+
+        expect(response).to have_http_status(:ok)
+        expect(review.reload.title).to eq("Typo fixed")
+      end
+
+      it "keeps title, text and scorecard editable forever" do
+        scorecard = { "template" => "general", "order" => %w[music], "scores" => { "music" => 90 } }
+
+        travel_to(published_at + 2.years) do
+          edit(title: "Years on", body: { "text" => "reworded" }, facets: scorecard)
+        end
+
+        expect(response).to have_http_status(:ok)
+        expect(review.reload).to have_attributes(title: "Years on", body: { "text" => "reworded" }, facets: scorecard)
+      end
+
+      it "serves when the score locks, so the website can show it locked" do
+        get "/api/v1/reviews/#{review.review_id}", headers: auth_headers_for(owner)
+
+        expect(Time.zone.parse(json.dig("data", "score_locks_at"))).to eq(published_at + 7.days)
+      end
+
+      it "doesn't lock a Draft's score, however old the Draft" do
+        draft = create(:review, :draft, user: owner, rating: 40)
+
+        travel_to(30.days.from_now) do
+          patch "/api/v1/reviews/#{draft.review_id}",
+            params: { data: { rating: 70 } }, headers: auth_headers_for(owner), as: :json
+        end
+
+        expect(response).to have_http_status(:ok)
+        expect(draft.reload.rating).to eq(70)
+        expect(json.dig("data", "score_locks_at")).to be_nil
+      end
+    end
+
+    # An Edit more than an hour after publishing marks the take as edited.
+    describe "the edited marker" do
+      let(:published_at) { Time.zone.parse("2026-11-01 12:00:00") }
+      let!(:review) { create(:review, user: owner, rating: 40, title: "First", published_at: published_at) }
+
+      def edit(data)
+        patch "/api/v1/reviews/#{review.review_id}", params: { data: data }, headers: auth_headers_for(owner), as: :json
+      end
+
+      it "is not set by an Edit within the first hour" do
+        travel_to(published_at + 59.minutes) { edit(title: "Quick fix") }
+
+        expect(response).to have_http_status(:ok)
+        expect(json.dig("data", "edited_at")).to be_nil
+      end
+
+      it "records when an Edit past the first hour was made" do
+        edited_at = published_at + 3.days
+        travel_to(edited_at) { edit(title: "Later fix") }
+
+        expect(response).to have_http_status(:ok)
+        expect(Time.zone.parse(json.dig("data", "edited_at"))).to eq(edited_at)
+      end
+
+      it "is not set by a save that changes nothing" do
+        travel_to(published_at + 3.days) { edit(title: "First", rating: 40) }
+
+        expect(response).to have_http_status(:ok)
+        expect(json.dig("data", "edited_at")).to be_nil
+      end
+
+      it "is served in the member's reviews list" do
+        travel_to(published_at + 3.days) { edit(title: "Later fix") }
+
+        get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(other_user)
+
+        expect(Time.zone.parse(json.dig("data", 0, "edited_at"))).to eq(published_at + 3.days)
+      end
+
+      it "is never set on a Draft, nor by publishing it" do
+        draft = create(:review, :draft, user: owner, rating: 40)
+
+        travel_to(3.days.from_now) do
+          patch "/api/v1/reviews/#{draft.review_id}",
+            params: { data: { title: "Still writing" } }, headers: auth_headers_for(owner), as: :json
+          post "/api/v1/reviews/#{draft.review_id}/publish", headers: auth_headers_for(owner)
+        end
+
+        expect(response).to have_http_status(:ok)
+        expect(json.dig("data", "edited_at")).to be_nil
+      end
+    end
+
     it "allows the service" do
       review = create(:review, user: owner, rating: 40)
 

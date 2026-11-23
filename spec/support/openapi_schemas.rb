@@ -542,6 +542,12 @@ module OpenapiSchemas
         facets: ref("ReviewFacets", nullable: true),
         published_at: ts(nullable: true).merge(description: "When it was published; null while a Draft. " \
                                                              "Set once and never cleared."),
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
+        score_locks_at: ts(nullable: true).merge(description: "When the score stops being editable, 7 days " \
+                                                                 "after publishing (ADR 0013): past it an Edit " \
+                                                                 "that changes `rating` gets 422 `score_locked`. " \
+                                                                 "Null while a Draft."),
         created_at: ts, updated_at: ts
       ),
       # ReviewUserEntryResource (ReviewFields + user), for the game-scoped reviews list.
@@ -549,6 +555,8 @@ module OpenapiSchemas
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
         title: str(nullable: true, maxLength: 120), body: json,
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
         user: ref("UserSummary")
       ),
       # ReviewEntryResource (ReviewFields + game): the user-scoped reviews list
@@ -557,6 +565,8 @@ module OpenapiSchemas
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
         title: str(nullable: true, maxLength: 120), body: json,
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
         game: ref("GameSummary")
       ),
       # ReviewFeedEntryResource, one entry of the Review Feed
@@ -576,6 +586,8 @@ module OpenapiSchemas
         title: str(nullable: true, maxLength: 120), body: json,
         written: bool.merge(description: "Whether the body holds any text. False for a score-only quick take."),
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
         user: ref("UserSummary"), game: ref("Game")
       ),
       # ReviewDraftEntryResource (ReviewFields + updated_at, kind and the game

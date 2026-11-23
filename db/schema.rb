@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_110000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1436,6 +1436,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_110000) do
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.string "user_id", limit: 50, null: false
     t.datetime "published_at"
+    t.datetime "edited_at"
     t.index ["gamedb_game_id"], name: "ix_user_game_reviews_game"
     t.index ["published_at", "review_id"], name: "ix_user_game_reviews_feed", order: :desc, where: "(published_at IS NOT NULL)"
     t.index ["user_id", "gamedb_game_id"], name: "uq_user_game_reviews_user_game", unique: true

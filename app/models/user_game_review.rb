@@ -4,6 +4,9 @@ class UserGameReview < ApplicationRecord
   self.table_name = "user_game_reviews"
   self.primary_key = "review_id"
 
+  # The 7-day score lock and the edited marker (ADR 0013).
+  include EditRules
+
   # The review scorecard catalogue, mirrored by `www/lib/reviews/facets.ts`.
   # The web side owns the human labels and hints; this side owns validity.
   # Adding a facet or a template means adding it in both places.

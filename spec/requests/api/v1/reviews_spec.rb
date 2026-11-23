@@ -180,7 +180,10 @@ RSpec.describe 'api/v1/reviews', type: :request do
       tags 'Reviews'
       description 'Owner-only. Partial update: send any subset of the writable columns. `published_at` is not ' \
                   'writable (publish with `POST /reviews/{id}/publish`; a Published Review never goes back to ' \
-                  'Draft), and a Published Review\'s score cannot be cleared (422 `rating_required`).'
+                  'Draft), and a Published Review\'s score cannot be cleared (422 `rating_required`). An Edit to a ' \
+                  'Published Review may change its score only until `score_locks_at`, 7 days after publishing ' \
+                  '(422 `score_locked` after that; ADR 0013); title, text and scorecard stay editable. An Edit ' \
+                  'more than an hour after publishing sets `edited_at`. A Draft\'s score changes freely.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -202,7 +205,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed, `rating_required` (clearing a Published score) or `score_locked` (changing the score more than 7 days after publishing)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
