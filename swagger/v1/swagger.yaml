@@ -1610,6 +1610,19 @@ components:
           nullable: true
           description: When it was published; null while a Draft. Set once and never
             cleared.
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it was last Edited, if more than an hour after publishing
+            (ADR 0013); null otherwise.
+        score_locks_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'When the score stops being editable, 7 days after publishing
+            (ADR 0013): past it an Edit that changes `rating` gets 422 `score_locked`.
+            Null while a Draft.'
         created_at:
           type: string
           format: date-time
@@ -1651,6 +1664,12 @@ components:
         published_at:
           type: string
           format: date-time
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it was last Edited, if more than an hour after publishing
+            (ADR 0013); null otherwise.
         user:
           "$ref": "#/components/schemas/UserSummary"
       required:
@@ -1689,6 +1708,12 @@ components:
         published_at:
           type: string
           format: date-time
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it was last Edited, if more than an hour after publishing
+            (ADR 0013); null otherwise.
         game:
           "$ref": "#/components/schemas/GameSummary"
       required:
@@ -26378,7 +26403,11 @@ paths:
       description: 'Owner-only. Partial update: send any subset of the writable columns.
         `published_at` is not writable (publish with `POST /reviews/{id}/publish`;
         a Published Review never goes back to Draft), and a Published Review''s score
-        cannot be cleared (422 `rating_required`).'
+        cannot be cleared (422 `rating_required`). An Edit to a Published Review may
+        change its score only until `score_locks_at`, 7 days after publishing (422
+        `score_locked` after that; ADR 0013); title, text and scorecard stay editable.
+        An Edit more than an hour after publishing sets `edited_at`. A Draft''s score
+        changes freely.'
       parameters: []
       responses:
         '200':
@@ -26403,7 +26432,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, `rating_required` (clearing a Published
+            score) or `score_locked` (changing the score more than 7 days after publishing)
           content:
             application/json:
               schema:

@@ -96,13 +96,19 @@ module Api
       end
 
       # Renders the saved review, or the refusal: 422 `rating_required` when
-      # a Published Review would have no score, otherwise the usual
-      # validation message.
+      # a Published Review would have no score, 422 `score_locked` when an
+      # Edit changes the score more than 7 days after publishing (ADR 0013),
+      # otherwise the usual validation message.
       def render_saved(record, saved, status: :ok)
         if saved
           render json: { data: record.as_json }, status: status
         elsif record.errors.added?(:rating, :rating_required)
           render json: { error: "rating_required", message: "A score is required to publish a review." },
+            status: :unprocessable_content
+        elsif record.errors.added?(:rating, :score_locked)
+          render json: { error: "score_locked",
+                         message: "A review's score can't change more than 7 days after publishing; " \
+                                  "publish a Revision instead." },
             status: :unprocessable_content
         else
           raise ActiveRecord::RecordInvalid, record
