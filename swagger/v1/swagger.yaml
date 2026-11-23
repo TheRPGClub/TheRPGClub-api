@@ -1723,13 +1723,74 @@ components:
       - rating
       - created_at
       - published_at
-    ReviewMemberEntry:
-      allOf:
-      - "$ref": "#/components/schemas/ReviewEntry"
-      - type: object
-        properties:
-          user:
-            "$ref": "#/components/schemas/UserSummary"
+    ReviewFeedEntry:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - review
+          - revision
+          description: "`review` for a Published Review. `revision` is reserved for
+            Published Revisions, which will join the feed as their own entries."
+        review_id:
+          type: integer
+        revision_id:
+          type: integer
+          nullable: true
+          description: The Revision, on a `revision` entry; null on a `review`.
+        user_id:
+          type: string
+        gamedb_game_id:
+          type: integer
+        rating:
+          type: integer
+        previous_rating:
+          type: integer
+          nullable: true
+          description: The score the Revision replaced, on a `revision` entry; null
+            on a `review`.
+        title:
+          type: string
+          nullable: true
+          maxLength: 120
+        body:
+          type: object
+          description: Free-form JSON.
+          nullable: true
+        written:
+          type: boolean
+          description: Whether the body holds any text. False for a score-only quick
+            take.
+        facets:
+          allOf:
+          - "$ref": "#/components/schemas/ReviewFacets"
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+        edited_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it was last Edited, if more than an hour after publishing
+            (ADR 0013); null otherwise.
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+        game:
+          "$ref": "#/components/schemas/Game"
+      required:
+      - kind
+      - review_id
+      - user_id
+      - gamedb_game_id
+      - rating
+      - written
+      - created_at
+      - published_at
     ReviewDraftEntry:
       type: object
       properties:
@@ -5104,9 +5165,9 @@ components:
             example: voting
           description: 'Pinned Page keys the member can see right now, in their order:
             the club default (voting, games, members, news) until they save their
-            own list. Keys: voting, gotm_history, challenges, games, releases, achievements,
-            journals, members, news, codex, giveaways, suggestions, staff_desk, voting_console,
-            synonyms, live_events, public_reminders, suggestion_review.'
+            own list. Keys: voting, gotm_history, challenges, games, reviews, releases,
+            achievements, journals, members, news, codex, giveaways, suggestions,
+            staff_desk, voting_console, synonyms, live_events, public_reminders, suggestion_review.'
         customised:
           type: boolean
           description: Whether the member saved their own list. False while they follow
@@ -26312,14 +26373,25 @@ paths:
                 "$ref": "#/components/schemas/Error"
   "/api/v1/reviews":
     get:
-      summary: Club latest reviews
+      summary: The Review Feed
       tags:
       - Reviews
-      description: Every member's Published Reviews, newest published first (by `published_at`),
-        for the Latest Reviews Dashboard Panel. Open to any authenticated caller who
-        can use Reviews. Drafts are never listed here, whoever asks, and members who
-        have left the server (`server_left_at` set) are left out.
+      description: 'The Review Feed, also behind the Latest Reviews Dashboard Panel:
+        every member''s Published Reviews, newest published first (by `published_at`),
+        each with its author and its game (with the GOTM / NR-GOTM track flags). Open
+        to any authenticated caller who can use Reviews. Drafts are never listed here,
+        whoever asks, and members who have left the server (`server_left_at` set)
+        are left out. Every entry is `kind: review` for now; Published Revisions will
+        join as their own `kind: revision` entries.'
       parameters:
+      - name: written
+        in: query
+        schema:
+          type: boolean
+        required: false
+        description: 'Written only: true keeps only the entries with text (`written:
+          true`), dropping the score-only quick takes. `meta.count` counts the filtered
+          list.'
       - name: page
         in: query
         schema:
@@ -26336,7 +26408,7 @@ paths:
         required: false
       responses:
         '200':
-          description: latest reviews
+          description: review feed
           content:
             application/json:
               schema:
@@ -26345,7 +26417,7 @@ paths:
                   data:
                     type: array
                     items:
-                      "$ref": "#/components/schemas/ReviewMemberEntry"
+                      "$ref": "#/components/schemas/ReviewFeedEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
         '401':

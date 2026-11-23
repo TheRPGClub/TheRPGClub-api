@@ -62,6 +62,34 @@ class UserGameReview < ApplicationRecord
   scope :published, -> { where.not(published_at: nil) }
   scope :drafts, -> { where(published_at: nil) }
 
+  # True when the body holds any text, in any of its three shapes (an editor
+  # value, a bare string, an object from the pre-web import under one of the
+  # keys summary, text, body or content), mirroring `reviewBodyText` in
+  # `www/lib/api/review-body.ts`. A Review without it is a score-only quick
+  # take, which the Review Feed's Written only filter drops.
+  WRITTEN_SQL = <<~'SQL'.squish.freeze
+    CASE jsonb_typeof(user_game_reviews.body)
+      WHEN 'array' THEN jsonb_path_exists(user_game_reviews.body,
+        'lax $.**.text ? (@.type() == "string" && @ like_regex "[^[:space:]]")')
+      WHEN 'string' THEN btrim(user_game_reviews.body #>> '{}') <> ''
+      WHEN 'object' THEN COALESCE(
+        (jsonb_typeof(user_game_reviews.body -> 'summary') = 'string'
+          AND btrim(user_game_reviews.body ->> 'summary') <> '')
+        OR (jsonb_typeof(user_game_reviews.body -> 'text') = 'string'
+          AND btrim(user_game_reviews.body ->> 'text') <> '')
+        OR (jsonb_typeof(user_game_reviews.body -> 'body') = 'string'
+          AND btrim(user_game_reviews.body ->> 'body') <> '')
+        OR (jsonb_typeof(user_game_reviews.body -> 'content') = 'string'
+          AND btrim(user_game_reviews.body ->> 'content') <> ''),
+        false)
+      ELSE false
+    END
+  SQL
+
+  scope :written, -> { where(WRITTEN_SQL) }
+  # Selects the `written` flag alongside every column, for the Review Feed.
+  scope :with_written, -> { select(arel_table[Arel.star], "(#{WRITTEN_SQL}) AS written") }
+
   validates :user_id, :gamedb_game_id, presence: true
   # A Draft may have no score yet; publishing needs one. The check constraint
   # `ck_user_game_reviews_rating_when_published` holds the same line under

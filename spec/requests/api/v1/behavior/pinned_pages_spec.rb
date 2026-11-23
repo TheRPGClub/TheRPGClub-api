@@ -220,6 +220,15 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
       expect(pinned_for(member)["pages"]).to eq(%w[news releases members])
     end
 
+    it "lets a member pin the Review Feed, behind the Reviews Feature" do
+      pin(member, %w[reviews members])
+      expect(response).to have_http_status(:ok)
+      expect(pinned_for(member)["pages"]).to eq(%w[reviews members])
+
+      set_feature_flag("reviews", "off")
+      expect(pinned_for(member)["pages"]).to eq(%w[members])
+    end
+
     it "leaves out a default page the member hid with a Feature Preference" do
       MemberFeaturePreference.create!(user_id: member.user_id, feature_key: "news_hub")
 
