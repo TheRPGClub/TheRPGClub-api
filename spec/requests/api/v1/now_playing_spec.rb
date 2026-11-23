@@ -91,7 +91,9 @@ RSpec.describe 'api/v1/now_playing', type: :request do
   path '/api/v1/now_playing' do
     get 'List all members\' now-playing entries' do
       tags 'Now Playing'
-      description 'Service/admin-only. Every active member\'s now-playing entries (bots and members ' \
+      description 'Open to any authenticated caller (the bot\'s service token, or any signed-in member ' \
+                  'for the dashboard\'s Club Now Playing panel). Every active member\'s now-playing ' \
+                  'entries, newest first (`added_at` descending), `per` honoured (bots and members ' \
                   'who have left are excluded), each with its embedded user, game and platform. The ' \
                   'optional `game_ids[]` filter narrows to entries of any of the given games; `q` keeps ' \
                   'entries whose game title matches (case-insensitive substring) for the search ' \
@@ -114,10 +116,6 @@ RSpec.describe 'api/v1/now_playing', type: :request do
           data: { type: :array, items: { '$ref' => '#/components/schemas/NowPlayingMemberEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
-      end
-
-      response '403', 'forbidden — caller is not service/admin' do
-        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '401', 'unauthenticated' do

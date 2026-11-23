@@ -11,18 +11,26 @@ module Api
       # How long an approval in progress blocks another; longer than its
       # GitHub calls can take (three, each with Github::Client::TIMEOUT_SECONDS).
       APPROVAL_WINDOW = 2.minutes
+      # The index's orders: `board` (the default: most upvoted, then newest)
+      # and `recent` (latest activity first, for the Suggestion Board
+      # Dashboard Panel).
+      SORTS = { "board" => RpgClubSuggestion::BOARD_ORDER, "recent" => RpgClubSuggestion::RECENT_ORDER }.freeze
 
       before_action :require_superadmin!, only: %i[approve reject]
       before_action :require_member_or_staff!, only: %i[create upvote remove_upvote]
       before_action :require_member!, only: %i[withdraw upvote remove_upvote]
 
+      # GET /api/v1/suggestions?status=&sort=board|recent&page=&per=
       def index
         statuses = status_filter
         return if performed?
 
+        order = sort_param(SORTS, default: "board")
+        return if performed?
+
         scope = viewer_scope
         scope = scope.where(status: statuses) if statuses
-        render_collection(scope, resource: SuggestionResource, default_order: RpgClubSuggestion::BOARD_ORDER)
+        render_collection(scope, resource: SuggestionResource, default_order: order)
       end
 
       def show

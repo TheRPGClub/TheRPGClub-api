@@ -416,6 +416,9 @@ module OpenapiSchemas
         final_playtime_hrs: num(nullable: true), created_at: ts,
         game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
+      # CompletionMemberEntryResource (CompletionEntry + user), the club-wide
+      # feed (CompletionsController#recent).
+      CompletionMemberEntry: extends("CompletionEntry", user: ref("UserSummary")),
       # CommonCompletionEntryResource (CompletionsController#common): a game both
       # members completed. `latest_shared_date` is the latest `completed_at`
       # across both members (null when every entry is undated); each side holds
@@ -552,6 +555,9 @@ module OpenapiSchemas
         facets: ref("ReviewFacets", nullable: true), created_at: ts,
         game: ref("GameSummary")
       ),
+      # ReviewMemberEntryResource (ReviewEntry + user), the club-wide feed
+      # (ReviewsController#recent).
+      ReviewMemberEntry: extends("ReviewEntry", user: ref("UserSummary")),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
       JournalEntryGame: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, entry_title: str(nullable: true),
@@ -604,7 +610,11 @@ module OpenapiSchemas
                        "Null otherwise, or when GitHub cannot say."
         ),
         upvote_count: int,
-        viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service.")
+        viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service."),
+        last_activity_at: ts.merge(
+          description: "The latest activity: the newest of its last change (submitted, reviewed or " \
+                       "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
+        )
       ),
       # SuggestionsController#approve / #reject meta: the queued outcome job,
       # so the website can poll GET /api/v1/bot_jobs/{id}.
@@ -1238,6 +1248,28 @@ module OpenapiSchemas
           years: { type: :array, items: obj(year: int, game_id: int(nullable: true), title: str(nullable: true)) }
         ).merge(nullable: true, description: "Slots only: each year so far and the game filling it (null while open).")
       ),
+      # Challenges::Activity (spec api#421, ticket api#424): one event of the
+      # club-wide Challenge Activity feed.
+      ChallengeActivityEvent: obj(
+        _required: %w[kind occurred_on challenge],
+        kind: str(enum: Challenges::Activity::KINDS).merge(
+          description: "run_started: a Run started (an Assignment Run: at the draw). game_cleared: a game " \
+                       "Cleared on a Run, with `game`. run_finished: a Run Finished. signups_opened: an " \
+                       "Edition's sign-up opened. edition_revealed: an Edition's picks were revealed."
+        ),
+        occurred_on: date.merge(description: "The club date it happened on."),
+        occurred_at: ts(nullable: true).merge(description: "When it happened; null for game_cleared, " \
+                                                          "signups_opened and edition_revealed, which are " \
+                                                          "known only by their date."),
+        challenge: obj(id: int, name: str, challenge_format: str(enum: Challenge::FORMATS),
+          tint: ref("ChallengeTint")),
+        user: ref("ChallengeMember", nullable: true).merge(description: "The Run's member; null for Edition " \
+                                                                        "events."),
+        game: ref("GameSummary", nullable: true).merge(description: "game_cleared only: the game Cleared."),
+        run_id: int(nullable: true).merge(description: "The Run's id; null for Edition events."),
+        edition: obj(id: int, year: int).merge(nullable: true, description: "The Edition: for Edition events " \
+                                                                            "and Assignment Runs.")
+      ),
       ChallengePoolGameProgress: obj(
         _description: "A Pool game with who Cleared it and who has it In Progress.",
         game_id: int, title: str, initial_release_date: ts(nullable: true),
@@ -1517,6 +1549,34 @@ module OpenapiSchemas
         _required: %w[user_id pages customised]
       ),
 
+      # DashboardPanelsController (spec api#421, ticket api#422). A member's
+      # Dashboard Panels: the ones they show and can see right now, in their
+      # order; every panel they can see; and whether they saved their own list.
+      DashboardPanels: obj(
+        user_id: str,
+        panels: { type: :array, items: str(example: "news"),
+                  description: "Dashboard Panel keys the member shows and can see right now, in their order: the " \
+                               "club default (news, now_playing_club, releases, achievements_club, " \
+                               "challenges_club) until they save their own list." },
+        catalogue: { type: :array, items: { "$ref" => "#/components/schemas/DashboardPanel" },
+                     description: "Every panel the member can see right now, shown or not, in the club's order." },
+        customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
+                                            "the club default, which then reaches them when it changes."),
+        _required: %w[user_id panels catalogue customised]
+      ),
+
+      DashboardPanel: obj(
+        key: str(description: "Panel key: news, now_playing_club, releases, achievements_club, challenges_club, " \
+                              "now_playing_mine, achievements_mine, challenge_runs_mine, completions_club, " \
+                              "completions_mine, backlog_pick, reviews, journals, giveaways, suggestions, codex, " \
+                              "birthdays.", example: "news"),
+        scope: str(enum: %w[club mine], description: "Whether the panel shows club activity or the member's own."),
+        new: bool.merge(description: "Whether the panel reached the site since the member last opened dashboard " \
+                                     "edit mode. For a member who never opened it, true only for panels added " \
+                                     "after launch."),
+        _required: %w[key scope new]
+      ),
+
       # ChallengeSettingsController (spec #376, ticket #379): the member's
       # Challenge DM opt-out.
       ChallengeSettings: obj(
@@ -1591,6 +1651,35 @@ module OpenapiSchemas
         position: int.merge(example: 2, description: "1-based place in the list; the list is served in this order."),
         _required: %w[key name position]
       ),
+      # HiddenPlatformsController (spec api#421, ticket api#427). A member's
+      # Hidden Platforms: the platforms they leave out of their own Release
+      # Calendar and Upcoming Releases panel.
+      HiddenPlatform: obj(
+        platform_id: int,
+        platform_name: str(example: "PlayStation 5"),
+        platform_abbreviation: str(nullable: true, example: "PS5"),
+        _required: %w[platform_id platform_name platform_abbreviation]
+      ),
+      HiddenPlatforms: obj(
+        user_id: str,
+        platform_ids: { type: :array, items: int,
+                        description: "The member's Hidden Platform ids, in platform name order." },
+        platforms: array_of("HiddenPlatform").merge(
+          description: "The same platforms with their names, in platform name order."
+        ),
+        _required: %w[user_id platform_ids platforms]
+      ),
+      # UpcomingReleasesController#index meta: pagination plus the Hidden
+      # Platforms left out of this result (ticket api#427).
+      UpcomingReleasesMeta: extends("PaginationMeta",
+        hidden_platform_ids: {
+          type: :array, items: int,
+          description: "The signed-in member's Hidden Platforms left out of this result, sorted. Empty when " \
+                       "nothing was left out: the member hides nothing, `platform_id` or `show_hidden=1` was " \
+                       "given, or the caller is the service token."
+        },
+        required: %w[hidden_platform_ids]),
+
       # NewsCategoryPreferencesController (ticket #357): a member's News
       # Category Preferences, the News Categories they switched off.
       NewsCategoryPreference: extends("NewsCategory",

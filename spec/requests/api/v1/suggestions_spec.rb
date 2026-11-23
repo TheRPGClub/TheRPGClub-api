@@ -19,12 +19,17 @@ RSpec.describe 'api/v1/suggestions', type: :request do
   path '/api/v1/suggestions' do
     get 'List suggestions' do
       tags 'Suggestions'
-      description 'Open to any authenticated caller. Most upvoted first, then newest. Each row carries ' \
-                  '`upvote_count` and `viewer_upvoted` (always false for the service).'
+      description 'Open to any authenticated caller. By default (`sort=board`) most upvoted first, then ' \
+                  'newest; `sort=recent` lists the latest activity first (`last_activity_at`, then newest ' \
+                  'suggestion_id), for the Suggestion Board Dashboard Panel. Each row carries ' \
+                  '`upvote_count`, `viewer_upvoted` (always false for the service) and `last_activity_at`.'
       produces 'application/json'
       parameter name: :status, in: :query, schema: { type: :string }, required: false,
         description: 'Comma-separated statuses to include (pending, approved, rejected, withdrawn). ' \
                      'Absent = every status. The Suggestion Board default is `pending,approved`.'
+      parameter name: :sort, in: :query, schema: { type: :string, enum: %w[board recent], default: 'board' },
+        required: false,
+        description: '`board`: most upvoted, then newest. `recent`: latest activity first.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
@@ -40,6 +45,10 @@ RSpec.describe 'api/v1/suggestions', type: :request do
       end
 
       response '400', 'unknown status' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'unknown sort (`invalid_sort`)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -134,6 +134,14 @@ Rails.application.routes.draw do
           get "pinned_pages", to: "pinned_pages#show"
           put "pinned_pages", to: "pinned_pages#update"
           delete "pinned_pages", to: "pinned_pages#destroy"
+          # Dashboard Panels (ticket api#422): the member's own dashboard panels.
+          get "dashboard_panels", to: "dashboard_panels#show"
+          put "dashboard_panels", to: "dashboard_panels#update"
+          delete "dashboard_panels", to: "dashboard_panels#destroy"
+          post "dashboard_panels/seen", to: "dashboard_panels#seen"
+          # Hidden Platforms (ticket api#427): the member's own Release Calendar platforms to leave out.
+          get "hidden_platforms", to: "hidden_platforms#show"
+          put "hidden_platforms", to: "hidden_platforms#update"
           # Challenges (ticket #380): the member's Birth Date.
           get "birth_date", to: "birth_dates#show"
           put "birth_date", to: "birth_dates#update"
@@ -244,13 +252,20 @@ Rails.application.routes.draw do
       post "steam_app_gamedb_maps", to: "steam_app_gamedb_maps#create"
       resources :collections, only: %i[show update destroy]
       resources :completions, only: %i[show update destroy] do
-        collection { get "leaderboard" }
+        collection do
+          get "leaderboard"
+          # The club-wide feed behind the `completions_club` Dashboard Panel.
+          get "recent"
+        end
       end
       resources :favorites, only: %i[show update destroy]
+      # The club-wide feed behind the `reviews` Dashboard Panel.
+      get "reviews", to: "reviews#recent"
       resources :reviews, only: %i[show update destroy]
       resources :backlog, only: %i[show update destroy]
-      # Cross-member now-playing (bot parity, #104). `index` is the service/admin
-      # all-members list with `game_ids[]` / `q` filters; `:id` is the entry_id
+      # Cross-member now-playing (bot parity, #104). `index` is the all-members
+      # list with `game_ids[]` / `q` filters, open to any signed-in member (the
+      # club Now Playing Dashboard Panel, api#423); `:id` is the entry_id
       # for the single-entry read, note/platform/sort update and delete. The
       # per-user list + create live under the `users` member block above.
       resources :now_playing, only: %i[index show update destroy]
@@ -504,6 +519,9 @@ Rails.application.routes.draw do
       get    "challenge_editions/:id/santa",      to: "challenge_editions#santa"
       put    "challenge_editions/:id/santa/pick", to: "challenge_editions#pick"
       put    "challenge_editions/:id/signup_post", to: "challenge_editions#signup_post"
+      # Challenge Activity (spec api#421, ticket api#424): the club-wide feed
+      # of recent Challenge happenings for the dashboard panel.
+      get    "challenge_activity",                to: "challenge_activity#index"
     end
   end
 end

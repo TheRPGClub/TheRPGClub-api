@@ -6,13 +6,17 @@ RSpec.describe 'api/v1/game_keys', type: :request do
   path '/api/v1/game_keys' do
     get 'List available game keys' do
       tags 'Game Keys'
-      description 'The unclaimed keys in the giveaway, ordered by game title ' \
-                  '(case-insensitive) then key_id. Each key embeds its `game` ' \
+      description 'The unclaimed keys in the giveaway. By default (`sort=title`) ordered by game title ' \
+                  '(case-insensitive) then key_id; `sort=recent` lists the newest donations first ' \
+                  '(`created_at`, then key_id), for the Open Giveaways Dashboard Panel. Each key embeds its `game` ' \
                   '(name + cover/art/logo) when the title is linked to a ' \
                   'GamedbGame, else `game` is null and only `game_title` is set. ' \
                   'The secret `key_value` is never included here — it is revealed ' \
                   'only to the claimer on a successful claim.'
       produces 'application/json'
+      parameter name: :sort, in: :query, schema: { type: :string, enum: %w[title recent], default: 'title' },
+        required: false,
+        description: '`title`: case-insensitive game title, then key_id. `recent`: newest donation first.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
@@ -25,6 +29,10 @@ RSpec.describe 'api/v1/game_keys', type: :request do
           data: { type: :array, items: { '$ref' => '#/components/schemas/GameKey' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
+      end
+
+      response '422', 'unknown sort (`invalid_sort`)' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '401', 'unauthenticated' do

@@ -54,6 +54,43 @@ RSpec.describe "api/v1/game_keys behavior", type: :request do
       expect(rows.fetch(unlinked.key_id).fetch("game")).to be_nil
     end
 
+    it "lists the newest donations first with sort=recent, still only unclaimed keys" do
+      oldest = create(:game_key, game_title: "AAA oldest", donor_user_id: donor.user_id)
+      newest = create(:game_key, game_title: "ZZZ newest", donor_user_id: donor.user_id)
+      middle = create(:game_key, game_title: "MMM middle", donor_user_id: donor.user_id)
+      claimed = create(:game_key, donor_user_id: donor.user_id,
+        claimed_by_user_id: claimant.user_id, claimed_at: Time.current)
+      oldest.update_column(:created_at, 3.days.ago)
+      middle.update_column(:created_at, 2.days.ago)
+      newest.update_column(:created_at, 1.day.ago)
+      claimed.update_column(:created_at, 1.hour.ago)
+
+      get "/api/v1/game_keys", params: { sort: "recent" }, headers: auth_headers_for(other_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").map { |k| k.fetch("key_id") }).to eq([ newest, middle, oldest ].map(&:key_id))
+    end
+
+    it "breaks a tie in donation time by the newer key_id" do
+      at = 1.day.ago
+      first = create(:game_key, donor_user_id: donor.user_id, created_at: at)
+      second = create(:game_key, donor_user_id: donor.user_id, created_at: at)
+
+      get "/api/v1/game_keys", params: { sort: "recent", per: 1 }, headers: service_headers
+
+      expect(json.fetch("data").map { |k| k.fetch("key_id") }).to eq([ second.key_id ])
+      expect(first.key_id).to be < second.key_id
+      expect(json.dig("meta", "count")).to eq(2)
+    end
+
+    it "422s with invalid_sort on an unknown sort" do
+      get "/api/v1/game_keys", params: { sort: "bogus" }, headers: service_headers
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "invalid_sort")
+      expect(json.fetch("message")).to include("title", "recent")
+    end
+
     it "requires authentication" do
       get "/api/v1/game_keys"
 

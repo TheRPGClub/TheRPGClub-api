@@ -1238,6 +1238,13 @@ components:
       - gamedb_game_id
       - completion_type
       - created_at
+    CompletionMemberEntry:
+      allOf:
+      - "$ref": "#/components/schemas/CompletionEntry"
+      - type: object
+        properties:
+          user:
+            "$ref": "#/components/schemas/UserSummary"
     CommonCompletionSide:
       type: object
       properties:
@@ -1679,6 +1686,13 @@ components:
       - gamedb_game_id
       - rating
       - created_at
+    ReviewMemberEntry:
+      allOf:
+      - "$ref": "#/components/schemas/ReviewEntry"
+      - type: object
+        properties:
+          user:
+            "$ref": "#/components/schemas/UserSummary"
     JournalEntryGame:
       type: object
       properties:
@@ -1882,6 +1896,12 @@ components:
         viewer_upvoted:
           type: boolean
           description: Whether the signed-in member upvoted it; false for the service.
+        last_activity_at:
+          type: string
+          format: date-time
+          description: 'The latest activity: the newest of its last change (submitted,
+            reviewed or withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent`
+            orders by it.'
       required:
       - suggestion_id
       - title
@@ -1890,6 +1910,7 @@ components:
       - status
       - upvote_count
       - viewer_upvoted
+      - last_activity_at
     SuggestionReviewMeta:
       type: object
       properties:
@@ -4101,6 +4122,80 @@ components:
       - started_at
       - window
       - progress
+    ChallengeActivityEvent:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - run_started
+          - game_cleared
+          - run_finished
+          - signups_opened
+          - edition_revealed
+          description: 'run_started: a Run started (an Assignment Run: at the draw).
+            game_cleared: a game Cleared on a Run, with `game`. run_finished: a Run
+            Finished. signups_opened: an Edition''s sign-up opened. edition_revealed:
+            an Edition''s picks were revealed.'
+        occurred_on:
+          type: string
+          format: date
+          description: The club date it happened on.
+        occurred_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it happened; null for game_cleared, signups_opened and
+            edition_revealed, which are known only by their date.
+        challenge:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            challenge_format:
+              type: string
+              enum:
+              - slots
+              - pool
+              - assignment
+            tint:
+              "$ref": "#/components/schemas/ChallengeTint"
+          required:
+          - id
+          - name
+          - challenge_format
+        user:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: The Run's member; null for Edition events.
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameSummary"
+          nullable: true
+          description: 'game_cleared only: the game Cleared.'
+        run_id:
+          type: integer
+          nullable: true
+          description: The Run's id; null for Edition events.
+        edition:
+          type: object
+          properties:
+            id:
+              type: integer
+            year:
+              type: integer
+          required:
+          - id
+          - year
+          nullable: true
+          description: 'The Edition: for Edition events and Assignment Runs.'
+      required:
+      - kind
+      - occurred_on
+      - challenge
     ChallengePoolGameProgress:
       type: object
       properties:
@@ -4931,6 +5026,59 @@ components:
       - user_id
       - pages
       - customised
+    DashboardPanels:
+      type: object
+      properties:
+        user_id:
+          type: string
+        panels:
+          type: array
+          items:
+            type: string
+            example: news
+          description: 'Dashboard Panel keys the member shows and can see right now,
+            in their order: the club default (news, now_playing_club, releases, achievements_club,
+            challenges_club) until they save their own list.'
+        catalogue:
+          type: array
+          items:
+            "$ref": "#/components/schemas/DashboardPanel"
+          description: Every panel the member can see right now, shown or not, in
+            the club's order.
+        customised:
+          type: boolean
+          description: Whether the member saved their own list. False while they follow
+            the club default, which then reaches them when it changes.
+      required:
+      - user_id
+      - panels
+      - catalogue
+      - customised
+    DashboardPanel:
+      type: object
+      properties:
+        key:
+          type: string
+          description: 'Panel key: news, now_playing_club, releases, achievements_club,
+            challenges_club, now_playing_mine, achievements_mine, challenge_runs_mine,
+            completions_club, completions_mine, backlog_pick, reviews, journals, giveaways,
+            suggestions, codex, birthdays.'
+          example: news
+        scope:
+          type: string
+          enum:
+          - club
+          - mine
+          description: Whether the panel shows club activity or the member's own.
+        new:
+          type: boolean
+          description: Whether the panel reached the site since the member last opened
+            dashboard edit mode. For a member who never opened it, true only for panels
+            added after launch.
+      required:
+      - key
+      - scope
+      - new
     ChallengeSettings:
       type: object
       properties:
@@ -5086,6 +5234,56 @@ components:
       - key
       - name
       - position
+    HiddenPlatform:
+      type: object
+      properties:
+        platform_id:
+          type: integer
+        platform_name:
+          type: string
+          example: PlayStation 5
+        platform_abbreviation:
+          type: string
+          nullable: true
+          example: PS5
+      required:
+      - platform_id
+      - platform_name
+      - platform_abbreviation
+    HiddenPlatforms:
+      type: object
+      properties:
+        user_id:
+          type: string
+        platform_ids:
+          type: array
+          items:
+            type: integer
+          description: The member's Hidden Platform ids, in platform name order.
+        platforms:
+          type: array
+          items:
+            "$ref": "#/components/schemas/HiddenPlatform"
+          description: The same platforms with their names, in platform name order.
+      required:
+      - user_id
+      - platform_ids
+      - platforms
+    UpcomingReleasesMeta:
+      allOf:
+      - "$ref": "#/components/schemas/PaginationMeta"
+      - type: object
+        properties:
+          hidden_platform_ids:
+            type: array
+            items:
+              type: integer
+            description: 'The signed-in member''s Hidden Platforms left out of this
+              result, sorted. Empty when nothing was left out: the member hides nothing,
+              `platform_id` or `show_hidden=1` was given, or the caller is the service
+              token.'
+        required:
+        - hidden_platform_ids
     NewsCategoryPreference:
       allOf:
       - "$ref": "#/components/schemas/NewsCategory"
@@ -8477,6 +8675,60 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/challenge_activity":
+    get:
+      summary: List recent Challenge Activity
+      tags:
+      - Challenges
+      description: 'Members (the `challenges` Feature). Recent Challenge happenings
+        club-wide, for the dashboard''s Challenge Activity panel: Runs started, games
+        Cleared on a Run, Runs Finished, and Secret Santa sign-ups opening and reveals.
+        Derived from what Runs and Editions store, so a deleted Run or Challenge takes
+        its events with it. Hidden Challenges are left out for everyone, staff included.
+        Newest first: by `occurred_on`, then `occurred_at`, where an event known only
+        by its date sorts as the start of its club day. One page of `per` events.'
+      parameters:
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 10
+          maximum: 50
+        required: false
+      responses:
+        '200':
+          description: events
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengeActivityEvent"
+                  meta:
+                    type: object
+                    required:
+                    - per
+                    properties:
+                      per:
+                        type: integer
+        '404':
+          description: the caller cannot use the `challenges` Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/challenges/{challenge_id}/editions":
     parameters:
     - name: challenge_id
@@ -14914,6 +15166,57 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/completions/recent":
+    get:
+      summary: Club recent completions
+      tags:
+      - Completions
+      description: Every member's Game Completions, newest first, for the club Recent
+        Completions Dashboard Panel. Open to any authenticated caller who can use
+        Game Completions. Newest is by `completed_at` (undated entries last), then
+        by when the entry was logged. Members who have left the server (`server_left_at`
+        set) are left out.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: recent completions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/CompletionMemberEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: Game Completions is not available to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/completions/{id}":
     parameters:
     - name: id
@@ -15110,6 +15413,225 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/dashboard_panels":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's Dashboard Panels
+      tags:
+      - Dashboard Panels
+      description: 'The panels the member shows below the current issue on their own
+        dashboard, in their order: only the panels they can see right now (a Feature
+        they are shown; `birthdays` needs none). A member who never saved a list gets
+        the club default (news, now_playing_club, releases, achievements_club, challenges_club).
+        Panels they can''t see right now are left out but kept. `catalogue` lists
+        every panel they can see, shown or not, with its scope and whether it is new
+        to them. `customised` says whether the member saved their own list. Only the
+        member themself may read it; another member, staff and the bot''s service
+        token get 403.'
+      responses:
+        '200':
+          description: dashboard panels
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/DashboardPanels"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Replace a member's Dashboard Panels
+      tags:
+      - Dashboard Panels
+      description: 'Replaces the list the member sees with `panels`, in order: show,
+        hide and reorder all send the whole list. There is no limit. Panels the member
+        can''t see right now are kept, after the sent ones and in their existing order.
+        An unknown key or a key sent twice returns 422 and changes nothing; its `error`
+        says why. A key the member can''t see right now is accepted and kept. Saved
+        keys the API no longer knows are dropped. The first save makes the list the
+        member''s own, so later changes to the club default no longer reach them,
+        and an empty list stays empty. Returns the whole document, as GET does.'
+      parameters: []
+      responses:
+        '200':
+          description: saved dashboard panels
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/DashboardPanels"
+                required:
+                - data
+        '422':
+          description: not a list, unknown panel, or panel sent twice
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    panels:
+                      type: array
+                      items:
+                        type: string
+                      description: Dashboard Panel keys, in order. May be empty.
+                      example:
+                      - news
+                      - reviews
+                      - birthdays
+                  required:
+                  - panels
+              required:
+              - data
+        required: true
+    delete:
+      summary: Reset a member's Dashboard Panels to the club default
+      tags:
+      - Dashboard Panels
+      description: Drops the member's saved list, hidden panels included, so they
+        follow the club default again, and later changes to it reach them. `customised`
+        is false afterwards and true again after their next save. Resetting a member
+        who already follows the default changes nothing. Returns the whole document,
+        as GET does.
+      responses:
+        '200':
+          description: dashboard panels, back to the club default
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/DashboardPanels"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/dashboard_panels/seen":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    post:
+      summary: Mark the Dashboard Panel catalogue as seen
+      tags:
+      - Dashboard Panels
+      description: Called when the member opens dashboard edit mode. Records the panels
+        the website listed there (`data.panels`) as seen, or every panel on the site
+        without a body, so they are no longer `new` to them. A panel the website did
+        not list (the API knows it first) stays new. Unknown keys are ignored; `panels`
+        that is not a list is a 422. A member who has never called it has seen the
+        panels the site launched with, so only panels added after launch are new to
+        them. Returns the whole document, as GET does.
+      parameters: []
+      responses:
+        '200':
+          description: dashboard panels, the listed ones no longer new
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/DashboardPanels"
+                required:
+                - data
+        '422':
+          description: "`panels` is not a list"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    panels:
+                      type: array
+                      items:
+                        type: string
+                      description: Dashboard Panel keys the member was shown in edit
+                        mode, shown or not.
+                      example:
+                      - news
+                      - reviews
+                      - birthdays
   "/api/v1/dashboard":
     get:
       summary: Front-page dashboard
@@ -16436,12 +16958,25 @@ paths:
       summary: List available game keys
       tags:
       - Game Keys
-      description: The unclaimed keys in the giveaway, ordered by game title (case-insensitive)
-        then key_id. Each key embeds its `game` (name + cover/art/logo) when the title
-        is linked to a GamedbGame, else `game` is null and only `game_title` is set.
+      description: The unclaimed keys in the giveaway. By default (`sort=title`) ordered
+        by game title (case-insensitive) then key_id; `sort=recent` lists the newest
+        donations first (`created_at`, then key_id), for the Open Giveaways Dashboard
+        Panel. Each key embeds its `game` (name + cover/art/logo) when the title is
+        linked to a GamedbGame, else `game` is null and only `game_title` is set.
         The secret `key_value` is never included here — it is revealed only to the
         claimer on a successful claim.
       parameters:
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - title
+          - recent
+          default: title
+        required: false
+        description: "`title`: case-insensitive game title, then key_id. `recent`:
+          newest donation first."
       - name: page
         in: query
         schema:
@@ -16486,6 +17021,12 @@ paths:
                       "$ref": "#/components/schemas/GameKey"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: unknown sort (`invalid_sort`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -19245,6 +19786,128 @@ paths:
                     example: true
                 required:
                 - ok
+  "/api/v1/users/{user_id}/hidden_platforms":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's Hidden Platforms
+      tags:
+      - Release Calendar
+      description: The platforms the member leaves out of their own Release Calendar
+        and Upcoming Releases panel (`GET /upcoming_releases`), in platform name order.
+        Empty until they hide one. Only the member themself may read it; another member,
+        staff and the bot's service token get 403. Belongs to the Release Calendar
+        Feature, so a member who cannot use it gets 404.
+      responses:
+        '200':
+          description: hidden platforms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/HiddenPlatforms"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the Release Calendar Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Replace a member's Hidden Platforms
+      tags:
+      - Release Calendar
+      description: 'Replaces the member''s whole set with `platform_ids`: hiding and
+        showing a platform both send the whole set, and an empty list clears it. An
+        id sent twice counts once. An unknown platform id, or anything but a list
+        of positive integer ids, returns 422 and changes nothing; its `error` says
+        why in a sentence the website shows the member. Returns the whole document,
+        as GET does.'
+      parameters: []
+      responses:
+        '200':
+          description: saved hidden platforms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/HiddenPlatforms"
+                required:
+                - data
+        '422':
+          description: not a list of platform ids, or an unknown platform
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the Release Calendar Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    platform_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: GameDB platform ids to hide. May be empty.
+                      example:
+                      - 6
+                      - 48
+                  required:
+                  - platform_ids
+              required:
+              - data
+        required: true
   "/api/v1/igdb/search":
     get:
       summary: Search IGDB for games
@@ -22651,10 +23314,12 @@ paths:
       summary: List all members' now-playing entries
       tags:
       - Now Playing
-      description: Service/admin-only. Every active member's now-playing entries (bots
-        and members who have left are excluded), each with its embedded user, game
-        and platform. The optional `game_ids[]` filter narrows to entries of any of
-        the given games; `q` keeps entries whose game title matches (case-insensitive
+      description: Open to any authenticated caller (the bot's service token, or any
+        signed-in member for the dashboard's Club Now Playing panel). Every active
+        member's now-playing entries, newest first (`added_at` descending), `per`
+        honoured (bots and members who have left are excluded), each with its embedded
+        user, game and platform. The optional `game_ids[]` filter narrows to entries
+        of any of the given games; `q` keeps entries whose game title matches (case-insensitive
         substring) for the search autocomplete.
       parameters:
       - name: game_ids[]
@@ -22716,12 +23381,6 @@ paths:
                       "$ref": "#/components/schemas/NowPlayingMemberEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
-        '403':
-          description: forbidden — caller is not service/admin
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -25494,6 +26153,56 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/reviews":
+    get:
+      summary: Club latest reviews
+      tags:
+      - Reviews
+      description: Every member's shared reviews, newest first (by `created_at`),
+        for the Latest Reviews Dashboard Panel. Open to any authenticated caller who
+        can use Reviews. Unshared reviews are never listed here, whoever asks, and
+        members who have left the server (`server_left_at` set) are left out.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: latest reviews
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ReviewMemberEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: Reviews is not available to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/reviews/{id}":
     parameters:
     - name: id
@@ -29315,9 +30024,11 @@ paths:
       summary: List suggestions
       tags:
       - Suggestions
-      description: Open to any authenticated caller. Most upvoted first, then newest.
-        Each row carries `upvote_count` and `viewer_upvoted` (always false for the
-        service).
+      description: Open to any authenticated caller. By default (`sort=board`) most
+        upvoted first, then newest; `sort=recent` lists the latest activity first
+        (`last_activity_at`, then newest suggestion_id), for the Suggestion Board
+        Dashboard Panel. Each row carries `upvote_count`, `viewer_upvoted` (always
+        false for the service) and `last_activity_at`.
       parameters:
       - name: status
         in: query
@@ -29326,6 +30037,17 @@ paths:
         required: false
         description: Comma-separated statuses to include (pending, approved, rejected,
           withdrawn). Absent = every status. The Suggestion Board default is `pending,approved`.
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - board
+          - recent
+          default: board
+        required: false
+        description: "`board`: most upvoted, then newest. `recent`: latest activity
+          first."
       - name: page
         in: query
         schema:
@@ -29372,6 +30094,12 @@ paths:
                     "$ref": "#/components/schemas/PaginationMeta"
         '400':
           description: unknown status
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unknown sort (`invalid_sort`)
           content:
             application/json:
               schema:
@@ -30475,7 +31203,10 @@ paths:
         counts on and after its date, `month`/`quarter`/`year` until their whole period
         has ended, `tba` always. Any signed-in member; belongs to the Release Calendar
         Feature, so a member who cannot use it gets 404 `not_found`; the service token
-        is not gated.'
+        is not gated. For a signed-in member, Releases on their Hidden Platforms are
+        left out, and so is an Upcoming Release left with none (`meta.hidden_platform_ids`
+        lists them), unless `platform_id`, `game_id` or `show_hidden=1` is given.
+        The service token is never filtered.'
       parameters:
       - name: month
         in: query
@@ -30521,6 +31252,15 @@ paths:
           - next
         description: "`next` keeps only each game's earliest Upcoming Release (after
           the other filters). Any other value is a 422 `invalid_per_game`."
+      - name: show_hidden
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+        description: "`1` (or `true`) lists the member's Hidden Platforms too, for
+          this request only. Without it a member's Hidden Platforms are left out unless
+          `platform_id` or `game_id` is given."
       - name: page
         in: query
         schema:
@@ -30548,7 +31288,7 @@ paths:
                     items:
                       "$ref": "#/components/schemas/UpcomingRelease"
                   meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
+                    "$ref": "#/components/schemas/UpcomingReleasesMeta"
                 required:
                 - data
                 - meta

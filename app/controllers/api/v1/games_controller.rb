@@ -22,13 +22,10 @@ module Api
       # `sort` is validated always but ignored when `q` is present: search keeps
       # its relevance order.
       def index
-        sort = params[:sort].presence || "title"
-        unless SORTS.key?(sort)
-          return render json: { error: "invalid_sort", message: "sort must be one of: #{SORTS.keys.join(', ')}" },
-            status: :unprocessable_content
-        end
+        order = sort_param(SORTS, default: "title")
+        return if performed?
 
-        scope = params[:q].present? ? GamedbGame.search(params[:q]) : GamedbGame.without_images.order(*SORTS.fetch(sort))
+        scope = params[:q].present? ? GamedbGame.search(params[:q]) : GamedbGame.without_images.order(*order)
         scope = apply_winner_filter(scope)
         scope = apply_taxonomy_filters(scope)
         # The scope carries computed SELECT columns and (for search) a custom
