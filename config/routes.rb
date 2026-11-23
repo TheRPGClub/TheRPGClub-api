@@ -265,6 +265,11 @@ Rails.application.routes.draw do
       get "reviews", to: "reviews#recent"
       resources :reviews, only: %i[show update destroy] do
         member { post :publish }
+        # Revisions of a Review (spec api#430): its history, and Revisit.
+        resources :revisions, only: %i[index create], controller: "review_revisions"
+      end
+      resources :review_revisions, only: %i[update destroy] do
+        member { post :publish }
       end
       resources :backlog, only: %i[show update destroy]
       # Cross-member now-playing (bot parity, #104). `index` is the all-members

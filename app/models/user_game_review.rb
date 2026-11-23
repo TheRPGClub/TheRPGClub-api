@@ -6,33 +6,8 @@ class UserGameReview < ApplicationRecord
 
   # The 7-day score lock and the edited marker (ADR 0013).
   include EditRules
-
-  # The review scorecard catalogue, mirrored by `www/lib/reviews/facets.ts`.
-  # The web side owns the human labels and hints; this side owns validity.
-  # Adding a facet or a template means adding it in both places.
-  FACET_KEYS = %w[
-    story characters combat world music visuals pacing gameplay
-    replayability difficulty writing performance value art_direction
-    voice_acting
-  ].freeze
-  # Which preset the card was last built from — provenance, not a constraint.
-  # Every preset is editable, so a card tagged "rpg" may legitimately no longer
-  # look like the RPG preset, and `order` is never checked against it.
-  # "quick" is deliberately absent: a quick take stores `facets: nil`, so "no
-  # scorecard" has exactly one representation.
-  FACET_TEMPLATES = %w[rpg general custom].freeze
-  # A category the reviewer invented on this card, carrying whatever name they
-  # gave it in `labels`. Numbered rather than slugged from the name: a slug
-  # would have to change on every rename and drag the row's score and weight
-  # with it. The number is arbitrary and stable; the label carries the meaning.
-  CUSTOM_FACET_KEY = /\Acustom:[1-9][0-9]{0,3}\z/
-  # The longest preset is 7, so the ceiling only ever binds on a custom card.
-  MAX_FACETS = 12
-  # The budget a weighted scorecard splits across its facets. Weights are
-  # optional; when present they must cover `order` exactly and sum to this.
-  WEIGHT_TOTAL = 100
-  MAX_LABEL_LENGTH = 40
-  FACET_ATTRIBUTES = %w[template order scores labels weights].freeze
+  # The score, title and scorecard every take shares, with their validation.
+  include ReviewTake
 
   belongs_to :user,
     class_name: "RpgClubUser",
@@ -50,17 +25,30 @@ class UserGameReview < ApplicationRecord
     foreign_key: :gamedb_game_id,
     inverse_of: false,
     optional: true
+  # The database deletes a Review's Revisions with it.
+  has_many :revisions,
+    class_name: "UserGameReviewRevision",
+    dependent: nil,
+    inverse_of: :review
+  # The Published Revisions in publish order.
+  has_many :published_revisions, -> { published.order(:published_at, :revision_id) },
+    class_name: "UserGameReviewRevision",
+    dependent: nil,
+    inverse_of: :review
+  # The latest Published Revision, whose score is the Review's current score.
+  has_one :latest_revision, -> { published.order(published_at: :desc, revision_id: :desc) },
+    class_name: "UserGameReviewRevision",
+    dependent: nil,
+    inverse_of: :review
+  # The Draft Revision, if the author is Revisiting.
+  has_one :draft_revision, -> { drafts },
+    class_name: "UserGameReviewRevision",
+    dependent: nil,
+    inverse_of: :review
 
-  # `{"order": []}` is a scorecard with nothing on it, which is a quick take
-  # wearing a different shape. Collapse it before validating so the two can't
-  # both persist.
-  before_validation :nullify_empty_facets
-
-  # A Review is a Draft until its author publishes it; `published_at` is set
-  # once, on publish, and never cleared (spec api#430). Every list, preview
-  # and count other members see covers Published Reviews only.
-  scope :published, -> { where.not(published_at: nil) }
-  scope :drafts, -> { where(published_at: nil) }
+  # Every list, preview and count other members see covers Published
+  # Reviews only (spec api#430); `published` and `drafts` come with
+  # ReviewTake.
 
   # True when the body holds any text, in any of its three shapes (an editor
   # value, a bare string, an object from the pre-web import under one of the
@@ -86,237 +74,77 @@ class UserGameReview < ApplicationRecord
     END
   SQL
 
+  # Every take, Reviews and Revisions alike, as one row each in the Review's
+  # columns, in place of the table (aliased `user_game_reviews`, so the
+  # scopes here and the `user` / `tracked_game` associations still apply).
+  # `state` is :published or :drafts. On top of the columns each row carries:
+  #
+  # - `kind`: "review" or "revision".
+  # - `revision_id`: the Revision, null on a review.
+  # - `previous_rating`: the score a Revision replaces, null on a review. For
+  #   a Published Revision it is the score just before it was published (the
+  #   Published Revision before it, else the Review's own); for a Draft
+  #   Revision, the Review's current score.
+  #
+  # `user_id` and `gamedb_game_id` are the Review's. The rows are read-only.
+  scope :takes, lambda { |state|
+    published = { published: "IS NOT NULL", drafts: "IS NULL" }.fetch(state)
+    from(<<~SQL.squish).readonly
+      (
+        SELECT r.review_id, r.user_id, r.gamedb_game_id, r.rating, r.title, r.body, r.facets,
+          r.created_at, r.updated_at, r.published_at, r.edited_at,
+          'review'::text AS kind, NULL::bigint AS revision_id, NULL::integer AS previous_rating
+        FROM user_game_reviews r
+        WHERE r.published_at #{published}
+        UNION ALL
+        SELECT r.review_id, r.user_id, r.gamedb_game_id, v.rating, v.title, v.body, v.facets,
+          v.created_at, v.updated_at, v.published_at, v.edited_at,
+          'revision'::text, v.revision_id,
+          COALESCE((
+            SELECT p.rating FROM user_game_review_revisions p
+            WHERE p.review_id = v.review_id AND p.published_at IS NOT NULL
+              AND p.revision_id <> v.revision_id
+              AND (v.published_at IS NULL OR (p.published_at, p.revision_id) < (v.published_at, v.revision_id))
+            ORDER BY p.published_at DESC, p.revision_id DESC LIMIT 1
+          ), r.rating)
+        FROM user_game_review_revisions v
+        JOIN user_game_reviews r ON r.review_id = v.review_id
+        WHERE v.published_at #{published}
+      ) AS user_game_reviews
+    SQL
+  }
+
   scope :written, -> { where(WRITTEN_SQL) }
   # Selects the `written` flag alongside every column, for the Review Feed.
   scope :with_written, -> { select(arel_table[Arel.star], "(#{WRITTEN_SQL}) AS written") }
 
   validates :user_id, :gamedb_game_id, presence: true
-  # A Draft may have no score yet; publishing needs one. The check constraint
-  # `ck_user_game_reviews_rating_when_published` holds the same line under
-  # the model.
-  validates :rating, numericality: { only_integer: true, in: 0..100 }, allow_nil: true
-  validate :rating_when_published
-  validates :title, length: { maximum: 120 }, allow_nil: true
   validates :user_id, uniqueness: { scope: :gamedb_game_id }
-  # The reviews controller writes `params.require(:data).permit!`, so this is
-  # the only thing between a client and arbitrary jsonb the web app renders.
-  validate :facets_shape
 
-  # The mean of the scored facets, rounded, or nil when none are scored.
-  # Weighted by the card's own split where it has one. Mirrors `facetAverage`
-  # in `www/lib/reviews/facets.ts`.
-  #
-  # Unscored facets are left out of both the sum and the divisor, so a
-  # half-filled card averages what is actually on it rather than counting the
-  # blanks as zero.
-  #
-  # Only ever a derived reading: the overall `rating` stays authored, and the
-  # gap between the two is usually the interesting part of a review. This is
-  # the natural hook for the per-game facet aggregates, if the club adds them.
-  def facet_average
-    data = facets.is_a?(Hash) ? facets.stringify_keys : {}
-    order = data["order"]
-    scores = data["scores"]
-    return nil unless order.is_a?(Array) && scores.is_a?(Hash)
+  # The Review's score: its latest Published Revision's, or its own until it
+  # has one. `rating` stays the original take's score.
+  def current_rating
+    latest_revision ? latest_revision.rating : rating
+  end
 
-    scores = scores.stringify_keys
-    scored = order.select { |key| scores[key].is_a?(Integer) }
-    return nil if scored.empty?
-
-    weights = data["weights"]
-    if weights.is_a?(Hash)
-      weights = weights.stringify_keys
-      total = scored.sum { |key| weights[key].is_a?(Integer) ? weights[key] : 0 }
-      # Every scored facet weighted at zero leaves nothing to divide by. That
-      # is reachable (weight the blanks, score the rest at 0%), so it falls
-      # back to the plain mean rather than reporting no average at all.
-      if total.positive?
-        weighted = scored.sum { |key| scores[key] * (weights[key].is_a?(Integer) ? weights[key] : 0) }
-        return (weighted.to_f / total).round
-      end
+  # The Published Revisions in publish order, each told the score it
+  # replaced (`previous_rating`).
+  def revision_history
+    previous = rating
+    published_revisions.each do |revision|
+      revision.previous_rating = previous
+      previous = revision.rating
     end
-
-    (scored.sum { |key| scores[key] }.to_f / scored.length).round
   end
 
-  def published? = published_at.present?
-
-  def draft? = !published?
-
-  # Publishes a Draft, refusing one with no score (false, with
-  # `rating_required` on `rating`). Publishing is not reversible, and
-  # publishing an already Published Review keeps its first publish date.
-  def publish
-    self.published_at ||= Time.current
-    save
-  end
-
-  def publish!
-    publish || raise(ActiveRecord::RecordInvalid, self)
-  end
-
-  private
-
-  def rating_when_published
-    errors.add(:rating, :rating_required, message: "is required to publish") if published? && rating.nil?
-  end
-
-  def nullify_empty_facets
-    return unless facets.is_a?(Hash)
-
-    order = facets.stringify_keys["order"]
-    return unless order.is_a?(Array) && order.empty?
-
-    self.facets = nil
-  end
-
-  # A scorecard read back from jsonb is always string-keyed; one assigned in
-  # Ruby need not be, so every check reads the stringified copy.
-  def facets_shape
-    return if facets.nil?
-
-    unless facets.is_a?(Hash)
-      return errors.add(:facets, "must be an object")
-    end
-
-    data = facets.stringify_keys
-    unknown = data.keys - FACET_ATTRIBUTES
-    errors.add(:facets, "has unknown keys: #{unknown.sort.join(', ')}") if unknown.any?
-
-    validate_facet_template(data["template"])
-    order = validate_facet_order(data["order"])
-    labels = validate_facet_labels(data["labels"], order)
-    validate_custom_facet_labels(order, labels)
-    validate_facet_scores(data["scores"], order)
-    validate_facet_weights(data["weights"], order)
-  end
-
-  def validate_facet_template(template)
-    return if FACET_TEMPLATES.include?(template)
-
-    errors.add(:facets, "template must be one of: #{FACET_TEMPLATES.join(', ')}")
-  end
-
-  # Returns the validated order, or nil when it is unusable — the scores check
-  # only reports strays against an order it can trust.
-  def validate_facet_order(order)
-    unless order.is_a?(Array)
-      errors.add(:facets, "order must be an array")
-      return nil
-    end
-
-    unknown = order.reject { |key| catalogue_facet?(key) || custom_facet?(key) }
-    errors.add(:facets, "order has unknown facets: #{unknown.map(&:to_s).uniq.sort.join(', ')}") if unknown.any?
-    errors.add(:facets, "order has duplicate facets") if order.uniq.length != order.length
-    errors.add(:facets, "order may not exceed #{MAX_FACETS} facets") if order.length > MAX_FACETS
-
-    order
-  end
-
-  def catalogue_facet?(key) = FACET_KEYS.include?(key)
-
-  def custom_facet?(key) = key.is_a?(String) && CUSTOM_FACET_KEY.match?(key)
-
-  # Display names, stored only where they say something the catalogue doesn't.
-  # A catalogue row *may* carry one — it is an override, and the key stays
-  # canonical, which is the point: a row renamed "Job System" still counts as
-  # `combat` for any future club-wide averages. Returns the validated labels,
-  # or nil when there is nothing usable to check custom rows against.
-  def validate_facet_labels(labels, order)
-    return nil if labels.nil?
-
-    unless labels.is_a?(Hash)
-      errors.add(:facets, "labels must be an object")
-      return nil
-    end
-
-    labels = labels.stringify_keys
-
-    if order.is_a?(Array)
-      strays = labels.keys - order
-      errors.add(:facets, "labels has facets missing from order: #{strays.sort.join(', ')}") if strays.any?
-    end
-
-    blank = labels.reject { |_key, value| value.is_a?(String) && value.strip.present? }
-    errors.add(:facets, "labels must be non-empty strings: #{blank.keys.sort.join(', ')}") if blank.any?
-
-    long = labels.select { |_key, value| value.is_a?(String) && value.strip.length > MAX_LABEL_LENGTH }
-    if long.any?
-      errors.add(:facets,
-        "labels may not exceed #{MAX_LABEL_LENGTH} characters: #{long.keys.sort.join(', ')}")
-    end
-
-    labels
-  end
-
-  # A custom row is nothing but its name: without one there is nothing to
-  # render and no way to say what the score meant. Rejected rather than
-  # dropped, so a reviewer never silently loses a row they filled in.
-  def validate_custom_facet_labels(order, labels)
-    return unless order.is_a?(Array)
-
-    named = (labels || {}).select { |_key, value| value.is_a?(String) && value.strip.present? }.keys
-    unnamed = order.select { |key| custom_facet?(key) } - named
-    return if unnamed.empty?
-
-    errors.add(:facets, "custom facets need a label: #{unnamed.sort.join(', ')}")
-  end
-
-  def validate_facet_scores(scores, order)
-    return if scores.nil?
-
-    unless scores.is_a?(Hash)
-      return errors.add(:facets, "scores must be an object")
-    end
-
-    scores = scores.stringify_keys
-
-    # A stray score renders nowhere yet would still land in an average, so it
-    # is rejected rather than dropped.
-    if order.is_a?(Array)
-      strays = scores.keys - order
-      errors.add(:facets, "scores has facets missing from order: #{strays.sort.join(', ')}") if strays.any?
-    end
-
-    invalid = scores.reject { |_key, value| value.is_a?(Integer) && value.between?(0, 100) }
-    return if invalid.empty?
-
-    errors.add(:facets, "scores must be integers in 0..100: #{invalid.keys.sort.join(', ')}")
-  end
-
-  # A weighted card splits WEIGHT_TOTAL across every facet on it. The rule is
-  # exact rather than lenient, and a violation is rejected rather than
-  # repaired: a split that doesn't add up means something different depending
-  # on who reads it, and the composer already blocks on this client-side, so
-  # anything arriving broken is a bug or a hand-rolled request.
-  def validate_facet_weights(weights, order)
-    # Absent means unweighted — every scored facet counts once. That is what
-    # most cards store, and what every card stored before weights existed.
-    return if weights.nil?
-
-    unless weights.is_a?(Hash)
-      return errors.add(:facets, "weights must be an object")
-    end
-
-    weights = weights.stringify_keys
-    # Without a usable order there is nothing to check the key set against;
-    # `order`'s own error is the one worth reporting.
-    return unless order.is_a?(Array)
-
-    missing = order - weights.keys
-    strays = weights.keys - order
-    errors.add(:facets, "weights is missing facets from order: #{missing.map(&:to_s).sort.join(', ')}") if missing.any?
-    errors.add(:facets, "weights has facets missing from order: #{strays.sort.join(', ')}") if strays.any?
-
-    invalid = weights.reject { |_key, value| value.is_a?(Integer) && value.between?(0, WEIGHT_TOTAL) }
-    if invalid.any?
-      return errors.add(:facets,
-        "weights must be integers in 0..#{WEIGHT_TOTAL}: #{invalid.keys.sort.join(', ')}")
-    end
-
-    total = weights.values.sum
-    return if total == WEIGHT_TOTAL
-
-    errors.add(:facets, "weights must sum to #{WEIGHT_TOTAL} (got #{total})")
+  # The full Review shape: `rating` is the current score, `original_rating`
+  # the original take's, and `revisions` the Published Revisions in publish
+  # order (spec api#430).
+  def serializable_hash(options = nil)
+    super.merge(
+      "rating" => current_rating,
+      "original_rating" => rating,
+      "revisions" => revision_history.map(&:as_json)
+    )
   end
 end

@@ -30,6 +30,18 @@ FactoryBot.define do
     end
   end
 
+  # A Revision of a Published Review; Published by default, like :review.
+  factory :review_revision, class: "UserGameReviewRevision" do
+    review
+    rating { 85 }
+    published_at { Time.current }
+
+    trait :draft do
+      rating { nil }
+      published_at { nil }
+    end
+  end
+
   factory :now_playing_entry, class: "UserNowPlaying" do
     user
     game
