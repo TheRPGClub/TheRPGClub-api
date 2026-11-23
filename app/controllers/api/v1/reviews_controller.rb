@@ -21,6 +21,21 @@ module Api
         render_collection(scope, resource: ReviewEntryResource, default_order: { created_at: :desc })
       end
 
+      # GET /api/v1/users/:user_id/reviews/drafts
+      #
+      # The member's own Drafts, newest last-touched first, with the game and
+      # its track embedded. Only the author and Admins may read it; anyone
+      # else, the service included, is refused.
+      def drafts
+        unless reads_drafts_of?(params[:user_id])
+          return render json: { error: "forbidden" }, status: :forbidden
+        end
+
+        scope = UserGameReview.drafts.where(user_id: params[:user_id]).preload(tracked_game: :images)
+        render_collection(scope, resource: ReviewDraftEntryResource,
+          default_order: { updated_at: :desc, review_id: :desc })
+      end
+
       # GET /api/v1/reviews
       #
       # The Review Feed, also behind the Latest Reviews Dashboard Panel:
