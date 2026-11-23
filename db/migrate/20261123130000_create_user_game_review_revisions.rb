@@ -21,9 +21,6 @@ class CreateUserGameReviewRevisions < ActiveRecord::Migration[8.1]
       # At most one Draft Revision per Review at a time.
       t.index :review_id, name: "uq_user_game_review_revisions_one_draft", unique: true,
         where: "published_at IS NULL"
-      # The Review Feed reads Published Revisions newest published first.
-      t.index %i[published_at revision_id], name: "ix_user_game_review_revisions_feed",
-        order: { published_at: :desc, revision_id: :desc }, where: "published_at IS NOT NULL"
       t.check_constraint "rating >= 0 AND rating <= 100", name: "ck_user_game_review_revisions_rating_range"
       t.check_constraint "published_at IS NULL OR rating IS NOT NULL",
         name: "ck_user_game_review_revisions_rating_when_published"

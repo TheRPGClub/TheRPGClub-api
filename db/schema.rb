@@ -1436,7 +1436,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_130000) do
     t.datetime "edited_at"
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
-    t.index ["published_at", "revision_id"], name: "ix_user_game_review_revisions_feed", order: :desc, where: "(published_at IS NOT NULL)"
     t.index ["review_id", "published_at"], name: "ix_user_game_review_revisions_review"
     t.index ["review_id"], name: "uq_user_game_review_revisions_one_draft", unique: true, where: "(published_at IS NULL)"
     t.check_constraint "published_at IS NULL OR rating IS NOT NULL", name: "ck_user_game_review_revisions_rating_when_published"
@@ -1455,7 +1454,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_130000) do
     t.datetime "published_at"
     t.datetime "edited_at"
     t.index ["gamedb_game_id"], name: "ix_user_game_reviews_game"
-    t.index ["published_at", "review_id"], name: "ix_user_game_reviews_feed", order: :desc, where: "(published_at IS NOT NULL)"
     t.index ["user_id", "gamedb_game_id"], name: "uq_user_game_reviews_user_game", unique: true
     t.index ["user_id"], name: "ix_user_game_reviews_user"
     t.check_constraint "published_at IS NULL OR rating IS NOT NULL", name: "ck_user_game_reviews_rating_when_published"
