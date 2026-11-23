@@ -245,6 +245,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/completionator_import_items" => "game_completions",
     # Reviews
     "api/v1/reviews" => "reviews",
+    "api/v1/review_revisions" => "reviews",
     # Achievement Hub
     "api/v1/achievements" => "achievement_hub",
     "api/v1/achievement_sets" => "achievement_hub",

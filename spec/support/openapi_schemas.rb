@@ -138,6 +138,14 @@ module OpenapiSchemas
       # games#index / #show / create-from-IGDB (GameResource): GameSummary plus
       # the GOTM/NR-GOTM winner flags selected by the `without_images` scope.
       Game: extends("GameSummary", gotm_won: bool, nr_gotm_won: bool, required: %w[gotm_won nr_gotm_won]),
+      # TrackedGameResource, the game in the Review Feed and the drafts
+      # listing: Game plus the month each track was last won.
+      TrackedGame: extends("Game",
+        gotm_month_year: str(nullable: true).merge(description: "The month it won GOTM (its latest win), " \
+                                                                "e.g. \"November 2024\"; null if it never did."),
+        nr_gotm_month_year: str(nullable: true).merge(description: "The month it won NR-GOTM (its latest win); " \
+                                                                   "null if it never did."),
+        required: %w[gotm_month_year nr_gotm_month_year]),
       # GameWithPlatformsResource: GameSummary plus the game's platforms, for
       # the two consumers that render platform pills — the nomination board and
       # the dashboard's GOTM / NR-GOTM cards. Ordered by `platform_name`; empty
@@ -532,32 +540,121 @@ module OpenapiSchemas
         },
         _required: %w[template order]
       ),
-      # reviews#index / show / create / update render `as_json` — all columns,
-      # including the write-only `is_shared` and `updated_at` the curated shape trims.
+      # reviews#show / create / update / publish render `as_json` (all columns,
+      # including `updated_at`, which the curated shape trims). A Draft has a
+      # null `published_at` and may have a null `rating`.
       Review: obj(
-        review_id: int, user_id: str, gamedb_game_id: int, rating: int,
+        review_id: int, user_id: str, gamedb_game_id: int,
+        rating: int(nullable: true).merge(description: "The current score: the latest Published Revision's, " \
+                                                       "else the Review's own. Null only on a Draft with no " \
+                                                       "score yet."),
+        original_rating: int(nullable: true).merge(description: "The original take's own score (the one an " \
+                                                                "Edit to this Review changes)."),
+        revisions: array_of("ReviewRevision").merge(description: "The Published Revisions, in publish order."),
+        draft_revision: ref("ReviewRevision", nullable: true).merge(
+          description: "The Draft Revision, for its author and Admins only; null for everyone else, or when " \
+                       "the author isn't Revisiting."
+        ),
         title: str(nullable: true, maxLength: 120), body: json,
-        facets: ref("ReviewFacets", nullable: true), is_shared: bool,
+        facets: ref("ReviewFacets", nullable: true),
+        published_at: ts(nullable: true).merge(description: "When it was published; null while a Draft. " \
+                                                             "Set once and never cleared."),
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
+        score_locks_at: ts(nullable: true).merge(description: "When the score stops being editable, 7 days " \
+                                                                 "after publishing (ADR 0013): past it an Edit " \
+                                                                 "that changes `rating` gets 422 `score_locked`. " \
+                                                                 "Null while a Draft."),
+        created_at: ts, updated_at: ts
+      ),
+      # A Revision (UserGameReviewRevision#as_json): a dated return to a
+      # Published Review, served by the revision endpoints and inside the
+      # Review shape (spec api#430, ticket #433).
+      ReviewRevision: obj(
+        revision_id: int, review_id: int,
+        rating: int(nullable: true).merge(description: "This take's score. Null only on a Draft with no score yet."),
+        previous_rating: int.merge(description: "The score this take replaced: on a Published Revision the " \
+                                                "score just before it was published; on a Draft, the Review's " \
+                                                "current score."),
+        title: str(nullable: true, maxLength: 120), body: json,
+        facets: ref("ReviewFacets", nullable: true),
+        published_at: ts(nullable: true).merge(description: "When it was published; null while a Draft. " \
+                                                             "Set once and never cleared."),
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "its own publishing (ADR 0013); null otherwise."),
+        score_locks_at: ts(nullable: true).merge(description: "When the score stops being editable, 7 days " \
+                                                                 "after this Revision was published (ADR 0013). " \
+                                                                 "Null while a Draft."),
         created_at: ts, updated_at: ts
       ),
       # ReviewUserEntryResource (ReviewFields + user), for the game-scoped reviews list.
       ReviewUserEntry: obj(
-        review_id: int, user_id: str, gamedb_game_id: int, rating: int,
+        review_id: int, user_id: str, gamedb_game_id: int,
+        rating: int.merge(description: "The current score: the latest Published Revision's, else the " \
+                                     "Review's own (spec api#430)."),
+        original_rating: int.merge(description: "The original take's score, whatever Revisions followed."),
+        revised: bool.merge(description: "Whether it has Published Revisions (a newer take than the first)."),
         title: str(nullable: true, maxLength: 120), body: json,
-        facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
         user: ref("UserSummary")
       ),
       # ReviewEntryResource (ReviewFields + game): the user-scoped reviews list
       # (reviews#index) and the user profile preview.
       ReviewEntry: obj(
-        review_id: int, user_id: str, gamedb_game_id: int, rating: int,
+        review_id: int, user_id: str, gamedb_game_id: int,
+        rating: int.merge(description: "The current score: the latest Published Revision's, else the " \
+                                     "Review's own (spec api#430)."),
+        original_rating: int.merge(description: "The original take's score, whatever Revisions followed."),
+        revised: bool.merge(description: "Whether it has Published Revisions (a newer take than the first)."),
         title: str(nullable: true, maxLength: 120), body: json,
-        facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
         game: ref("GameSummary")
       ),
-      # ReviewMemberEntryResource (ReviewEntry + user), the club-wide feed
-      # (ReviewsController#recent).
-      ReviewMemberEntry: extends("ReviewEntry", user: ref("UserSummary")),
+      # ReviewFeedEntryResource, one entry of the Review Feed
+      # (ReviewsController#recent): a Published Review or Published Revision
+      # with its author and its game (with the GOTM / NR-GOTM track flags).
+      ReviewFeedEntry: obj(
+        kind: str(enum: %w[review revision]).merge(
+          description: "`review` for a Published Review, `revision` for a Published Revision (its own entry)."
+        ),
+        review_id: int,
+        revision_id: int(nullable: true).merge(description: "The Revision, on a `revision` entry; null on a `review`."),
+        user_id: str, gamedb_game_id: int,
+        rating: int.merge(description: "This take's own score (not the Review's current one)."),
+        previous_rating: int(nullable: true).merge(description: "The score the Revision replaced, on a " \
+                                                                "`revision` entry; null on a `review`."),
+        title: str(nullable: true, maxLength: 120), body: json,
+        written: bool.merge(description: "Whether the body holds any text. False for a score-only quick take."),
+        facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
+        edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
+                                                          "publishing (ADR 0013); null otherwise."),
+        user: ref("UserSummary"), game: ref("TrackedGame")
+      ),
+      # ReviewDraftEntryResource (a Draft Review or Draft Revision, with
+      # updated_at and the game with its track flags), the author's drafts
+      # listing (reviews#drafts).
+      ReviewDraftEntry: obj(
+        kind: str(enum: %w[review revision]).merge(
+          description: "`review` for a Draft Review, `revision` for a Draft Revision of a Published Review."
+        ),
+        review_id: int,
+        revision_id: int(nullable: true).merge(description: "The Revision, on a `revision` entry; null on a `review`."),
+        user_id: str, gamedb_game_id: int,
+        rating: int(nullable: true).merge(description: "This Draft's score; null until the author picks one."),
+        previous_rating: int(nullable: true).merge(description: "On a `revision` entry, the Review's current " \
+                                                                "score, which publishing would replace; null " \
+                                                                "on a `review`."),
+        title: str(nullable: true, maxLength: 120), body: json,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        published_at: ts(nullable: true).merge(description: "Always null: a Draft is unpublished."),
+        edited_at: ts(nullable: true).merge(description: "Always null: a Draft is never Edited."),
+        updated_at: ts.merge(description: "When the author last touched it; the listing's order."),
+        game: ref("TrackedGame")
+      ),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
       JournalEntryGame: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, entry_title: str(nullable: true),
@@ -1541,7 +1638,7 @@ module OpenapiSchemas
         pages: { type: :array, items: str(example: "voting"),
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
-                              "gotm_history, challenges, games, releases, achievements, journals, members, news, " \
+                              "gotm_history, challenges, games, reviews, releases, achievements, journals, members, news, " \
                               "codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
                               "public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \

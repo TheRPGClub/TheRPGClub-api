@@ -107,6 +107,30 @@ _Avoid_: Calendar entry, event
 A platform a Member has chosen to leave out of their own Release Calendar and Upcoming Releases panel. It changes only what that Member sees; the club's release posts are unaffected.
 _Avoid_: Platform filter, muted console, blocked platform
 
+**Review**:
+A Member's rating of one Game, optionally with a written take and a scorecard. A Member has at most one Review per Game.
+_Avoid_: Rating (when meaning the whole Review), post
+
+**Draft**:
+A Review or Revision its author has started but not yet published. Only its author and Admins can see it, and it may not have a score yet.
+_Avoid_: Unshared, private, hidden review
+
+**Published**:
+A Review or Revision every Member can read, dated from the moment its author published it. A Published Review never goes back to being a Draft; its author can revise it or delete it.
+_Avoid_: Shared, public, live (Live is a Feature Flag state)
+
+**Revision**:
+A dated return to a Published Review, such as after a second playthrough, with its own score and optionally its own written take. The earlier take stays readable beneath it, and the latest Revision's score becomes the Review's score.
+_Avoid_: Edit, update, version
+
+**Edit**:
+A correction to a Published Review or Revision that changes it in place without recording a change of opinion. An Edit may change the score only in the first 7 days after publishing; after that, a new score needs a Revision. A late Edit is marked as edited.
+_Avoid_: Revision, update
+
+**Review Feed**:
+Every Member's Published Reviews and Revisions across all Games, newest first.
+_Avoid_: Review index, timeline, activity
+
 ## Community
 
 **Suggestion**:

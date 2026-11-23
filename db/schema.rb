@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_20_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1426,19 +1426,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_150000) do
     t.index ["user_id"], name: "ix_user_game_journal_entries_user"
   end
 
+  create_table "user_game_review_revisions", primary_key: "revision_id", force: :cascade do |t|
+    t.bigint "review_id", null: false
+    t.integer "rating"
+    t.string "title", limit: 120
+    t.jsonb "body"
+    t.jsonb "facets"
+    t.datetime "published_at"
+    t.datetime "edited_at"
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["review_id", "published_at"], name: "ix_user_game_review_revisions_review"
+    t.index ["review_id"], name: "uq_user_game_review_revisions_one_draft", unique: true, where: "(published_at IS NULL)"
+    t.check_constraint "published_at IS NULL OR rating IS NOT NULL", name: "ck_user_game_review_revisions_rating_when_published"
+    t.check_constraint "rating >= 0 AND rating <= 100", name: "ck_user_game_review_revisions_rating_range"
+  end
+
   create_table "user_game_reviews", primary_key: "review_id", force: :cascade do |t|
     t.jsonb "body"
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.jsonb "facets"
     t.bigint "gamedb_game_id", null: false
-    t.boolean "is_shared", default: true, null: false
-    t.integer "rating", null: false
+    t.integer "rating"
     t.string "title", limit: 120
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.string "user_id", limit: 50, null: false
+    t.datetime "published_at"
+    t.datetime "edited_at"
     t.index ["gamedb_game_id"], name: "ix_user_game_reviews_game"
     t.index ["user_id", "gamedb_game_id"], name: "uq_user_game_reviews_user_game", unique: true
     t.index ["user_id"], name: "ix_user_game_reviews_user"
+    t.check_constraint "published_at IS NULL OR rating IS NOT NULL", name: "ck_user_game_reviews_rating_when_published"
     t.check_constraint "rating >= 0 AND rating <= 100", name: "ck_user_game_reviews_rating_range"
   end
 
@@ -1623,6 +1641,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_150000) do
   add_foreign_key "user_game_favorites", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_favorites_user"
   add_foreign_key "user_game_journal_entries", "gamedb_games", primary_key: "game_id", name: "fk_user_game_journal_entries_gamedb"
   add_foreign_key "user_game_journal_entries", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_journal_entries_user"
+  add_foreign_key "user_game_review_revisions", "user_game_reviews", column: "review_id", primary_key: "review_id", name: "fk_user_game_review_revisions_review", on_delete: :cascade
   add_foreign_key "user_game_reviews", "gamedb_games", primary_key: "game_id", name: "fk_user_game_reviews_gamedb"
   add_foreign_key "user_game_reviews", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_reviews_user"
   add_foreign_key "user_linked_accounts", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_linked_accounts_user", on_delete: :cascade

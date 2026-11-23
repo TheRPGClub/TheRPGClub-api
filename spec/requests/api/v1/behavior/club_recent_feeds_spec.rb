@@ -4,7 +4,7 @@ require "rails_helper"
 
 # The club-wide recent feeds behind the `completions_club` and `reviews`
 # Dashboard Panels (spec #421, ticket #425): every member's Game Completions
-# and shared reviews, newest first, without members who have left the server.
+# and Published Reviews, newest first, without members who have left the server.
 RSpec.describe "club recent feeds", type: :request do
   let(:member) { create(:user, role_member: true) }
   let(:author) { create(:user) }
@@ -77,10 +77,11 @@ RSpec.describe "club recent feeds", type: :request do
   end
 
   describe "GET /api/v1/reviews" do
-    it "lists every member's shared reviews newest first, with the author and game" do
-      older = create(:review, user: author, created_at: 2.days.ago)
-      newest = create(:review, user: member, rating: 91, title: "Peak", created_at: 1.hour.ago)
-      middle = create(:review, user: author, created_at: 1.day.ago)
+    it "lists every member's Published Reviews newest published first, with the author and game" do
+      older = create(:review, user: author, published_at: 2.days.ago)
+      newest = create(:review, user: member, rating: 91, title: "Peak", created_at: 9.days.ago,
+        published_at: 1.hour.ago)
+      middle = create(:review, user: author, published_at: 1.day.ago)
 
       get "/api/v1/reviews", headers: auth_headers_for(member)
 
@@ -93,9 +94,9 @@ RSpec.describe "club recent feeds", type: :request do
       expect(first.keys).not_to include("is_shared", "updated_at")
     end
 
-    it "leaves out unshared reviews, even for staff and their author" do
+    it "leaves out Drafts, even for Admins and their author" do
       shared = create(:review, user: author)
-      create(:review, user: author, is_shared: false)
+      create(:review, :draft, user: author)
 
       [ auth_headers_for(author), auth_headers_for(create(:user, :admin)), service_headers ].each do |headers|
         get "/api/v1/reviews", headers: headers
@@ -116,8 +117,8 @@ RSpec.describe "club recent feeds", type: :request do
     end
 
     it "honours per" do
-      kept = create(:review, user: author, created_at: 1.hour.ago)
-      create(:review, user: author, created_at: 2.days.ago)
+      kept = create(:review, user: author, published_at: 1.hour.ago)
+      create(:review, user: author, published_at: 2.days.ago)
 
       get "/api/v1/reviews", params: { per: 1 }, headers: auth_headers_for(member)
 

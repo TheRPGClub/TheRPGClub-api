@@ -28,6 +28,7 @@ module PinnedPages
     page("gotm_history", feature: "voting_gotm"),
     page("challenges", feature: "challenges"),
     page("games", feature: "game_index"),
+    page("reviews", feature: "reviews"),
     page("releases", feature: "release_calendar"),
     page("achievements", feature: "achievement_hub"),
     page("journals", feature: "journals"),
