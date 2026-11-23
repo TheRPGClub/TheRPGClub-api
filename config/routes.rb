@@ -261,7 +261,9 @@ Rails.application.routes.draw do
       resources :favorites, only: %i[show update destroy]
       # The club-wide feed behind the `reviews` Dashboard Panel.
       get "reviews", to: "reviews#recent"
-      resources :reviews, only: %i[show update destroy]
+      resources :reviews, only: %i[show update destroy] do
+        member { post :publish }
+      end
       resources :backlog, only: %i[show update destroy]
       # Cross-member now-playing (bot parity, #104). `index` is the all-members
       # list with `game_ids[]` / `q` filters, open to any signed-in member (the

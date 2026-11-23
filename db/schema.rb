@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_20_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_23_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1431,14 +1431,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_20_150000) do
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.jsonb "facets"
     t.bigint "gamedb_game_id", null: false
-    t.boolean "is_shared", default: true, null: false
-    t.integer "rating", null: false
+    t.integer "rating"
     t.string "title", limit: 120
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.string "user_id", limit: 50, null: false
+    t.datetime "published_at"
     t.index ["gamedb_game_id"], name: "ix_user_game_reviews_game"
     t.index ["user_id", "gamedb_game_id"], name: "uq_user_game_reviews_user_game", unique: true
     t.index ["user_id"], name: "ix_user_game_reviews_user"
+    t.check_constraint "published_at IS NULL OR rating IS NOT NULL", name: "ck_user_game_reviews_rating_when_published"
     t.check_constraint "rating >= 0 AND rating <= 100", name: "ck_user_game_reviews_rating_range"
   end
 

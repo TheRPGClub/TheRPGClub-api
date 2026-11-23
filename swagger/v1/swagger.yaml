@@ -1590,6 +1590,8 @@ components:
           type: integer
         rating:
           type: integer
+          nullable: true
+          description: Null only on a Draft with no score yet.
         title:
           type: string
           nullable: true
@@ -1602,8 +1604,12 @@ components:
           allOf:
           - "$ref": "#/components/schemas/ReviewFacets"
           nullable: true
-        is_shared:
-          type: boolean
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it was published; null while a Draft. Set once and never
+            cleared.
         created_at:
           type: string
           format: date-time
@@ -1614,8 +1620,6 @@ components:
       - review_id
       - user_id
       - gamedb_game_id
-      - rating
-      - is_shared
       - created_at
       - updated_at
     ReviewUserEntry:
@@ -1644,6 +1648,9 @@ components:
         created_at:
           type: string
           format: date-time
+        published_at:
+          type: string
+          format: date-time
         user:
           "$ref": "#/components/schemas/UserSummary"
       required:
@@ -1652,6 +1659,7 @@ components:
       - gamedb_game_id
       - rating
       - created_at
+      - published_at
     ReviewEntry:
       type: object
       properties:
@@ -1678,6 +1686,9 @@ components:
         created_at:
           type: string
           format: date-time
+        published_at:
+          type: string
+          format: date-time
         game:
           "$ref": "#/components/schemas/GameSummary"
       required:
@@ -1686,6 +1697,7 @@ components:
       - gamedb_game_id
       - rating
       - created_at
+      - published_at
     ReviewMemberEntry:
       allOf:
       - "$ref": "#/components/schemas/ReviewEntry"
@@ -26014,10 +26026,10 @@ paths:
       summary: List a user's reviews
       tags:
       - Reviews
-      description: 'Open to any authenticated caller. Returns the curated review shape
-        with the game embedded, newest first. Unshared reviews (`is_shared: false`)
-        are private: they are listed only for their author, an admin or the service,
-        and are left out (and out of `meta.count`) for anyone else.'
+      description: Open to any authenticated caller. Returns the member's Published
+        Reviews in the curated shape with the game embedded, newest first. Drafts
+        are never listed here (nor counted in `meta.count`), whoever asks, their author
+        included.
       parameters:
       - name: page
         in: query
@@ -26073,9 +26085,11 @@ paths:
       summary: Write a review
       tags:
       - Reviews
-      description: Owner-only. `gamedb_game_id` and `rating` are required; a user
-        may review a given game only once (unique per (user, game)). `body` and `is_shared`
-        are optional.
+      description: 'Owner-only. Creates a Draft: only `gamedb_game_id` is required,
+        and a Draft may have no score yet. With `publish: true` (the quick take) it
+        is created and published in one call, refused with 422 `rating_required` without
+        a `rating`. A member has at most one Review per game, and a Draft counts (unique
+        per (user, game)).'
       parameters: []
       responses:
         '201':
@@ -26094,7 +26108,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `rating_required` when publishing without
+            a score
           content:
             application/json:
               schema:
@@ -26126,7 +26141,11 @@ paths:
                         Unique per (user, game).
                     rating:
                       type: integer
-                      description: Numeric rating. Required on create.
+                      nullable: true
+                      minimum: 0
+                      maximum: 100
+                      description: Score, 0..100. A Draft may have none; publishing
+                        needs one (422 `rating_required`).
                     title:
                       type: string
                       nullable: true
@@ -26143,13 +26162,12 @@ paths:
                       nullable: true
                       description: 'Optional per-category scorecard. Omit or send
                         null for a quick take; `{"order": []}` is stored as null.'
-                    is_shared:
+                    publish:
                       type: boolean
-                      description: Whether the review is shared. Optional. Write-only
-                        — not returned by the curated game-scoped list.
+                      description: True to publish on create (the quick take). Defaults
+                        to false (a Draft).
                   required:
                   - gamedb_game_id
-                  - rating
               required:
               - data
         required: true
@@ -26158,10 +26176,10 @@ paths:
       summary: Club latest reviews
       tags:
       - Reviews
-      description: Every member's shared reviews, newest first (by `created_at`),
+      description: Every member's Published Reviews, newest published first (by `published_at`),
         for the Latest Reviews Dashboard Panel. Open to any authenticated caller who
-        can use Reviews. Unshared reviews are never listed here, whoever asks, and
-        members who have left the server (`server_left_at` set) are left out.
+        can use Reviews. Drafts are never listed here, whoever asks, and members who
+        have left the server (`server_left_at` set) are left out.
       parameters:
       - name: page
         in: query
@@ -26215,6 +26233,8 @@ paths:
       summary: Show a review
       tags:
       - Reviews
+      description: A Published Review, for any authenticated caller. A Draft is readable
+        only by its author and Admins; anyone else, the service included, gets 404.
       responses:
         '200':
           description: review detail
@@ -26226,7 +26246,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Review"
         '404':
-          description: not found
+          description: not found, or a Draft the caller may not read
           content:
             application/json:
               schema:
@@ -26241,7 +26261,10 @@ paths:
       summary: Update a review
       tags:
       - Reviews
-      description: 'Owner-only. Partial update: send any subset of the writable columns.'
+      description: 'Owner-only. Partial update: send any subset of the writable columns.
+        `published_at` is not writable (publish with `POST /reviews/{id}/publish`;
+        a Published Review never goes back to Draft), and a Published Review''s score
+        cannot be cleared (422 `rating_required`).'
       parameters: []
       responses:
         '200':
@@ -26292,7 +26315,11 @@ paths:
                         Unique per (user, game).
                     rating:
                       type: integer
-                      description: Numeric rating. Required on create.
+                      nullable: true
+                      minimum: 0
+                      maximum: 100
+                      description: Score, 0..100. A Draft may have none; publishing
+                        needs one (422 `rating_required`).
                     title:
                       type: string
                       nullable: true
@@ -26309,10 +26336,6 @@ paths:
                       nullable: true
                       description: 'Optional per-category scorecard. Omit or send
                         null for a quick take; `{"order": []}` is stored as null.'
-                    is_shared:
-                      type: boolean
-                      description: Whether the review is shared. Optional. Write-only
-                        — not returned by the curated game-scoped list.
               required:
               - data
         required: true
@@ -26353,7 +26376,11 @@ paths:
                         Unique per (user, game).
                     rating:
                       type: integer
-                      description: Numeric rating. Required on create.
+                      nullable: true
+                      minimum: 0
+                      maximum: 100
+                      description: Score, 0..100. A Draft may have none; publishing
+                        needs one (422 `rating_required`).
                     title:
                       type: string
                       nullable: true
@@ -26370,10 +26397,6 @@ paths:
                       nullable: true
                       description: 'Optional per-category scorecard. Omit or send
                         null for a quick take; `{"order": []}` is stored as null.'
-                    is_shared:
-                      type: boolean
-                      description: Whether the review is shared. Optional. Write-only
-                        — not returned by the curated game-scoped list.
         required: true
     delete:
       summary: Delete a review
@@ -26395,6 +26418,55 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/reviews/{id}/publish":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: UserGameReview review_id.
+    post:
+      summary: Publish a review
+      tags:
+      - Reviews
+      description: Owner-only. Publishes a Draft, setting `published_at`. Refused
+        with 422 `rating_required` without a score. Not reversible; publishing a Published
+        Review changes nothing and keeps its first publish date.
+      responses:
+        '200':
+          description: published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Review"
+        '403':
+          description: 'forbidden: caller is not the owner'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`rating_required`: the Draft has no score"
           content:
             application/json:
               schema:

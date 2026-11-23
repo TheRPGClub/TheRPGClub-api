@@ -3,12 +3,15 @@
 require "rails_helper"
 
 # Behavior specs for the review endpoints: reads are open to any authenticated
-# principal, writes are gated to the owner (or the service). The user-scoped
-# list serves the curated ReviewEntryResource shape with the game embedded and
-# hides unshared reviews from everyone but their author, admins and the
-# service; the single-record endpoint returns the full record (as_json); the
+# principal, writes are gated to the owner (or the service). A Review is a
+# Draft until published (spec api#430): Drafts are readable only by their
+# author and Admins, and every list covers Published Reviews only. The
+# user-scoped list serves the curated ReviewEntryResource shape with the game
+# embedded; the single-record endpoint returns the full record (as_json); the
 # game-scoped list serves the curated ReviewUserEntryResource shape.
 RSpec.describe "api/v1/reviews behavior", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:owner) { create(:user) }
   let(:other_user) { create(:user) }
 
@@ -31,40 +34,30 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
         "body" => { "text" => "masterpiece" }
       )
       expect(entry.fetch("game")).to include("game_id" => review.gamedb_game_id, "title" => review.game.title)
+      expect(entry.fetch("published_at")).to be_present
       expect(entry.keys).not_to include("is_shared", "updated_at")
     end
 
-    describe "unshared reviews" do
-      let!(:shared) { create(:review, user: owner) }
-      let!(:unshared) { create(:review, user: owner, is_shared: false) }
+    describe "Drafts" do
+      let!(:published) { create(:review, user: owner) }
+      let!(:draft) { create(:review, :draft, user: owner) }
 
       def review_ids
         json.fetch("data").map { |review| review.fetch("review_id") }
       end
 
-      it "hides them from other members" do
-        get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(other_user)
+      {
+        "another member" => -> { auth_headers_for(create(:user)) },
+        "their author" => -> { auth_headers_for(owner) },
+        "an Admin" => -> { auth_headers_for(create(:user, :admin)) },
+        "the service" => -> { service_headers }
+      }.each do |who, headers|
+        it "are left out of the list (and its count) for #{who}" do
+          get "/api/v1/users/#{owner.user_id}/reviews", headers: instance_exec(&headers)
 
-        expect(review_ids).to eq([ shared.review_id ])
-        expect(json.fetch("meta")).to include("count" => 1)
-      end
-
-      it "shows them to their author" do
-        get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(owner)
-
-        expect(review_ids).to contain_exactly(shared.review_id, unshared.review_id)
-      end
-
-      it "shows them to admins" do
-        get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(create(:user, :admin))
-
-        expect(review_ids).to contain_exactly(shared.review_id, unshared.review_id)
-      end
-
-      it "shows them to the service" do
-        get "/api/v1/users/#{owner.user_id}/reviews", headers: service_headers
-
-        expect(review_ids).to contain_exactly(shared.review_id, unshared.review_id)
+          expect(review_ids).to eq([ published.review_id ])
+          expect(json.fetch("meta")).to include("count" => 1)
+        end
       end
     end
 
@@ -103,20 +96,22 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       )
     end
 
-    it "does not expose the write-only is_shared flag in the curated shape" do
+    it "leaves out Drafts, even for their author" do
       game = create(:game)
-      create(:review, user: owner, game: game)
+      published = create(:review, user: other_user, game: game)
+      create(:review, :draft, user: owner, game: game)
 
-      get "/api/v1/games/#{game.game_id}/reviews", headers: service_headers
+      get "/api/v1/games/#{game.game_id}/reviews", headers: auth_headers_for(owner)
 
-      expect(json.fetch("data").first).not_to have_key("is_shared")
+      expect(json.fetch("data").map { |r| r.fetch("review_id") }).to eq([ published.review_id ])
+      expect(json.fetch("meta")).to include("count" => 1)
     end
   end
 
   describe "POST /api/v1/users/:user_id/reviews" do
     let(:game) { create(:game) }
     let(:payload) do
-      { data: { gamedb_game_id: game.game_id, rating: 85, body: { "text" => "great pacing" }, is_shared: false } }
+      { data: { gamedb_game_id: game.game_id, rating: 85, body: { "text" => "great pacing" } } }
     end
 
     it "creates a review for the owner, round-tripping the JSON body" do
@@ -131,8 +126,53 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
         "gamedb_game_id" => game.game_id,
         "rating" => 85,
         "body" => { "text" => "great pacing" },
-        "is_shared" => false
+        "published_at" => nil
       )
+      expect(json.fetch("data")).not_to have_key("is_shared")
+    end
+
+    it "creates a Draft without a score" do
+      post "/api/v1/users/#{owner.user_id}/reviews",
+        params: { data: { gamedb_game_id: game.game_id } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(json.fetch("data")).to include("rating" => nil, "published_at" => nil)
+    end
+
+    describe "the quick take (publish: true)" do
+      it "creates and publishes in one call" do
+        freeze_time do
+          post "/api/v1/users/#{owner.user_id}/reviews",
+            params: { data: { gamedb_game_id: game.game_id, rating: 70, publish: true } },
+            headers: auth_headers_for(owner), as: :json
+
+          expect(response).to have_http_status(:created)
+          expect(json.dig("data", "published_at")).to eq(Time.current.as_json)
+        end
+
+        get "/api/v1/games/#{game.game_id}/reviews", headers: auth_headers_for(other_user)
+        expect(json.fetch("data").length).to eq(1)
+      end
+
+      it "refuses one without a score, creating nothing" do
+        expect {
+          post "/api/v1/users/#{owner.user_id}/reviews",
+            params: { data: { gamedb_game_id: game.game_id, publish: true } },
+            headers: auth_headers_for(owner), as: :json
+        }.not_to change(UserGameReview, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to eq("rating_required")
+      end
+
+      it "ignores a caller-sent published_at" do
+        post "/api/v1/users/#{owner.user_id}/reviews",
+          params: { data: { gamedb_game_id: game.game_id, rating: 70, published_at: 1.year.ago } },
+          headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json.dig("data", "published_at")).to be_nil
+      end
     end
 
     it "allows the service to write on behalf of a user" do
@@ -150,17 +190,21 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
-    it "422s when rating is missing" do
-      post "/api/v1/users/#{owner.user_id}/reviews",
-        params: { data: { gamedb_game_id: game.game_id } }, headers: auth_headers_for(owner), as: :json
-
-      expect(response).to have_http_status(:unprocessable_content)
-    end
-
     it "422s when rating is out of the 0..100 range" do
       post "/api/v1/users/#{owner.user_id}/reviews",
         params: { data: { gamedb_game_id: game.game_id, rating: 150 } },
         headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "422s when the user already has a Draft of the game (a Draft counts)" do
+      create(:review, :draft, user: owner, game: game)
+
+      expect {
+        post "/api/v1/users/#{owner.user_id}/reviews",
+          params: payload, headers: auth_headers_for(owner), as: :json
+      }.not_to change(UserGameReview, :count)
 
       expect(response).to have_http_status(:unprocessable_content)
     end
@@ -547,6 +591,86 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
 
       expect(response).to have_http_status(:not_found)
     end
+
+    describe "a Draft" do
+      let(:draft) { create(:review, :draft, user: owner, rating: nil) }
+
+      it "shows to its author" do
+        get "/api/v1/reviews/#{draft.review_id}", headers: auth_headers_for(owner)
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("review_id" => draft.review_id, "published_at" => nil)
+      end
+
+      it "shows to an Admin" do
+        get "/api/v1/reviews/#{draft.review_id}", headers: auth_headers_for(create(:user, :admin))
+
+        expect(response).to have_http_status(:ok)
+      end
+
+      it "is not found for another member" do
+        get "/api/v1/reviews/#{draft.review_id}", headers: auth_headers_for(other_user)
+
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it "is not found for the service" do
+        get "/api/v1/reviews/#{draft.review_id}", headers: service_headers
+
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+  end
+
+  describe "POST /api/v1/reviews/:id/publish" do
+    it "publishes the author's Draft" do
+      draft = create(:review, :draft, user: owner, rating: 64)
+
+      freeze_time do
+        post "/api/v1/reviews/#{draft.review_id}/publish", headers: auth_headers_for(owner)
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("review_id" => draft.review_id, "published_at" => Time.current.as_json)
+      end
+
+      get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(other_user)
+      expect(json.fetch("data").map { |r| r.fetch("review_id") }).to eq([ draft.review_id ])
+    end
+
+    it "refuses a Draft without a score" do
+      draft = create(:review, :draft, user: owner, rating: nil)
+
+      post "/api/v1/reviews/#{draft.review_id}/publish", headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("rating_required")
+      expect(draft.reload.published_at).to be_nil
+    end
+
+    it "keeps the first publish date of an already Published Review" do
+      first = 3.days.ago.change(usec: 0)
+      review = create(:review, user: owner, published_at: first)
+
+      post "/api/v1/reviews/#{review.review_id}/publish", headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:ok)
+      expect(review.reload.published_at).to eq(first)
+    end
+
+    it "forbids a non-owner" do
+      draft = create(:review, :draft, user: owner)
+
+      post "/api/v1/reviews/#{draft.review_id}/publish", headers: auth_headers_for(other_user)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(draft.reload.published_at).to be_nil
+    end
+
+    it "404s for an unknown id (as the service)" do
+      post "/api/v1/reviews/999999999/publish", headers: service_headers
+
+      expect(response).to have_http_status(:not_found)
+    end
   end
 
   describe "PATCH /api/v1/reviews/:id" do
@@ -635,6 +759,37 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(review.reload.rating).to eq(55)
       expect(review.facets).to be_nil
+    end
+
+    it "never unpublishes: a sent published_at is ignored" do
+      review = create(:review, user: owner, rating: 40)
+
+      patch "/api/v1/reviews/#{review.review_id}",
+        params: { data: { published_at: nil, title: "Still out" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(review.reload.published_at).to be_present
+    end
+
+    it "refuses to clear the score of a Published Review" do
+      review = create(:review, user: owner, rating: 40)
+
+      patch "/api/v1/reviews/#{review.review_id}",
+        params: { data: { rating: nil } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("rating_required")
+      expect(review.reload.rating).to eq(40)
+    end
+
+    it "lets a Draft's score be cleared" do
+      draft = create(:review, :draft, user: owner, rating: 40)
+
+      patch "/api/v1/reviews/#{draft.review_id}",
+        params: { data: { rating: nil } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(draft.reload.rating).to be_nil
     end
 
     it "allows the service" do
