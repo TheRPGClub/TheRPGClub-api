@@ -110,6 +110,8 @@ Rails.application.routes.draw do
           post "completions", to: "completions#create"
           get "favorites", to: "favorites#index"
           post "favorites", to: "favorites#create"
+          # The author's own Drafts (author and Admins only).
+          get "reviews/drafts", to: "reviews#drafts"
           get "reviews", to: "reviews#index"
           post "reviews", to: "reviews#create"
           get "backlog/pick", to: "backlog#pick"

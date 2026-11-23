@@ -40,6 +40,13 @@ class UserGameReview < ApplicationRecord
     class_name: "GamedbGame",
     foreign_key: :gamedb_game_id,
     inverse_of: :reviews
+  # The same game read through `GamedbGame.without_images`, so it carries the
+  # `gotm_won` / `nr_gotm_won` track flags GameResource serves.
+  belongs_to :tracked_game, -> { without_images },
+    class_name: "GamedbGame",
+    foreign_key: :gamedb_game_id,
+    inverse_of: false,
+    optional: true
 
   # `{"order": []}` is a scorecard with nothing on it, which is a quick take
   # wearing a different shape. Collapse it before validating so the two can't
@@ -50,6 +57,7 @@ class UserGameReview < ApplicationRecord
   # once, on publish, and never cleared (spec api#430). Every list, preview
   # and count other members see covers Published Reviews only.
   scope :published, -> { where.not(published_at: nil) }
+  scope :drafts, -> { where(published_at: nil) }
 
   validates :user_id, :gamedb_game_id, presence: true
   # A Draft may have no score yet; publishing needs one. The check constraint

@@ -1705,6 +1705,58 @@ components:
         properties:
           user:
             "$ref": "#/components/schemas/UserSummary"
+    ReviewDraftEntry:
+      type: object
+      properties:
+        review_id:
+          type: integer
+        user_id:
+          type: string
+        gamedb_game_id:
+          type: integer
+        rating:
+          type: integer
+          nullable: true
+          description: Null until the author picks a score.
+        title:
+          type: string
+          nullable: true
+          maxLength: 120
+        body:
+          type: object
+          description: Free-form JSON.
+          nullable: true
+        facets:
+          allOf:
+          - "$ref": "#/components/schemas/ReviewFacets"
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'Always null: a Draft is unpublished.'
+        updated_at:
+          type: string
+          format: date-time
+          description: When the author last touched it; the listing's order.
+        kind:
+          type: string
+          enum:
+          - review
+          description: What the Draft is. Always `review` for now; Draft Revisions
+            will join as `revision`.
+        game:
+          "$ref": "#/components/schemas/Game"
+      required:
+      - review_id
+      - user_id
+      - gamedb_game_id
+      - created_at
+      - updated_at
+      - kind
     JournalEntryGame:
       type: object
       properties:
@@ -26171,6 +26223,68 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/users/{user_id}/reviews/drafts":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a member's Drafts
+      tags:
+      - Reviews
+      description: The member's Draft Reviews, newest last-touched (`updated_at`)
+        first, with the game and its GOTM / NR-GOTM track embedded. Readable only
+        by the author and Admins signed in with Discord; anyone else, the service
+        included, gets 403. Published Reviews never appear here.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: drafts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ReviewDraftEntry"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '403':
+          description: 'forbidden: the caller is neither the author nor an Admin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: Reviews is not available to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/reviews":
     get:
       summary: Club latest reviews
