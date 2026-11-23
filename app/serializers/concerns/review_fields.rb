@@ -4,7 +4,8 @@
 # shape (ReviewResource) and the game-/user-embedded variants
 # (ReviewEntryResource / ReviewUserEntryResource).
 #
-# The web frontend reads `review_id`, `user_id`, `gamedb_game_id`, `rating`,
+# The web frontend reads `review_id`, `user_id`, `gamedb_game_id`, `rating`
+# (the current score once Revisions exist, spec api#430), `original_rating`,
 # `title`, `body`, `facets`, `created_at`, `published_at` (the date a
 # Review is shown with once Drafts exist, spec api#430) and `edited_at` (the
 # "Edited *date*" by the byline, ADR 0013). `facets` is here rather than in
@@ -16,7 +17,11 @@ module ReviewFields
   extend ActiveSupport::Concern
 
   included do
-    attributes :review_id, :user_id, :gamedb_game_id, :rating, :title, :body, :facets, :created_at, :published_at,
-      :edited_at
+    attributes :review_id, :user_id, :gamedb_game_id
+    # The current score (the latest Published Revision's, else the Review's
+    # own) and the original take's. Preload `latest_revision`.
+    attribute(:rating, &:current_rating)
+    attribute(:original_rating, &:rating)
+    attributes :title, :body, :facets, :created_at, :published_at, :edited_at
   end
 end

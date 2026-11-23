@@ -93,9 +93,10 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     get 'List a member\'s Drafts' do
       tags 'Reviews'
-      description 'The member\'s Draft Reviews, newest last-touched (`updated_at`) first, with the game and its ' \
-                  'GOTM / NR-GOTM track embedded. Readable only by the author and Admins signed in with Discord; ' \
-                  'anyone else, the service included, gets 403. Published Reviews never appear here.'
+      description 'The member\'s Drafts, Draft Reviews (`kind: review`) and Draft Revisions (`kind: revision`, ' \
+                  'with the score they would replace) alike, newest last-touched (`updated_at`) first, with the ' \
+                  'game and its GOTM / NR-GOTM track embedded. Readable only by the author and Admins signed in ' \
+                  'with Discord; anyone else, the service included, gets 403. Published takes never appear here.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -125,11 +126,12 @@ RSpec.describe 'api/v1/reviews', type: :request do
     get 'The Review Feed' do
       tags 'Reviews'
       description 'The Review Feed, also behind the Latest Reviews Dashboard Panel: every member\'s Published ' \
-                  'Reviews, newest published first (by `published_at`), each with its author and its game ' \
-                  '(with the GOTM / NR-GOTM track flags). Open to any authenticated caller who can use ' \
-                  'Reviews. Drafts are never listed here, whoever asks, and members who have left the server ' \
-                  '(`server_left_at` set) are left out. Every entry is `kind: review` for now; Published ' \
-                  'Revisions will join as their own `kind: revision` entries.'
+                  'Reviews (`kind: review`) and Published Revisions (`kind: revision`, each its own entry with ' \
+                  'the score it replaced in `previous_rating`), newest published first (by `published_at`), ' \
+                  'each with its author and its game (with the GOTM / NR-GOTM track flags). `rating` is each ' \
+                  'take\'s own score. Open to any authenticated caller who can use Reviews. Drafts are never ' \
+                  'listed here, whoever asks, and members who have left the server (`server_left_at` set) are ' \
+                  'left out.'
       produces 'application/json'
       parameter name: :written, in: :query, schema: { type: :boolean }, required: false,
         description: 'Written only: true keeps only the entries with text (`written: true`), dropping the ' \
@@ -160,7 +162,10 @@ RSpec.describe 'api/v1/reviews', type: :request do
     get 'Show a review' do
       tags 'Reviews'
       description 'A Published Review, for any authenticated caller. A Draft is readable only by its author ' \
-                  'and Admins; anyone else, the service included, gets 404.'
+                  'and Admins; anyone else, the service included, gets 404. `rating` is the current score (the ' \
+                  'latest Published Revision\'s, else the Review\'s own) and `original_rating` the first ' \
+                  'take\'s; `revisions` lists the Published Revisions in publish order, and `draft_revision` is ' \
+                  'the Draft Revision for its author and Admins (null for everyone else).'
       produces 'application/json'
 
       response '200', 'review detail' do
@@ -236,7 +241,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     delete 'Delete a review' do
       tags 'Reviews'
-      description 'Owner-only.'
+      description 'Owner-only. Deletes the Review\'s Revisions with it.'
       produces 'application/json'
 
       response '200', 'deleted' do
