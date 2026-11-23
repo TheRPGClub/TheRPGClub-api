@@ -20,20 +20,23 @@ module Api
       # listed here, not even for them (spec api#430).
       def index
         scope = UserGameReview.published.where(user_id: params[:user_id]).preload(:latest_revision, game: :images)
-        render_collection(scope, resource: ReviewEntryResource, default_order: { created_at: :desc })
+        render_collection(scope, resource: ReviewEntryResource, default_order: { published_at: :desc, review_id: :desc })
       end
 
       # GET /api/v1/users/:user_id/reviews/drafts
       #
       # The member's own Drafts, Draft Reviews and Draft Revisions alike,
-      # newest last-touched first, with the game and its track embedded. Only the author and Admins may read it; anyone
-      # else, the service included, is refused.
+      # newest last-touched first, with the game and its track embedded.
+      # `game_id` narrows it to one game's Drafts (a game page's slot). Only
+      # the author and Admins may read it; anyone else, the service included,
+      # is refused.
       def drafts
         unless reads_drafts_of?(params[:user_id])
           return render json: { error: "forbidden" }, status: :forbidden
         end
 
         scope = UserGameReview.takes(:drafts).where(user_id: params[:user_id]).preload(tracked_game: :images)
+        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
         render_collection(scope, resource: ReviewDraftEntryResource,
           default_order: Arel.sql("updated_at DESC, review_id DESC, revision_id DESC NULLS LAST"))
       end
@@ -58,7 +61,7 @@ module Api
       def game_index
         scope = UserGameReview.published.where(gamedb_game_id: params[:id]).includes(:user, :latest_revision)
         render_collection(scope, resource: ReviewUserEntryResource,
-          default_order: Arel.sql("(body IS NOT NULL) DESC, created_at DESC"))
+          default_order: Arel.sql("(body IS NOT NULL) DESC, published_at DESC, review_id DESC"))
       end
 
       # A Draft reads as not found for anyone but its author and Admins; the
@@ -75,9 +78,15 @@ module Api
         render_saved(record, quick_take ? record.publish : record.save, status: :created)
       end
 
+      # `rating` here is the first take's own score. A revisited Review is
+      # served with its current score in `rating`, so an editor resending what
+      # it read would overwrite the first take with a later one: a `rating`
+      # equal to the current score is ignored once the Review has Published
+      # Revisions, and `original_rating`, when sent, is the first take's score
+      # and wins over `rating`.
       def update
         record = UserGameReview.find(params[:id])
-        record.assign_attributes(writable_data)
+        record.assign_attributes(edit_data(record))
         render_saved(record, record.save)
       end
 
@@ -99,6 +108,17 @@ module Api
 
       def writable_data
         request_data.slice(*WRITABLE_ATTRS)
+      end
+
+      def edit_data(record)
+        data = writable_data
+        if request_data.key?("original_rating")
+          data["rating"] = request_data["original_rating"]
+        elsif data.key?("rating") && record.latest_revision &&
+            ActiveModel::Type::Integer.new.cast(data["rating"]) == record.current_rating
+          data.delete("rating")
+        end
+        data
       end
 
       def readable_review

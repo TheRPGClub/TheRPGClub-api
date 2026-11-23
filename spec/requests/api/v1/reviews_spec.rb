@@ -96,8 +96,11 @@ RSpec.describe 'api/v1/reviews', type: :request do
       description 'The member\'s Drafts, Draft Reviews (`kind: review`) and Draft Revisions (`kind: revision`, ' \
                   'with the score they would replace) alike, newest last-touched (`updated_at`) first, with the ' \
                   'game and its GOTM / NR-GOTM track embedded. Readable only by the author and Admins signed in ' \
-                  'with Discord; anyone else, the service included, gets 403. Published takes never appear here.'
+                  'with Discord; anyone else, the service included, gets 403. Published takes never appear here. ' \
+                  '`game_id` narrows it to one game\'s Drafts.'
       produces 'application/json'
+      parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
+                description: 'Only the Drafts of this game (gamedb_games.game_id), Draft Review or Draft Revision.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
@@ -188,13 +191,20 @@ RSpec.describe 'api/v1/reviews', type: :request do
                   'Draft), and a Published Review\'s score cannot be cleared (422 `rating_required`). An Edit to a ' \
                   'Published Review may change its score only until `score_locks_at`, 7 days after publishing ' \
                   '(422 `score_locked` after that; ADR 0013); title, text and scorecard stay editable. An Edit ' \
-                  'more than an hour after publishing sets `edited_at`. A Draft\'s score changes freely.'
+                  'more than an hour after publishing sets `edited_at`. A Draft\'s score changes freely. ' \
+                  'On a Review with Published Revisions, `rating` is read back as the current score, so a sent ' \
+                  '`rating` equal to the current score is ignored; send `original_rating` to set the first ' \
+                  'take\'s own score (it wins over `rating`).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable } },
+        properties: { data: { type: :object, properties: writable.merge(
+          original_rating: { type: :integer, nullable: true, minimum: 0, maximum: 100,
+                             description: 'The first take\'s own score, the same as `rating` but never ' \
+                                          'mistaken for a revisited Review\'s current score. Wins over `rating`.' }
+        ) } },
         required: %w[data]
       }
 
@@ -210,7 +220,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed, `rating_required` (clearing a Published score) or `score_locked` (changing the score more than 7 days after publishing)' do
+      response '422', 'validation failed, `rating_required` (clearing a Published score: "A Published take must keep its score.") or `score_locked` (changing or clearing the score more than 7 days after publishing)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

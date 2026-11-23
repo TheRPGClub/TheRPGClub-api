@@ -38,11 +38,14 @@ module Api
       #
       # Revisit: starts the Review's Draft Revision. Refused when the Review
       # is still a Draft (`review_not_published`) or already has a Draft
-      # Revision (`draft_revision_exists`).
+      # Revision (`draft_revision_exists`), including when two Revisits race
+      # past the check and the one-Draft index refuses the second.
       def create
         review = UserGameReview.find(params[:review_id])
         record = review.revisions.new(writable_data)
         render_saved(record, record.save, status: :created)
+      rescue ActiveRecord::RecordNotUnique
+        render_refusal(:draft_revision_exists)
       end
 
       def update

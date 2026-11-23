@@ -67,7 +67,7 @@ module Api
         previews = {
           now_playing: -> { user.now_playing_entries.with_now_playing_details.preload(:game, :platform).order(added_at: :desc).limit(limit).to_a },
           favorites:   -> { user.game_favorites.preload(:game).order(:sort_order).limit(limit).to_a },
-          reviews:     -> { user.reviews.published.preload(:game, :latest_revision).order(created_at: :desc).limit(limit).to_a },
+          reviews:     -> { user.reviews.published.preload(:game, :latest_revision).order(published_at: :desc, review_id: :desc).limit(limit).to_a },
           completions: -> { user.game_completions.preload(:game, :platform).order(completed_at: :desc).limit(limit).to_a },
           journal:     -> { UserGameJournalEntry.journaled_games_for(user.user_id).order(Arel.sql("last_entry_at DESC")).limit(limit).to_a }
         }.select { |key, _| profile_section?(key) }.transform_values(&:call)

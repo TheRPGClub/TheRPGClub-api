@@ -14,6 +14,6 @@ class ReviewFeedEntryResource
   attribute(:written) { |review| review.written }
 
   one :user, resource: UserSummaryResource
-  # The game with its GOTM / NR-GOTM track flags, as the game endpoints serve it.
-  one :game, resource: GameResource, source: proc { tracked_game }
+  # The game with its GOTM / NR-GOTM track flags and the months they were won.
+  one :game, resource: TrackedGameResource, source: proc { tracked_game }
 end

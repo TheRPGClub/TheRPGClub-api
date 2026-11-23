@@ -323,6 +323,24 @@ components:
         required:
         - gotm_won
         - nr_gotm_won
+    TrackedGame:
+      allOf:
+      - "$ref": "#/components/schemas/Game"
+      - type: object
+        properties:
+          gotm_month_year:
+            type: string
+            nullable: true
+            description: The month it won GOTM (its latest win), e.g. "November 2024";
+              null if it never did.
+          nr_gotm_month_year:
+            type: string
+            nullable: true
+            description: The month it won NR-GOTM (its latest win); null if it never
+              did.
+        required:
+        - gotm_month_year
+        - nr_gotm_month_year
     GameWithPlatforms:
       allOf:
       - "$ref": "#/components/schemas/GameSummary"
@@ -1869,7 +1887,7 @@ components:
         user:
           "$ref": "#/components/schemas/UserSummary"
         game:
-          "$ref": "#/components/schemas/Game"
+          "$ref": "#/components/schemas/TrackedGame"
       required:
       - kind
       - review_id
@@ -1938,7 +1956,7 @@ components:
           format: date-time
           description: When the author last touched it; the listing's order.
         game:
-          "$ref": "#/components/schemas/Game"
+          "$ref": "#/components/schemas/TrackedGame"
       required:
       - kind
       - review_id
@@ -26706,8 +26724,16 @@ paths:
         Revisions (`kind: revision`, with the score they would replace) alike, newest
         last-touched (`updated_at`) first, with the game and its GOTM / NR-GOTM track
         embedded. Readable only by the author and Admins signed in with Discord; anyone
-        else, the service included, gets 403. Published takes never appear here.'
+        else, the service included, gets 403. Published takes never appear here. `game_id`
+        narrows it to one game''s Drafts.'
       parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Only the Drafts of this game (gamedb_games.game_id), Draft Review
+          or Draft Revision.
       - name: page
         in: query
         schema:
@@ -26867,7 +26893,9 @@ paths:
         change its score only until `score_locks_at`, 7 days after publishing (422
         `score_locked` after that; ADR 0013); title, text and scorecard stay editable.
         An Edit more than an hour after publishing sets `edited_at`. A Draft''s score
-        changes freely.'
+        changes freely. On a Review with Published Revisions, `rating` is read back
+        as the current score, so a sent `rating` equal to the current score is ignored;
+        send `original_rating` to set the first take''s own score (it wins over `rating`).'
       parameters: []
       responses:
         '200':
@@ -26892,8 +26920,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed, `rating_required` (clearing a Published
-            score) or `score_locked` (changing the score more than 7 days after publishing)
+          description: 'validation failed, `rating_required` (clearing a Published
+            score: "A Published take must keep its score.") or `score_locked` (changing
+            or clearing the score more than 7 days after publishing)'
           content:
             application/json:
               schema:
@@ -26940,6 +26969,14 @@ paths:
                       nullable: true
                       description: 'Optional per-category scorecard. Omit or send
                         null for a quick take; `{"order": []}` is stored as null.'
+                    original_rating:
+                      type: integer
+                      nullable: true
+                      minimum: 0
+                      maximum: 100
+                      description: The first take's own score, the same as `rating`
+                        but never mistaken for a revisited Review's current score.
+                        Wins over `rating`.
               required:
               - data
         required: true
