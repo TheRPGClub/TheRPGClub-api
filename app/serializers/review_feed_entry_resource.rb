@@ -18,7 +18,6 @@ class ReviewFeedEntryResource
   attribute(:written) { |review| review.written }
 
   one :user, resource: UserSummaryResource
-  # Carries the GOTM / NR-GOTM track flags; the controller passes
-  # GameTrackSummaryResource.params_for the page's games.
-  one :game, resource: GameTrackSummaryResource
+  # The game with its GOTM / NR-GOTM track flags, as the game endpoints serve it.
+  one :game, resource: GameResource, source: proc { tracked_game }
 end
