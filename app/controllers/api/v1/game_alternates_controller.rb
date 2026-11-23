@@ -52,10 +52,13 @@ module Api
       # Unlinks the path game and `alt_game_id`. The pair is stored once, low id
       # first, so this works from either game's side. Touches both games so each
       # side's cached relations drop the other. Returns the game's remaining
-      # alternates (same shape as #create); 404 when the pair isn't linked.
+      # alternates (same shape as #create); 400 for a malformed `alt_game_id`,
+      # 404 when the pair isn't linked.
       def destroy
         game = GamedbGame.find(params[:id])
-        alt_id = params[:alt_game_id].to_i
+        alt_id = Integer(params[:alt_game_id], 10, exception: false)
+        raise ActionController::ParameterMissing, :alt_game_id if alt_id.nil?
+
         low, high = [ game.game_id, alt_id ].minmax
         link = GamedbGameAlternate.find_by!(game_id: low, alt_game_id: high)
 

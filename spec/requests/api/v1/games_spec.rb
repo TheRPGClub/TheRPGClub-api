@@ -442,7 +442,8 @@ RSpec.describe 'api/v1/games', type: :request do
                   'Always creates a Manual Release (`source` "manual"), which no IGDB refresh changes or removes. ' \
                   '`date_precision` is optional: omitted or null, it is `day`, or `tba` when no `release_date` is ' \
                   'given. A `tba` Release has no date and every other one has one, a vague date on the first day ' \
-                  'of its period (month, quarter or year); anything else is a 422.'
+                  'of its period (month, quarter or year); anything else is a 422, as is a `release_date` that ' \
+                  'does not parse (it is never read as TBA).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -481,7 +482,8 @@ RSpec.describe 'api/v1/games', type: :request do
       end
 
       response '422', 'validation failed (missing/unknown platform or region, bad `format`, unknown ' \
-                      '`date_precision`, or a date that does not fit its Date Precision)' do
+                      '`date_precision`, an unparseable `release_date`, or a date that does not fit its Date ' \
+                      'Precision)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -498,10 +500,13 @@ RSpec.describe 'api/v1/games', type: :request do
       tags 'Games'
       description 'Admin/service-only. Edits a Manual Release; only the fields sent change, with the same ' \
                   'validation as POST /api/v1/games/{id}/releases. Clearing `release_date` without a ' \
-                  '`date_precision` makes the Release `tba`; dating a `tba` Release without one makes it `day`. ' \
-                  'Rebuilds the game\'s release-announcement schedule (a Release that is no longer `day` loses ' \
-                  'its unsent announcement) and refreshes the game\'s cached relations. An IGDB Release is ' \
-                  'refused with 422 `igdb_release`: the IGDB refresh owns it.'
+                  '`date_precision` makes the Release `tba`; dating a `tba` Release without one makes it `day`, ' \
+                  'and so does dating a `month`, `quarter` or `year` Release on a day that is not the first of ' \
+                  'its period (the first day of another period keeps the Date Precision). An unparseable ' \
+                  '`release_date` is a 422. Rebuilds the game\'s release-announcement schedule (a Release that is no longer `day` loses ' \
+                  'its unsent announcement; one the due feed is offering marks the game announced, so it is ' \
+                  'never announced twice) and refreshes the game\'s cached relations. An IGDB Release, including ' \
+                  'one an IGDB refresh adopted mid-edit, is refused with 422 `igdb_release`: the IGDB refresh owns it.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -516,7 +521,8 @@ RSpec.describe 'api/v1/games', type: :request do
               format: { type: :string, enum: %w[Physical Digital], nullable: true, description: 'Physical, Digital, or null.' },
               release_date: { type: :string, format: 'date', nullable: true,
                               description: 'Release date (YYYY-MM-DD), the first day of its period for a vague ' \
-                                           'Date Precision. Null for TBA.' },
+                                           'Date Precision. Null for TBA. Sent alone, a day inside a vague ' \
+                                           'period makes the Release `day`.' },
               date_precision: { type: :string, enum: GamedbRelease::DATE_PRECISIONS, nullable: true,
                                 description: 'Date Precision. Omit or null to keep it (see above).' },
               notes: { type: :string, nullable: true, description: 'Free-text notes.' }
@@ -554,7 +560,8 @@ RSpec.describe 'api/v1/games', type: :request do
     delete 'Delete a Manual Release' do
       tags 'Games'
       description 'Admin/service-only. Deletes a Manual Release with its announcement row (a sent one still ' \
-                  'leaves the game\'s `release_announced_at`), rebuilds the game\'s release-announcement schedule ' \
+                  'leaves the game\'s `release_announced_at`, and so does one the due feed is offering right now, ' \
+                  'since the bot may be posting it), rebuilds the game\'s release-announcement schedule ' \
                   'and refreshes its cached relations. An IGDB Release is refused with 422 `igdb_release`.'
 
       response '204', 'release deleted'
@@ -703,6 +710,10 @@ RSpec.describe 'api/v1/games', type: :request do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/Game' } }
         }
+      end
+
+      response '400', 'malformed `alt_game_id` (not an integer)' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '403', 'forbidden — admin or service required' do

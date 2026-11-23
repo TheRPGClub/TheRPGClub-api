@@ -22,6 +22,15 @@ RSpec.describe "api/v1/releases behavior", type: :request do
     }
   end
 
+  # Simulates Gamedb::ReleaseSync adopting `release` (Manual -> IGDB) after
+  # the request loaded it but before it got the game's row lock.
+  def adopt_while_waiting_for_the_game_lock(release)
+    allow_any_instance_of(GamedbGame).to receive(:lock!).and_wrap_original do |original, *args|
+      GamedbRelease.where(release_id: release.release_id).update_all(source: "igdb")
+      original.call(*args)
+    end
+  end
+
   describe "POST /api/v1/games/:id/releases" do
     it "creates the release with platform/region labels flattened in" do
       expect {
@@ -70,6 +79,16 @@ RSpec.describe "api/v1/releases behavior", type: :request do
         expect(response).to have_http_status(:created)
         expect(json.fetch("data")).to include("release_date" => date, "date_precision" => precision)
       end
+    end
+
+    it "422s for an unparseable date instead of making the Release TBA" do
+      expect {
+        post "/api/v1/games/#{game.game_id}/releases",
+          params: { data: payload[:data].merge(release_date: "next spring") }, headers: service_headers, as: :json
+      }.not_to change(GamedbRelease, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to include("Release date is not a valid date")
     end
 
     it "creates a TBA Release when the date is omitted entirely" do
@@ -302,6 +321,50 @@ RSpec.describe "api/v1/releases behavior", type: :request do
       expect(json.fetch("data")).to include("release_date" => "2027-09-02", "date_precision" => "day")
     end
 
+    it "422s for an unparseable date and keeps the Release's date" do
+      patch_release(release_date: "2027-13-45")
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to include("Release date is not a valid date")
+      expect(release.reload).to have_attributes(release_date: Date.new(2027, 8, 14), date_precision: "day")
+    end
+
+    it "makes a vague Release an exact day when given a date inside its period without a Date Precision" do
+      month = create(:release, game:, platform:, region:, source: "manual",
+        release_date: Date.new(2027, 8, 1), date_precision: "month")
+
+      patch_release({ release_date: "2027-08-20" }, id: month.release_id)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("release_date" => "2027-08-20", "date_precision" => "day")
+    end
+
+    it "keeps a vague Release vague when given the start of another period without a Date Precision" do
+      quarter = create(:release, game:, platform:, region:, source: "manual",
+        release_date: Date.new(2027, 7, 1), date_precision: "quarter")
+
+      patch_release({ release_date: "2027-10-01" }, id: quarter.release_id)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("release_date" => "2027-10-01", "date_precision" => "quarter")
+    end
+
+    it "still 422s a vague Date Precision sent with a date that isn't its period start" do
+      patch_release(release_date: "2027-08-20", date_precision: "month")
+
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "refuses with a 422 when an IGDB refresh adopted the Release while the edit waited" do
+      adopt_while_waiting_for_the_game_lock(release)
+
+      patch_release(notes: "x")
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("igdb_release")
+      expect(release.reload).to have_attributes(source: "igdb", notes: "launch")
+    end
+
     it "makes a Release TBA when sent TBA with a null date" do
       patch_release(release_date: nil, date_precision: "tba")
 
@@ -376,6 +439,15 @@ RSpec.describe "api/v1/releases behavior", type: :request do
       expect(GamedbReleaseAnnouncement.where(release_id: release.release_id)).not_to exist
     end
 
+    it "marks the game announced when going vague drops a due announcement the bot may be sending" do
+      create(:release_announcement, release:, announce_at: 1.hour.ago)
+
+      patch_release(release_date: "2027-08-01", date_precision: "month")
+
+      expect(response).to have_http_status(:ok)
+      expect(game.reload.release_announced_at).to be_present
+    end
+
     it "allows the service token" do
       patch_release({ notes: "x" }, headers: service_headers)
 
@@ -445,6 +517,42 @@ RSpec.describe "api/v1/releases behavior", type: :request do
 
     it "bumps the game's updated_at so the cached relations invalidate" do
       expect { delete_release }.to change { game.reload.updated_at }
+    end
+
+    it "refuses with a 422 when an IGDB refresh adopted the Release while the delete waited" do
+      adopt_while_waiting_for_the_game_lock(release)
+
+      expect { delete_release }.not_to change(GamedbRelease, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("igdb_release")
+    end
+
+    it "marks the game announced when it deletes a due announcement the bot may be sending" do
+      create(:release_announcement, release:, announce_at: 1.hour.ago)
+
+      delete_release
+
+      expect(response).to have_http_status(:no_content)
+      expect(game.reload.release_announced_at).to be_within(1.minute).of(Time.current)
+    end
+
+    it "leaves the game unannounced when the deleted announcement wasn't due yet" do
+      create(:release_announcement, release:, announce_at: 1.week.from_now)
+
+      delete_release
+
+      expect(response).to have_http_status(:no_content)
+      expect(game.reload.release_announced_at).to be_nil
+    end
+
+    it "leaves the game unannounced when the deleted announcement was skipped" do
+      create(:release_announcement, release:, announce_at: 1.hour.ago, skipped_at: 1.hour.ago,
+        skip_reason: "port-only-release")
+
+      delete_release
+
+      expect(game.reload.release_announced_at).to be_nil
     end
 
     it "refuses an IGDB Release with a 422" do

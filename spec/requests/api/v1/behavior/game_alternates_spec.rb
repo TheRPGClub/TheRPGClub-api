@@ -184,6 +184,14 @@ RSpec.describe "api/v1/game_alternates behavior", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
+    it "400s for a malformed alt_game_id instead of reading its leading digits" do
+      expect {
+        delete "/api/v1/games/#{game_low.game_id}/alternates/#{game_high.game_id}abc", headers: service_headers
+      }.not_to change(GamedbGameAlternate, :count)
+
+      expect(response).to have_http_status(:bad_request)
+    end
+
     it "404s when the pair isn't linked" do
       unlinked = create(:game)
 

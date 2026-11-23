@@ -43,48 +43,103 @@ module Api
       #
       # Edits a Manual Release; only the fields sent change, with the same
       # validation as create. Clearing the date without a Date Precision makes
-      # the Release TBA; dating a TBA Release without one makes it an exact day.
-      # The game's release-announcement schedule is rebuilt from the edit.
-      # 422 `igdb_release` for an IGDB Release.
+      # the Release TBA; dating a TBA Release without one makes it an exact day,
+      # and so does dating a vague Release on a day that isn't the first of its
+      # period (the first day of another period keeps it vague). A date that
+      # doesn't parse is a 422. The game's release-announcement schedule is
+      # rebuilt from the edit. 422 `igdb_release` for an IGDB Release.
       def update
-        GamedbRelease.transaction do
+        with_locked_manual_release do |game|
+          announcement = locked_announcement
+          was_offered = offered_by_due_feed?(announcement)
           @release.update!(release_data)
-          @release.drop_unsent_announcement! unless @release.date_precision_day?
-          Gamedb::ReleaseAnnouncementSchedule.call(@release.game_id)
-          @release.game.touch
+          unless @release.date_precision_day? || announcement&.sent_at
+            drop_announcement!(game, announcement, was_offered)
+          end
+          Gamedb::ReleaseAnnouncementSchedule.call(game.game_id)
+          game.touch
         end
-
-        render json: { data: release_json(@release) }
       end
 
       # DELETE /api/v1/releases/:id
       #
       # Deletes a Manual Release with its announcement row. A sent announcement
       # still leaves the game's `release_announced_at`, so the due feed never
-      # announces the game again. 422 `igdb_release` for an IGDB Release.
+      # announces the game again; so does one the due feed is offering right
+      # now (see #drop_announcement!). 422 `igdb_release` for an IGDB Release.
       def destroy
-        game = @release.game
-        GamedbRelease.transaction do
-          sent_at = @release.announcement&.sent_at
-          game.update_columns(release_announced_at: sent_at) if sent_at && game.release_announced_at.nil?
-          @release.announcement&.destroy!
+        with_locked_manual_release do |game|
+          announcement = locked_announcement
+          drop_announcement!(game, announcement, offered_by_due_feed?(announcement))
           @release.destroy!
           Gamedb::ReleaseAnnouncementSchedule.call(game.game_id)
           game.touch
         end
-
-        head :no_content
       end
 
       private
 
       def load_manual_release
         @release = GamedbRelease.find(params[:id])
-        return if @release.source_manual?
+        render_igdb_release unless @release.source_manual?
+      end
 
+      # Runs the write with the game locked, as Gamedb::ReleaseSync locks it
+      # before adopting a Manual Release, then re-checks the Release: a refresh
+      # that adopted it between the load and the lock made it an IGDB Release,
+      # which this refuses instead of overwriting. Renders the edited Release,
+      # or 204 once it is deleted.
+      def with_locked_manual_release
+        written = GamedbRelease.transaction do
+          game = @release.game
+          game.lock!
+          @release.lock!
+          next false unless @release.source_manual?
+
+          yield game
+          true
+        end
+        return render_igdb_release unless written
+        return head(:no_content) if @release.destroyed?
+
+        render json: { data: release_json(@release) }
+      end
+
+      def render_igdb_release
         render json: { error: "igdb_release", message: "An IGDB Release is kept in step by the IGDB refresh " \
                                                        "and can't be edited or deleted" },
           status: :unprocessable_content
+      end
+
+      # The Release's announcement row, locked so the bot's PATCH marking it
+      # sent waits for this write (or this write sees it sent).
+      def locked_announcement
+        GamedbReleaseAnnouncement.lock.find_by(release_id: @release.release_id)
+      end
+
+      # Whether the due feed (ReleaseAnnouncementsController#due) can be
+      # offering the announcement right now: pending, its time reached and its
+      # Release still upcoming, so the bot may already be posting it.
+      def offered_by_due_feed?(announcement, now = Time.current)
+        return false if announcement.nil? || announcement.sent_at || announcement.skipped_at
+        return false if @release.release_date.nil?
+
+        announcement.announce_at <= now && @release.release_date > now.utc.to_date
+      end
+
+      # Removes the announcement row. The game keeps when a sent one went out,
+      # so the due feed never announces it again. A row the due feed was
+      # offering counts as sent now: the bot may be posting it, and its PATCH
+      # marking it sent would find no row, so another Release of the game could
+      # be announced too. A missed announcement is the safer failure than a
+      # double one; refusing the write instead would leave staff unable to fix
+      # a wrong Release during its announce week.
+      def drop_announcement!(game, announcement, was_offered)
+        return if announcement.nil?
+
+        announced_at = announcement.sent_at || (Time.current if was_offered)
+        game.update_columns(release_announced_at: announced_at) if announced_at && game.release_announced_at.nil?
+        announcement.destroy!
       end
 
       # A null `date_precision` means "not stated", like an omitted one.
