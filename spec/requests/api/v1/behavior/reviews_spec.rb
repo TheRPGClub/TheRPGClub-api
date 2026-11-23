@@ -68,6 +68,89 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
     end
   end
 
+  describe "GET /api/v1/users/:user_id/reviews/drafts" do
+    def drafts_path(user = owner) = "/api/v1/users/#{user.user_id}/reviews/drafts"
+
+    it "gives the author their Drafts, newest last-touched first, with the game and progress embedded" do
+      won = create(:game, title: "Chrono Trigger")
+      create(:gotm_entry, game: won)
+      older = travel_to(2.days.ago) do
+        create(:review, :draft, user: owner, game: won, rating: nil, title: nil, body: nil)
+      end
+      newer = travel_to(1.day.ago) do
+        create(:review, :draft, user: owner, rating: 72, title: "Halfway", body: [ { "type" => "p" } ])
+      end
+
+      get drafts_path, headers: auth_headers_for(owner)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").map { |entry| entry.fetch("review_id") })
+        .to eq([ newer.review_id, older.review_id ])
+      expect(json.fetch("data").first).to include(
+        "kind" => "review", "rating" => 72, "title" => "Halfway", "body" => [ { "type" => "p" } ],
+        "published_at" => nil
+      )
+      expect(json.fetch("data").first.fetch("updated_at")).to be_present
+      expect(json.fetch("data").last).to include("rating" => nil, "title" => nil, "body" => nil)
+      expect(json.dig("data", 1, "game")).to include(
+        "game_id" => won.game_id, "title" => "Chrono Trigger", "gotm_won" => true, "nr_gotm_won" => false
+      )
+      expect(json.dig("data", 1, "game")).to have_key("cover_url")
+      expect(json.fetch("meta")).to include("count" => 2)
+    end
+
+    it "touching a Draft moves it to the top" do
+      first = travel_to(2.days.ago) { create(:review, :draft, user: owner) }
+      second = travel_to(1.day.ago) { create(:review, :draft, user: owner) }
+      first.update!(title: "Back to it")
+
+      get drafts_path, headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |entry| entry.fetch("review_id") })
+        .to eq([ first.review_id, second.review_id ])
+    end
+
+    it "never lists Published Reviews, nor another member's Drafts" do
+      draft = create(:review, :draft, user: owner)
+      create(:review, user: owner)
+      create(:review, :draft, user: other_user)
+
+      get drafts_path, headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |entry| entry.fetch("review_id") }).to eq([ draft.review_id ])
+      expect(json.fetch("meta")).to include("count" => 1)
+    end
+
+    it "lets an Admin read a member's Drafts" do
+      draft = create(:review, :draft, user: owner)
+
+      get drafts_path, headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").map { |entry| entry.fetch("review_id") }).to eq([ draft.review_id ])
+    end
+
+    {
+      "another member" => -> { auth_headers_for(create(:user)) },
+      "the service" => -> { service_headers }
+    }.each do |who, headers|
+      it "refuses #{who}" do
+        create(:review, :draft, user: owner)
+
+        get drafts_path, headers: instance_exec(&headers)
+
+        expect(response).to have_http_status(:forbidden)
+        expect(json).to include("error" => "forbidden")
+      end
+    end
+
+    it "requires authentication" do
+      get drafts_path
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "GET /api/v1/games/:id/reviews" do
     it "lists a game's reviews with the author embedded, body-carrying reviews first" do
       game = create(:game)

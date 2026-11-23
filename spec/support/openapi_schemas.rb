@@ -562,6 +562,19 @@ module OpenapiSchemas
       # ReviewMemberEntryResource (ReviewEntry + user), the club-wide feed
       # (ReviewsController#recent).
       ReviewMemberEntry: extends("ReviewEntry", user: ref("UserSummary")),
+      # ReviewDraftEntryResource (ReviewFields + updated_at, kind and the game
+      # with its track flags), the author's drafts listing (reviews#drafts).
+      ReviewDraftEntry: obj(
+        review_id: int, user_id: str, gamedb_game_id: int,
+        rating: int(nullable: true).merge(description: "Null until the author picks a score."),
+        title: str(nullable: true, maxLength: 120), body: json,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        published_at: ts(nullable: true).merge(description: "Always null: a Draft is unpublished."),
+        updated_at: ts.merge(description: "When the author last touched it; the listing's order."),
+        kind: { type: :string, enum: %w[review],
+                description: "What the Draft is. Always `review` for now; Draft Revisions will join as `revision`." },
+        game: ref("Game")
+      ),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
       JournalEntryGame: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, entry_title: str(nullable: true),

@@ -88,6 +88,39 @@ RSpec.describe 'api/v1/reviews', type: :request do
     end
   end
 
+  path '/api/v1/users/{user_id}/reviews/drafts' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true
+
+    get 'List a member\'s Drafts' do
+      tags 'Reviews'
+      description 'The member\'s Draft Reviews, newest last-touched (`updated_at`) first, with the game and its ' \
+                  'GOTM / NR-GOTM track embedded. Readable only by the author and Admins signed in with Discord; ' \
+                  'anyone else, the service included, gets 403. Published Reviews never appear here.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'drafts list' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/ReviewDraftEntry' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '403', 'forbidden: the caller is neither the author nor an Admin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'Reviews is not available to the caller' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/reviews' do
     get 'Club latest reviews' do
       tags 'Reviews'
