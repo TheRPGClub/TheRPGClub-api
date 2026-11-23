@@ -20,6 +20,10 @@ _Avoid_: Skin, style, dark mode, appearance
 A page of the website that a Member has put at the top of their own sidebar so it is one click away. A Pinned Page is still listed in its usual place. Members who have pinned nothing see the club's default Pinned Pages, and a Pinned Page that the Member cannot currently see stays pinned and returns when they can.
 _Avoid_: Favourite, shortcut, bookmark
 
+**Dashboard Panel**:
+One block of recent club or personal activity that a Member chooses to show on their own dashboard, below the current issue, in the order they choose. Members who have changed nothing see the club's default Dashboard Panels. A Dashboard Panel belonging to a Feature the Member cannot currently see stays chosen and returns when they can. A Dashboard Panel is not a Pinned Page: pins decide where a Member can go, panels show what is happening.
+_Avoid_: Widget, card, tile, module
+
 ## Achievement Hub
 
 **Provider**:
@@ -98,6 +102,10 @@ _Avoid_: Release schedule, upcoming games, launch calendar, calendar (unqualifie
 **Upcoming Release**:
 One entry on the Release Calendar: one game together with every Release it has on the same date, across platforms and regions.
 _Avoid_: Calendar entry, event
+
+**Hidden Platform**:
+A platform a Member has chosen to leave out of their own Release Calendar and Upcoming Releases panel. It changes only what that Member sees; the club's release posts are unaffected.
+_Avoid_: Platform filter, muted console, blocked platform
 
 **Review**:
 A Member's rating of one Game, optionally with a written take and a scorecard. A Member has at most one Review per Game.
