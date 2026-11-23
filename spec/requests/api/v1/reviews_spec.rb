@@ -6,13 +6,13 @@ RSpec.describe 'api/v1/reviews', type: :request do
   # The client-writable UserGameReview columns. `user_id` comes from the path.
   writable = {
     gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create. Unique per (user, game).' },
-    rating: { type: :integer, description: 'Numeric rating. Required on create.' },
+    rating: { type: :integer, nullable: true, minimum: 0, maximum: 100,
+              description: 'Score, 0..100. A Draft may have none; publishing needs one (422 `rating_required`).' },
     title: { type: :string, nullable: true, maxLength: 120, description: 'Optional short title. Omit to leave unchanged; send null to clear.' },
     body: { type: :object, nullable: true, description: 'Optional structured review body (free-form JSON).' },
     facets: { allOf: [ { '$ref' => '#/components/schemas/ReviewFacets' } ], nullable: true,
               description: 'Optional per-category scorecard. Omit or send null for a quick take; ' \
-                           '`{"order": []}` is stored as null.' },
-    is_shared: { type: :boolean, description: 'Whether the review is shared. Optional. Write-only — not returned by the curated game-scoped list.' }
+                           '`{"order": []}` is stored as null.' }
   }
 
   path '/api/v1/users/{user_id}/reviews' do
@@ -20,10 +20,9 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     get 'List a user\'s reviews' do
       tags 'Reviews'
-      description 'Open to any authenticated caller. Returns the curated review shape with the game ' \
-                  'embedded, newest first. Unshared reviews (`is_shared: false`) are private: they are listed ' \
-                  'only for their author, an admin or the service, and are left out (and out of ' \
-                  '`meta.count`) for anyone else.'
+      description 'Open to any authenticated caller. Returns the member\'s Published Reviews in the curated ' \
+                  'shape with the game embedded, newest first. Drafts are never listed here (nor counted in ' \
+                  '`meta.count`), whoever asks, their author included.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
@@ -46,14 +45,24 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     post 'Write a review' do
       tags 'Reviews'
-      description 'Owner-only. `gamedb_game_id` and `rating` are required; a user may review a ' \
-                  'given game only once (unique per (user, game)). `body` and `is_shared` are optional.'
+      description 'Owner-only. Creates a Draft: only `gamedb_game_id` is required, and a Draft may have no ' \
+                  'score yet. With `publish: true` (the quick take) it is created and published in one call, ' \
+                  'refused with 422 `rating_required` without a `rating`. A member has at most one Review per ' \
+                  'game, and a Draft counts (unique per (user, game)).'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable, required: %w[gamedb_game_id rating] } },
+        properties: {
+          data: {
+            type: :object,
+            properties: writable.merge(
+              publish: { type: :boolean, description: 'True to publish on create (the quick take). Defaults to false (a Draft).' }
+            ),
+            required: %w[gamedb_game_id]
+          }
+        },
         required: %w[data]
       }
 
@@ -65,7 +74,7 @@ RSpec.describe 'api/v1/reviews', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed, or `rating_required` when publishing without a score' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -82,9 +91,9 @@ RSpec.describe 'api/v1/reviews', type: :request do
   path '/api/v1/reviews' do
     get 'Club latest reviews' do
       tags 'Reviews'
-      description 'Every member\'s shared reviews, newest first (by `created_at`), for the Latest ' \
-                  'Reviews Dashboard Panel. Open to any authenticated caller who can use Reviews. ' \
-                  'Unshared reviews are never listed here, whoever asks, and members who have left ' \
+      description 'Every member\'s Published Reviews, newest published first (by `published_at`), for the ' \
+                  'Latest Reviews Dashboard Panel. Open to any authenticated caller who can use Reviews. ' \
+                  'Drafts are never listed here, whoever asks, and members who have left ' \
                   'the server (`server_left_at` set) are left out.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
@@ -112,13 +121,15 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     get 'Show a review' do
       tags 'Reviews'
+      description 'A Published Review, for any authenticated caller. A Draft is readable only by its author ' \
+                  'and Admins; anyone else, the service included, gets 404.'
       produces 'application/json'
 
       response '200', 'review detail' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Review' } }
       end
 
-      response '404', 'not found' do
+      response '404', 'not found, or a Draft the caller may not read' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -129,7 +140,9 @@ RSpec.describe 'api/v1/reviews', type: :request do
 
     patch 'Update a review' do
       tags 'Reviews'
-      description 'Owner-only. Partial update: send any subset of the writable columns.'
+      description 'Owner-only. Partial update: send any subset of the writable columns. `published_at` is not ' \
+                  'writable (publish with `POST /reviews/{id}/publish`; a Published Review never goes back to ' \
+                  'Draft), and a Published Review\'s score cannot be cleared (422 `rating_required`).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -194,6 +207,38 @@ RSpec.describe 'api/v1/reviews', type: :request do
       end
 
       response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/reviews/{id}/publish' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'UserGameReview review_id.'
+
+    post 'Publish a review' do
+      tags 'Reviews'
+      description 'Owner-only. Publishes a Draft, setting `published_at`. Refused with 422 `rating_required` ' \
+                  'without a score. Not reversible; publishing a Published Review changes nothing and keeps ' \
+                  'its first publish date.'
+      produces 'application/json'
+
+      response '200', 'published' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Review' } }
+      end
+
+      response '403', 'forbidden: caller is not the owner' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`rating_required`: the Draft has no score' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

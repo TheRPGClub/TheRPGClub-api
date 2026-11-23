@@ -532,19 +532,23 @@ module OpenapiSchemas
         },
         _required: %w[template order]
       ),
-      # reviews#index / show / create / update render `as_json` — all columns,
-      # including the write-only `is_shared` and `updated_at` the curated shape trims.
+      # reviews#show / create / update / publish render `as_json` (all columns,
+      # including `updated_at`, which the curated shape trims). A Draft has a
+      # null `published_at` and may have a null `rating`.
       Review: obj(
-        review_id: int, user_id: str, gamedb_game_id: int, rating: int,
+        review_id: int, user_id: str, gamedb_game_id: int,
+        rating: int(nullable: true).merge(description: "Null only on a Draft with no score yet."),
         title: str(nullable: true, maxLength: 120), body: json,
-        facets: ref("ReviewFacets", nullable: true), is_shared: bool,
+        facets: ref("ReviewFacets", nullable: true),
+        published_at: ts(nullable: true).merge(description: "When it was published; null while a Draft. " \
+                                                             "Set once and never cleared."),
         created_at: ts, updated_at: ts
       ),
       # ReviewUserEntryResource (ReviewFields + user), for the game-scoped reviews list.
       ReviewUserEntry: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
         title: str(nullable: true, maxLength: 120), body: json,
-        facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         user: ref("UserSummary")
       ),
       # ReviewEntryResource (ReviewFields + game): the user-scoped reviews list
@@ -552,7 +556,7 @@ module OpenapiSchemas
       ReviewEntry: obj(
         review_id: int, user_id: str, gamedb_game_id: int, rating: int,
         title: str(nullable: true, maxLength: 120), body: json,
-        facets: ref("ReviewFacets", nullable: true), created_at: ts,
+        facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         game: ref("GameSummary")
       ),
       # ReviewMemberEntryResource (ReviewEntry + user), the club-wide feed

@@ -5,16 +5,16 @@
 # (ReviewEntryResource / ReviewUserEntryResource).
 #
 # The web frontend reads `review_id`, `user_id`, `gamedb_game_id`, `rating`,
-# `title`, `body`, `facets` and `created_at`. `facets` is here rather than in
+# `title`, `body`, `facets`, `created_at` and `published_at` (the date a
+# Review is shown with once Drafts exist, spec api#430). `facets` is here rather than in
 # the full `as_json` shape alone because the listing cards on the game and
 # member pages render the scorecard, and `title` for the same reason — the
-# cards render it as a headline above the body. `is_shared` is a write-only
-# input (never read back) and `updated_at` is unused, so both are dropped from
-# output. No Discord-bot-only review fields are known.
+# cards render it as a headline above the body. `updated_at` is unused, so it
+# is dropped from output. No Discord-bot-only review fields are known.
 module ReviewFields
   extend ActiveSupport::Concern
 
   included do
-    attributes :review_id, :user_id, :gamedb_game_id, :rating, :title, :body, :facets, :created_at
+    attributes :review_id, :user_id, :gamedb_game_id, :rating, :title, :body, :facets, :created_at, :published_at
   end
 end

@@ -46,10 +46,17 @@ class UserGameReview < ApplicationRecord
   # both persist.
   before_validation :nullify_empty_facets
 
+  # A Review is a Draft until its author publishes it; `published_at` is set
+  # once, on publish, and never cleared (spec api#430). Every list, preview
+  # and count other members see covers Published Reviews only.
+  scope :published, -> { where.not(published_at: nil) }
+
   validates :user_id, :gamedb_game_id, presence: true
-  validates :rating,
-            presence: true,
-            numericality: { only_integer: true, in: 0..100 }
+  # A Draft may have no score yet; publishing needs one. The check constraint
+  # `ck_user_game_reviews_rating_when_published` holds the same line under
+  # the model.
+  validates :rating, numericality: { only_integer: true, in: 0..100 }, allow_nil: true
+  validate :rating_when_published
   validates :title, length: { maximum: 120 }, allow_nil: true
   validates :user_id, uniqueness: { scope: :gamedb_game_id }
   # The reviews controller writes `params.require(:data).permit!`, so this is
@@ -93,7 +100,27 @@ class UserGameReview < ApplicationRecord
     (scored.sum { |key| scores[key] }.to_f / scored.length).round
   end
 
+  def published? = published_at.present?
+
+  def draft? = !published?
+
+  # Publishes a Draft, refusing one with no score (false, with
+  # `rating_required` on `rating`). Publishing is not reversible, and
+  # publishing an already Published Review keeps its first publish date.
+  def publish
+    self.published_at ||= Time.current
+    save
+  end
+
+  def publish!
+    publish || raise(ActiveRecord::RecordInvalid, self)
+  end
+
   private
+
+  def rating_when_published
+    errors.add(:rating, :rating_required, message: "is required to publish") if published? && rating.nil?
+  end
 
   def nullify_empty_facets
     return unless facets.is_a?(Hash)

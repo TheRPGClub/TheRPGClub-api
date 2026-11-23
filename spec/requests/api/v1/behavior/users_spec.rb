@@ -156,6 +156,17 @@ RSpec.describe "api/v1/users behavior", type: :request do
       expect(data.fetch("journal")).to eq([])
     end
 
+    it "previews and counts Published Reviews only, even for their author" do
+      published = create(:review, user: user)
+      create(:review, :draft, user: user)
+
+      get "/api/v1/users/#{user.user_id}", headers: auth_headers_for(user)
+
+      data = json.fetch("data")
+      expect(data.fetch("reviews").map { |r| r.fetch("review_id") }).to eq([ published.review_id ])
+      expect(data.dig("counts", "reviews")).to eq(1)
+    end
+
     # The profile's previews and counts that belong to a Feature follow its
     # Feature Flag (spec #347, docs/adr/0005): left out for a viewer who
     # cannot use that Feature. Favorites belong to no Feature.

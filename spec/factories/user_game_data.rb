@@ -17,10 +17,17 @@ FactoryBot.define do
     game
   end
 
+  # Published by default, the shape every member sees; `:draft` for one its
+  # author has not published yet.
   factory :review, class: "UserGameReview" do
     user
     game
     rating { 80 }
+    published_at { Time.current }
+
+    trait :draft do
+      published_at { nil }
+    end
   end
 
   factory :now_playing_entry, class: "UserNowPlaying" do
