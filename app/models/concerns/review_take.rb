@@ -112,8 +112,16 @@ module ReviewTake
 
   private
 
+  # Clearing the score of a take that was already Published is
+  # `score_kept`; publishing a Draft without one is `rating_required`.
   def rating_when_published
-    errors.add(:rating, :rating_required, message: "is required to publish") if published? && rating.nil?
+    return unless published? && rating.nil?
+
+    if persisted? && published_at_in_database.present?
+      errors.add(:rating, :score_kept, message: "must stay on a Published take")
+    else
+      errors.add(:rating, :rating_required, message: "is required to publish")
+    end
   end
 
   def nullify_empty_facets

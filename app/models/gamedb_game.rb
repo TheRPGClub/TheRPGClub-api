@@ -198,6 +198,22 @@ class GamedbGame < ApplicationRecord
       "(#{NR_GOTM_WON_SQL}) AS nr_gotm_won")
   }
 
+  # The month each track last won (the highest round's `month_year`), null
+  # when it never did, as games#show serves them. Chained after
+  # `without_images` for the review lists' track pills.
+  GOTM_MONTH_YEAR_SQL = <<~SQL.squish.freeze
+    (SELECT gotm_entries.month_year FROM gotm_entries WHERE gotm_entries.gamedb_game_id = gamedb_games.game_id
+      ORDER BY gotm_entries.round_number DESC LIMIT 1)
+  SQL
+  NR_GOTM_MONTH_YEAR_SQL = <<~SQL.squish.freeze
+    (SELECT nr_gotm_entries.month_year FROM nr_gotm_entries WHERE nr_gotm_entries.gamedb_game_id = gamedb_games.game_id
+      ORDER BY nr_gotm_entries.round_number DESC LIMIT 1)
+  SQL
+
+  scope :with_track_months, lambda {
+    select("#{GOTM_MONTH_YEAR_SQL} AS gotm_month_year", "#{NR_GOTM_MONTH_YEAR_SQL} AS nr_gotm_month_year")
+  }
+
   scope :gotm_winners, -> { where(GOTM_WON_SQL) }
   scope :nr_gotm_winners, -> { where(NR_GOTM_WON_SQL) }
   scope :any_winners, -> { where("#{GOTM_WON_SQL} OR #{NR_GOTM_WON_SQL}") }

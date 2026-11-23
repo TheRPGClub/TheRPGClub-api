@@ -66,6 +66,17 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
 
       expect(response).to have_http_status(:unauthorized)
     end
+
+    it "lists newest published first, not newest created" do
+      published_late = travel_to(3.days.ago) { create(:review, :draft, user: owner) }
+      published_early = travel_to(2.days.ago) { create(:review, user: owner) }
+      travel_to(1.day.ago) { published_late.publish! }
+
+      get "/api/v1/users/#{owner.user_id}/reviews", headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |r| r.fetch("review_id") })
+        .to eq([ published_late.review_id, published_early.review_id ])
+    end
   end
 
   describe "GET /api/v1/users/:user_id/reviews/drafts" do
@@ -144,6 +155,33 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       end
     end
 
+    it "narrows to one game's Drafts with game_id" do
+      game = create(:game)
+      draft = create(:review, :draft, user: owner, game: game)
+      revisited = create(:review, user: owner)
+      create(:review_revision, :draft, review: revisited)
+      create(:review, :draft, user: owner)
+
+      get drafts_path, params: { game_id: game.game_id }, headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |entry| entry.fetch("review_id") }).to eq([ draft.review_id ])
+      expect(json.fetch("meta")).to include("count" => 1)
+
+      get drafts_path, params: { game_id: revisited.gamedb_game_id }, headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |entry| entry.values_at("kind", "review_id") })
+        .to eq([ [ "revision", revisited.review_id ] ])
+    end
+
+    it "serves the month a GOTM or NR-GOTM game won on the embedded game" do
+      gotm = create(:gotm_entry, month_year: "November 2024").game
+      create(:review, :draft, user: owner, game: gotm)
+
+      get drafts_path, headers: auth_headers_for(owner)
+
+      expect(json.dig("data", 0, "game")).to include("gotm_month_year" => "November 2024", "nr_gotm_month_year" => nil)
+    end
+
     it "requires authentication" do
       get drafts_path
 
@@ -188,6 +226,18 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
 
       expect(json.fetch("data").map { |r| r.fetch("review_id") }).to eq([ published.review_id ])
       expect(json.fetch("meta")).to include("count" => 1)
+    end
+
+    it "orders each group newest published first" do
+      game = create(:game)
+      published_late = travel_to(3.days.ago) { create(:review, :draft, user: owner, game: game) }
+      published_early = travel_to(2.days.ago) { create(:review, user: other_user, game: game) }
+      travel_to(1.day.ago) { published_late.publish! }
+
+      get "/api/v1/games/#{game.game_id}/reviews", headers: auth_headers_for(owner)
+
+      expect(json.fetch("data").map { |r| r.fetch("review_id") })
+        .to eq([ published_late.review_id, published_early.review_id ])
     end
   end
 
@@ -854,15 +904,25 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(review.reload.published_at).to be_present
     end
 
-    it "refuses to clear the score of a Published Review" do
+    it "refuses to clear the score of a Published Review, saying a Published take keeps it" do
       review = create(:review, user: owner, rating: 40)
 
       patch "/api/v1/reviews/#{review.review_id}",
         params: { data: { rating: nil } }, headers: auth_headers_for(owner), as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(json.fetch("error")).to eq("rating_required")
+      expect(json).to include("error" => "rating_required", "message" => "A Published take must keep its score.")
       expect(review.reload.rating).to eq(40)
+    end
+
+    it "refuses clearing a locked score as score_locked" do
+      review = create(:review, user: owner, rating: 40, published_at: 10.days.ago)
+
+      patch "/api/v1/reviews/#{review.review_id}",
+        params: { data: { rating: nil } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("score_locked")
     end
 
     it "lets a Draft's score be cleared" do
@@ -1073,6 +1133,22 @@ RSpec.describe "api/v1/reviews behavior", type: :request do
       expect(games.fetch(nr_gotm_review.review_id)).to include("gotm_won" => false, "nr_gotm_won" => true)
       expect(games.fetch(plain_review.review_id)).to include("gotm_won" => false, "nr_gotm_won" => false,
         "title" => plain_review.game.title)
+    end
+
+    it "serves the month each GOTM or NR-GOTM game won, for the track pill" do
+      gotm = create(:gotm_entry, month_year: "November 2024").game
+      nr_gotm = create(:nr_gotm_entry, month_year: "March 2025").game
+      gotm_review = create(:review, user: owner, game: gotm)
+      nr_gotm_review = create(:review, user: owner, game: nr_gotm)
+      plain_review = create(:review, user: owner)
+
+      games = feed.to_h { |entry| [ entry.fetch("review_id"), entry.fetch("game") ] }
+
+      expect(games.fetch(gotm_review.review_id))
+        .to include("gotm_month_year" => "November 2024", "nr_gotm_month_year" => nil)
+      expect(games.fetch(nr_gotm_review.review_id))
+        .to include("gotm_month_year" => nil, "nr_gotm_month_year" => "March 2025")
+      expect(games.fetch(plain_review.review_id)).to include("gotm_month_year" => nil, "nr_gotm_month_year" => nil)
     end
 
     describe "Written only" do

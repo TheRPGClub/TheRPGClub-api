@@ -138,6 +138,14 @@ module OpenapiSchemas
       # games#index / #show / create-from-IGDB (GameResource): GameSummary plus
       # the GOTM/NR-GOTM winner flags selected by the `without_images` scope.
       Game: extends("GameSummary", gotm_won: bool, nr_gotm_won: bool, required: %w[gotm_won nr_gotm_won]),
+      # TrackedGameResource, the game in the Review Feed and the drafts
+      # listing: Game plus the month each track was last won.
+      TrackedGame: extends("Game",
+        gotm_month_year: str(nullable: true).merge(description: "The month it won GOTM (its latest win), " \
+                                                                "e.g. \"November 2024\"; null if it never did."),
+        nr_gotm_month_year: str(nullable: true).merge(description: "The month it won NR-GOTM (its latest win); " \
+                                                                   "null if it never did."),
+        required: %w[gotm_month_year nr_gotm_month_year]),
       # GameWithPlatformsResource: GameSummary plus the game's platforms, for
       # the two consumers that render platform pills — the nomination board and
       # the dashboard's GOTM / NR-GOTM cards. Ordered by `platform_name`; empty
@@ -585,6 +593,7 @@ module OpenapiSchemas
         rating: int.merge(description: "The current score: the latest Published Revision's, else the " \
                                      "Review's own (spec api#430)."),
         original_rating: int.merge(description: "The original take's score, whatever Revisions followed."),
+        revised: bool.merge(description: "Whether it has Published Revisions (a newer take than the first)."),
         title: str(nullable: true, maxLength: 120), body: json,
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
@@ -598,6 +607,7 @@ module OpenapiSchemas
         rating: int.merge(description: "The current score: the latest Published Revision's, else the " \
                                      "Review's own (spec api#430)."),
         original_rating: int.merge(description: "The original take's score, whatever Revisions followed."),
+        revised: bool.merge(description: "Whether it has Published Revisions (a newer take than the first)."),
         title: str(nullable: true, maxLength: 120), body: json,
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
@@ -622,7 +632,7 @@ module OpenapiSchemas
         facets: ref("ReviewFacets", nullable: true), created_at: ts, published_at: ts,
         edited_at: ts(nullable: true).merge(description: "When it was last Edited, if more than an hour after " \
                                                           "publishing (ADR 0013); null otherwise."),
-        user: ref("UserSummary"), game: ref("Game")
+        user: ref("UserSummary"), game: ref("TrackedGame")
       ),
       # ReviewDraftEntryResource (a Draft Review or Draft Revision, with
       # updated_at and the game with its track flags), the author's drafts
@@ -643,7 +653,7 @@ module OpenapiSchemas
         published_at: ts(nullable: true).merge(description: "Always null: a Draft is unpublished."),
         edited_at: ts(nullable: true).merge(description: "Always null: a Draft is never Edited."),
         updated_at: ts.merge(description: "When the author last touched it; the listing's order."),
-        game: ref("Game")
+        game: ref("TrackedGame")
       ),
       # JournalEntryGameResource (JournalFields + game), single-entry endpoints.
       JournalEntryGame: obj(

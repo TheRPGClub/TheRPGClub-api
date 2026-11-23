@@ -46,6 +46,15 @@ RSpec.describe "api/v1 review revisions behavior", type: :request do
       expect(json).to include("error" => "draft_revision_exists")
     end
 
+    it "answers a lost race for the one Draft Revision with draft_revision_exists" do
+      allow_any_instance_of(UserGameReviewRevision).to receive(:save).and_raise(ActiveRecord::RecordNotUnique)
+
+      post revisions_path, params: { data: {} }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "draft_revision_exists")
+    end
+
     it "allows a new Draft Revision once the last one is Published" do
       create(:review_revision, review: review)
 
@@ -175,13 +184,59 @@ RSpec.describe "api/v1 review revisions behavior", type: :request do
       viewer = auth_headers_for(create(:user))
 
       get "/api/v1/users/#{owner.user_id}/reviews", headers: viewer
-      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72)
+      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72, "revised" => true)
 
       get "/api/v1/games/#{review.gamedb_game_id}/reviews", headers: viewer
-      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72)
+      expect(json.dig("data", 0)).to include("rating" => 85, "original_rating" => 72, "revised" => true)
 
       get "/api/v1/users/#{owner.user_id}", headers: viewer
-      expect(json.dig("data", "reviews", 0)).to include("rating" => 85, "original_rating" => 72)
+      expect(json.dig("data", "reviews", 0)).to include("rating" => 85, "original_rating" => 72, "revised" => true)
+    end
+
+    it "marks a Review never revisited as not revised in the lists" do
+      review
+
+      get "/api/v1/games/#{review.gamedb_game_id}/reviews", headers: auth_headers_for(owner)
+
+      expect(json.dig("data", 0)).to include("revised" => false)
+    end
+
+    describe "editing the first take of a revisited Review" do
+      before { publish_revision(85, at: 1.day.ago) }
+
+      def edit_review(data)
+        patch "/api/v1/reviews/#{review.review_id}", params: { data: data }, headers: auth_headers_for(owner), as: :json
+      end
+
+      it "writes the first take's score from original_rating" do
+        edit_review(original_rating: 75)
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("rating" => 85, "original_rating" => 75)
+      end
+
+      it "ignores a sent rating equal to the current score, as an editor resends it" do
+        edit_review(rating: 85, title: "Retitled")
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to include("rating" => 85, "original_rating" => 72, "title" => "Retitled")
+      end
+
+      it "prefers original_rating over a sent rating" do
+        edit_review(rating: 85, original_rating: 70)
+
+        expect(json.fetch("data")).to include("rating" => 85, "original_rating" => 70)
+      end
+    end
+
+    it "previews the profile's reviews newest published first" do
+      older = travel_to(5.days.ago) { create(:review, :draft, user: owner) }
+      travel_to(3.days.ago) { review }
+      travel_to(1.day.ago) { older.publish! }
+
+      get "/api/v1/users/#{owner.user_id}", headers: auth_headers_for(owner)
+
+      expect(json.dig("data", "reviews").map { |r| r.fetch("review_id") }).to eq([ older.review_id, review.review_id ])
     end
 
     it "is deleted with its Review, Revisions and all" do

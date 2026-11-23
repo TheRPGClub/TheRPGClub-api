@@ -18,9 +18,10 @@ class UserGameReview < ApplicationRecord
     class_name: "GamedbGame",
     foreign_key: :gamedb_game_id,
     inverse_of: :reviews
-  # The same game read through `GamedbGame.without_images`, so it carries the
-  # `gotm_won` / `nr_gotm_won` track flags GameResource serves.
-  belongs_to :tracked_game, -> { without_images },
+  # The same game read through `GamedbGame.without_images` and
+  # `with_track_months`, so it carries the `gotm_won` / `nr_gotm_won` track
+  # flags and the month each was won (TrackedGameResource).
+  belongs_to :tracked_game, -> { without_images.with_track_months },
     class_name: "GamedbGame",
     foreign_key: :gamedb_game_id,
     inverse_of: false,
