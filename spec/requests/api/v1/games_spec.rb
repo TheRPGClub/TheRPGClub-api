@@ -596,6 +596,37 @@ RSpec.describe 'api/v1/games', type: :request do
     end
   end
 
+  path '/api/v1/games/{id}/alternates/{alt_game_id}' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true
+    parameter name: :alt_game_id, in: :path, schema: { type: :integer }, required: true
+
+    delete 'Unlink an alternate version' do
+      tags 'Games'
+      description 'Admin/service-only. Unlinks the path game and `alt_game_id` as alternate versions. The link ' \
+                  'is stored once, so this works from either game\'s side; both games\' cached relations ' \
+                  'refresh. Returns the game\'s remaining alternates (same shape as linking).'
+      produces 'application/json'
+
+      response '200', 'alternate unlinked' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Game' } }
+        }
+      end
+
+      response '403', 'forbidden — admin or service required' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'game not found, or the pair is not linked' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/games/{id}/now_playing' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true
 

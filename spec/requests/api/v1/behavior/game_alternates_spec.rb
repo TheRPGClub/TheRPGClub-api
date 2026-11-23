@@ -2,9 +2,9 @@
 
 require "rails_helper"
 
-# Behavior specs for the alternate-version link endpoint
-# (POST /api/v1/games/:id/alternates): symmetric low-id-first storage,
-# idempotency, and the admin/service gate.
+# Behavior specs for the alternate-version link and unlink endpoints
+# (POST /api/v1/games/:id/alternates, DELETE /api/v1/games/:id/alternates/:alt_game_id):
+# symmetric low-id-first storage, idempotency, and the admin/service gate.
 RSpec.describe "api/v1/game_alternates behavior", type: :request do
   # Eager (let!) so game_low is always created first and holds the lower
   # game_id — the pair-ordering assertions depend on it.
@@ -126,6 +126,92 @@ RSpec.describe "api/v1/game_alternates behavior", type: :request do
     it "requires authentication" do
       post "/api/v1/games/#{game_low.game_id}/alternates",
         params: { data: { alt_game_id: game_high.game_id } }, as: :json
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "DELETE /api/v1/games/:id/alternates/:alt_game_id" do
+    let!(:game_other) { create(:game) }
+
+    before do
+      GamedbGameAlternate.create!(game_id: game_low.game_id, alt_game_id: game_high.game_id)
+      GamedbGameAlternate.create!(game_id: game_low.game_id, alt_game_id: game_other.game_id)
+    end
+
+    it "unlinks the pair from the low game's side" do
+      expect {
+        delete "/api/v1/games/#{game_low.game_id}/alternates/#{game_high.game_id}", headers: service_headers
+      }.to change(GamedbGameAlternate, :count).by(-1)
+
+      expect(response).to have_http_status(:ok)
+      expect(GamedbGameAlternate.exists?(game_id: game_low.game_id, alt_game_id: game_high.game_id)).to be(false)
+    end
+
+    it "unlinks the pair from the high game's side" do
+      expect {
+        delete "/api/v1/games/#{game_high.game_id}/alternates/#{game_low.game_id}", headers: service_headers
+      }.to change(GamedbGameAlternate, :count).by(-1)
+
+      expect(response).to have_http_status(:ok)
+      expect(GamedbGameAlternate.exists?(game_id: game_low.game_id, alt_game_id: game_high.game_id)).to be(false)
+    end
+
+    it "returns the game's remaining alternates in the GameResource shape" do
+      delete "/api/v1/games/#{game_low.game_id}/alternates/#{game_high.game_id}", headers: service_headers
+
+      expect(json.fetch("data").map { |g| g.fetch("game_id") }).to eq([ game_other.game_id ])
+      expect(json.fetch("data").first).to include("title" => game_other.title, "gotm_won" => false)
+    end
+
+    it "returns an empty list when the game has no alternates left" do
+      delete "/api/v1/games/#{game_high.game_id}/alternates/#{game_low.game_id}", headers: service_headers
+
+      expect(json).to eq("data" => [])
+    end
+
+    it "touches both games so their cached relations invalidate" do
+      expect {
+        delete "/api/v1/games/#{game_high.game_id}/alternates/#{game_low.game_id}", headers: service_headers
+      }.to change { game_low.reload.updated_at }
+        .and change { game_high.reload.updated_at }
+    end
+
+    it "lets an admin unlink" do
+      delete "/api/v1/games/#{game_low.game_id}/alternates/#{game_high.game_id}",
+        headers: auth_headers_for(create(:user, :admin))
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "404s when the pair isn't linked" do
+      unlinked = create(:game)
+
+      expect {
+        delete "/api/v1/games/#{game_high.game_id}/alternates/#{unlinked.game_id}", headers: service_headers
+      }.not_to change(GamedbGameAlternate, :count)
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "404s for an unknown path game" do
+      delete "/api/v1/games/999999999/alternates/#{game_low.game_id}", headers: service_headers
+
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "forbids a regular user" do
+      expect {
+        delete "/api/v1/games/#{game_low.game_id}/alternates/#{game_high.game_id}",
+          headers: auth_headers_for(create(:user))
+      }.not_to change(GamedbGameAlternate, :count)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json).to eq("error" => "forbidden")
+    end
+
+    it "requires authentication" do
+      delete "/api/v1/games/#{game_low.game_id}/alternates/#{game_high.game_id}"
 
       expect(response).to have_http_status(:unauthorized)
     end

@@ -18753,6 +18753,56 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/games/{id}/alternates/{alt_game_id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+    - name: alt_game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    delete:
+      summary: Unlink an alternate version
+      tags:
+      - Games
+      description: Admin/service-only. Unlinks the path game and `alt_game_id` as
+        alternate versions. The link is stored once, so this works from either game's
+        side; both games' cached relations refresh. Returns the game's remaining alternates
+        (same shape as linking).
+      responses:
+        '200':
+          description: alternate unlinked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Game"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found, or the pair is not linked
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{id}/now_playing":
     parameters:
     - name: id

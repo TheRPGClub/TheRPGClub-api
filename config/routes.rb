@@ -36,6 +36,7 @@ Rails.application.routes.draw do
           post "refresh-images", to: "games#refresh_images"
           post "refresh-releases", to: "games#refresh_releases"
           post "alternates", to: "game_alternates#create"
+          delete "alternates/:alt_game_id", to: "game_alternates#destroy"
           get "relations", to: "games#relations"
           post "hltb", to: "games#upsert_hltb"
           post "hltb/lookup", to: "game_hltb#lookup"
