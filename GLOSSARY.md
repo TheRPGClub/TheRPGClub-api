@@ -20,10 +20,6 @@ _Avoid_: Skin, style, dark mode, appearance
 A page of the website that a Member has put at the top of their own sidebar so it is one click away. A Pinned Page is still listed in its usual place. Members who have pinned nothing see the club's default Pinned Pages, and a Pinned Page that the Member cannot currently see stays pinned and returns when they can.
 _Avoid_: Favourite, shortcut, bookmark
 
-**Dashboard Panel**:
-One block of recent club or personal activity that a Member chooses to show on their own dashboard, below the current issue, in the order they choose. Members who have changed nothing see the club's default Dashboard Panels. A Dashboard Panel belonging to a Feature the Member cannot currently see stays chosen and returns when they can. A Dashboard Panel is not a Pinned Page: pins decide where a Member can go, panels show what is happening.
-_Avoid_: Widget, card, tile, module
-
 ## Achievement Hub
 
 **Provider**:
@@ -103,9 +99,29 @@ _Avoid_: Release schedule, upcoming games, launch calendar, calendar (unqualifie
 One entry on the Release Calendar: one game together with every Release it has on the same date, across platforms and regions.
 _Avoid_: Calendar entry, event
 
-**Hidden Platform**:
-A platform a Member has chosen to leave out of their own Release Calendar and Upcoming Releases panel. It changes only what that Member sees; the club's release posts are unaffected.
-_Avoid_: Platform filter, muted console, blocked platform
+**Review**:
+A Member's rating of one Game, optionally with a written take and a scorecard. A Member has at most one Review per Game.
+_Avoid_: Rating (when meaning the whole Review), post
+
+**Draft**:
+A Review or Revision its author has started but not yet published. Only its author and Admins can see it, and it may not have a score yet.
+_Avoid_: Unshared, private, hidden review
+
+**Published**:
+A Review or Revision every Member can read, dated from the moment its author published it. A Published Review never goes back to being a Draft; its author can revise it or delete it.
+_Avoid_: Shared, public, live (Live is a Feature Flag state)
+
+**Revision**:
+A dated return to a Published Review, such as after a second playthrough, with its own score and optionally its own written take. The earlier take stays readable beneath it, and the latest Revision's score becomes the Review's score.
+_Avoid_: Edit, update, version
+
+**Edit**:
+A correction to a Published Review or Revision that changes it in place without recording a change of opinion. An Edit may change the score only in the first 7 days after publishing; after that, a new score needs a Revision. A late Edit is marked as edited.
+_Avoid_: Revision, update
+
+**Review Feed**:
+Every Member's Published Reviews and Revisions across all Games, newest first.
+_Avoid_: Review index, timeline, activity
 
 ## Community
 
