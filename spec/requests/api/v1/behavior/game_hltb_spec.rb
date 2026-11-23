@@ -25,8 +25,8 @@ RSpec.describe "api/v1/games/:id/hltb/lookup behavior", type: :request do
     allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
   end
 
-  def lookup(headers)
-    post "/api/v1/games/#{game.game_id}/hltb/lookup", headers: headers, as: :json
+  def lookup(headers, **params)
+    post "/api/v1/games/#{game.game_id}/hltb/lookup", params:, headers: headers, as: :json
   end
 
   context "when the game released more than six months ago" do
@@ -112,6 +112,137 @@ RSpec.describe "api/v1/games/:id/hltb/lookup behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("name" => "Chrono Trigger", "main" => "22 Hours")
       expect(json.fetch("meta")).to eq("source" => "cache", "saved" => true)
+    end
+  end
+
+  describe "a forced re-search (force: true)" do
+    let(:admin) { auth_headers_for(create(:user, role_admin: true)) }
+    let!(:saved) do
+      RpgClubHltbCache.create!(gamedb_game_id: game.game_id, hltb_name: "Chrono Trigger DS", main: "22 Hours",
+        scraped_at: 40.days.ago, searched_at: 40.days.ago)
+    end
+
+    it "searches HLTB again and overwrites the saved times" do
+      allow(client).to receive(:search).with("Chrono Trigger").and_return(scraped)
+
+      expect { lookup(member, force: true) }.not_to change(RpgClubHltbCache, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("name" => "Chrono Trigger", "main" => "23 Hours")
+      expect(json.fetch("meta")).to eq("source" => "hltb", "saved" => true)
+      expect(saved.reload).to have_attributes(hltb_name: "Chrono Trigger", main: "23 Hours")
+      expect(saved.searched_at).to be_within(1.minute).of(Time.current)
+      expect(Time.zone.parse(json.dig("data", "next_forced_search_at")))
+        .to be_within(1.minute).of(30.days.from_now)
+    end
+
+    it "is allowed for a saved row that was never searched (entered by hand)" do
+      saved.update!(searched_at: nil)
+      allow(client).to receive(:search).and_return(scraped)
+
+      lookup(member, force: true)
+
+      expect(response).to have_http_status(:ok)
+      expect(saved.reload.main).to eq("23 Hours")
+    end
+
+    it "429s within 30 days of the last search, saying when the next one is allowed" do
+      saved.update!(searched_at: 10.days.ago)
+      expect(client).not_to receive(:search)
+
+      lookup(member, force: true)
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(json).to include("error" => "hltb_search_too_soon")
+      expect(Time.zone.parse(json.fetch("next_forced_search_at"))).to be_within(1.minute).of(20.days.from_now)
+      expect(saved.reload.main).to eq("22 Hours")
+    end
+
+    it "lets an Admin search again within the 30 days" do
+      saved.update!(searched_at: 1.day.ago)
+      allow(client).to receive(:search).and_return(scraped)
+
+      lookup(admin, force: true)
+
+      expect(response).to have_http_status(:ok)
+      expect(saved.reload.main).to eq("23 Hours")
+    end
+
+    it "lets a Superadmin search again within the 30 days" do
+      saved.update!(searched_at: 1.day.ago)
+      allow(client).to receive(:search).and_return(scraped)
+
+      lookup(auth_headers_for(create(:user), is_dev: true), force: true)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "keeps the saved times on no match, but counts the search" do
+      allow(client).to receive(:search).and_return(nil)
+
+      lookup(member, force: true)
+
+      expect(response).to have_http_status(:not_found)
+      expect(json).to include("error" => "hltb_no_match")
+      expect(saved.reload.main).to eq("22 Hours")
+      expect(saved.searched_at).to be_within(1.minute).of(Time.current)
+    end
+
+    it "does not count a search that failed, so it can be tried again" do
+      allow(client).to receive(:search).and_raise(Hltb::Client::RequestError, "HowLongToBeat returned HTTP 503.")
+
+      lookup(member, force: true)
+
+      expect(response).to have_http_status(:bad_gateway)
+      expect(saved.reload.searched_at).to be_within(1.minute).of(40.days.ago)
+    end
+
+    it "changes nothing without force" do
+      saved.update!(searched_at: 10.days.ago)
+      expect(client).not_to receive(:search)
+
+      lookup(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("name" => "Chrono Trigger DS", "main" => "22 Hours")
+      expect(json.fetch("meta")).to eq("source" => "cache", "saved" => true)
+      expect(saved.reload.searched_at).to be_within(1.minute).of(10.days.ago)
+    end
+
+    it "exposes the next forced search date on the game profile" do
+      saved.update!(searched_at: 10.days.ago)
+
+      get "/api/v1/games/#{game.game_id}/profile", headers: member
+
+      expect(Time.zone.parse(json.dig("data", "hltb", "next_forced_search_at")))
+        .to be_within(1.minute).of(20.days.from_now)
+    end
+
+    it "refuses a signed-in user without the Members role" do
+      expect(client).not_to receive(:search)
+
+      lookup(auth_headers_for(create(:user, role_regular: true)), force: true)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(saved.reload.main).to eq("22 Hours")
+    end
+
+    it "requires authentication" do
+      lookup({}, force: true)
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  context "when a forced search finds no saved times" do
+    it "searches as an ordinary lookup does and saves the first search date" do
+      allow(client).to receive(:search).and_return(scraped)
+
+      lookup(member, force: true)
+
+      expect(response).to have_http_status(:ok)
+      expect(RpgClubHltbCache.find_by!(gamedb_game_id: game.game_id).searched_at)
+        .to be_within(1.minute).of(Time.current)
     end
   end
 

@@ -1258,6 +1258,24 @@ RSpec.describe "api/v1/games behavior", type: :request do
       expect(cache.main).to eq("23 Hours")
     end
 
+    it "counts a save that carries scraped_at (the bot's /hltb) as the game's last HLTB search" do
+      scraped_at = 3.days.ago.change(usec: 0)
+      payload[:data][:scraped_at] = scraped_at.iso8601
+
+      post "/api/v1/games/#{game.game_id}/hltb", params: payload, headers: service_headers, as: :json
+
+      expect(RpgClubHltbCache.find_by!(gamedb_game_id: game.game_id).searched_at).to eq(scraped_at)
+    end
+
+    it "leaves the last HLTB search alone for times entered by hand" do
+      RpgClubHltbCache.create!(gamedb_game_id: game.game_id, main: "20 Hours", searched_at: 3.days.ago)
+
+      post "/api/v1/games/#{game.game_id}/hltb", params: { data: { main: "25 Hours" } }, headers: service_headers,
+        as: :json
+
+      expect(RpgClubHltbCache.find_by!(gamedb_game_id: game.game_id).searched_at).to be_within(1.minute).of(3.days.ago)
+    end
+
     it "upserts on gamedb_game_id instead of inserting a second row" do
       post "/api/v1/games/#{game.game_id}/hltb", params: payload, headers: service_headers, as: :json
 

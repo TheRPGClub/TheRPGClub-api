@@ -7255,10 +7255,38 @@ components:
           type: string
           format: date-time
           nullable: true
+        searched_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When HowLongToBeat was last searched for the game; null for
+            times entered by hand.
+        next_forced_search_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'When a member may next force a search (lookup `force: true`);
+            null: now. Admins and above may at any time.'
         updated_at:
           type: string
           format: date-time
           nullable: true
+    HltbSearchTooSoon:
+      type: object
+      properties:
+        error:
+          type: string
+          example: hltb_search_too_soon
+        message:
+          type: string
+        next_forced_search_at:
+          type: string
+          format: date-time
+          description: When the next forced search is allowed.
+      required:
+      - error
+      - message
+      - next_forced_search_at
     HltbLookup:
       type: object
       properties:
@@ -16936,13 +16964,18 @@ paths:
       summary: Look up HowLongToBeat times
       tags:
       - Games
-      description: Members role, Moderator, Admin, Superadmin or service. Returns
-        the game's saved HLTB times when it has them (no scrape). Otherwise finds
-        the game's HowLongToBeat page through Google Custom Search ("How long is <title>?")
-        and scrapes it, as the bot's `/hltb` does. A fresh scrape is saved to the
-        HLTB cache only when the game's initial release is more than six months ago
-        (`meta.saved`). An unsaved result (or no match) is kept for about a day, then
-        served with `meta.source` `cache`. Takes no body.
+      description: 'Members role, Moderator, Admin, Superadmin or service. Returns
+        the game''s saved HLTB times when it has them (no scrape). Otherwise finds
+        the game''s HowLongToBeat page through Google Custom Search ("How long is
+        <title>?") and scrapes it, as the bot''s `/hltb` does. A fresh scrape is saved
+        to the HLTB cache only when the game''s initial release is more than six months
+        ago (`meta.saved`). An unsaved result (or no match) is kept for about a day,
+        then served with `meta.source` `cache`. With `force: true` and saved times,
+        it searches HowLongToBeat again and overwrites them (a no-match keeps them).
+        A member may force a search once every 30 days per game (`next_forced_search_at`
+        on the saved times); Admins and above at any time. Without saved times, `force`
+        changes nothing.'
+      parameters: []
       responses:
         '200':
           description: HLTB times
@@ -16969,6 +17002,13 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '429':
+          description: "`hltb_search_too_soon`: a forced search within 30 days of
+            the last search"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HltbSearchTooSoon"
         '502':
           description: "`hltb_lookup_failed`: Google Custom Search or HowLongToBeat
             failed"
@@ -16983,6 +17023,15 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  description: Search HowLongToBeat again even though times are saved.
   "/api/v1/games/{game_id}/images":
     parameters:
     - name: game_id

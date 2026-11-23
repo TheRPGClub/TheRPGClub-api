@@ -186,13 +186,17 @@ module Api
       # Upserts the bot's scraped HowLongToBeat cache for the
       # game, keyed on gamedb_game_id (mirrors the bot's `rpg_club_hltb_cache`
       # `ON CONFLICT (gamedb_game_id) DO UPDATE`). Fields are accepted under the
-      # same logical names HltbResource returns via #relations/#profile.
+      # same logical names HltbResource returns via #relations/#profile. A body
+      # with scraped_at also sets searched_at (the forced re-search interval).
       def upsert_hltb
         return unless require_member_or_staff!
 
         game = GamedbGame.find(params[:id])
         cache = RpgClubHltbCache.find_or_initialize_by(gamedb_game_id: game.game_id)
         cache.assign_attributes(hltb_data)
+        # A save from a scrape (the bot's /hltb sends scraped_at) is a search;
+        # times entered by hand are not.
+        cache.searched_at = cache.scraped_at if hltb_data.key?("scraped_at")
         cache.save!
 
         render json: { data: HltbResource.new(cache).serializable_hash }
