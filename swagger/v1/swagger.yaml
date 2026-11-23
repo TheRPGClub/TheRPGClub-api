@@ -18510,12 +18510,15 @@ paths:
       summary: Add a release
       tags:
       - Games
-      description: Admin/service-only. Adds a release row for the game (the bot's
+      description: 'Admin/service-only. Adds a release row for the game (the bot''s
         `addReleaseInfo`). `platform_id` and `region_id` are required; `format` must
         be `Physical`, `Digital` or null; `release_date` and `notes` are optional.
         A plain insert, so duplicates are allowed. Always creates a Manual Release
-        (`source` "manual"), which no IGDB refresh changes or removes. Its Date Precision
-        is `day`, or `tba` when no `release_date` is given.
+        (`source` "manual"), which no IGDB refresh changes or removes. `date_precision`
+        is optional: omitted or null, it is `day`, or `tba` when no `release_date`
+        is given. A `tba` Release has no date and every other one has one, a vague
+        date on the first day of its period (month, quarter or year); anything else
+        is a 422.'
       parameters: []
       responses:
         '201':
@@ -18541,7 +18544,8 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed (missing/unknown platform or region, bad
-            `format`)
+            `format`, unknown `date_precision`, or a date that does not fit its Date
+            Precision)
           content:
             application/json:
               schema:
@@ -18580,6 +18584,17 @@ paths:
                       nullable: true
                       description: Release date (YYYY-MM-DD; a timestamp keeps its
                         calendar day). Omit or null for TBA.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - quarter
+                      - year
+                      - tba
+                      nullable: true
+                      description: 'Date Precision: day, month, quarter, year or tba.
+                        Omit or null for `day` (`tba` without a date).'
                     notes:
                       type: string
                       nullable: true
@@ -18590,6 +18605,131 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/releases/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Release id
+    patch:
+      summary: Edit a Manual Release
+      tags:
+      - Games
+      description: 'Admin/service-only. Edits a Manual Release; only the fields sent
+        change, with the same validation as POST /api/v1/games/{id}/releases. Clearing
+        `release_date` without a `date_precision` makes the Release `tba`; dating
+        a `tba` Release without one makes it `day`. Rebuilds the game''s release-announcement
+        schedule (a Release that is no longer `day` loses its unsent announcement)
+        and refreshes the game''s cached relations. An IGDB Release is refused with
+        422 `igdb_release`: the IGDB refresh owns it.'
+      parameters: []
+      responses:
+        '200':
+          description: release updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Release"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: forbidden — admin or service required
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: release not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: an IGDB Release (`igdb_release`), or validation failed as on
+            create
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    platform_id:
+                      type: integer
+                      description: GamedbPlatform id.
+                    region_id:
+                      type: integer
+                      description: GamedbRegion id.
+                    format:
+                      type: string
+                      enum:
+                      - Physical
+                      - Digital
+                      nullable: true
+                      description: Physical, Digital, or null.
+                    release_date:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Release date (YYYY-MM-DD), the first day of its
+                        period for a vague Date Precision. Null for TBA.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - quarter
+                      - year
+                      - tba
+                      nullable: true
+                      description: Date Precision. Omit or null to keep it (see above).
+                    notes:
+                      type: string
+                      nullable: true
+                      description: Free-text notes.
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Manual Release
+      tags:
+      - Games
+      description: Admin/service-only. Deletes a Manual Release with its announcement
+        row (a sent one still leaves the game's `release_announced_at`), rebuilds
+        the game's release-announcement schedule and refreshes its cached relations.
+        An IGDB Release is refused with 422 `igdb_release`.
+      responses:
+        '204':
+          description: release deleted
+        '403':
+          description: forbidden — admin or service required
+        '404':
+          description: release not found
+        '422':
+          description: an IGDB Release (`igdb_release`)
+        '401':
+          description: unauthenticated
   "/api/v1/games/{id}/refresh-releases":
     parameters:
     - name: id
