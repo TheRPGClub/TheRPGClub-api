@@ -143,6 +143,26 @@ _Avoid_: Revision, update
 Every Member's Published Reviews and Revisions across all Games, newest first.
 _Avoid_: Review index, timeline, activity
 
+**Game List**:
+A named list of GameDB games a member puts together around any theme, such as their top 10 games of all time or the Soulslike games. Its owner shows it ranked, alphabetically or by when each game was added, and keeps it visible to members or private. The club can own Game Lists too. A member can turn a Game List into a Challenge so others play the games with them; the club takes over a Game List that feeds a Challenge when its owner deletes it or makes it private.
+_Avoid_: Collection (a member's owned games), backlog, playlist
+
+**Franchise**:
+A broad grouping of GameDB games under one brand, such as Final Fantasy. A game can belong to several Franchises. Regulars and above can change which games belong to one.
+_Avoid_: Series (that is narrower), brand, IP
+
+**Series**:
+A narrower grouping of GameDB games that come from IGDB, such as the Final Fantasy VII compilation. A game belongs to at most one Series.
+_Avoid_: Collection (a member's owned games), franchise
+
+**Mainline**:
+A mark on a game within a Franchise saying it is one of the Franchise's main entries rather than a spin-off. A game can be Mainline in one Franchise and not in another.
+_Avoid_: Main series, canon, numbered entry
+
+**Add-on**:
+A GameDB game that extends another game, such as DLC or an expansion. Add-ons are shown under their parent game and never join a Pool unless picked by hand.
+_Avoid_: DLC (as the general term), expansion (as the general term)
+
 ## Community
 
 **Suggestion**:
@@ -260,7 +280,7 @@ A themed goal a member sets for the club, such as playing a game from every year
 _Avoid_: Event, quest, marathon
 
 **Host**:
-The member who runs a Challenge, or the club itself for a Challenge staff run in the club's name. Only Regulars, Moderators, Admins and Superadmins can create a Challenge. A Challenge keeps its Host if the Host later loses the role or leaves, and staff can hand it to another Host.
+The member who runs a Challenge, or the club itself for a Challenge staff run in the club's name. Any member can host a Slots or Pool Challenge; only staff create Assignment Challenges. A Challenge keeps its Host if the Host leaves, and staff can hand it to another Host.
 _Avoid_: Owner, organiser, creator
 
 **Run**:
@@ -316,8 +336,20 @@ The Challenge Format where a Run has one place to fill for each year in a range,
 _Avoid_: Checklist, grid
 
 **Pool**:
-The Challenge Format where any game from a set the Host chose counts, such as the Final Fantasy series. The Host sets how many must be Cleared to Finish, a number or every game in the set, and a member may keep playing beyond it.
+The Challenge Format where a Run Finishes by Clearing every Core Game plus a number of Optional Games the Host sets (none by default), such as the mainline Final Fantasy games with the spin-offs as Optional Games. A member may keep playing beyond it.
 _Avoid_: Series challenge, list
+
+**Core Game**:
+A game in a Pool that every Run must Clear to Finish. The Host can add or remove Core Games at any time, such as adding a new mainline entry the day it comes out.
+_Avoid_: Required game, main game, mandatory
+
+**Optional Game**:
+A game in a Pool that counts toward a Run but is not required. A Run needs as many Optional Games Cleared as the Host sets, and may Clear more.
+_Avoid_: Bonus game, extra, side game
+
+**Pool Proposal**:
+A member's proposal that a game be added to a Pool Challenge. The Host, or staff for a club-hosted Challenge, accepts it as a Core or Optional Game or declines it.
+_Avoid_: Suggestion (that is for the bot or website), nomination (that is for GOTM), pitch
 
 **Assignment**:
 The Challenge Format where another member chooses the game a member must play, such as a Secret Santa pick from their backlog.
