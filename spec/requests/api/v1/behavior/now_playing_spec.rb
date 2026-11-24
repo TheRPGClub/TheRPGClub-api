@@ -8,6 +8,8 @@ require "rails_helper"
 # service). `sort_order`/`note_updated_at`/`added_at` are server-managed on
 # create; update accepts only `note`, `platform_id` and `sort_order`.
 RSpec.describe "api/v1/now_playing behavior", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:owner) { create(:user) }
   let(:other_user) { create(:user) }
 
@@ -305,6 +307,49 @@ RSpec.describe "api/v1/now_playing behavior", type: :request do
         params: { data: { added_at: ClubDay.today.iso8601 } }, headers: auth_headers_for(owner), as: :json
 
       expect(response).to have_http_status(:ok)
+    end
+
+    describe "the day rule (added_at's day is its club day)" do
+      let(:entry) { create(:now_playing_entry, user: owner) }
+      let(:club_evening) { Time.zone.parse("2026-11-24 21:30:00 -05:00") } # 02:30 UTC on the 25th
+
+      def start_on(value)
+        patch "/api/v1/now_playing/#{entry.entry_id}",
+          params: { data: { added_at: value } }, headers: auth_headers_for(owner), as: :json
+      end
+
+      it "stores a date-only start as noon club time of that day" do
+        start_on("2026-11-09")
+
+        expect(response).to have_http_status(:ok)
+        expect(entry.reload.added_at).to eq(ClubDay.noon(Date.new(2026, 11, 9)))
+      end
+
+      it "keeps a full timestamp as the moment it names" do
+        start_on("2026-11-09T15:04:05Z")
+
+        expect(response).to have_http_status(:ok)
+        expect(entry.reload.added_at).to eq(Time.utc(2026, 11, 9, 15, 4, 5))
+      end
+
+      it "accepts a timestamp later on today's club day" do
+        travel_to(Time.zone.parse("2026-11-24 09:00:00 -05:00")) do
+          start_on("2026-11-24T20:00:00-05:00")
+
+          expect(response).to have_http_status(:ok)
+        end
+      end
+
+      it "accepts today's date on a club evening and refuses tomorrow's" do
+        travel_to(club_evening) do
+          start_on("2026-11-24")
+          expect(response).to have_http_status(:ok)
+
+          start_on("2026-11-25")
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("added_in_future")
+        end
+      end
     end
 
     it "422s added_in_future for a start after today" do

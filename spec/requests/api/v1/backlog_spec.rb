@@ -30,7 +30,7 @@ RSpec.describe 'api/v1/backlog', type: :request do
                   'for the filtered set).'
       produces 'application/json'
       parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
-        description: 'Filter to backlog entries of this game (`gamedb_game_id`).'
+        description: 'Filter to backlog entries of this game (`gamedb_game_id`). A non-integer matches nothing.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,

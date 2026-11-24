@@ -3,6 +3,7 @@
 module Api
   module V1
     class FavoritesController < ApplicationController
+      include GameIdFilter
       include ShelfPositioning
 
       before_action :require_owner!, only: %i[create update destroy]
@@ -15,7 +16,7 @@ module Api
       # `gamedb_game_id`, so the game page need not read the whole list.
       def index
         scope = UserGameFavorite.where(user_id: params[:user_id]).preload(:game)
-        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
+        scope = by_game(scope)
         render_collection(scope, resource: FavoriteEntryResource, default_order: UserGameFavorite::SHELF_ORDER)
       end
 
@@ -36,14 +37,11 @@ module Api
       # A `position` (1-based) moves the entry within the member's list and
       # renumbers the rest (ShelfOrder), alongside any other changed fields.
       def update
+        record = UserGameFavorite.find(params[:id])
         position = shelf_position
         return if performed?
 
-        record = UserGameFavorite.find(params[:id])
-        ActiveRecord::Base.transaction do
-          record.update!(writable_data)
-          record.move_to_position!(position) if position
-        end
+        record.update_at_position!(writable_data, position)
         record.reload
         render json: { data: FavoriteEntryResource.new(record).serializable_hash }
       end

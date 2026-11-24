@@ -14,17 +14,16 @@ module Challenges
   #                never counts by itself; with Counts past play a member
   #                may pick it for a Slots slot (Formats::Slots.pick!).
   #
-  # A Game Completion's date is its `completed_at` as a calendar date. The
-  # API stores Game Completion dates at midnight UTC, so the UTC date is the
-  # day the member logged; Now Playing's `added_at` is a moment, read in the
-  # club's time zone.
+  # A Game Completion's date and a Now Playing start are both the club day of
+  # the stored moment (ClubDay.day_of; Game Completion days are stored at noon
+  # club time, spec api#451).
   Plays = Data.define(:completions, :now_playing) do
     def self.of(user_id)
       completions = UserGameCompletion.where(user_id: user_id)
         .order(:completed_at, :completion_id).pluck(:completion_id, :gamedb_game_id, :completed_at)
-        .map { |id, game_id, at| [ id, game_id, at&.utc&.to_date ] }
+        .map { |id, game_id, at| [ id, game_id, ClubDay.day_of(at) ] }
       now_playing = UserNowPlaying.where(user_id: user_id).where.not(gamedb_game_id: nil)
-        .pluck(:gamedb_game_id, :added_at).map { |game_id, at| [ game_id, Challenges.today(at) ] }
+        .pluck(:gamedb_game_id, :added_at).map { |game_id, at| [ game_id, ClubDay.day_of(at) ] }
       new(completions: completions, now_playing: now_playing)
     end
 

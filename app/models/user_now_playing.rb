@@ -80,6 +80,17 @@ class UserNowPlaying < ApplicationRecord
   # present, cleared to null when blank) — the bot's note edit flow reads it.
   before_save :stamp_note_updated_at, if: :note_changed?
 
+  # `added_at` stays a real moment (the bot and Challenges read it), and its
+  # day is its club day (ClubDay.day_of). A date-only write (the website's
+  # `YYYY-MM-DD` or a Date) names a day, stored as noon club time on it.
+  def added_at=(value)
+    day = (value if value.is_a?(Date) && !value.is_a?(DateTime)) ||
+          (Date.iso8601(value.strip) if value.is_a?(String) && ClubDay::DATE_ONLY.match?(value.strip))
+    super(day ? ClubDay.noon(day) : value)
+  rescue Date::Error
+    super
+  end
+
   private
 
   def assign_sort_order
@@ -94,7 +105,7 @@ class UserNowPlaying < ApplicationRecord
   end
 
   def added_not_in_future
-    return unless added_at && ClubDay.after_today?(added_at)
+    return unless added_at && ClubDay.day_of(added_at) > ClubDay.today
 
     errors.add(:added_at, :added_in_future, message: "can't be in the future")
   end

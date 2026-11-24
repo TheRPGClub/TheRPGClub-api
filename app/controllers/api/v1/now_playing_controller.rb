@@ -104,14 +104,11 @@ module Api
       # A `position` (1-based) moves the entry within the member's list and
       # renumbers the rest (ShelfOrder); 422 `invalid_position` when bad.
       def update
+        record = UserNowPlaying.find(params[:id])
         position = shelf_position
         return if performed?
 
-        record = UserNowPlaying.find(params[:id])
-        ActiveRecord::Base.transaction do
-          record.update!(update_data)
-          record.move_to_position!(position) if position
-        end
+        record.update_at_position!(update_data, position)
         render json: { data: serialize_entry(record.entry_id, NowPlayingMemberEntryResource) }
       rescue ActiveRecord::RecordInvalid => e
         render_coded_refusal(e, %i[added_in_future])

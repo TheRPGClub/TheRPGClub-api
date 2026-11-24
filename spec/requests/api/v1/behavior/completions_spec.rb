@@ -96,7 +96,7 @@ RSpec.describe "api/v1/completions behavior", type: :request do
         started_at: Date.new(2021, 2, 1))
       older.update_columns(created_at: Time.utc(2021, 3, 5, 10, 11, 12.345))
       newer = create(:completion, user: owner, game: game, completion_type: "Completionist",
-        completed_at: Time.utc(2022, 1, 2), final_playtime_hrs: 40)
+        completed_at: Date.new(2022, 1, 2), final_playtime_hrs: 40)
       newer.update_columns(created_at: Time.utc(2022, 1, 2, 8, 0, 0))
       create(:completion, user: other_user)
 
@@ -330,6 +330,90 @@ RSpec.describe "api/v1/completions behavior", type: :request do
           headers: auth_headers_for(owner), as: :json
 
         expect(response).to have_http_status(:created)
+      end
+
+      describe "the day rule (a day is a club day, stored at noon club time)" do
+        let(:club_evening) { Time.zone.parse("2026-11-24 21:30:00 -05:00") } # 02:30 UTC on the 25th
+
+        def log(**dates)
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(dates) }, headers: auth_headers_for(owner), as: :json
+        end
+
+        it "stores a date-only completed_at as noon club time of that day" do
+          log(completed_at: "2026-11-20")
+
+          expect(response).to have_http_status(:created)
+          stored = UserGameCompletion.last.completed_at
+          expect(stored).to eq(ClubDay.noon(Date.new(2026, 11, 20)))
+          expect(stored.utc.to_date).to eq(Date.new(2026, 11, 20))
+        end
+
+        it "stores the bot's full 'now' on a club evening as today, not the UTC tomorrow" do
+          travel_to(club_evening) do
+            log(completed_at: Time.current.iso8601)
+
+            expect(response).to have_http_status(:created)
+            expect(UserGameCompletion.last.finished_on).to eq(Date.new(2026, 11, 24))
+            expect(UserGameCompletion.last.completed_at.utc.to_date).to eq(Date.new(2026, 11, 24))
+          end
+        end
+
+        it "finishes a completion logged with no completed_at today in club time, even on a club evening" do
+          travel_to(club_evening) do
+            log
+
+            expect(response).to have_http_status(:created)
+            expect(UserGameCompletion.last.completed_at).to eq(ClubDay.noon(Date.new(2026, 11, 24)))
+          end
+        end
+
+        it "refuses tomorrow's date on a club evening, when the UTC day has already turned" do
+          travel_to(club_evening) do
+            log(completed_at: "2026-11-25")
+
+            expect(response).to have_http_status(:unprocessable_content)
+            expect(json.fetch("error")).to eq("finished_in_future")
+          end
+        end
+
+        it "stores an explicit completed_at: null as null (an unknown day), not today" do
+          log(completed_at: nil)
+
+          expect(response).to have_http_status(:created)
+          expect(json.dig("data", "completed_at")).to be_nil
+          expect(UserGameCompletion.last.completed_at).to be_nil
+        end
+
+        it "422s started_in_future for a start after today when completed_at is null" do
+          expect { log(completed_at: nil, started_at: (ClubDay.today + 1).iso8601) }
+            .not_to change(UserGameCompletion, :count)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("started_in_future")
+        end
+
+        it "accepts a start of today when completed_at is null" do
+          log(completed_at: nil, started_at: ClubDay.today.iso8601)
+
+          expect(response).to have_http_status(:created)
+        end
+
+        it "reads a full started_at timestamp as its club day" do
+          travel_to(club_evening) do
+            log(started_at: Time.current.iso8601)
+
+            expect(response).to have_http_status(:created)
+            expect(UserGameCompletion.last.started_at).to eq(Date.new(2026, 11, 24))
+          end
+        end
+
+        it "lists every validation error, not just the coded one, when a request has several" do
+          log(completed_at: (ClubDay.today + 2).iso8601, completion_type: nil)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to include("Completion type can't be blank", "Completed at can't be in the future")
+        end
       end
     end
 

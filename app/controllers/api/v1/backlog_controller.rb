@@ -3,6 +3,7 @@
 module Api
   module V1
     class BacklogController < ApplicationController
+      include GameIdFilter
       include ShelfPositioning
 
       feature :backlog
@@ -17,7 +18,7 @@ module Api
       # `gamedb_game_id`, so the game page need not read the whole list.
       def index
         scope = UserGameBacklog.where(user_id: params[:user_id]).preload(:game, :platform)
-        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
+        scope = by_game(scope)
         render_collection(scope, resource: BacklogEntryResource, default_order: UserGameBacklog::SHELF_ORDER)
       end
 
@@ -56,14 +57,11 @@ module Api
       # A `position` (1-based) moves the entry within the member's list and
       # renumbers the rest (ShelfOrder), alongside any other changed fields.
       def update
+        record = UserGameBacklog.find(params[:id])
         position = shelf_position
         return if performed?
 
-        record = UserGameBacklog.find(params[:id])
-        ActiveRecord::Base.transaction do
-          record.update!(writable_data)
-          record.move_to_position!(position) if position
-        end
+        record.update_at_position!(writable_data, position)
         record.reload
         render json: { data: BacklogEntryResource.new(record).serializable_hash }
       end

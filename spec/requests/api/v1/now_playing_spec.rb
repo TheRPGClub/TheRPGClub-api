@@ -156,7 +156,8 @@ RSpec.describe 'api/v1/now_playing', type: :request do
     patch 'Update a now-playing entry' do
       tags 'Now Playing'
       description 'Owner-only. Partial update of `note`, `platform_id`, `sort_order` and/or `added_at` ' \
-                  '(the day the member started playing; 422 `added_in_future` when after today in club time). ' \
+                  '(the day the member started playing: a `YYYY-MM-DD` is stored as noon club time on it, a ' \
+                  'timestamp as given; 422 `added_in_future` when its club day is after today). ' \
                   '`note_updated_at` is stamped server-side when the note changes. A `position` moves the entry within the member\'s list and renumbers the rest server-side.'
       consumes 'application/json'
       produces 'application/json'

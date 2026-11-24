@@ -7,6 +7,11 @@
 # 1-based position in the list's display order and renumbers the member's
 # whole list 1..n in one statement, under a row lock.
 #
+# Lock order: a reorder must lock the member's whole list (`lock_shelf!`)
+# before it writes any entry, so two concurrent reorders queue on the list
+# instead of each holding one row the other's list lock needs (a deadlock).
+# `ShelfOrder.update_at_position!` does it in that order.
+#
 # The including model defines `SHELF_ORDER`, the list's display order. It must
 # match what the list endpoint renders (Postgres sorts NULL last on ASC, so
 # entries without a `sort_order` trail the ordered ones).
@@ -17,12 +22,27 @@ module ShelfOrder
     def shelf_for(user_id)
       where(user_id:).order(self::SHELF_ORDER)
     end
+
+    # Row-locks every entry of the member's list until the transaction ends.
+    def lock_shelf!(user_id)
+      shelf_for(user_id).lock.pluck(:entry_id)
+    end
+  end
+
+  # Applies `attrs` and, with a `position`, moves the entry there, in one
+  # transaction that locks the member's list first (see "Lock order").
+  def update_at_position!(attrs, position)
+    self.class.transaction do
+      self.class.lock_shelf!(user_id) if position
+      update!(attrs)
+      move_to_position!(position) if position
+    end
   end
 
   # Moves this entry to `position` (1-based; past the end means last). Call
-  # inside a transaction so the lock holds until commit.
+  # inside a transaction that already holds `lock_shelf!` (update_at_position!).
   def move_to_position!(position)
-    ids = self.class.shelf_for(user_id).lock.pluck(:entry_id)
+    ids = self.class.lock_shelf!(user_id)
     ids.delete(entry_id)
     ids.insert([ position, ids.length + 1 ].min - 1, entry_id)
 
