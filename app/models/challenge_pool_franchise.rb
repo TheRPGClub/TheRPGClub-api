@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# A GameDB franchise chosen for a Pool Challenge: its games are in the Pool
-# unless excluded by hand (Challenges::PoolDefinition).
+# A GameDB franchise chosen for a Pool Challenge: its games are Optional
+# Games unless Add-ons, excluded or Core (Challenges::PoolDefinition).
 class ChallengePoolFranchise < ApplicationRecord
   self.primary_key = %i[challenge_id franchise_id]
 

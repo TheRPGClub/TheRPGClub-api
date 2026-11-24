@@ -17,9 +17,9 @@ module Challenges
   #                      so it stays editable
   #
   # On edit, only the keys given change. Once the Challenge has any Run its
-  # rules (Format, schedule, Season and the Format's settings) are locked: a
-  # change to them raises Challenges::RulesLocked, while sending them
-  # unchanged is fine. Name, description and end date stay editable, except
+  # rules (Format, schedule, Season and the Format's locked settings: all of
+  # Slots and Assignment, none of a Pool) are locked: a change to them raises
+  # Challenges::RulesLocked, while sending them unchanged is fine. Name, description and end date stay editable, except
   # that an Always Open Challenge that reached its end date (`ended_at`, set
   # by the lifecycle job) is Closed for good, so its schedule and end date no
   # longer change. Raises Challenges::Invalid for anything the rules refuse.
@@ -49,13 +49,17 @@ module Challenges
         assign_format
         assign_schedule
         refuse_reopening if challenge.ended_at
+        refuse_linking
         format = Formats.fetch(challenge.challenge_format)
-        settings = format.parse(@data[format::KEY], base: stored_settings(format))
-        refuse_invalid(format.errors(settings, challenge))
+        before_settings = stored_settings(format)
+        settings = format.parse(@data[format::KEY], base: before_settings)
+        refuse_invalid(format.errors(settings, challenge, base: before_settings))
         check_unlocked(before, rules(format, settings)) if locked
 
         challenge.save!
         format.apply!(challenge, settings)
+        left_pool! if @leaving_pool
+        edited(format, before_settings, settings) if locked
       end
       challenge
     end
@@ -84,6 +88,26 @@ module Challenges
       # Counts past play is a Slots setting, which a switch to Slots gives
       # in full (stored_settings), and which no other Format keeps.
       challenge.counts_past_play = false if challenge.challenge_format_changed?
+      @leaving_pool = challenge.persisted? && challenge.challenge_format_changed? &&
+        challenge.challenge_format_was == Formats::Pool::KEY
+    end
+
+    # Only a Pool is fed by a linked Game List and takes Pool Proposals: a
+    # Challenge leaving Pool ends its link (with its list notices) and
+    # declines the proposals still pending.
+    def left_pool!
+      ListLink.end!(challenge)
+      ChallengePoolProposal.pending.where(challenge_id: challenge.id)
+        .update_all(status: "declined", decided_by: challenge.updated_by, decided_at: Time.current)
+    end
+
+    # A Game List is linked only on create (Challenges::ListLink), which
+    # takes `pool.game_list_id` out of the data first.
+    def refuse_linking
+      pool = @data[Formats::Pool::KEY]
+      return unless pool.is_a?(Hash) && pool.key?("game_list_id")
+
+      raise Invalid, "pool game_list_id can only be set when the Challenge is created"
     end
 
     def assign_schedule
@@ -143,6 +167,12 @@ module Challenges
       end
 
       challenge.attributes.slice(*RULE_FIELDS.keys).merge(format::KEY => format.rules(settings))
+    end
+
+    # A Format that follows up on edits to a Challenge with Runs (a Pool
+    # refreshes them and DMs a grown goal) answers edited!.
+    def edited(format, before, after)
+      format.edited!(challenge, before, after) if before && format.respond_to?(:edited!)
     end
 
     def check_unlocked(before, after)

@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # Challenges factories (spec #376). A :challenge is an Always Open Pool
-# Challenge hosted by a member, whose Pool is one game included by hand.
+# Challenge hosted by a member, whose Pool is one Optional Game picked by
+# hand, of which a Run needs 1.
 FactoryBot.define do
   factory :gamedb_collection, class: "GamedbCollection" do
     sequence(:name) { |n| "Collection #{n} #{SecureRandom.hex(4)}" }
@@ -14,10 +15,10 @@ FactoryBot.define do
     host factory: %i[user]
     challenge_format { "pool" }
     schedule { "always_open" }
-    pool_target { 1 }
+    pool_optional_target { 1 }
 
     after(:create) do |challenge|
-      ChallengePoolGame.create!(challenge: challenge, game: create(:game), inclusion: "include")
+      ChallengePoolGame.create!(challenge: challenge, game: create(:game), inclusion: "optional")
     end
 
     trait :club_hosted do

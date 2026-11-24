@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -183,7 +183,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
     t.bigint "challenge_id", null: false
     t.bigint "game_id", null: false
     t.string "inclusion", limit: 8, null: false
-    t.check_constraint "inclusion::text = ANY (ARRAY['include'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
+    t.datetime "added_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.check_constraint "inclusion::text = ANY (ARRAY['core'::character varying, 'optional'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
+  end
+
+  create_table "challenge_pool_list_notices", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "game_id", null: false
+    t.timestamptz "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["challenge_id", "game_id"], name: "ux_challenge_pool_list_notices", unique: true
+    t.index ["game_id"], name: "ix_challenge_pool_list_notices_game"
+  end
+
+  create_table "challenge_pool_proposals", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "game_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.string "note", limit: 280
+    t.string "status", limit: 16, default: "pending", null: false
+    t.string "accepted_as", limit: 16
+    t.string "decided_by", limit: 30
+    t.timestamptz "decided_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "game_id"], name: "ux_challenge_pool_proposals_one_pending", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["challenge_id", "status", "created_at"], name: "ix_challenge_pool_proposals_challenge"
+    t.index ["user_id"], name: "ix_challenge_pool_proposals_user"
+    t.check_constraint "(status::text = 'accepted'::text) = (accepted_as IS NOT NULL) AND (accepted_as IS NULL OR (accepted_as::text = ANY (ARRAY['core'::character varying, 'optional'::character varying]::text[])))", name: "ck_challenge_pool_proposals_accepted_as"
+    t.check_constraint "(status::text = 'pending'::text) = (decided_at IS NULL)", name: "ck_challenge_pool_proposals_decided"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'accepted'::character varying, 'declined'::character varying]::text[])", name: "ck_challenge_pool_proposals_status"
   end
 
   create_table "challenge_run_entries", force: :cascade do |t|
@@ -236,7 +264,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
     t.integer "season_start_day", limit: 2
     t.integer "season_end_month", limit: 2
     t.integer "season_end_day", limit: 2
-    t.integer "pool_target"
     t.boolean "hidden", default: false, null: false
     t.string "created_by", limit: 30
     t.string "updated_by", limit: 30
@@ -254,13 +281,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
     t.boolean "counts_past_play", default: false, null: false
     t.string "tint_fill", limit: 7, null: false
     t.string "tint_hi", limit: 7, null: false
+    t.integer "pool_optional_target", default: 0, null: false
+    t.bigint "pool_game_list_id"
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
+    t.index ["pool_game_list_id"], name: "ix_challenges_pool_game_list", where: "(pool_game_list_id IS NOT NULL)"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
     t.check_constraint "challenge_format::text <> 'assignment'::text OR schedule::text = 'always_open'::text AND ends_on IS NULL", name: "ck_challenges_assignment_schedule"
     t.check_constraint "NOT counts_past_play OR schedule::text = 'always_open'::text", name: "ck_challenges_past_play_always_open"
     t.check_constraint "challenge_format::text = ANY (ARRAY['slots'::character varying, 'pool'::character varying, 'assignment'::character varying]::text[])", name: "ck_challenges_format"
-    t.check_constraint "pool_target IS NULL OR pool_target >= 1", name: "ck_challenges_pool_target"
+    t.check_constraint "pool_optional_target >= 0", name: "ck_challenges_pool_optional_target"
     t.check_constraint "schedule::text = 'always_open'::text OR ends_on IS NULL", name: "ck_challenges_ends_on"
     t.check_constraint "schedule::text = ANY (ARRAY['always_open'::character varying, 'seasonal'::character varying]::text[])", name: "ck_challenges_schedule"
     t.check_constraint "slots_first_year IS NULL OR slots_last_year IS NULL OR slots_first_year <= slots_last_year", name: "ck_challenges_slots_range"
@@ -355,6 +385,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
     t.check_constraint "state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[])", name: "ck_feature_flags_state"
   end
 
+  create_table "game_list_entries", primary_key: ["game_list_id", "game_id"], force: :cascade do |t|
+    t.bigint "game_list_id", null: false
+    t.bigint "game_id", null: false
+    t.integer "position", null: false
+    t.string "note", limit: 280
+    t.timestamptz "added_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["game_id"], name: "ix_game_list_entries_game"
+    t.index ["game_list_id", "position"], name: "ix_game_list_entries_position"
+    t.check_constraint "\"position\" >= 1", name: "ck_game_list_entries_position"
+  end
+
+  create_table "game_lists", force: :cascade do |t|
+    t.string "owner_user_id", limit: 30
+    t.string "name", limit: 100, null: false
+    t.string "description", limit: 500
+    t.string "visibility", limit: 8, default: "members", null: false
+    t.string "sort", limit: 12, default: "ranked", null: false
+    t.string "taken_over_from_user_id", limit: 30
+    t.timestamptz "taken_over_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["owner_user_id", "updated_at"], name: "ix_game_lists_owner_updated"
+    t.index ["updated_at"], name: "ix_game_lists_updated"
+    t.check_constraint "owner_user_id IS NOT NULL OR visibility::text = 'members'::text", name: "ck_game_lists_club_members"
+    t.check_constraint "sort::text = ANY (ARRAY['ranked'::character varying, 'alphabetical'::character varying, 'added'::character varying]::text[])", name: "ck_game_lists_sort"
+    t.check_constraint "taken_over_from_user_id IS NULL OR taken_over_at IS NOT NULL", name: "ck_game_lists_taken_over_at"
+    t.check_constraint "visibility::text = ANY (ARRAY['members'::character varying, 'private'::character varying]::text[])", name: "ck_game_lists_visibility"
+  end
+
   create_table "gamedb_collections", primary_key: "collection_id", force: :cascade do |t|
     t.bigint "igdb_collection_id"
     t.string "name", limit: 255, null: false
@@ -369,6 +428,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
     t.unique_constraint ["igdb_company_id"], name: "gamedb_companies_igdb_company_id_key"
   end
 
+  create_table "gamedb_deleted_franchises", primary_key: "igdb_franchise_id", force: :cascade do |t|
+    t.string "name", limit: 255, null: false
+    t.string "deleted_by", limit: 30
+    t.datetime "deleted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+  end
+
   create_table "gamedb_engines", primary_key: "engine_id", force: :cascade do |t|
     t.bigint "igdb_engine_id"
     t.string "name", limit: 255, null: false
@@ -376,10 +441,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
     t.unique_constraint ["igdb_engine_id"], name: "gamedb_engines_igdb_engine_id_key"
   end
 
+  create_table "gamedb_franchise_changes", force: :cascade do |t|
+    t.bigint "franchise_id", null: false
+    t.bigint "game_id"
+    t.string "action", limit: 20, null: false
+    t.jsonb "before"
+    t.jsonb "after"
+    t.string "user_id", limit: 30
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.datetime "undone_at"
+    t.string "undone_by", limit: 30
+    t.index ["franchise_id", "game_id", "id"], name: "ix_gamedb_franchise_changes_game"
+    t.index ["franchise_id", "id"], name: "ix_gamedb_franchise_changes_franchise"
+    t.check_constraint "action::text = ANY (ARRAY['link'::character varying, 'unlink'::character varying, 'mainline_on'::character varying, 'mainline_off'::character varying, 'create'::character varying, 'rename'::character varying, 'merge'::character varying, 'delete'::character varying]::text[])", name: "ck_gamedb_franchise_changes_action"
+  end
+
+  create_table "gamedb_franchise_unlinks", primary_key: ["game_id", "franchise_id"], force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "franchise_id", null: false
+    t.string "unlinked_by", limit: 30
+    t.datetime "unlinked_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+  end
+
   create_table "gamedb_franchises", primary_key: "franchise_id", force: :cascade do |t|
     t.bigint "igdb_franchise_id"
     t.string "name", limit: 255, null: false
-
+    t.string "created_by", limit: 30
+    t.boolean "name_locked", default: false, null: false
+    t.bigint "merged_into_id"
+    t.index ["merged_into_id"], name: "index_gamedb_franchises_on_merged_into_id"
     t.unique_constraint ["igdb_franchise_id"], name: "gamedb_franchises_igdb_franchise_id_key"
   end
 
@@ -408,6 +498,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
   create_table "gamedb_game_franchises", primary_key: ["game_id", "franchise_id"], force: :cascade do |t|
     t.bigint "franchise_id", null: false
     t.bigint "game_id", null: false
+    t.string "source", limit: 10, default: "igdb", null: false
+    t.boolean "mainline", default: false, null: false
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }
+    t.string "created_by", limit: 30
+    t.index ["franchise_id"], name: "index_gamedb_game_franchises_on_franchise_id"
+    t.check_constraint "source::text = ANY (ARRAY['igdb'::character varying, 'manual'::character varying]::text[])", name: "ck_gamedb_game_franchises_source"
   end
 
   create_table "gamedb_game_genres", primary_key: ["game_id", "genre_id"], force: :cascade do |t|
@@ -1567,12 +1663,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
   add_foreign_key "challenge_pool_franchises", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", name: "fk_challenge_pool_franchises_franchise", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "challenges", name: "fk_challenge_pool_games_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_games_game", on_delete: :cascade
+  add_foreign_key "challenge_pool_list_notices", "challenges", name: "fk_challenge_pool_list_notices_challenge", on_delete: :cascade
+  add_foreign_key "challenge_pool_list_notices", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_list_notices_game", on_delete: :cascade
+  add_foreign_key "challenge_pool_proposals", "challenges", name: "fk_challenge_pool_proposals_challenge", on_delete: :cascade
+  add_foreign_key "challenge_pool_proposals", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_proposals_game", on_delete: :cascade
+  add_foreign_key "challenge_pool_proposals", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_pool_proposals_user", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "challenge_runs", column: "run_id", name: "fk_challenge_run_entries_run", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_run_entries_game", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "user_game_completions", column: "completion_id", primary_key: "completion_id", name: "fk_challenge_run_entries_completion", on_delete: :nullify
   add_foreign_key "challenge_runs", "challenge_editions", column: "edition_id", name: "fk_challenge_runs_edition", on_delete: :cascade
   add_foreign_key "challenge_runs", "challenges", name: "fk_challenge_runs_challenge", on_delete: :cascade
   add_foreign_key "challenge_runs", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_runs_user", on_delete: :cascade
+  add_foreign_key "challenges", "game_lists", column: "pool_game_list_id", name: "fk_challenges_pool_game_list", on_delete: :nullify
   add_foreign_key "challenges", "rpg_club_users", column: "host_user_id", primary_key: "user_id", name: "fk_challenges_host", on_delete: :nullify
   add_foreign_key "codex_entries", "rpg_club_users", column: "author_user_id", primary_key: "user_id", name: "fk_codex_entries_author"
   add_foreign_key "codex_entry_images", "codex_entries", column: "entry_id", name: "fk_codex_entry_images_entry", on_delete: :cascade
@@ -1582,6 +1684,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
   add_foreign_key "codex_entry_mentions", "codex_entries", column: "entry_id", name: "fk_codex_entry_mentions_entry", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_codex_entry_mentions_user", on_delete: :cascade
   add_foreign_key "daily_fun_fact_posts", "codex_entries", column: "entry_id", name: "fk_daily_fun_fact_posts_entry", on_delete: :nullify
+  add_foreign_key "game_list_entries", "game_lists", name: "fk_game_list_entries_list", on_delete: :cascade
+  add_foreign_key "game_list_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_game_list_entries_game", on_delete: :cascade
+  add_foreign_key "game_lists", "rpg_club_users", column: "owner_user_id", primary_key: "user_id", name: "fk_game_lists_owner", on_delete: :cascade
+  add_foreign_key "game_lists", "rpg_club_users", column: "taken_over_from_user_id", primary_key: "user_id", name: "fk_game_lists_taken_over_from", on_delete: :nullify
+  add_foreign_key "gamedb_franchise_changes", "gamedb_games", column: "game_id", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "gamedb_franchise_unlinks", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", on_delete: :cascade
+  add_foreign_key "gamedb_franchise_unlinks", "gamedb_games", column: "game_id", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "gamedb_franchises", "gamedb_franchises", column: "merged_into_id", primary_key: "franchise_id"
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"

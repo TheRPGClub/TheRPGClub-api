@@ -118,6 +118,29 @@ RSpec.describe "api/v1/franchises behavior", type: :request do
       expect(json.fetch("data")).to include("franchise_id" => existing.franchise_id, "name" => "Original Name")
     end
 
+    it "answers with the merge target when the IGDB id names a merged Franchise" do
+      target = create(:franchise, name: "Kept")
+      create(:franchise, name: "Merged", igdb_franchise_id: 424_242, merged_into: target)
+
+      expect {
+        post "/api/v1/franchises", params: payload, headers: service_headers, as: :json
+      }.not_to change(GamedbFranchise, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("franchise_id" => target.franchise_id, "name" => "Kept")
+    end
+
+    it "refuses an IGDB id an Admin deleted, without making it again" do
+      GamedbDeletedFranchise.create!(igdb_franchise_id: 424_242, name: "Suikoden")
+
+      expect {
+        post "/api/v1/franchises", params: payload, headers: service_headers, as: :json
+      }.not_to change(GamedbFranchise, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("franchise_deleted")
+    end
+
     it "allows an admin user" do
       post "/api/v1/franchises", params: payload, headers: auth_headers_for(create(:user, :admin)), as: :json
 
@@ -133,11 +156,21 @@ RSpec.describe "api/v1/franchises behavior", type: :request do
       expect(json).to eq("error" => "forbidden")
     end
 
-    it "422s when igdb_franchise_id is missing" do
-      post "/api/v1/franchises", params: { data: { name: "No Id" } }, headers: service_headers, as: :json
+    it "422s when igdb_franchise_id is given but empty" do
+      post "/api/v1/franchises", params: { data: { name: "No Id", igdb_franchise_id: nil } },
+        headers: service_headers, as: :json
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("error")).to include("igdb_franchise_id")
+    end
+
+    # Without an IGDB id it creates a hand-made Franchise, which needs a
+    # Regular or above (franchise_editing_spec.rb).
+    it "400s for the bot without an IGDB id or an acting member" do
+      post "/api/v1/franchises", params: { data: { name: "No Id" } }, headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:bad_request)
+      expect(json).to eq("error" => "acting_user_id required")
     end
 
     it "422s when name is blank on create" do

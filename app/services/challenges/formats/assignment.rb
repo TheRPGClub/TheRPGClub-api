@@ -97,7 +97,7 @@ module Challenges
       end
       private_class_method :parse_day
 
-      def self.errors(calendar, _challenge = nil)
+      def self.errors(calendar, _challenge = nil, **)
         days = calendar.to_h.values
         return [ "assignment signup_cutoff, pick_deadline and reveal must be different days" ] if days.uniq.size < 3
         return [] if calendar.ordered?

@@ -44,7 +44,9 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
           { "key" => "release_calendar", "name" => "Release Calendar", "state" => "live", "preview" => false,
             "hidden" => false, "website" => [ "Releases" ] },
           { "key" => "club_codex", "name" => "Club Codex", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Codex" ] }
+            "hidden" => false, "website" => [ "Codex" ] },
+          { "key" => "game_lists", "name" => "Game Lists", "state" => "live", "preview" => false,
+            "hidden" => false, "website" => [ "Lists", "Profile Lists", "Game page Lists" ] }
         ]
       )
     end
@@ -66,14 +68,17 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
         [ "news_hub", "live", false ],
         [ "challenges", "live", false ],
         [ "release_calendar", "live", false ],
-        [ "club_codex", "live", false ]
+        [ "club_codex", "live", false ],
+        [ "game_lists", "live", false ]
       ])
     end
 
     it "lists a member no Features when no hideable Feature is Live" do
       set_all_feature_flags("live")
       %w[reviews achievement_hub giveaways].each { |key| set_feature_flag(key, "off") }
-      %w[journals suggestions news_hub challenges release_calendar club_codex].each { |key| set_feature_flag(key, "preview") }
+      %w[journals suggestions news_hub challenges release_calendar club_codex game_lists].each do |key|
+        set_feature_flag(key, "preview")
+      end
 
       expect(preferences_for(member)["features"]).to eq([])
     end

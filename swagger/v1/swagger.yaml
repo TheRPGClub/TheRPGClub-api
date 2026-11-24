@@ -111,9 +111,233 @@ components:
         igdb_franchise_id:
           type: integer
           nullable: true
+        created_by:
+          type: string
+          nullable: true
+          description: Who created it by hand; null for IGDB's.
+        name_locked:
+          type: boolean
+          description: An Admin renamed it, so IGDB re-imports keep the name.
+        merged_into_id:
+          type: integer
+          nullable: true
+          description: The Franchise it was merged into. A merged Franchise is off
+            the list and refuses changes.
       required:
       - franchise_id
       - name
+      - name_locked
+    GameFranchise:
+      allOf:
+      - "$ref": "#/components/schemas/Franchise"
+      - type: object
+        properties:
+          mainline:
+            type: boolean
+            description: Whether the game is Mainline in this Franchise.
+        required:
+        - mainline
+    FranchiseGame:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+        release_year:
+          type: integer
+          nullable: true
+        mainline:
+          type: boolean
+        source:
+          type: string
+          enum:
+          - igdb
+          - manual
+          description: Where the link came from.
+        parent_game_name:
+          type: string
+          nullable: true
+          description: An Add-on's parent game, as IGDB names it.
+      required:
+      - game_id
+      - title
+      - mainline
+      - source
+      description: A game on a Franchise's page.
+    FranchiseAddOnGroup:
+      type: object
+      properties:
+        parent:
+          allOf:
+          - type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              cover_url:
+                type: string
+                nullable: true
+              release_year:
+                type: integer
+                nullable: true
+              in_franchise:
+                type: boolean
+                description: Whether the parent is in this Franchise too.
+            required:
+            - game_id
+            - title
+            - in_franchise
+          nullable: true
+        games:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FranchiseGame"
+      description: Add-ons under their parent game. The last group has a null parent
+        and holds the Add-ons whose parent isn't in GameDB.
+    FranchisePage:
+      allOf:
+      - "$ref": "#/components/schemas/Franchise"
+      - type: object
+        properties:
+          games:
+            type: object
+            properties:
+              mainline:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/FranchiseGame"
+              other:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/FranchiseGame"
+              add_ons:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/FranchiseAddOnGroup"
+                description: Games with a parent game, by parent.
+            required:
+            - mainline
+            - other
+            - add_ons
+          viewer:
+            type: object
+            properties:
+              can_edit:
+                type: boolean
+                description: 'Regulars and above: link, unlink, Mainline, create.'
+              can_admin:
+                type: boolean
+                description: Admins and above.
+            required:
+            - can_edit
+            - can_admin
+        required:
+        - games
+        - viewer
+    FranchiseLink:
+      type: object
+      properties:
+        franchise_id:
+          type: integer
+        game_id:
+          type: integer
+        source:
+          type: string
+          enum:
+          - igdb
+          - manual
+        mainline:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null for links older than Franchise editing.
+        created_by:
+          type: string
+          nullable: true
+      required:
+      - franchise_id
+      - game_id
+      - source
+      - mainline
+    FranchiseChange:
+      type: object
+      properties:
+        change_id:
+          type: integer
+        franchise_id:
+          type: integer
+        game_id:
+          type: integer
+          nullable: true
+          description: Set for a change to one game's link.
+        game_title:
+          type: string
+          nullable: true
+        action:
+          type: string
+          enum:
+          - link
+          - unlink
+          - mainline_on
+          - mainline_off
+          - create
+          - rename
+          - merge
+          - delete
+        before:
+          type: object
+          description: 'The values it changed, before: `{ source, mainline, created_at,
+            created_by }` for unlink (null for link, or `{ unlinked_by, unlinked_at
+            }` when the link replaced a removal), `{ mainline }`, `{ name, name_locked
+            }` for rename, `{ franchise_id, name, igdb_franchise_id, games }` for
+            merge (the Franchise merged in) and `{ name, igdb_franchise_id, games
+            }` for delete.'
+          nullable: true
+        after:
+          type: object
+          description: The values after (null for unlink and delete).
+          nullable: true
+        user_id:
+          type: string
+          nullable: true
+          description: Who made it.
+        username:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        undone_at:
+          type: string
+          format: date-time
+          nullable: true
+        undone_by:
+          type: string
+          nullable: true
+          description: Who undid it.
+        undone_by_username:
+          type: string
+          nullable: true
+        can_undo:
+          type: boolean
+          description: 'The viewer may undo it now: an undoable action (link, unlink,
+            Mainline, rename), not undone, and nothing later touched the same game
+            or name.'
+      required:
+      - change_id
+      - franchise_id
+      - action
+      - user_id
+      - created_at
+      - can_undo
+      description: A row of a Franchise's history (spec api#442).
     Genre:
       type: object
       properties:
@@ -3639,6 +3863,32 @@ components:
             has artwork, else the first one''s cover; null without either, and for
             Slots and Assignment Challenges (draw the Format''s picture in the tint
             instead). Show and announcements only; null in lists.'
+        pending_proposals:
+          type: integer
+          nullable: true
+          description: A Pool Challenge's pending Pool Proposals, for the Host and
+            Moderators and above; null for other viewers, in lists, in bot payloads
+            and for Slots and Assignment.
+        list_notices:
+          type: array
+          nullable: true
+          description: 'A Pool Challenge''s open list notices (ticket api#448): Core
+            Games whose entry left the linked Game List, oldest first, for the Host
+            and Moderators and above to Remove or Keep (POST /challenges/{id}/list_notices/{notice_id}/remove|keep).
+            Null as pending_proposals is.'
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              game:
+                "$ref": "#/components/schemas/ChallengePostGame"
+              created_at:
+                type: string
+                format: date-time
+            required:
+            - id
+            - created_at
         hidden:
           type: boolean
           description: 'Hidden by a Moderator: listed only for Moderators and above
@@ -3675,6 +3925,59 @@ components:
       - hidden
       - created_at
       - updated_at
+    ChallengePoolProposal:
+      type: object
+      properties:
+        id:
+          type: integer
+        challenge_id:
+          type: integer
+        game:
+          "$ref": "#/components/schemas/ChallengePostGame"
+        proposer:
+          "$ref": "#/components/schemas/ChallengeMember"
+        note:
+          type: string
+          nullable: true
+          maxLength: 280
+          description: The proposer's note to whoever decides; null for none.
+        status:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - declined
+        accepted_as:
+          type: string
+          nullable: true
+          enum:
+          - core
+          - optional
+          description: What it joined the Pool as; null unless accepted.
+        decider:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: Who accepted or declined it.
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - challenge_id
+      - status
+      - created_at
+      - updated_at
+      description: 'A Pool Proposal (ticket api#447): a member asked for a game to
+        join a Pool Challenge. Pending until the Host or a Moderator accepts it as
+        a Core or Optional Game, or declines it.'
     ChallengeTint:
       type: object
       properties:
@@ -3701,15 +4004,34 @@ components:
     ChallengePool:
       type: object
       properties:
-        target:
-          oneOf:
-          - type: integer
-            minimum: 1
-          - type: string
-            enum:
-            - all
-          description: Cleared games needed to Finish, or "all" for every game in
-            the Pool.
+        optional_target:
+          type: integer
+          minimum: 0
+          description: Optional Games a Run must Clear besides every Core Game.
+        game_list:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            visible:
+              type: boolean
+              description: Whether the viewer can open the list (a Private list is
+                its owner's alone). Clients show "Made from <name>", linked when visible,
+                and hide it when the game_lists Feature is hidden from the viewer.
+            can_add:
+              type: boolean
+              description: 'Whether the viewer may send `add_to_list`: the list''s
+                owner, or staff for a club list on a club-hosted Challenge.'
+          required:
+          - id
+          - name
+          - visible
+          - can_add
+          nullable: true
+          description: The Game List the Pool was started from, which feeds it Optional
+            Games (ticket api#448); null when none or the link ended.
         franchises:
           type: array
           items:
@@ -3734,8 +4056,17 @@ components:
             required:
             - collection_id
             - name
-        included_games:
+          description: IGDB collections, shown to members as Series.
+        core_games:
           type: array
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: Oldest release first.
+        optional_games:
+          type: array
+          nullable: true
+          description: Oldest release first. Show and announcements only; null in
+            lists.
           items:
             type: object
             properties:
@@ -3743,9 +4074,28 @@ components:
                 type: integer
               title:
                 type: string
+              cover_url:
+                type: string
+                nullable: true
+              source:
+                type: string
+                enum:
+                - hand
+                - list
+                - franchise
+                - series
+                description: 'Where it comes from: picked by hand, else its first
+                  source (list, franchise, series in that order).'
+              new:
+                type: boolean
+                description: Joined the Pool in the last 14 days, after the Challenge
+                  was created (from a list, when its entry was added). A Franchise
+                  link from before link times were kept, and a Series, never counts.
             required:
             - game_id
             - title
+            - source
+            - new
         excluded_games:
           type: array
           items:
@@ -3758,15 +4108,24 @@ components:
             required:
             - game_id
             - title
+        core_count:
+          type: integer
+        optional_count:
+          type: integer
+          nullable: true
+          description: Show and announcements only.
         game_count:
           type: integer
           nullable: true
-          description: Games in the Pool now. Show and announcements only.
+          description: Core and Optional Games now. Show and announcements only.
       required:
-      - target
-      description: A Pool Challenge's settings. A game is in the Pool if it belongs
-        to a chosen franchise or collection and is not excluded, or if it is included
-        by hand; it is resolved against the GameDB when read.
+      - optional_target
+      - core_count
+      description: 'A Pool Challenge''s settings (docs/adr/0014): a Run Finishes by
+        Clearing every Core Game plus `optional_target` Optional Games. Optional Games
+        are the games of the sources (the linked Game List, Franchises, and Series,
+        which the API calls collections) less Add-ons, plus those picked by hand,
+        less the excluded and Core games; resolved against the GameDB when read.'
     ChallengeSlots:
       type: object
       properties:
@@ -4050,6 +4409,159 @@ components:
       - signup_open
       - signed_up_count
       - signed_up
+    GameListFeedsChallenges:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+          - list_feeds_challenges
+        message:
+          type: string
+        challenges:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+            required:
+            - id
+            - name
+      required:
+      - error
+      - message
+      description: 409 for deleting a Game List that feeds a Pool Challenge, or making
+        it Private, without `confirm` (ticket api#448). `message` says what confirming
+        does.
+    GameList:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          nullable: true
+          maxLength: 500
+        visibility:
+          type: string
+          enum:
+          - members
+          - private
+          description: members (any member reads it) or private (only its owner, never
+            staff). A club list is always members.
+        sort:
+          type: string
+          enum:
+          - ranked
+          - alphabetical
+          - added
+          description: 'How its games are shown: ranked (by `position`), alphabetical
+            (by title) or added (newest first).'
+        club:
+          type: boolean
+          description: True when the club owns it (owner is null).
+        owner:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: The member who owns it; null for a club list.
+        taken_over_from:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: The member the club took this list over from; null unless taken
+            over.
+        taken_over_at:
+          type: string
+          format: date-time
+          nullable: true
+        entry_count:
+          type: integer
+        preview_games:
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              cover_url:
+                type: string
+                nullable: true
+            required:
+            - game_id
+            - title
+          description: Its first games in its own sort's order, for covers.
+        viewer:
+          "$ref": "#/components/schemas/GameListViewer"
+        entries:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GameListEntry"
+          description: 'A single list only: every game, in its sort''s order.'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - name
+      - description
+      - visibility
+      - sort
+      - club
+      - owner
+      - taken_over_from
+      - taken_over_at
+      - entry_count
+      - preview_games
+      - viewer
+      - created_at
+      - updated_at
+    GameListViewer:
+      type: object
+      properties:
+        can_edit:
+          type: boolean
+        can_delete:
+          type: boolean
+      required:
+      - can_edit
+      - can_delete
+    GameListEntry:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        position:
+          type: integer
+          description: Its place in the ranked order, from 1, whatever the list's
+            sort.
+        note:
+          type: string
+          nullable: true
+          maxLength: 280
+        added_at:
+          type: string
+          format: date-time
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+      required:
+      - game_id
+      - position
+      - note
+      - added_at
+      - game
     ChallengeMember:
       type: object
       properties:
@@ -4297,8 +4809,32 @@ components:
                 for Slots, the slots filled.
             target:
               type: integer
-              description: Cleared games needed to Finish; for Slots, the Run's slots
-                so far.
+              description: Cleared games needed to Finish (for a Pool, its Core Games
+                plus the Optional target); for Slots, the Run's slots so far.
+            core:
+              type: object
+              properties:
+                cleared:
+                  type: integer
+                total:
+                  type: integer
+              required:
+              - cleared
+              - total
+              description: 'Pool only (absent otherwise): Core Games Cleared, of how
+                many. All are needed.'
+            optional:
+              type: object
+              properties:
+                cleared:
+                  type: integer
+                target:
+                  type: integer
+              required:
+              - cleared
+              - target
+              description: 'Pool only (absent otherwise): Optional Games Cleared,
+                every one counted, and how many are needed.'
             caught_up:
               type: boolean
               description: 'Slots only (absent otherwise): an Active Run whose range
@@ -4734,15 +5270,43 @@ components:
           - season_ending
           - left_out_of_draw
           - pick_reminder
+          - pool_goal_changed
+          - pool_proposal
+          - pool_proposal_accepted
         user_id:
           type: string
-          description: The member to DM.
+          description: The member to DM. Absent only on a club-hosted `pool_proposal`.
+        club_hosted:
+          type: boolean
+          description: 'pool_proposal only: true to post it in #dev, with no `user_id`.'
+        proposal:
+          "$ref": "#/components/schemas/ChallengePoolProposal"
+          description: pool_proposal and pool_proposal_accepted.
         challenge:
           "$ref": "#/components/schemas/Challenge"
         run:
           "$ref": "#/components/schemas/ChallengeRun"
-          description: 'season_ending only: the member''s Run, as GET /api/v1/challenge_runs/{id}
-            serves it.'
+          description: 'season_ending and pool_goal_changed: the member''s Run, as
+            GET /api/v1/challenge_runs/{id} serves it.'
+        added_core_games:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: 'pool_goal_changed only: the Core Games the edit added, oldest
+            release first (empty when only the target rose).'
+        optional_target:
+          type: object
+          properties:
+            from:
+              type: integer
+            to:
+              type: integer
+          required:
+          - from
+          - to
+          nullable: true
+          description: 'pool_goal_changed only: the raised Optional target; null when
+            unchanged.'
         season:
           "$ref": "#/components/schemas/ChallengeSeasonDates"
           description: season_ending only.
@@ -4771,7 +5335,6 @@ components:
           - challenges
       required:
       - event
-      - user_id
       - challenge
       - feature_key
       description: 'Kind `challenge_dm`. DM the member `user_id`; post nothing publicly.
@@ -4782,6 +5345,15 @@ components:
         and `minimum`), sent to every member still in the server; `pick_reminder`,
         2 days before an Edition''s pick deadline, a Santa who hasn''t picked for
         their `recipient` (with `edition` and `days_left`), sent only to members who
+        keep Challenge DMs on; `pool_goal_changed`, a Pool edit added Core Games or
+        raised the Optional target of the member''s Active Run (with `run`, `added_core_games`
+        and `optional_target`), one per save, sent only to members who keep Challenge
+        DMs on; `pool_proposal`, a member proposed a game for the Host''s Pool (with
+        `proposal`, its note included), sent only to a Host who keeps Challenge DMs
+        on, or, for a club-hosted Challenge, queued once with `club_hosted: true`
+        and no `user_id`: post it in #dev (BOT_DEV_CHANNEL_ID) with links to the Challenge
+        instead of DMing; `pool_proposal_accepted`, the member''s proposal was accepted
+        (with `proposal`, `accepted_as` saying as what), sent only to members who
         keep Challenge DMs on.'
     DailyFunFactJobPayload:
       type: object
@@ -9514,6 +10086,264 @@ paths:
                     acting_user_id:
                       type: string
         required: true
+  "/api/v1/challenges/{challenge_id}/pool_proposals":
+    parameters:
+    - name: challenge_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List Pool Proposals
+      tags:
+      - Challenges
+      description: Members (the `challenges` Feature) who can see the Challenge. Newest
+        first. Those who decide (the Host and Moderators and above) see every proposal;
+        other members see their own. The bot names the member it reads for with `acting_user_id`.
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - declined
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Pool Proposals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ChallengePoolProposal"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: an unknown `status`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no Challenge the member can see
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Propose a game for a Pool
+      tags:
+      - Challenges
+      description: 'Any member who can see the Pool Challenge. 409 `already_in_pool`
+        when the game is a Core or Optional Game already (through a source too); 409
+        `already_proposed` (with `proposal_id`) when it is pending already, whoever
+        proposed it. An excluded game may be proposed. 422 `not_pool` for a Slots
+        or Assignment Challenge, 422 `invalid_proposal` for an unknown game or a note
+        over 280 characters. Queues a `challenge_dm` `pool_proposal` for the Host
+        when they keep Challenge DMs on and didn''t propose it; for a club-hosted
+        Challenge, one `pool_proposal` with `club_hosted: true` and no `user_id`,
+        for the bot to post in #dev.'
+      parameters: []
+      responses:
+        '201':
+          description: the pending proposal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengePoolProposal"
+        '404':
+          description: no Challenge the member can see
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: already_in_pool or already_proposed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not_pool or invalid_proposal
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - game_id
+                  properties:
+                    game_id:
+                      type: integer
+                    note:
+                      type: string
+                      maxLength: 280
+                      nullable: true
+                      description: 'Optional: why, for whoever decides.'
+                    acting_user_id:
+                      type: string
+                      description: Service only, required.
+        required: true
+  "/api/v1/challenges/{challenge_id}/pool_proposals/{id}/accept":
+    parameters:
+    - name: challenge_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Accept a Pool Proposal
+      tags:
+      - Challenges
+      description: 'The Host, or any Moderator or above (403 "Only the Host or a Moderator
+        can accept or decline Pool Proposals." otherwise). Puts the game in the Pool
+        as a Core or Optional Game (picked by hand), lifting an exclusion, as a Pool
+        edit would: Runs are brought up to date, and a new Core Game queues `pool_goal_changed`
+        DMs. Queues a `challenge_dm` `pool_proposal_accepted` for the proposer when
+        they keep Challenge DMs on and didn''t accept it themselves. With `add_to_list`,
+        the game also goes into the linked Game List (403 "Only the Game List''s owner
+        can add games to it from this Challenge." unless `pool.game_list.can_add`;
+        422 `invalid_challenge` without a linked list, 422 `list_full`). 409 `already_decided`;
+        422 `invalid_proposal` for an `as` other than core or optional.'
+      parameters: []
+      responses:
+        '200':
+          description: the accepted proposal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengePoolProposal"
+        '403':
+          description: not a decider, or `add_to_list` from someone who may not touch
+            the list
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: already_decided
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid_proposal, invalid_challenge or list_full
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - as
+                  properties:
+                    as:
+                      type: string
+                      enum:
+                      - core
+                      - optional
+                    add_to_list:
+                      type: boolean
+                      description: Also add the game to the linked Game List.
+                    acting_user_id:
+                      type: string
+                      description: Service only, required.
+        required: true
+  "/api/v1/challenges/{challenge_id}/pool_proposals/{id}/decline":
+    parameters:
+    - name: challenge_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Decline a Pool Proposal
+      tags:
+      - Challenges
+      description: 'The Host, or any Moderator or above (403 "Only the Host or a Moderator
+        can accept or decline Pool Proposals." otherwise). Leaves the Pool alone and
+        sends no DM; the game may be proposed again. 409 `already_decided`. The bot
+        sends `{ "data": { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the declined proposal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/ChallengePoolProposal"
+        '403':
+          description: not a decider
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: already_decided
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/challenge_runs":
     parameters:
     - name: user_id
@@ -10314,14 +11144,15 @@ paths:
       summary: Create a Challenge
       tags:
       - Challenges
-      description: Regulars, Moderators, Admins and Superadmins (a member without
-        the Regulars role gets 403 "You need the Regulars role to create a Challenge.").
-        The acting member becomes the Host, or the club with `hosted_by_club` (Moderator
-        and above). A name another Challenge already has is allowed and adds a `duplicate_name`
-        warning to `meta.warnings`. Queues a `challenge_announce` bot job (payload
-        ChallengeAnnounceJobPayload, event `challenge_created`). Refusals carry `{
-        error, message }`; `message` is written for members (403 `forbidden`, 422
-        `invalid_challenge`).
+      description: Any member, for a Slots or Pool Challenge; an Assignment Challenge
+        needs a Moderator or above (403 "Only Moderators and above can create an Assignment
+        Challenge."). The acting member becomes the Host, or the club with `hosted_by_club`
+        (Moderator and above). A name another Challenge already has is allowed and
+        adds a `duplicate_name` warning to `meta.warnings`. Queues a `challenge_announce`
+        bot job (payload ChallengeAnnounceJobPayload, event `challenge_created`).
+        `pool.game_list_id` starts a Pool from a Game List (ticket api#448). Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_challenge`).
       parameters: []
       responses:
         '201':
@@ -10347,8 +11178,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: not a Regular or staff, club-hosted without Moderator, or (bot)
-            `feature_unavailable`
+          description: Assignment or club-hosted without Moderator, a Game List that
+            isn't theirs to link, or (bot) `feature_unavailable`
           content:
             application/json:
               schema:
@@ -10416,39 +11247,62 @@ paths:
                           example: 02-28
                     pool:
                       type: object
-                      description: The Pool (challenge_format pool). On edit, only
-                        the keys given change.
+                      description: 'The Pool (challenge_format pool): a Run Finishes
+                        by Clearing every Core Game plus `optional_target` Optional
+                        Games. Sources (a linked Game List, Franchises and Series)
+                        only add Optional Games, leaving out Add-ons (games with a
+                        parent game); a game is Core only when listed in `core_game_ids`
+                        (docs/adr/0014). Needs at least one Core Game or a target
+                        of at least 1, and the target can''t exceed the Optional Games
+                        when saved. A game may be in only one of the three game lists.
+                        On edit, only the keys given change; none of it is locked
+                        once Runs exist.'
                       properties:
                         franchise_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB franchises whose games are in the Pool.
+                          description: Franchises whose games (not Add-ons) are Optional
+                            Games.
                         collection_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB collections whose games are in the Pool.
-                        included_game_ids:
+                          description: Series (IGDB collections) whose games (not
+                            Add-ons) are Optional Games.
+                        core_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games in the Pool whatever their franchise.
+                          description: 'Core Games: every Run must Clear them.'
+                        optional_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Optional Games picked by hand, whatever their
+                            sources; Add-ons allowed.
                         excluded_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games left out of the chosen franchises and
-                            collections.
-                        target:
-                          oneOf:
-                          - type: integer
-                            minimum: 1
-                          - type: string
-                            enum:
-                            - all
-                          description: Cleared games needed to Finish, or "all" for
-                            every game in the Pool. Required on create.
+                          description: Games kept out though a source has them.
+                        optional_target:
+                          type: integer
+                          minimum: 0
+                          default: 0
+                          description: Optional Games a Run must Clear besides every
+                            Core Game. 0 when left out on create.
+                        game_list_id:
+                          type: integer
+                          description: 'Create only (422 on edit): start the Pool
+                            from this Game List. Its games come in as Core Games,
+                            except those this request makes Optional or excludes,
+                            and the list stays linked: games later added to it arrive
+                            as Optional Games. A member''s own list, for a Challenge
+                            they host; a club list, for a club-hosted one (403 "Only
+                            a Game List''s owner can start a Challenge from it, hosted
+                            by them; a club list, a Moderator or above, for a club-hosted
+                            Challenge."). 422 for a list the member can''t see.'
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot
@@ -10553,9 +11407,10 @@ paths:
       tags:
       - Challenges
       description: Members. The games a Pool definition resolves to against the GameDB
-        now, oldest release first, paginated, so the bot and the website can show
-        them before saving. 422 `invalid_challenge` for an empty definition, unknown
-        ids, or a game both included and excluded.
+        now, Core and Optional together, oldest release first, paginated, so the bot
+        and the website can show them before saving (an empty definition has none).
+        422 `invalid_challenge` for unknown ids, or a game in more than one of the
+        core, optional and excluded lists.
       parameters:
       - name: page
         in: query
@@ -10599,29 +11454,55 @@ paths:
               properties:
                 data:
                   type: object
-                  description: The Pool (challenge_format pool). On edit, only the
-                    keys given change.
+                  description: 'The Pool (challenge_format pool): a Run Finishes by
+                    Clearing every Core Game plus `optional_target` Optional Games.
+                    Sources (a linked Game List, Franchises and Series) only add Optional
+                    Games, leaving out Add-ons (games with a parent game); a game
+                    is Core only when listed in `core_game_ids` (docs/adr/0014). Needs
+                    at least one Core Game or a target of at least 1, and the target
+                    can''t exceed the Optional Games when saved. A game may be in
+                    only one of the three game lists. On edit, only the keys given
+                    change; none of it is locked once Runs exist.'
                   properties:
                     franchise_ids:
                       type: array
                       items:
                         type: integer
-                      description: GameDB franchises whose games are in the Pool.
+                      description: Franchises whose games (not Add-ons) are Optional
+                        Games.
                     collection_ids:
                       type: array
                       items:
                         type: integer
-                      description: GameDB collections whose games are in the Pool.
-                    included_game_ids:
+                      description: Series (IGDB collections) whose games (not Add-ons)
+                        are Optional Games.
+                    core_game_ids:
                       type: array
                       items:
                         type: integer
-                      description: Games in the Pool whatever their franchise.
+                      description: 'Core Games: every Run must Clear them.'
+                    optional_game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Optional Games picked by hand, whatever their sources;
+                        Add-ons allowed.
                     excluded_game_ids:
                       type: array
                       items:
                         type: integer
-                      description: Games left out of the chosen franchises and collections.
+                      description: Games kept out though a source has them.
+                    game_list_id:
+                      type: integer
+                      description: 'Create only (422 on edit): start the Pool from
+                        this Game List. Its games come in as Core Games, except those
+                        this request makes Optional or excludes, and the list stays
+                        linked: games later added to it arrive as Optional Games.
+                        A member''s own list, for a Challenge they host; a club list,
+                        for a club-hosted one (403 "Only a Game List''s owner can
+                        start a Challenge from it, hosted by them; a club list, a
+                        Moderator or above, for a club-hosted Challenge."). 422 for
+                        a list the member can''t see.'
               required:
               - data
         required: true
@@ -10668,7 +11549,7 @@ paths:
       tags:
       - Challenges
       description: Members. A hidden Challenge is 404 except for Moderators and above
-        and its Host. Adds the Pool's `game_count` and `run_count`.
+        and its Host. Adds the Pool's Optional Games and counts, and `run_count`.
       parameters:
       - name: acting_user_id
         in: query
@@ -10695,15 +11576,30 @@ paths:
       summary: Edit a Challenge
       tags:
       - Challenges
-      description: 'The Host, for their own; any Moderator or above, for a club-hosted
-        one. Only the keys given change. Once the Challenge has any Run its rules
-        are locked: a change to the Format, schedule, Season, Pool or slot range is
-        409 `rules_locked` with the `fields` it would change (sending them unchanged
-        is fine). Name, description and end date stay editable, except that an Always
-        Open Challenge that reached its end date is Closed for good (`ended_at`):
-        a change to its schedule or end date is 422 `invalid_challenge`. Refusals
-        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
-        422 `invalid_challenge`).'
+      description: 'The Host, for their own; any Moderator or above, for any Challenge
+        (403 "Only the Host or a Moderator can edit this Challenge."). Only the keys
+        given change. Once the Challenge has any Run its rules are locked: a change
+        to the Format, schedule, Season or slot range is 409 `rules_locked` with the
+        `fields` it would change (sending them unchanged is fine). Name, description
+        and end date stay editable, except that an Always Open Challenge that reached
+        its end date is Closed for good (`ended_at`): a change to its schedule or
+        end date is 422 `invalid_challenge`. A Pool''s games, sources and Optional
+        target stay editable with Runs: the Runs are then brought up to date (one
+        that now meets the goal Finishes), and a save that adds Core Games or raises
+        the target queues one `challenge_dm` `pool_goal_changed` per member with an
+        Active Run who keeps Challenge DMs on. With `add_to_list`, the games the edit
+        newly makes Core or Optional by hand also go into the linked Game List (403
+        "Only the Game List''s owner can add games to it from this Challenge." unless
+        the viewer is the list''s owner, or staff for a club list on a club-hosted
+        Challenge: see `pool.game_list.can_add`; 422 without a linked list; 422 `list_full`
+        past 500 games, saving nothing). Editing a removed Core Game out of the Pool
+        clears its list notice. Switching the Format to Assignment needs a Moderator
+        or above (403 "Only Moderators and above can create an Assignment Challenge.").
+        A Pool that leaves Pool ends its Game List link (clearing its list notices)
+        and declines its pending Pool Proposals. A Pool already short of its Optional
+        target (a source shrank) still saves an edit that leaves it no shorter: the
+        target not raised and no Optional Game fewer. Refusals carry `{ error, message
+        }`; `message` is written for members (403 `forbidden`, 422 `invalid_challenge`).'
       parameters: []
       responses:
         '200':
@@ -10716,7 +11612,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Challenge"
         '403':
-          description: not the Host (or, club-hosted, not a Moderator)
+          description: neither the Host nor a Moderator, a switch to Assignment below
+            Moderator, or `add_to_list` from someone who may not touch the list
           content:
             application/json:
               schema:
@@ -10742,8 +11639,8 @@ paths:
                       - challenge_format
                       - schedule
                       - season
-                      - pool
                       - slots
+                      - assignment
         '422':
           description: invalid_challenge, including a new schedule or end date for
             a Challenge Closed for good
@@ -10806,39 +11703,62 @@ paths:
                           example: 02-28
                     pool:
                       type: object
-                      description: The Pool (challenge_format pool). On edit, only
-                        the keys given change.
+                      description: 'The Pool (challenge_format pool): a Run Finishes
+                        by Clearing every Core Game plus `optional_target` Optional
+                        Games. Sources (a linked Game List, Franchises and Series)
+                        only add Optional Games, leaving out Add-ons (games with a
+                        parent game); a game is Core only when listed in `core_game_ids`
+                        (docs/adr/0014). Needs at least one Core Game or a target
+                        of at least 1, and the target can''t exceed the Optional Games
+                        when saved. A game may be in only one of the three game lists.
+                        On edit, only the keys given change; none of it is locked
+                        once Runs exist.'
                       properties:
                         franchise_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB franchises whose games are in the Pool.
+                          description: Franchises whose games (not Add-ons) are Optional
+                            Games.
                         collection_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB collections whose games are in the Pool.
-                        included_game_ids:
+                          description: Series (IGDB collections) whose games (not
+                            Add-ons) are Optional Games.
+                        core_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games in the Pool whatever their franchise.
+                          description: 'Core Games: every Run must Clear them.'
+                        optional_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Optional Games picked by hand, whatever their
+                            sources; Add-ons allowed.
                         excluded_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games left out of the chosen franchises and
-                            collections.
-                        target:
-                          oneOf:
-                          - type: integer
-                            minimum: 1
-                          - type: string
-                            enum:
-                            - all
-                          description: Cleared games needed to Finish, or "all" for
-                            every game in the Pool. Required on create.
+                          description: Games kept out though a source has them.
+                        optional_target:
+                          type: integer
+                          minimum: 0
+                          default: 0
+                          description: Optional Games a Run must Clear besides every
+                            Core Game. 0 when left out on create.
+                        game_list_id:
+                          type: integer
+                          description: 'Create only (422 on edit): start the Pool
+                            from this Game List. Its games come in as Core Games,
+                            except those this request makes Optional or excludes,
+                            and the list stays linked: games later added to it arrive
+                            as Optional Games. A member''s own list, for a Challenge
+                            they host; a club list, for a club-hosted one (403 "Only
+                            a Game List''s owner can start a Challenge from it, hosted
+                            by them; a club list, a Moderator or above, for a club-hosted
+                            Challenge."). 422 for a list the member can''t see.'
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot
@@ -10925,6 +11845,10 @@ paths:
                         on the fill, and the hi on ink #0b0b0d and #141417; otherwise
                         422 `invalid_challenge`. Left out on create, the Challenge
                         gets its curated tint. Not a rule: editable after Runs exist.'
+                    add_to_list:
+                      type: boolean
+                      description: Also add the games put in the Pool by hand to the
+                        linked Game List.
               required:
               - data
         required: true
@@ -11108,10 +12032,10 @@ paths:
       summary: Change a Challenge's tint
       tags:
       - Challenges
-      description: The Host, for their own (PATCH takes `tint` too), and a Moderator
-        or above for any Challenge, which PATCH does not let them edit. 403 "Only
-        the Host or a Moderator can change this Challenge's tint."; 422 `invalid_challenge`
-        without `tint`, or for a tint PATCH would refuse.
+      description: The Host, for their own, and a Moderator or above for any Challenge
+        (PATCH takes `tint` too). 403 "Only the Host or a Moderator can change this
+        Challenge's tint."; 422 `invalid_challenge` without `tint`, or for a tint
+        PATCH would refuse.
       parameters: []
       responses:
         '200':
@@ -11195,9 +12119,10 @@ paths:
       summary: Hand a Challenge to another Host
       tags:
       - Challenges
-      description: Moderator and above. Hands it to another member (who needs no role)
-        or, with `hosted_by_club`, to the club. 422 `invalid_challenge` for neither,
-        or an unknown member.
+      description: 'Moderator and above. Hands it to another member (who needs no
+        role) or, with `hosted_by_club`, to the club. A new Host ends the link to
+        a Game List: its Optional Games from the list stay, as picked by hand, and
+        its list notices go. 422 `invalid_challenge` for neither, or an unknown member.'
       parameters: []
       responses:
         '200':
@@ -11242,6 +12167,100 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/challenges/{id}/list_notices/{notice_id}/remove":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: notice_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Remove a list notice's game
+      tags:
+      - Challenges
+      description: 'Whoever may edit the Challenge (the Host or a Moderator). A list
+        notice says a Core Game''s entry left the linked Game List (Challenge `list_notices`).
+        Takes the game out of the Pool as a Pool edit would (Runs are brought up to
+        date), excluding it when another source still holds it, and clears the notice.
+        The bot sends `{ "data": { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such notice on this Challenge, or a Challenge hidden from
+            the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_challenge: the Pool would be left without a goal,
+            or the target above its Optional Games'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/list_notices/{notice_id}/keep":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: notice_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Keep a list notice's game
+      tags:
+      - Challenges
+      description: 'Whoever may edit the Challenge (the Host or a Moderator). A list
+        notice says a Core Game''s entry left the linked Game List (Challenge `list_notices`).
+        Leaves the game a Core Game, and clears the notice. The bot sends `{ "data":
+        { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such notice on this Challenge, or a Challenge hidden from
+            the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/codex/entries":
     get:
       summary: Search Club Codex entries
@@ -16688,6 +17707,7 @@ paths:
         - challenges
         - release_calendar
         - club_codex
+        - game_lists
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -16853,13 +17873,17 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
     post:
-      summary: Create or upsert a franchise
+      summary: Create a franchise, or upsert one by IGDB id
       tags:
       - Franchises
-      description: Admin/service-only find-or-create keyed on `igdb_franchise_id`
-        (the bot's `ensureFranchise`). Returns the existing franchise with 200 when
-        the IGDB id is already known, or creates it and returns 201. `name` is applied
-        only when a new row is created.
+      description: 'Two uses. Without `igdb_franchise_id`, a Regular or above (by
+        the acting member''s stored roles; the bot names it in `data.acting_user_id`)
+        creates a Franchise IGDB doesn''t have, returning 201. With `igdb_franchise_id`,
+        the admin/service find-or-create keyed on it (the bot''s `ensureFranchise`):
+        the existing franchise with 200 when the IGDB id is already known, or a new
+        one with 201; `name` is applied only when a new row is created. It resolves
+        as an IGDB import does: a merged Franchise answers with its merge target (200),
+        and one an Admin deleted is refused with 422 `franchise_deleted`.'
       parameters: []
       responses:
         '201':
@@ -16872,7 +17896,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Franchise"
         '200':
-          description: existing franchise (matched on IGDB id)
+          description: existing franchise (matched on IGDB id), or the one it was
+            merged into
           content:
             application/json:
               schema:
@@ -16880,14 +17905,24 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/Franchise"
+        '400':
+          description: missing `data`, or the bot creating by hand names no acting
+            member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: an upsert by a caller who is not an admin or the
+            service, or a hand-made Franchise by a member below Regular'
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed (missing `igdb_franchise_id` or blank `name`)
+          description: validation failed (an empty `igdb_franchise_id`, or a blank
+            or too-long `name`), or the IGDB id names a Franchise an Admin deleted
+            (`franchise_deleted`)
           content:
             application/json:
               schema:
@@ -16909,12 +17944,18 @@ paths:
                   properties:
                     name:
                       type: string
+                      maxLength: 255
                       description: Franchise name (set only on create).
                     igdb_franchise_id:
                       type: integer
-                      description: IGDB franchise id. Required; the upsert key.
+                      description: 'IGDB franchise id: the upsert key. Leave it out
+                        to create a Franchise by hand.'
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only, creating by hand: the member it acts
+                        for.'
                   required:
-                  - igdb_franchise_id
+                  - name
               required:
               - data
         required: true
@@ -16930,6 +17971,17 @@ paths:
       summary: Show franchise
       tags:
       - Franchises
+      description: 'A Franchise''s page: its columns, its games grouped as `mainline`,
+        `other` and `add_ons` (games with a parent game, under their parent when it
+        is in GameDB), each with cover and release year, oldest first, and `viewer`
+        (what the acting member may change).'
+      parameters:
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member `viewer` is for.'
       responses:
         '200':
           description: franchise
@@ -16939,7 +17991,7 @@ paths:
                 type: object
                 properties:
                   data:
-                    "$ref": "#/components/schemas/Franchise"
+                    "$ref": "#/components/schemas/FranchisePage"
         '404':
           description: franchise not found
           content:
@@ -16952,6 +18004,426 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Rename a franchise
+      tags:
+      - Franchises
+      description: Admins and above (the acting member's stored roles). Renames the
+        Franchise and sets `name_locked`, so IGDB re-imports keep the name. Recorded
+        in the history (undoable).
+      parameters: []
+      responses:
+        '200':
+          description: the renamed franchise
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Franchise"
+        '400':
+          description: missing `data`, or the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: below Admin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: franchise not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: a blank or too-long `name`, or the Franchise was merged (`franchise_merged`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  required:
+                  - name
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 255
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only: the member it acts for.'
+        required: true
+    delete:
+      summary: Delete a franchise
+      tags:
+      - Franchises
+      description: Admins and above. Deletes the Franchise and its links, takes it
+        out of every Pool's sources (Core Games stay), and remembers an IGDB Franchise
+        so re-imports don't create it again. Franchises merged into it go too. Recorded
+        in the history (not undoable).
+      parameters:
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member it acts for.'
+      responses:
+        '204':
+          description: deleted
+        '400':
+          description: the bot names no acting member
+        '403':
+          description: 'forbidden: below Admin'
+        '404':
+          description: franchise not found
+        '401':
+          description: unauthenticated
+  "/api/v1/franchises/{id}/merge":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The GamedbFranchise to merge away.
+    post:
+      summary: Merge a franchise into another
+      tags:
+      - Franchises
+      description: Admins and above. Moves the links to `into_id` (a game in both
+        stays Mainline if it was in either), moves remembered unlinks, repoints Pool
+        sources and sets `merged_into_id`, so re-imports naming the merged IGDB id
+        resolve to the target. Recorded in the target's history (not undoable). Answers
+        with the target.
+      parameters: []
+      responses:
+        '200':
+          description: the target franchise
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Franchise"
+        '400':
+          description: missing `data`, or the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: below Admin'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: franchise or target not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: into itself (`invalid_merge`), or either side already merged
+            (`franchise_merged`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  required:
+                  - into_id
+                  properties:
+                    into_id:
+                      type: integer
+                      description: The Franchise to merge into.
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only: the member it acts for.'
+        required: true
+  "/api/v1/franchises/{id}/changes":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbFranchise id.
+    get:
+      summary: A franchise's change history
+      tags:
+      - Franchises
+      description: Regulars and above. Every change to the Franchise, newest first,
+        with who made it, who undid it and whether the viewer can undo it now.
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 25
+          maximum: 500
+        required: false
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member it acts for.'
+      responses:
+        '200':
+          description: changes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/FranchiseChange"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: below Regular'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: franchise not found (or deleted)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/franchise_changes/{id}/undo":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: The change id.
+    post:
+      summary: Undo a franchise change
+      tags:
+      - Franchises
+      description: Regulars and above. Undoes a link, unlink, Mainline or rename change
+        and marks it undone (`undone_at`, `undone_by`); no new history row is written.
+        Refused when the change was already undone, or a later change (or a merge,
+        or a change outside the history) touched the same game or name.
+      parameters: []
+      responses:
+        '200':
+          description: the change, now undone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FranchiseChange"
+        '400':
+          description: the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: below Regular'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: change not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`already_undone`, or `superseded` by a later change"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: create, merge and delete can't be undone (`not_undoable`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only: the member it acts for.'
+  "/api/v1/franchises/{id}/games/{game_id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbFranchise id.
+    - name: game_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    put:
+      summary: Link a game to a franchise
+      tags:
+      - Franchises
+      description: Regulars and above (the acting member's stored roles). Links the
+        game as `manual` if it isn't linked (forgetting an earlier unlink of the pair),
+        and sets Mainline when `mainline` is given. An existing link keeps its source.
+        Hand links survive IGDB re-imports.
+      parameters: []
+      responses:
+        '200':
+          description: the link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FranchiseLink"
+        '400':
+          description: the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: below Regular'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: franchise or game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`mainline` is not a boolean (`invalid_mainline`)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    mainline:
+                      type: boolean
+                      description: Mark (true) or unmark (false) the game as Mainline;
+                        leave out to keep it.
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only: the member it acts for.'
+    delete:
+      summary: Unlink a game from a franchise
+      tags:
+      - Franchises
+      description: Regulars and above. Removes the link and remembers it, so an IGDB
+        re-import doesn't add it back. Succeeds also when the game wasn't linked.
+      parameters:
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member it acts for.'
+      responses:
+        '204':
+          description: unlinked
+        '400':
+          description: the bot names no acting member
+        '403':
+          description: 'forbidden: below Regular'
+        '404':
+          description: franchise or game not found
+        '401':
+          description: unauthenticated
   "/api/v1/games/{id}/hltb/lookup":
     parameters:
     - name: id
@@ -17746,6 +19218,768 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/game_lists":
+    get:
+      summary: List Game Lists
+      tags:
+      - Game Lists
+      description: 'The lists the caller may read (every Members-visible list, and
+        their own Private ones): club lists first, then the most recently changed
+        (a change to its games counts). The bot may name the member it reads for with
+        `acting_user_id`, without which it sees what a member with no lists of their
+        own sees. Members (the `game_lists` Feature): not found for non-staff in Preview
+        and for everyone when Off; the service token is not gated, but a bot write
+        gets 403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Only lists whose name contains `q`, ignoring case, its characters
+          taken literally.
+      - name: game_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Only lists holding this game.
+      - name: owner
+        in: query
+        required: false
+        schema:
+          type: string
+        description: "`club` for the club's lists, or a member's Discord user id for
+          theirs."
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Game Lists, without their entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameList"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a Game List
+      tags:
+      - Game Lists
+      description: 'Any member creates a list they own; with `club`, a Moderator or
+        above creates a club list (403 "Only Moderators and above can create a club
+        Game List."), which is always Members-visible. Returns the list. Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_game_list`). Members (the `game_lists` Feature): not found for
+        non-staff in Preview and for everyone when Off; the service token is not gated,
+        but a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: the new list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id` (or one
+            with no stored record)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: "`forbidden` for a club list without the role, or (bot) `feature_unavailable`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_game_list: a missing or too long name, a too long
+            description, an unknown visibility or sort, a field that isn''t text,
+            or a Private club list'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                      nullable: true
+                      maxLength: 500
+                    visibility:
+                      type: string
+                      enum:
+                      - members
+                      - private
+                      description: members when left out on create. Only the owner
+                        changes it.
+                    sort:
+                      type: string
+                      enum:
+                      - ranked
+                      - alphabetical
+                      - added
+                      description: ranked when left out on create.
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    club:
+                      type: boolean
+                      description: The club owns it (Moderator and above).
+                  required:
+                  - name
+              required:
+              - data
+        required: true
+  "/api/v1/game_lists/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Game List
+      tags:
+      - Game Lists
+      description: 'The list with every game, in its sort''s order. A Private list
+        is read and changed only by its owner (staff can''t read it either; it is
+        not found for them). The owner does everything with their own lists; Moderators
+        and above edit club lists and any Members-visible list, and delete a member''s
+        Members-visible list; only Admins and above delete a club list; only the owner
+        changes visibility. The bot may name the member it reads for with `acting_user_id`,
+        without which it sees what a member with no lists of their own sees. Members
+        (the `game_lists` Feature): not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the list with its entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '404':
+          description: no such list, a Private list of someone else, or the Feature
+            is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Game List
+      tags:
+      - Game Lists
+      description: 'Changes only the fields given. A Private list is read and changed
+        only by its owner (staff can''t read it either; it is not found for them).
+        The owner does everything with their own lists; Moderators and above edit
+        club lists and any Members-visible list, and delete a member''s Members-visible
+        list; only Admins and above delete a club list; only the owner changes visibility.
+        403 "Only its owner can edit this Game List; a Members-visible or club one,
+        any Moderator or above.", or "Only its owner can change who sees this Game
+        List." for a visibility change by someone else. Making a list that feeds a
+        Pool Challenge Private is 409 `list_feeds_challenges` (naming the Challenges)
+        unless `confirm`; with it, the club keeps a Members-visible copy (taken over
+        from the owner) that the Challenges relink to, and the owner''s list goes
+        Private. Returns the list. Refusals carry `{ error, message }`; `message`
+        is written for members (403 `forbidden`, 422 `invalid_game_list`). Members
+        (the `game_lists` Feature): not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the caller can't edit it, or change its visibility; or (bot)
+            `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: 'list_feeds_challenges: confirm needed'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GameListFeedsChallenges"
+        '422':
+          description: invalid_game_list, as on create
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                      nullable: true
+                      maxLength: 500
+                    visibility:
+                      type: string
+                      enum:
+                      - members
+                      - private
+                      description: members when left out on create. Only the owner
+                        changes it.
+                    sort:
+                      type: string
+                      enum:
+                      - ranked
+                      - alphabetical
+                      - added
+                      description: ranked when left out on create.
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    confirm:
+                      type: boolean
+                      description: Go ahead though the list feeds a Challenge.
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Game List
+      tags:
+      - Game Lists
+      description: 'Deletes the list with its entries. A Private list is read and
+        changed only by its owner (staff can''t read it either; it is not found for
+        them). The owner does everything with their own lists; Moderators and above
+        edit club lists and any Members-visible list, and delete a member''s Members-visible
+        list; only Admins and above delete a club list; only the owner changes visibility.
+        403 "Only its owner or a Moderator can delete this Game List; a club one,
+        an Admin.". A list that feeds a Pool Challenge needs `confirm` (409 `list_feeds_challenges`,
+        naming the Challenges): a member''s list then goes to the club instead (`owner`
+        null, `taken_over_from` set, Members-visible; `taken_over: true`) and keeps
+        feeding them; a club list is deleted and the links end, the Challenges keeping
+        their games. The bot names the member with the `acting_user_id` query parameter.
+        Members (the `game_lists` Feature): not found for non-staff in Preview and
+        for everyone when Off; the service token is not gated, but a bot write gets
+        403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: confirm
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Go ahead though the list feeds a Challenge.
+      responses:
+        '200':
+          description: deleted, or taken over by the club
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                      taken_over:
+                        type: boolean
+                        description: The club kept it, as it feeds a Challenge.
+        '409':
+          description: 'list_feeds_challenges: confirm needed'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GameListFeedsChallenges"
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the caller can't delete it, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/game_lists/{id}/entries/order":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Set a Game List's ranked order
+      tags:
+      - Game Lists
+      description: "`game_ids` names every game of the list once, first to last; each
+        game's `position` follows. The ranked order is kept whatever the list's sort.
+        Whoever can edit the list may. Returns the list. Members (the `game_lists`
+        Feature): not found for non-staff in Preview and for everyone when Off; the
+        service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for."
+      parameters: []
+      responses:
+        '200':
+          description: the list in its new order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_order: `game_ids` leaves a game out, repeats one or
+            names one not in the list'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      maxItems: 500
+                  required:
+                  - game_ids
+              required:
+              - data
+        required: true
+  "/api/v1/game_lists/{id}/entries/{game_id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Add a game to a Game List
+      tags:
+      - Game Lists
+      description: 'Adds the GameDB game last in the ranked order, with an optional
+        note. A list holds a game at most once and at most 500 games. Whoever can
+        edit the list may. Members (the `game_lists` Feature): not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: the entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameListEntry"
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read or no such game, or the Feature
+            is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: 'already_in_list: the list holds the game'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'list_full: the list holds 500 games; invalid_game_list: a
+            note over 280 characters or not text'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    note:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+    patch:
+      summary: Change a game's note
+      tags:
+      - Game Lists
+      description: 'Replaces the note; null or blank removes it. Whoever can edit
+        the list may. Members (the `game_lists` Feature): not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameListEntry"
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the list doesn't hold the game, or no such list the caller
+            can read
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_game_list: no `note`, or one too long or not text'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    note:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+                  required:
+                  - note
+              required:
+              - data
+        required: true
+    delete:
+      summary: Remove a game from a Game List
+      tags:
+      - Game Lists
+      description: 'Removes the game; the games after it move up one place. Whoever
+        can edit the list may. The bot names the member with the `acting_user_id`
+        query parameter. Members (the `game_lists` Feature): not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      game_list_id:
+                        type: integer
+                      game_id:
+                        type: integer
+                      deleted:
+                        type: boolean
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the list doesn't hold the game, or no such list the caller
+            can read
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/game_lists":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a member's Game Lists
+      tags:
+      - Game Lists
+      description: 'For their profile: all of the caller''s own lists, or another
+        member''s Members-visible ones, most recently changed first. The bot may name
+        the member it reads for with `acting_user_id`, without which it sees what
+        a member with no lists of their own sees. Members (the `game_lists` Feature):
+        not found for non-staff in Preview and for everyone when Off; the service
+        token is not gated, but a bot write gets 403 `feature_unavailable` when the
+        Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the member's lists, without their entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameList"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/game_lists":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List a game's Game Lists
+      tags:
+      - Game Lists
+      description: 'The lists holding the game that the caller may read, club lists
+        first, then the most recently changed; `meta.count` is how many there are
+        ("In 4 Game Lists"). The bot may name the member it reads for with `acting_user_id`,
+        without which it sees what a member with no lists of their own sees. Members
+        (the `game_lists` Feature): not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the lists, without their entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameList"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: no such game, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games":
     get:
       summary: List games
@@ -18242,7 +20476,7 @@ paths:
                       franchises:
                         type: array
                         items:
-                          "$ref": "#/components/schemas/Franchise"
+                          "$ref": "#/components/schemas/GameFranchise"
                       genres:
                         type: array
                         items:
@@ -18435,7 +20669,7 @@ paths:
                           franchises:
                             type: array
                             items:
-                              "$ref": "#/components/schemas/Franchise"
+                              "$ref": "#/components/schemas/GameFranchise"
                           genres:
                             type: array
                             items:

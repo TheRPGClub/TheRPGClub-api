@@ -95,7 +95,70 @@ module OpenapiSchemas
 
       # ---- taxonomy / lookup master tables (read-only) ---------------------
       Company: obj(company_id: int, name: str, igdb_company_id: int(nullable: true)),
-      Franchise: obj(franchise_id: int, name: str, igdb_franchise_id: int(nullable: true)),
+      Franchise: obj(franchise_id: int, name: str, igdb_franchise_id: int(nullable: true),
+        created_by: str(nullable: true).merge(description: "Who created it by hand; null for IGDB's."),
+        name_locked: bool.merge(description: "An Admin renamed it, so IGDB re-imports keep the name."),
+        merged_into_id: int(nullable: true).merge(description: "The Franchise it was merged into. A merged " \
+                                                                "Franchise is off the list and refuses changes.")),
+      # A game's Franchise as the game's relations list it (spec api#442).
+      GameFranchise: extends("Franchise",
+        mainline: bool.merge(description: "Whether the game is Mainline in this Franchise.")),
+      FranchiseGame: obj(
+        _description: "A game on a Franchise's page.",
+        game_id: int, title: str, cover_url: str(nullable: true), release_year: int(nullable: true),
+        mainline: bool, source: str(enum: %w[igdb manual]).merge(description: "Where the link came from."),
+        parent_game_name: str(nullable: true).merge(description: "An Add-on's parent game, as IGDB names it.")
+      ),
+      FranchiseAddOnGroup: obj(
+        _description: "Add-ons under their parent game. The last group has a null parent and holds the " \
+                      "Add-ons whose parent isn't in GameDB.",
+        parent: {
+          allOf: [ obj(game_id: int, title: str, cover_url: str(nullable: true), release_year: int(nullable: true),
+            in_franchise: bool.merge(description: "Whether the parent is in this Franchise too.")) ],
+          nullable: true
+        },
+        games: array_of("FranchiseGame")
+      ),
+      FranchisePage: extends("Franchise", required: %w[games viewer],
+        games: obj(
+          _required: %w[mainline other add_ons],
+          mainline: array_of("FranchiseGame"),
+          other: array_of("FranchiseGame"),
+          add_ons: array_of("FranchiseAddOnGroup").merge(description: "Games with a parent game, by parent.")
+        ),
+        viewer: obj(
+          can_edit: bool.merge(description: "Regulars and above: link, unlink, Mainline, create."),
+          can_admin: bool.merge(description: "Admins and above.")
+        )),
+      FranchiseLink: obj(
+        franchise_id: int, game_id: int, source: str(enum: %w[igdb manual]), mainline: bool,
+        created_at: ts(nullable: true).merge(description: "Null for links older than Franchise editing."),
+        created_by: str(nullable: true)
+      ),
+      FranchiseChange: obj(
+        _description: "A row of a Franchise's history (spec api#442).",
+        _required: %w[change_id franchise_id action user_id created_at can_undo],
+        change_id: int, franchise_id: int,
+        game_id: int(nullable: true).merge(description: "Set for a change to one game's link."),
+        game_title: str(nullable: true),
+        action: str(enum: GamedbFranchiseChange::ACTIONS),
+        before: json.merge(description: "The values it changed, before: `{ source, mainline, created_at, " \
+                                        "created_by }` for unlink (null for link, or `{ unlinked_by, " \
+                                        "unlinked_at }` when the link replaced a removal), `{ mainline }`, " \
+                                        "`{ name, name_locked }` for rename, `{ franchise_id, name, " \
+                                        "igdb_franchise_id, games }` for merge (the Franchise merged in) and " \
+                                        "`{ name, igdb_franchise_id, games }` for delete."),
+        after: json.merge(description: "The values after (null for unlink and delete)."),
+        user_id: str(nullable: true).merge(description: "Who made it."),
+        username: str(nullable: true),
+        created_at: ts,
+        undone_at: ts(nullable: true),
+        undone_by: str(nullable: true).merge(description: "Who undid it."),
+        undone_by_username: str(nullable: true),
+        can_undo: bool.merge(description: "The viewer may undo it now: an undoable action (link, unlink, " \
+                                          "Mainline, rename), not undone, and nothing later touched the same " \
+                                          "game or name.")
+      ),
       Genre: obj(genre_id: int, name: str, igdb_genre_id: int(nullable: true)),
       Engine: obj(engine_id: int, name: str, igdb_engine_id: int(nullable: true)),
       Mode: obj(mode_id: int, name: str, igdb_game_mode_id: int(nullable: true)),
@@ -1130,12 +1193,39 @@ module OpenapiSchemas
                        "without either, and for Slots and Assignment Challenges (draw the Format's picture in the " \
                        "tint instead). Show and announcements only; null in lists."
         ),
+        pending_proposals: int(nullable: true).merge(
+          description: "A Pool Challenge's pending Pool Proposals, for the Host and Moderators and above; null for " \
+                       "other viewers, in lists, in bot payloads and for Slots and Assignment."
+        ),
+        list_notices: {
+          type: :array, nullable: true,
+          description: "A Pool Challenge's open list notices (ticket api#448): Core Games whose entry left the " \
+                       "linked Game List, oldest first, for the Host and Moderators and above to Remove or Keep " \
+                       "(POST /challenges/{id}/list_notices/{notice_id}/remove|keep). Null as pending_proposals is.",
+          items: obj(id: int, game: ref("ChallengePostGame"), created_at: ts)
+        },
         hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
         ended_at: ts(nullable: true).merge(
           description: "When an Always Open Challenge reached its end date and Closed for good (set the day after " \
                        "ends_on); its schedule and end date can no longer change. Null otherwise."
         ),
         created_by: str(nullable: true), updated_by: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      ChallengePoolProposal: obj(
+        _description: "A Pool Proposal (ticket api#447): a member asked for a game to join a Pool Challenge. " \
+                      "Pending until the Host or a Moderator accepts it as a Core or " \
+                      "Optional Game, or declines it.",
+        id: int, challenge_id: int, game: ref("ChallengePostGame"),
+        proposer: ref("ChallengeMember"),
+        note: str(nullable: true, maxLength: ChallengePoolProposal::NOTE_MAX).merge(
+          description: "The proposer's note to whoever decides; null for none."
+        ),
+        status: str(enum: ChallengePoolProposal::STATUSES),
+        accepted_as: str(nullable: true, enum: ChallengePoolProposal::ACCEPTED_AS).merge(
+          description: "What it joined the Pool as; null unless accepted."
+        ),
+        decider: ref("ChallengeMember", nullable: true).merge(description: "Who accepted or declined it."),
+        decided_at: ts(nullable: true), created_at: ts, updated_at: ts
       ),
       ChallengeTint: obj(
         _description: "The Challenge tint: the one colour it wears on the bot's posts and the website, as a pair " \
@@ -1149,16 +1239,42 @@ module OpenapiSchemas
                                                        "#141417), where it clears 4.5:1.")
       ),
       ChallengePool: obj(
-        _description: "A Pool Challenge's settings. A game is in the Pool if it belongs to a chosen franchise or " \
-                      "collection and is not excluded, or if it is included by hand; it is resolved against the " \
+        _description: "A Pool Challenge's settings (docs/adr/0014): a Run Finishes by Clearing every Core Game " \
+                      "plus `optional_target` Optional Games. Optional Games are the games of the sources " \
+                      "(the linked Game List, Franchises, and Series, which the API calls collections) less " \
+                      "Add-ons, plus those picked by hand, less the excluded and Core games; resolved against the " \
                       "GameDB when read.",
-        target: { oneOf: [ { type: :integer, minimum: 1 }, { type: :string, enum: %w[all] } ],
-                  description: "Cleared games needed to Finish, or \"all\" for every game in the Pool." },
+        optional_target: int.merge(minimum: 0, description: "Optional Games a Run must Clear besides every Core Game."),
+        game_list: obj(
+          id: int, name: str,
+          visible: bool.merge(description: "Whether the viewer can open the list (a Private list is its owner's " \
+                                           "alone). Clients show \"Made from <name>\", linked when visible, and " \
+                                           "hide it when the game_lists Feature is hidden from the viewer."),
+          can_add: bool.merge(description: "Whether the viewer may send `add_to_list`: the list's owner, or staff " \
+                                           "for a club list on a club-hosted Challenge.")
+        ).merge(nullable: true, description: "The Game List the Pool was started from, which feeds it Optional " \
+                                             "Games (ticket api#448); null when none or the link ended."),
         franchises: { type: :array, items: obj(franchise_id: int, name: str) },
-        collections: { type: :array, items: obj(collection_id: int, name: str) },
-        included_games: { type: :array, items: obj(game_id: int, title: str) },
+        collections: { type: :array, items: obj(collection_id: int, name: str),
+                       description: "IGDB collections, shown to members as Series." },
+        core_games: { type: :array, items: ref("ChallengePostGame"), description: "Oldest release first." },
+        optional_games: { type: :array, nullable: true, description: "Oldest release first. Show and " \
+                                                                     "announcements only; null in lists.",
+                          items: obj(
+                            game_id: int, title: str, cover_url: str(nullable: true),
+                            source: str(enum: [ Challenges::PoolSources::HAND, *Challenges::PoolSources::ALL.map(&:key) ])
+                              .merge(description: "Where it comes from: picked by hand, else its first source " \
+                                                  "(list, franchise, series in that order)."),
+                            new: bool.merge(description: "Joined the Pool in the last " \
+                                                         "#{Challenges::Formats::Pool::NEW_FOR.in_days.to_i} days, " \
+                                                         "after the Challenge was created (from a list, when its " \
+                                                         "entry was added). A Franchise link from before link " \
+                                                         "times were kept, and a Series, never counts.")
+                          ) },
         excluded_games: { type: :array, items: obj(game_id: int, title: str) },
-        game_count: int(nullable: true).merge(description: "Games in the Pool now. Show and announcements only.")
+        core_count: int,
+        optional_count: int(nullable: true).merge(description: "Show and announcements only."),
+        game_count: int(nullable: true).merge(description: "Core and Optional Games now. Show and announcements only.")
       ),
       ChallengeSlots: obj(
         _description: "A Slots Challenge's range: one slot per release year (ticket #381).",
@@ -1245,6 +1361,48 @@ module OpenapiSchemas
         ).merge(nullable: true, description: "The member reading. Null for the bot without acting_user_id, and " \
                                              "in bot job payloads.")
       ),
+      # GameListResource (spec api#442, ticket api#446): a Game List. A
+      # single list (show, and every write that returns one) adds `entries`.
+      GameListFeedsChallenges: obj(
+        _description: "409 for deleting a Game List that feeds a Pool Challenge, or making it Private, without " \
+                      "`confirm` (ticket api#448). `message` says what confirming does.",
+        error: str(enum: %w[list_feeds_challenges]), message: str,
+        challenges: { type: :array, items: obj(id: int, name: str) }
+      ),
+      GameList: obj(
+        id: int, name: str(maxLength: GameList::NAME_MAX),
+        description: str(nullable: true, maxLength: GameList::DESCRIPTION_MAX),
+        visibility: str(enum: GameList::VISIBILITIES, description: "members (any member reads it) or private " \
+          "(only its owner, never staff). A club list is always members."),
+        sort: str(enum: GameList::SORTS, description: "How its games are shown: ranked (by `position`), " \
+          "alphabetical (by title) or added (newest first)."),
+        club: bool.merge(description: "True when the club owns it (owner is null)."),
+        owner: ref("ChallengeMember", nullable: true).merge(description: "The member who owns it; null for a club list."),
+        taken_over_from: ref("ChallengeMember", nullable: true).merge(
+          description: "The member the club took this list over from; null unless taken over."),
+        taken_over_at: ts(nullable: true),
+        entry_count: int,
+        preview_games: { type: :array, maxItems: GameLists::Overview::PREVIEW_MAX,
+                         items: obj(game_id: int, title: str, cover_url: str(nullable: true)),
+                         description: "Its first games in its own sort's order, for covers." },
+        viewer: ref("GameListViewer"),
+        entries: { type: :array, items: ref("GameListEntry"),
+                   description: "A single list only: every game, in its sort's order." },
+        created_at: ts, updated_at: ts,
+        _required: %w[id name description visibility sort club owner taken_over_from taken_over_at entry_count
+                      preview_games viewer created_at updated_at]
+      ),
+      # What the caller may do with a Game List (GameLists::Actor).
+      GameListViewer: obj(can_edit: bool, can_delete: bool),
+      # GameListEntryResource (spec api#442, ticket api#446): a game in a list.
+      GameListEntry: obj(
+        game_id: int,
+        position: int.merge(description: "Its place in the ranked order, from 1, whatever the list's sort."),
+        note: str(nullable: true, maxLength: GameListEntry::NOTE_MAX),
+        added_at: ts,
+        game: ref("GameSummary"),
+        _required: %w[game_id position note added_at game]
+      ),
       ChallengeMember: obj(
         user_id: str, username: str, global_name: str(nullable: true),
         discord_avatar: str(nullable: true).merge(
@@ -1316,7 +1474,13 @@ module OpenapiSchemas
           in_progress: int.merge(description: "Games In Progress: in the member's Now Playing."),
           cleared: int.merge(description: "Games Cleared by a Game Completion dated inside the window; for " \
                                            "Slots, the slots filled."),
-          target: int.merge(description: "Cleared games needed to Finish; for Slots, the Run's slots so far."),
+          target: int.merge(description: "Cleared games needed to Finish (for a Pool, its Core Games plus the " \
+                                         "Optional target); for Slots, the Run's slots so far."),
+          core: obj(cleared: int, total: int).merge(description: "Pool only (absent otherwise): Core Games " \
+                                                                 "Cleared, of how many. All are needed."),
+          optional: obj(cleared: int, target: int).merge(description: "Pool only (absent otherwise): Optional " \
+                                                                       "Games Cleared, every one counted, and " \
+                                                                       "how many are needed."),
           caught_up: bool.merge(description: "Slots only (absent otherwise): an Active Run whose range ends at " \
                                              "the current year, with every slot so far Cleared. Worked out " \
                                              "when read, so it lapses on 1 January.")
@@ -1451,13 +1615,29 @@ module OpenapiSchemas
                       "(with `edition`, `backlog_count` and `minimum`), sent to every member still in the server; " \
                       "`pick_reminder`, 2 days before an Edition's pick deadline, a Santa who hasn't picked for " \
                       "their `recipient` (with `edition` and `days_left`), sent only to members who keep Challenge " \
-                      "DMs on.",
-        _required: %w[event user_id challenge feature_key],
-        event: str(enum: %w[season_ending left_out_of_draw pick_reminder]),
-        user_id: str.merge(description: "The member to DM."),
+                      "DMs on; `pool_goal_changed`, a Pool edit added Core Games or raised the Optional target " \
+                      "of the member's Active Run (with `run`, `added_core_games` and `optional_target`), one per " \
+                      "save, sent only to members who keep Challenge DMs on; `pool_proposal`, a member proposed a " \
+                      "game for the Host's Pool (with `proposal`, its note included), sent only to a Host who keeps " \
+                      "Challenge DMs on, or, for a club-hosted Challenge, queued once with `club_hosted: true` and " \
+                      "no `user_id`: post it in #dev (BOT_DEV_CHANNEL_ID) with links to the Challenge instead of " \
+                      "DMing; `pool_proposal_accepted`, the member's proposal was accepted (with `proposal`, " \
+                      "`accepted_as` saying as what), sent only to members who keep Challenge DMs on.",
+        _required: %w[event challenge feature_key],
+        event: str(enum: %w[season_ending left_out_of_draw pick_reminder pool_goal_changed pool_proposal
+          pool_proposal_accepted]),
+        user_id: str.merge(description: "The member to DM. Absent only on a club-hosted `pool_proposal`."),
+        club_hosted: bool.merge(description: "pool_proposal only: true to post it in #dev, with no `user_id`."),
+        proposal: ref("ChallengePoolProposal").merge(description: "pool_proposal and pool_proposal_accepted."),
         challenge: ref("Challenge"),
-        run: ref("ChallengeRun").merge(description: "season_ending only: the member's Run, as GET " \
-                                                     "/api/v1/challenge_runs/{id} serves it."),
+        run: ref("ChallengeRun").merge(description: "season_ending and pool_goal_changed: the member's Run, as " \
+                                                     "GET /api/v1/challenge_runs/{id} serves it."),
+        added_core_games: { type: :array, items: ref("ChallengePostGame"),
+                            description: "pool_goal_changed only: the Core Games the edit added, oldest release " \
+                                         "first (empty when only the target rose)." },
+        optional_target: obj(from: int, to: int).merge(
+          nullable: true, description: "pool_goal_changed only: the raised Optional target; null when unchanged."
+        ),
         season: ref("ChallengeSeasonDates").merge(description: "season_ending only."),
         days_left: int.merge(example: 7, description: "season_ending: days from today to the Season's last day " \
                                                       "(7 unless sent late); pick_reminder: days to the pick " \

@@ -19,7 +19,7 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
     {
       name: "Fall of Final Fantasy", description: "Play Final Fantasy through the autumn.",
       challenge_format: "pool", schedule: "always_open",
-      pool: { franchise_ids: [ franchise.franchise_id ], target: 2 }
+      pool: { franchise_ids: [ franchise.franchise_id ], optional_target: 1 }
     }.merge(overrides)
   end
 
@@ -31,34 +31,21 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
   around { |example| travel_to(Time.zone.parse("2026-10-15 12:00:00 -04:00")) { example.run } }
 
   describe "creating a Pool Challenge" do
-    it "lets a Regular create one and become its Host" do
-      create_challenge(as: regular)
+    it "lets a member create one and become its Host" do
+      create_challenge(as: member)
 
       expect(response).to have_http_status(:created)
       expect(json.fetch("data")).to include(
         "name" => "Fall of Final Fantasy", "description" => "Play Final Fantasy through the autumn.",
         "challenge_format" => "pool", "hosted_by_club" => false, "schedule" => "always_open", "ends_on" => nil,
-        "season" => nil, "open" => true, "hidden" => false, "created_by" => regular.user_id, "run_count" => 0
+        "season" => nil, "open" => true, "hidden" => false, "created_by" => member.user_id, "run_count" => 0
       )
-      expect(json.dig("data", "host")).to include("user_id" => regular.user_id, "username" => regular.username)
+      expect(json.dig("data", "host")).to include("user_id" => member.user_id, "username" => member.username)
       expect(json.dig("data", "pool")).to include(
-        "target" => 2, "game_count" => 1,
+        "optional_target" => 1, "game_count" => 1,
         "franchises" => [ { "franchise_id" => franchise.franchise_id, "name" => "Final Fantasy" } ]
       )
       expect(json.dig("meta", "warnings")).to eq([])
-    end
-
-    it "tells a member without the Regulars role that they need it" do
-      create_challenge(as: member)
-
-      expect(response).to have_http_status(:forbidden)
-      expect(json.fetch("message")).to eq("You need the Regulars role to create a Challenge.")
-    end
-
-    it "lets Moderators create one without the Regulars role" do
-      create_challenge(as: moderator)
-
-      expect(response).to have_http_status(:created)
     end
 
     it "lets a Moderator host one for the club, but not a Regular" do
@@ -80,7 +67,7 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(response).to have_http_status(:created)
       expect(json.dig("data", "host", "user_id")).to eq(regular.user_id)
 
-      post "/api/v1/challenges", params: { data: pool_challenge(acting_user_id: member.user_id) },
+      post "/api/v1/challenges", params: { data: pool_challenge(acting_user_id: regular.user_id, hosted_by_club: true) },
         headers: service_headers, as: :json
       expect(response).to have_http_status(:forbidden)
 
@@ -126,27 +113,22 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(pool_games.last).to include("cover_url" => nil)
     end
 
-    it "takes a target of every game in the Pool" do
-      create_challenge(as: regular, pool: { franchise_ids: [ franchise.franchise_id ], target: "all" })
-
-      expect(json.dig("data", "pool", "target")).to eq("all")
-    end
-
-    it "refuses a target below 1, a missing target and an empty Pool" do
-      create_challenge(as: regular, pool: { franchise_ids: [ franchise.franchise_id ], target: 0 })
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(json.fetch("message")).to include("target")
-
+    it "refuses a Pool without a goal, a missing pool and an empty Pool" do
       create_challenge(as: regular, pool: { franchise_ids: [ franchise.franchise_id ] })
       expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("message")).to include("at least one Core Game or an Optional target")
 
-      create_challenge(as: regular, pool: { target: 1 })
+      create_challenge(as: regular, pool: nil)
       expect(response).to have_http_status(:unprocessable_content)
-      expect(json.fetch("message")).to include("at least one franchise, collection or included game")
+      expect(json.fetch("message")).to include("pool is required")
+
+      create_challenge(as: regular, pool: { optional_target: 1 })
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("message")).to include("more than the 0 Optional Games")
     end
 
     it "refuses unknown franchises and unknown Formats" do
-      create_challenge(as: regular, pool: { franchise_ids: [ 999_999_999 ], target: 1 })
+      create_challenge(as: regular, pool: { franchise_ids: [ 999_999_999 ], optional_target: 1 })
       expect(response).to have_http_status(:unprocessable_content)
       expect(json.fetch("message")).to include("Unknown franchise ids: 999999999")
 
@@ -268,7 +250,7 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
         create(:game, title: title).tap { |game| create(:game_image, :primary, game: game) }
       end
       uncovered = create(:game, title: "Arc")
-      (covered + [ uncovered ]).each { |game| ChallengePoolGame.create!(challenge: busy, game: game, inclusion: "include") }
+      (covered + [ uncovered ]).each { |game| ChallengePoolGame.create!(challenge: busy, game: game, inclusion: "optional") }
 
       get "/api/v1/challenges", headers: auth_headers_for(member)
 
@@ -342,14 +324,14 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
   end
 
   describe "GET /api/v1/challenges/:id" do
-    it "shows the Pool's franchises, collections, included and excluded games" do
+    it "shows the Pool's franchises, collections, Core, Optional and excluded games" do
       collection = create(:gamedb_collection, name: "Compilation of FFVII")
-      included = create(:game, title: "Chrono Trigger")
+      core = create(:game, title: "Chrono Trigger")
       excluded = create(:game, title: "Final Fantasy VII: Ever Crisis")
       GamedbGameFranchise.create!(game: excluded, franchise: franchise)
       create_challenge(as: regular, pool: {
         franchise_ids: [ franchise.franchise_id ], collection_ids: [ collection.collection_id ],
-        included_game_ids: [ included.game_id ], excluded_game_ids: [ excluded.game_id ], target: "all"
+        core_game_ids: [ core.game_id ], excluded_game_ids: [ excluded.game_id ]
       })
 
       get "/api/v1/challenges/#{json.dig('data', 'id')}", headers: auth_headers_for(member)
@@ -357,9 +339,11 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.dig("data", "pool")).to include(
         "collections" => [ { "collection_id" => collection.collection_id, "name" => "Compilation of FFVII" } ],
-        "included_games" => [ { "game_id" => included.game_id, "title" => "Chrono Trigger" } ],
+        "core_games" => [ { "game_id" => core.game_id, "title" => "Chrono Trigger", "cover_url" => nil } ],
+        "optional_games" => [ { "game_id" => ff7.game_id, "title" => "Final Fantasy VII", "cover_url" => nil,
+                                "source" => "franchise", "new" => false } ],
         "excluded_games" => [ { "game_id" => excluded.game_id, "title" => "Final Fantasy VII: Ever Crisis" } ],
-        "game_count" => 2
+        "optional_target" => 0, "core_count" => 1, "optional_count" => 1, "game_count" => 2
       )
     end
   end
@@ -375,20 +359,26 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
     end
 
     it "lets the Host edit their own Challenge" do
-      edit(as: regular, name: "Autumn of Final Fantasy", pool: { target: 3 })
+      edit(as: regular, name: "Autumn of Final Fantasy", pool: { core_game_ids: [ ff7.game_id ], optional_target: 0 })
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("name" => "Autumn of Final Fantasy", "updated_by" => regular.user_id)
-      expect(json.dig("data", "pool")).to include("target" => 3,
+      expect(json.dig("data", "pool")).to include("optional_target" => 0, "core_count" => 1,
         "franchises" => [ a_hash_including("franchise_id" => franchise.franchise_id) ])
     end
 
-    it "refuses other members and Moderators on a member's Challenge" do
+    it "refuses other members on a member's Challenge" do
       edit(as: create(:user, role_regular: true), name: "Mine now")
       expect(response).to have_http_status(:forbidden)
+      expect(json.fetch("message")).to eq("Only the Host or a Moderator can edit this Challenge.")
+    end
 
-      edit(as: moderator, name: "Mine now")
-      expect(response).to have_http_status(:forbidden)
+    it "lets a Moderator edit a member's Challenge" do
+      edit(as: moderator, description: "Fixed a typo.")
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("description" => "Fixed a typo.", "updated_by" => moderator.user_id)
+      expect(json.dig("data", "host", "user_id")).to eq(regular.user_id)
     end
 
     it "lets any Moderator edit a club-hosted Challenge" do
@@ -417,27 +407,28 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
     context "once a Run exists" do
       before { create(:challenge_run, challenge: challenge) }
 
-      it "refuses changes to the rules" do
+      it "refuses changes to the rules, but not to the Pool" do
         [
           { schedule: "seasonal", season: { start: "09-22", end: "12-20" } },
-          { pool: { target: 5 } },
-          { pool: { excluded_game_ids: [ ff7.game_id ] } },
           { challenge_format: "slots" }
         ].each do |change|
           edit(as: regular, **change)
           expect(response.status).to be_in([ 409, 422 ]), "#{change} got #{response.status}"
         end
 
-        edit(as: regular, pool: { target: 5 })
+        edit(as: regular, schedule: "seasonal", season: { start: "09-22", end: "12-20" })
         expect(response).to have_http_status(:conflict)
-        expect(json).to include("error" => "rules_locked", "fields" => [ "pool" ])
+        expect(json).to include("error" => "rules_locked", "fields" => %w[schedule season])
         expect(json.fetch("message")).to include("Name, description and end date stay editable")
-        expect(challenge.reload.pool_target).to eq(2)
+
+        edit(as: regular, pool: { core_game_ids: [ ff7.game_id ], optional_target: 0 })
+        expect(response).to have_http_status(:ok)
+        expect(challenge.reload.pool_optional_target).to eq(0)
       end
 
       it "keeps name, description and end date editable, and accepts the rules sent back unchanged" do
         edit(as: regular, name: "Renamed", description: "New words", ends_on: "2027-01-31",
-          schedule: "always_open", challenge_format: "pool", pool: { franchise_ids: [ franchise.franchise_id ], target: 2 })
+          schedule: "always_open", challenge_format: "pool", pool: { franchise_ids: [ franchise.franchise_id ], optional_target: 1 })
 
         expect(response).to have_http_status(:ok)
         expect(json.fetch("data")).to include("name" => "Renamed", "description" => "New words", "ends_on" => "2027-01-31")
@@ -623,7 +614,7 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       create(:game_image, game: ff7, kind: "artwork")
       cover = create(:game_image, game: in_pool("Xenogears"), kind: "cover")
       create_challenge(as: regular, pool: { franchise_ids: [ franchise.franchise_id ],
-                                            excluded_game_ids: [ ff7.game_id ], target: 1 })
+                                            excluded_game_ids: [ ff7.game_id ], optional_target: 1 })
 
       expect(key_art_url(json.dig("data", "id"))).to eq(cover.url)
     end
@@ -743,7 +734,7 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
   end
 
   describe "POST /api/v1/challenges/pool_preview" do
-    it "resolves franchises, collections, includes and excludes against the GameDB" do
+    it "resolves franchises, collections, Core, Optional and excluded games against the GameDB" do
       collection = create(:gamedb_collection)
       in_collection = create(:game, title: "Crisis Core", collection_id: collection.collection_id,
         initial_release_date: Time.utc(2007, 9, 13))
@@ -751,30 +742,34 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
       spin_off = create(:game, title: "Final Fantasy VII: Ever Crisis")
       GamedbGameFranchise.create!(game: spin_off, franchise: franchise)
       included = create(:game, title: "Chrono Trigger", initial_release_date: Time.utc(1995, 3, 11))
+      optional = create(:game, title: "Xenogears", initial_release_date: Time.utc(1998, 2, 11))
       create(:game, title: "Unrelated")
 
       post "/api/v1/challenges/pool_preview", params: { data: {
         franchise_ids: [ franchise.franchise_id ], collection_ids: [ collection.collection_id ],
-        included_game_ids: [ included.game_id ], excluded_game_ids: [ spin_off.game_id ]
+        core_game_ids: [ included.game_id ], optional_game_ids: [ optional.game_id ],
+        excluded_game_ids: [ spin_off.game_id ]
       } }, headers: auth_headers_for(member), as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(json.fetch("data").map { |g| g.fetch("title") }).to eq([ "Chrono Trigger", "Final Fantasy VII", "Crisis Core" ])
-      expect(json.dig("meta", "count")).to eq(3)
+      expect(json.fetch("data").map { |g| g.fetch("title") }).to eq([ "Chrono Trigger", "Final Fantasy VII", "Xenogears",
+        "Crisis Core" ])
+      expect(json.dig("meta", "count")).to eq(4)
       expect(json.fetch("data").first).to include("game_id" => included.game_id, "cover_url" => nil)
       expect(in_collection.game_id).to be_present
     end
 
-    it "refuses an empty definition and a game both included and excluded" do
+    it "shows an empty draft as no games, and refuses a game both Core and excluded" do
       post "/api/v1/challenges/pool_preview", params: { data: { franchise_ids: [] } }, headers: auth_headers_for(member),
         as: :json
-      expect(response).to have_http_status(:unprocessable_content)
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to eq([])
 
       post "/api/v1/challenges/pool_preview", params: { data: {
-        included_game_ids: [ ff7.game_id ], excluded_game_ids: [ ff7.game_id ]
+        core_game_ids: [ ff7.game_id ], excluded_game_ids: [ ff7.game_id ]
       } }, headers: auth_headers_for(member), as: :json
       expect(response).to have_http_status(:unprocessable_content)
-      expect(json.fetch("message")).to include("both included and excluded")
+      expect(json.fetch("message")).to include("more than one of core, optional and excluded")
     end
   end
 

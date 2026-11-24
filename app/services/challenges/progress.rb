@@ -48,13 +48,18 @@ module Challenges
     # How far a Run is: games In Progress and Cleared, against the `target`
     # number of Cleared games, and whether the goal is reached. A Format
     # whose Runs can be Caught Up (Slots) says whether this one is, and it
-    # is then served too; for the others it is nil.
-    Summary = Data.define(:in_progress, :cleared, :target, :goal_reached, :caught_up) do
-      def initialize(caught_up: nil, **) = super
+    # is then served too; for the others it is nil. A Pool splits it into
+    # Core Games (`core`: { cleared, total }) and Optional Games
+    # (`optional`: { cleared, target }), served when set.
+    Summary = Data.define(:in_progress, :cleared, :target, :goal_reached, :caught_up, :core, :optional) do
+      def initialize(caught_up: nil, core: nil, optional: nil, **) = super
 
       def as_json(*)
         json = { in_progress: in_progress, cleared: cleared, target: target }
-        caught_up.nil? ? json : json.merge(caught_up: caught_up)
+        json[:caught_up] = caught_up unless caught_up.nil?
+        json[:core] = core if core
+        json[:optional] = optional if optional
+        json
       end
     end
 
