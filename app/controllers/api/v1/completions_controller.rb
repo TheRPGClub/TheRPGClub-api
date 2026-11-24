@@ -3,12 +3,13 @@
 module Api
   module V1
     class CompletionsController < ApplicationController
+      include GameIdFilter
       include CodedRefusals
 
       feature :game_completions
 
       # The date checks a create or update can be refused with (422 `error`).
-      DATE_REFUSALS = %i[finished_in_future started_after_finished].freeze
+      DATE_REFUSALS = %i[finished_in_future started_after_finished started_in_future].freeze
 
       before_action :require_owner!, only: %i[export update destroy]
       # A Superadmin may also log a Game Completion for another member (the
@@ -217,8 +218,9 @@ module Api
       #                    `completed_at` (the bot's `year: "unknown"` case)
       # - `q`              case-insensitive game-title substring
       # - `completed_after` / `completed_before`  inclusive `completed_at` range
+      #                    (a date-only value covers that whole club day)
       def filtered_completions(scope)
-        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
+        scope = by_game(scope)
         scope = scope.where(platform_id: params[:platform_id]) if params[:platform_id].present?
 
         if params[:year].present?
@@ -235,9 +237,24 @@ module Api
           scope = scope.where(gamedb_game_id: titles)
         end
 
-        scope = scope.where("completed_at >= ?", params[:completed_after]) if params[:completed_after].present?
-        scope = scope.where("completed_at <= ?", params[:completed_before]) if params[:completed_before].present?
+        if params[:completed_after].present?
+          scope = scope.where("completed_at >= ?", range_bound(params[:completed_after], :beginning_of_day))
+        end
+        if params[:completed_before].present?
+          scope = scope.where("completed_at <= ?", range_bound(params[:completed_before], :end_of_day))
+        end
         scope
+      end
+
+      # A date-only `completed_after` / `completed_before` is a whole club day
+      # (completion days are stored at noon club time); a timestamp is a moment.
+      def range_bound(value, edge)
+        text = value.to_s.strip
+        return value unless ClubDay::DATE_ONLY.match?(text)
+
+        Date.iso8601(text).in_time_zone(ClubDay::TIME_ZONE).public_send(edge)
+      rescue Date::Error
+        value
       end
 
       # Renders 422 `invalid_year` / `invalid_platform_id` (the gotm_rounds

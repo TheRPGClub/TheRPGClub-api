@@ -3,6 +3,8 @@
 module Api
   module V1
     class CollectionsController < ApplicationController
+      include GameIdFilter
+
       feature :collection
 
       before_action :require_owner!, only: %i[create update destroy]
@@ -113,7 +115,7 @@ module Api
         end
 
         scope = scope.where(ownership_type: params[:ownership_type]) if params[:ownership_type].present?
-        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
+        scope = by_game(scope)
         scope
       end
 

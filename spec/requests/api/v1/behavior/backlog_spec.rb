@@ -37,6 +37,18 @@ RSpec.describe "api/v1/backlog behavior", type: :request do
       expect(json.dig("meta", "count")).to eq(1)
     end
 
+    it "returns an empty list for a game_id that isn't an integer" do
+      create(:backlog_entry, user: owner)
+
+      [ "abc", "12abc", "1.5" ].each do |bad|
+        get "/api/v1/users/#{owner.user_id}/backlog", params: { game_id: bad }, headers: service_headers
+
+        expect(response).to have_http_status(:ok)
+        expect(json.fetch("data")).to eq([])
+        expect(json.dig("meta", "count")).to eq(0)
+      end
+    end
+
     it "requires authentication" do
       get "/api/v1/users/#{owner.user_id}/backlog"
 

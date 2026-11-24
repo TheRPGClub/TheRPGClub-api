@@ -176,7 +176,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
     it "auto-skips a row matching an existing completion with nothing to update" do
       game = game_on("Inside #{tag}", windows)
       create(:completion, user: owner, game: game, completion_type: "Main Story",
-        completed_at: Time.utc(2020, 1, 2), final_playtime_hrs: 4.2)
+        completed_at: Date.new(2020, 1, 2), final_playtime_hrs: 4.2)
       skipped = item(game_title: "Inside #{tag}", completion_type: "Main Story",
         completed_at: Time.utc(2020, 1, 2), playtime_hrs: 4.5)
 
@@ -189,7 +189,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
     it "asks whether it is the same completion when both dates differ" do
       game = game_on("Limbo #{tag}", windows)
       existing = create(:completion, user: owner, game: game, completion_type: "Main Story",
-        completed_at: Time.utc(2019, 6, 1), final_playtime_hrs: nil)
+        completed_at: Date.new(2019, 6, 1), final_playtime_hrs: nil)
       row = item(game_title: "Limbo #{tag}", completion_type: "Completionist",
         completed_at: Time.utc(2023, 6, 1), playtime_hrs: 8)
 
@@ -481,7 +481,7 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
     let(:game) { game_on("Update #{tag}", windows) }
     let!(:existing) do
       create(:completion, user: owner, game: game, completion_type: "Main Story",
-        completed_at: Time.utc(2019, 1, 1), final_playtime_hrs: 5)
+        completed_at: Date.new(2019, 1, 1), final_playtime_hrs: 5)
     end
     let(:row) do
       item(gamedb_game_id: game.game_id, completion_id: existing.completion_id, completion_type: "Completionist",

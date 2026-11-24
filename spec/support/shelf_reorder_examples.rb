@@ -113,6 +113,28 @@ RSpec.shared_examples "a reorderable shelf list" do
       expect(json.fetch("error")).to eq("invalid_position")
     end
 
+    it "locks the member's whole list before it writes the entry (no deadlock between two moves)" do
+      statements = []
+      track = ->(*, payload) { statements << payload[:sql] if payload[:sql].match?(/\A\s*(SELECT|UPDATE)/i) }
+      ActiveSupport::Notifications.subscribed(track, "sql.active_record") do
+        patch entry_path(entries[2]), params: { data: { position: 1, note: "locked first" } },
+          headers: auth_headers_for(owner), as: :json
+      end
+
+      expect(response).to have_http_status(:ok)
+      first_lock = statements.index { |sql| sql.include?("FOR UPDATE") }
+      first_write = statements.index { |sql| sql.match?(/\A\s*UPDATE/i) }
+      expect(first_lock).not_to be_nil
+      expect(first_lock).to be < first_write
+    end
+
+    it "404s an unknown entry even with a bad position" do
+      patch entry_path(entries[0]).sub(/\d+\z/, "999999999"), params: { data: { position: 0 } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+
     it "forbids a non-owner" do
       move(entries[0], 4, headers: auth_headers_for(other_user))
 
