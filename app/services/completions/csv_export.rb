@@ -7,11 +7,13 @@ module Completions
   # `/game-completion export` produces (`completion-export.service.ts`): same
   # columns in the same order, the completion date as a UTC `YYYY-MM-DD`, and
   # `created_at` as a millisecond ISO-8601 UTC timestamp (JS `toISOString`).
+  # `Started Date` (spec api#451) is appended last so a reader of the bot's
+  # columns by position still lines up.
   # Quoting is RFC 4180 via Ruby's CSV, so fields are quoted only when they
   # contain a comma, quote or line break.
   class CsvExport
     HEADER = [ "ID", "Game ID", "Title", "Type", "Platform ID", "Completed Date", "Playtime (Hours)", "Note",
-               "Created At" ].freeze
+               "Created At", "Started Date" ].freeze
 
     def initialize(completions)
       @completions = completions
@@ -36,7 +38,8 @@ module Completions
         completion.completed_at&.utc&.to_date&.iso8601,
         playtime(completion.final_playtime_hrs),
         completion.note,
-        completion.created_at&.utc&.iso8601(3)
+        completion.created_at&.utc&.iso8601(3),
+        completion.started_at&.iso8601
       ]
     end
 

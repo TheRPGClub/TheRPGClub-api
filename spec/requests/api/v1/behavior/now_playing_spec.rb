@@ -287,6 +287,38 @@ RSpec.describe "api/v1/now_playing behavior", type: :request do
       expect(entry.reload.gamedb_game_id).to eq(original_game_id)
     end
 
+    it "lets the owner correct when they started playing" do
+      entry = create(:now_playing_entry, user: owner)
+
+      patch "/api/v1/now_playing/#{entry.entry_id}",
+        params: { data: { added_at: "2026-11-09" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(entry.reload.added_at.utc.to_date).to eq(Date.new(2026, 11, 9))
+      expect(json.dig("data", "added_at")).to start_with("2026-11-09")
+    end
+
+    it "accepts today in club time as the start" do
+      entry = create(:now_playing_entry, user: owner)
+
+      patch "/api/v1/now_playing/#{entry.entry_id}",
+        params: { data: { added_at: ClubDay.today.iso8601 } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "422s added_in_future for a start after today" do
+      entry = create(:now_playing_entry, user: owner)
+      before = entry.added_at
+
+      patch "/api/v1/now_playing/#{entry.entry_id}",
+        params: { data: { added_at: (ClubDay.today + 2).iso8601 } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("added_in_future")
+      expect(entry.reload.added_at).to eq(before)
+    end
+
     it "allows the service" do
       entry = create(:now_playing_entry, user: owner)
 

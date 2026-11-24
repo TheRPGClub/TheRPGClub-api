@@ -108,6 +108,8 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(run_json(run_id).dig("progress", "cleared")).to eq(0)
 
+      # A Game Completion can't be finished after today (spec api#451).
+      travel_to(Time.zone.parse("2026-10-16 12:00:00 -04:00"))
       patch "/api/v1/completions/#{completion_id}", params: { data: { completed_at: "2026-10-16" } },
         headers: auth_headers_for(member), as: :json
       expect(run_json(run_id).dig("progress", "cleared")).to eq(1)
@@ -187,6 +189,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(run_json(run_id).dig("progress", "cleared")).to eq(0)
 
       log_completion(ff8, on: "2026-06-21")
+      travel_to(Time.zone.parse("2026-09-23 12:00:00 -04:00"))
       log_completion(ff9, on: "2026-09-22")
       log_completion(ff7, on: "2026-09-23")
 
@@ -289,6 +292,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       run_id = start_run(pool_challenge(target: 1))
       log_completion(ff7, on: "2026-10-15")
 
+      travel_to(Time.zone.parse("2026-10-16 12:00:00 -04:00"))
       log_completion(ff8, on: "2026-10-16")
 
       expect(run_json(run_id)).to include("status" => "finished")
