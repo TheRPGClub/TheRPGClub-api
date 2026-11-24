@@ -225,7 +225,7 @@ module Api
 
       def render_challenge(challenge, status: :ok, meta: nil)
         challenge = reload(challenge)
-        body = { data: ChallengeResource.new(challenge, params: { detail: true }).serializable_hash }
+        body = { data: ChallengeResource.new(challenge, params: { detail: true, actor: actor }).serializable_hash }
         body[:meta] = meta if meta
         render json: body, status: status
       end

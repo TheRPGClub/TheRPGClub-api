@@ -11,6 +11,9 @@
 # (Challenges::KeyArt; one query, so lists leave it null). Lists pass
 # `params[:overview]` (Challenges::Overview.of the page) for `run_count`,
 # `finished_count` and `pool_games`; a single Challenge reads its own.
+# `params[:actor]` (a Challenges::Actor; the show passes it) adds
+# `pending_proposals` for a Pool Challenge the actor decides Pool Proposals
+# for.
 class ChallengeResource
   include BaseResource
 
@@ -73,6 +76,14 @@ class ChallengeResource
 
   attribute :pool_games do |challenge|
     overview_of(challenge).pool_games_of(challenge)
+  end
+
+  attribute :pending_proposals do |challenge|
+    actor = params[:actor]
+    next nil unless actor && challenge.challenge_format == Challenges::Formats::Pool::KEY
+    next nil unless actor.can_decide_proposals?(challenge)
+
+    ChallengePoolProposal.pending.where(challenge_id: challenge.id).count
   end
 
   attribute :key_art_url do |challenge|

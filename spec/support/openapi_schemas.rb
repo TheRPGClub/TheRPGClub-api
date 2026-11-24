@@ -1193,12 +1193,32 @@ module OpenapiSchemas
                        "without either, and for Slots and Assignment Challenges (draw the Format's picture in the " \
                        "tint instead). Show and announcements only; null in lists."
         ),
+        pending_proposals: int(nullable: true).merge(
+          description: "A Pool Challenge's pending Pool Proposals, for the Host (staff for a club-hosted one); " \
+                       "null for other viewers, in lists, in bot payloads and for Slots and Assignment."
+        ),
         hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
         ended_at: ts(nullable: true).merge(
           description: "When an Always Open Challenge reached its end date and Closed for good (set the day after " \
                        "ends_on); its schedule and end date can no longer change. Null otherwise."
         ),
         created_by: str(nullable: true), updated_by: str(nullable: true), created_at: ts, updated_at: ts
+      ),
+      ChallengePoolProposal: obj(
+        _description: "A Pool Proposal (ticket api#447): a member asked for a game to join a Pool Challenge. " \
+                      "Pending until the Host (staff for a club-hosted Challenge) accepts it as a Core or " \
+                      "Optional Game, or declines it.",
+        id: int, challenge_id: int, game: ref("ChallengePostGame"),
+        proposer: ref("ChallengeMember"),
+        note: str(nullable: true, maxLength: ChallengePoolProposal::NOTE_MAX).merge(
+          description: "The proposer's note to whoever decides; null for none."
+        ),
+        status: str(enum: ChallengePoolProposal::STATUSES),
+        accepted_as: str(nullable: true, enum: ChallengePoolProposal::ACCEPTED_AS).merge(
+          description: "What it joined the Pool as; null unless accepted."
+        ),
+        decider: ref("ChallengeMember", nullable: true).merge(description: "Who accepted or declined it."),
+        decided_at: ts(nullable: true), created_at: ts, updated_at: ts
       ),
       ChallengeTint: obj(
         _description: "The Challenge tint: the one colour it wears on the bot's posts and the website, as a pair " \
@@ -1572,10 +1592,18 @@ module OpenapiSchemas
                       "their `recipient` (with `edition` and `days_left`), sent only to members who keep Challenge " \
                       "DMs on; `pool_goal_changed`, a Pool edit added Core Games or raised the Optional target " \
                       "of the member's Active Run (with `run`, `added_core_games` and `optional_target`), one per " \
-                      "save, sent only to members who keep Challenge DMs on.",
-        _required: %w[event user_id challenge feature_key],
-        event: str(enum: %w[season_ending left_out_of_draw pick_reminder pool_goal_changed]),
-        user_id: str.merge(description: "The member to DM."),
+                      "save, sent only to members who keep Challenge DMs on; `pool_proposal`, a member proposed a " \
+                      "game for the Host's Pool (with `proposal`, its note included), sent only to a Host who keeps " \
+                      "Challenge DMs on, or, for a club-hosted Challenge, queued once with `club_hosted: true` and " \
+                      "no `user_id`: post it in #dev (BOT_DEV_CHANNEL_ID) with links to the Challenge instead of " \
+                      "DMing; `pool_proposal_accepted`, the member's proposal was accepted (with `proposal`, " \
+                      "`accepted_as` saying as what), sent only to members who keep Challenge DMs on.",
+        _required: %w[event challenge feature_key],
+        event: str(enum: %w[season_ending left_out_of_draw pick_reminder pool_goal_changed pool_proposal
+          pool_proposal_accepted]),
+        user_id: str.merge(description: "The member to DM. Absent only on a club-hosted `pool_proposal`."),
+        club_hosted: bool.merge(description: "pool_proposal only: true to post it in #dev, with no `user_id`."),
+        proposal: ref("ChallengePoolProposal").merge(description: "pool_proposal and pool_proposal_accepted."),
         challenge: ref("Challenge"),
         run: ref("ChallengeRun").merge(description: "season_ending and pool_goal_changed: the member's Run, as " \
                                                      "GET /api/v1/challenge_runs/{id} serves it."),

@@ -526,6 +526,12 @@ Rails.application.routes.draw do
           get "pool_progress"
         end
       end
+      # Pool Proposals (ticket api#447): members propose games for a Pool;
+      # the Host (staff for a club-hosted Challenge) accepts or declines.
+      get  "challenges/:challenge_id/pool_proposals", to: "challenge_pool_proposals#index"
+      post "challenges/:challenge_id/pool_proposals", to: "challenge_pool_proposals#create"
+      post "challenges/:challenge_id/pool_proposals/:id/accept", to: "challenge_pool_proposals#accept"
+      post "challenges/:challenge_id/pool_proposals/:id/decline", to: "challenge_pool_proposals#decline"
       # Runs (ticket #378): start one of a Challenge, list a Challenge's
       # Runs, read, abandon and delete one; a member's Runs are under users.
       # A slot move (ticket #381) puts a game of a Slots Run in another year.

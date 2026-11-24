@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -185,6 +185,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_130000) do
     t.string "inclusion", limit: 8, null: false
     t.datetime "added_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.check_constraint "inclusion::text = ANY (ARRAY['core'::character varying, 'optional'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
+  end
+
+  create_table "challenge_pool_proposals", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "game_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.string "note", limit: 280
+    t.string "status", limit: 16, default: "pending", null: false
+    t.string "accepted_as", limit: 16
+    t.string "decided_by", limit: 30
+    t.timestamptz "decided_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["challenge_id", "game_id"], name: "ux_challenge_pool_proposals_one_pending", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["challenge_id", "status", "created_at"], name: "ix_challenge_pool_proposals_challenge"
+    t.index ["user_id"], name: "ix_challenge_pool_proposals_user"
+    t.check_constraint "(status::text = 'accepted'::text) = (accepted_as IS NOT NULL) AND (accepted_as IS NULL OR (accepted_as::text = ANY (ARRAY['core'::character varying, 'optional'::character varying]::text[])))", name: "ck_challenge_pool_proposals_accepted_as"
+    t.check_constraint "(status::text = 'pending'::text) = (decided_at IS NULL)", name: "ck_challenge_pool_proposals_decided"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'accepted'::character varying, 'declined'::character varying]::text[])", name: "ck_challenge_pool_proposals_status"
   end
 
   create_table "challenge_run_entries", force: :cascade do |t|
@@ -1634,6 +1653,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_130000) do
   add_foreign_key "challenge_pool_franchises", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", name: "fk_challenge_pool_franchises_franchise", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "challenges", name: "fk_challenge_pool_games_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_games_game", on_delete: :cascade
+  add_foreign_key "challenge_pool_proposals", "challenges", name: "fk_challenge_pool_proposals_challenge", on_delete: :cascade
+  add_foreign_key "challenge_pool_proposals", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_proposals_game", on_delete: :cascade
+  add_foreign_key "challenge_pool_proposals", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_pool_proposals_user", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "challenge_runs", column: "run_id", name: "fk_challenge_run_entries_run", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_run_entries_game", on_delete: :cascade
   add_foreign_key "challenge_run_entries", "user_game_completions", column: "completion_id", primary_key: "completion_id", name: "fk_challenge_run_entries_completion", on_delete: :nullify
