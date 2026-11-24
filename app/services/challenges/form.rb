@@ -17,9 +17,9 @@ module Challenges
   #                      so it stays editable
   #
   # On edit, only the keys given change. Once the Challenge has any Run its
-  # rules (Format, schedule, Season and the Format's settings) are locked: a
-  # change to them raises Challenges::RulesLocked, while sending them
-  # unchanged is fine. Name, description and end date stay editable, except
+  # rules (Format, schedule, Season and the Format's locked settings: all of
+  # Slots and Assignment, none of a Pool) are locked: a change to them raises
+  # Challenges::RulesLocked, while sending them unchanged is fine. Name, description and end date stay editable, except
   # that an Always Open Challenge that reached its end date (`ended_at`, set
   # by the lifecycle job) is Closed for good, so its schedule and end date no
   # longer change. Raises Challenges::Invalid for anything the rules refuse.
@@ -50,12 +50,14 @@ module Challenges
         assign_schedule
         refuse_reopening if challenge.ended_at
         format = Formats.fetch(challenge.challenge_format)
-        settings = format.parse(@data[format::KEY], base: stored_settings(format))
+        before_settings = stored_settings(format)
+        settings = format.parse(@data[format::KEY], base: before_settings)
         refuse_invalid(format.errors(settings, challenge))
         check_unlocked(before, rules(format, settings)) if locked
 
         challenge.save!
         format.apply!(challenge, settings)
+        edited(format, before_settings, settings) if locked
       end
       challenge
     end
@@ -143,6 +145,12 @@ module Challenges
       end
 
       challenge.attributes.slice(*RULE_FIELDS.keys).merge(format::KEY => format.rules(settings))
+    end
+
+    # A Format that follows up on edits to a Challenge with Runs (a Pool
+    # refreshes them and DMs a grown goal) answers edited!.
+    def edited(format, before, after)
+      format.edited!(challenge, before, after) if before && format.respond_to?(:edited!)
     end
 
     def check_unlocked(before, after)

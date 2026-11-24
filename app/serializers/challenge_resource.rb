@@ -6,7 +6,8 @@
 #
 # Load Challenges through ChallengeResource.preloaded so the Host, the
 # Pool's names and an Assignment's Editions come in a few queries.
-# `params[:detail]` (the show) adds the Pool's `game_count` and `key_art_url`
+# `params[:detail]` (the show) adds the Pool's Optional Games and counts
+# (Challenges::Formats::Pool.as_json) and `key_art_url`
 # (Challenges::KeyArt; one query, so lists leave it null). Lists pass
 # `params[:overview]` (Challenges::Overview.of the page) for `run_count`,
 # `finished_count` and `pool_games`; a single Challenge reads its own.
@@ -80,7 +81,7 @@ class ChallengeResource
 
   attributes :hidden, :ended_at, :created_by, :updated_by, :created_at, :updated_at
 
-  PRELOADS = [ :host, :editions, { pool_franchises: :franchise, pool_collections: :collection, pool_games: :game } ]
+  PRELOADS = [ :host, :editions, { pool_franchises: :franchise, pool_collections: :collection, pool_games: { game: :images } } ]
     .freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)

@@ -23,7 +23,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
   # A Pool Challenge of the Final Fantasy franchise. The factory also puts
   # one game of its own in the Pool by hand.
   def pool_challenge(target: 2, **attrs)
-    create(:challenge, pool_target: target, **attrs).tap do |challenge|
+    create(:challenge, pool_optional_target: target, **attrs).tap do |challenge|
       ChallengePoolFranchise.create!(challenge: challenge, franchise: franchise)
     end
   end
@@ -63,7 +63,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       entry_id = start_playing(ff7)
       start_playing(outside)
 
-      expect(run_json(run_id).fetch("progress")).to eq("in_progress" => 1, "cleared" => 0, "target" => 2)
+      expect(run_json(run_id).fetch("progress")).to include("in_progress" => 1, "cleared" => 0, "target" => 2)
       expect(entries(run_id)).to eq([ [ "Final Fantasy VII", "in_progress" ] ])
 
       delete "/api/v1/now_playing/#{entry_id}", headers: auth_headers_for(member)
@@ -91,7 +91,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       log_completion(outside, on: "2026-10-15")
 
       run = run_json(run_id)
-      expect(run.fetch("progress")).to eq("in_progress" => 0, "cleared" => 1, "target" => 2)
+      expect(run.fetch("progress")).to include("in_progress" => 0, "cleared" => 1, "target" => 2)
       expect(run.fetch("entries")).to eq([
         { "game_id" => ff7.game_id, "title" => "Final Fantasy VII", "state" => "cleared",
           "cleared_on" => "2026-10-15", "completion_id" => completion_id, "slot_year" => nil,
@@ -132,7 +132,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
 
     it "counts one game toward each of the member's Runs it fits" do
       fall = start_run(pool_challenge)
-      other = start_run(create(:challenge).tap { |c| ChallengePoolGame.create!(challenge: c, game: ff9, inclusion: "include") })
+      other = start_run(create(:challenge).tap { |c| ChallengePoolGame.create!(challenge: c, game: ff9, inclusion: "optional") })
 
       log_completion(ff9, on: "2026-10-15")
 
@@ -217,7 +217,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       run = run_json(run_id)
       expect(run).to include("status" => "finished")
       expect(run.fetch("ended_at")).to be_present
-      expect(run.fetch("progress")).to eq("in_progress" => 0, "cleared" => 2, "target" => 2)
+      expect(run.fetch("progress")).to include("in_progress" => 0, "cleared" => 2, "target" => 2)
 
       job = BotJob.where(kind: "challenge_announce").last
       expect(job.requested_by_user_id).to eq(member.user_id)
@@ -225,7 +225,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(job.payload.dig("challenge", "name")).to eq("Fall of Final Fantasy")
       expect(job.payload.fetch("run")).to include("id" => run_id, "status" => "finished")
       expect(job.payload.dig("run", "user", "user_id")).to eq(member.user_id)
-      expect(job.payload.dig("run", "progress")).to eq("in_progress" => 0, "cleared" => 2, "target" => 2)
+      expect(job.payload.dig("run", "progress")).to include("in_progress" => 0, "cleared" => 2, "target" => 2)
     end
 
     it "announces a Finished Run only once" do
@@ -295,13 +295,15 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(run_json(run_id).dig("progress", "cleared")).to eq(2)
     end
 
-    it "takes every game in the Pool as the target \"all\"" do
-      challenge = pool_challenge(target: nil)
+    it "needs every Core Game besides the Optional target" do
+      challenge = pool_challenge(target: 1)
+      challenge.pool_games.sole.update!(inclusion: "core")
       run_id = start_run(challenge)
       [ ff7, ff8, ff9 ].each { |game| log_completion(game, on: "2026-10-15") }
 
       expect(run_json(run_id)).to include("status" => "active")
-      expect(run_json(run_id).fetch("progress")).to include("cleared" => 3, "target" => 4)
+      expect(run_json(run_id).fetch("progress")).to include("cleared" => 3, "target" => 2,
+        "core" => { "cleared" => 0, "total" => 1 }, "optional" => { "cleared" => 3, "target" => 1 })
 
       log_completion(challenge.pool_games.sole.game, on: "2026-10-15")
       expect(run_json(run_id)).to include("status" => "finished")
@@ -353,7 +355,7 @@ RSpec.describe "api/v1/challenge run progress behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data").map { |run| run.values_at("id", "status") })
         .to eq([ [ run_id, "active" ], [ finished.id, "finished" ] ])
-      expect(json.dig("data", 0, "progress")).to eq("in_progress" => 1, "cleared" => 0, "target" => 2)
+      expect(json.dig("data", 0, "progress")).to include("in_progress" => 1, "cleared" => 0, "target" => 2)
 
       get "/api/v1/users/#{member.user_id}/challenge_runs", params: { status: "finished" }, headers: service_headers
       expect(json.fetch("data").map { |run| run["id"] }).to eq([ finished.id ])

@@ -62,7 +62,7 @@ RSpec.describe "api/v1/challenges Counts past play behavior", type: :request do
     it "is dropped when a Run-less Challenge switches to another Format" do
       create_challenge(counts_past_play: true)
       id = json.dig("data", "id")
-      pool = { included_game_ids: [ create(:game).game_id ], target: 1 }
+      pool = { core_game_ids: [ create(:game).game_id ] }
 
       patch "/api/v1/challenges/#{id}", params: { data: { challenge_format: "pool", pool: pool, schedule: "seasonal",
                                                           season: { start: "06-21", end: "09-22" } } },
@@ -99,7 +99,7 @@ RSpec.describe "api/v1/challenges Counts past play behavior", type: :request do
   # A Slots Challenge from 1995 to 1999 that counts past play unless told
   # otherwise.
   def slots(first = 1995, last = 1999, counts_past_play: true, **attrs)
-    create(:challenge, challenge_format: "slots", pool_target: nil, slots_first_year: first, slots_last_year: last,
+    create(:challenge, challenge_format: "slots", slots_first_year: first, slots_last_year: last,
       counts_past_play: counts_past_play, **attrs)
   end
 

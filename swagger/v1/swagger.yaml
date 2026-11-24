@@ -3925,15 +3925,10 @@ components:
     ChallengePool:
       type: object
       properties:
-        target:
-          oneOf:
-          - type: integer
-            minimum: 1
-          - type: string
-            enum:
-            - all
-          description: Cleared games needed to Finish, or "all" for every game in
-            the Pool.
+        optional_target:
+          type: integer
+          minimum: 0
+          description: Optional Games a Run must Clear besides every Core Game.
         franchises:
           type: array
           items:
@@ -3958,8 +3953,17 @@ components:
             required:
             - collection_id
             - name
-        included_games:
+          description: IGDB collections, shown to members as Series.
+        core_games:
           type: array
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: Oldest release first.
+        optional_games:
+          type: array
+          nullable: true
+          description: Oldest release first. Show and announcements only; null in
+            lists.
           items:
             type: object
             properties:
@@ -3967,9 +3971,27 @@ components:
                 type: integer
               title:
                 type: string
+              cover_url:
+                type: string
+                nullable: true
+              source:
+                type: string
+                enum:
+                - hand
+                - franchise
+                - series
+                description: 'Where it comes from: picked by hand, else its first
+                  source.'
+              new:
+                type: boolean
+                description: Joined the Pool in the last 14 days, after the Challenge
+                  was created. A Franchise link from before link times were kept,
+                  and a Series, never counts.
             required:
             - game_id
             - title
+            - source
+            - new
         excluded_games:
           type: array
           items:
@@ -3982,15 +4004,24 @@ components:
             required:
             - game_id
             - title
+        core_count:
+          type: integer
+        optional_count:
+          type: integer
+          nullable: true
+          description: Show and announcements only.
         game_count:
           type: integer
           nullable: true
-          description: Games in the Pool now. Show and announcements only.
+          description: Core and Optional Games now. Show and announcements only.
       required:
-      - target
-      description: A Pool Challenge's settings. A game is in the Pool if it belongs
-        to a chosen franchise or collection and is not excluded, or if it is included
-        by hand; it is resolved against the GameDB when read.
+      - optional_target
+      - core_count
+      description: 'A Pool Challenge''s settings (docs/adr/0014): a Run Finishes by
+        Clearing every Core Game plus `optional_target` Optional Games. Optional Games
+        are the games of the sources (Franchises, and Series, which the API calls
+        collections) less Add-ons, plus those picked by hand, less the excluded and
+        Core games; resolved against the GameDB when read.'
     ChallengeSlots:
       type: object
       properties:
@@ -4647,8 +4678,32 @@ components:
                 for Slots, the slots filled.
             target:
               type: integer
-              description: Cleared games needed to Finish; for Slots, the Run's slots
-                so far.
+              description: Cleared games needed to Finish (for a Pool, its Core Games
+                plus the Optional target); for Slots, the Run's slots so far.
+            core:
+              type: object
+              properties:
+                cleared:
+                  type: integer
+                total:
+                  type: integer
+              required:
+              - cleared
+              - total
+              description: 'Pool only (absent otherwise): Core Games Cleared, of how
+                many. All are needed.'
+            optional:
+              type: object
+              properties:
+                cleared:
+                  type: integer
+                target:
+                  type: integer
+              required:
+              - cleared
+              - target
+              description: 'Pool only (absent otherwise): Optional Games Cleared,
+                every one counted, and how many are needed.'
             caught_up:
               type: boolean
               description: 'Slots only (absent otherwise): an Active Run whose range
@@ -5084,6 +5139,7 @@ components:
           - season_ending
           - left_out_of_draw
           - pick_reminder
+          - pool_goal_changed
         user_id:
           type: string
           description: The member to DM.
@@ -5091,8 +5147,27 @@ components:
           "$ref": "#/components/schemas/Challenge"
         run:
           "$ref": "#/components/schemas/ChallengeRun"
-          description: 'season_ending only: the member''s Run, as GET /api/v1/challenge_runs/{id}
-            serves it.'
+          description: 'season_ending and pool_goal_changed: the member''s Run, as
+            GET /api/v1/challenge_runs/{id} serves it.'
+        added_core_games:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ChallengePostGame"
+          description: 'pool_goal_changed only: the Core Games the edit added, oldest
+            release first (empty when only the target rose).'
+        optional_target:
+          type: object
+          properties:
+            from:
+              type: integer
+            to:
+              type: integer
+          required:
+          - from
+          - to
+          nullable: true
+          description: 'pool_goal_changed only: the raised Optional target; null when
+            unchanged.'
         season:
           "$ref": "#/components/schemas/ChallengeSeasonDates"
           description: season_ending only.
@@ -5132,7 +5207,10 @@ components:
         and `minimum`), sent to every member still in the server; `pick_reminder`,
         2 days before an Edition''s pick deadline, a Santa who hasn''t picked for
         their `recipient` (with `edition` and `days_left`), sent only to members who
-        keep Challenge DMs on.'
+        keep Challenge DMs on; `pool_goal_changed`, a Pool edit added Core Games or
+        raised the Optional target of the member''s Active Run (with `run`, `added_core_games`
+        and `optional_target`), one per save, sent only to members who keep Challenge
+        DMs on.'
     DailyFunFactJobPayload:
       type: object
       properties:
@@ -10664,14 +10742,14 @@ paths:
       summary: Create a Challenge
       tags:
       - Challenges
-      description: Regulars, Moderators, Admins and Superadmins (a member without
-        the Regulars role gets 403 "You need the Regulars role to create a Challenge.").
-        The acting member becomes the Host, or the club with `hosted_by_club` (Moderator
-        and above). A name another Challenge already has is allowed and adds a `duplicate_name`
-        warning to `meta.warnings`. Queues a `challenge_announce` bot job (payload
-        ChallengeAnnounceJobPayload, event `challenge_created`). Refusals carry `{
-        error, message }`; `message` is written for members (403 `forbidden`, 422
-        `invalid_challenge`).
+      description: Any member, for a Slots or Pool Challenge; an Assignment Challenge
+        needs a Moderator or above (403 "Only Moderators and above can create an Assignment
+        Challenge."). The acting member becomes the Host, or the club with `hosted_by_club`
+        (Moderator and above). A name another Challenge already has is allowed and
+        adds a `duplicate_name` warning to `meta.warnings`. Queues a `challenge_announce`
+        bot job (payload ChallengeAnnounceJobPayload, event `challenge_created`).
+        Refusals carry `{ error, message }`; `message` is written for members (403
+        `forbidden`, 422 `invalid_challenge`).
       parameters: []
       responses:
         '201':
@@ -10697,8 +10775,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: not a Regular or staff, club-hosted without Moderator, or (bot)
-            `feature_unavailable`
+          description: Assignment or club-hosted without Moderator, or (bot) `feature_unavailable`
           content:
             application/json:
               schema:
@@ -10766,39 +10843,51 @@ paths:
                           example: 02-28
                     pool:
                       type: object
-                      description: The Pool (challenge_format pool). On edit, only
-                        the keys given change.
+                      description: 'The Pool (challenge_format pool): a Run Finishes
+                        by Clearing every Core Game plus `optional_target` Optional
+                        Games. Sources (Franchises and Series) only add Optional Games,
+                        leaving out Add-ons (games with a parent game); a game is
+                        Core only when listed in `core_game_ids` (docs/adr/0014).
+                        Needs at least one Core Game or a target of at least 1, and
+                        the target can''t exceed the Optional Games when saved. A
+                        game may be in only one of the three game lists. On edit,
+                        only the keys given change; none of it is locked once Runs
+                        exist.'
                       properties:
                         franchise_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB franchises whose games are in the Pool.
+                          description: Franchises whose games (not Add-ons) are Optional
+                            Games.
                         collection_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB collections whose games are in the Pool.
-                        included_game_ids:
+                          description: Series (IGDB collections) whose games (not
+                            Add-ons) are Optional Games.
+                        core_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games in the Pool whatever their franchise.
+                          description: 'Core Games: every Run must Clear them.'
+                        optional_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Optional Games picked by hand, whatever their
+                            sources; Add-ons allowed.
                         excluded_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games left out of the chosen franchises and
-                            collections.
-                        target:
-                          oneOf:
-                          - type: integer
-                            minimum: 1
-                          - type: string
-                            enum:
-                            - all
-                          description: Cleared games needed to Finish, or "all" for
-                            every game in the Pool. Required on create.
+                          description: Games kept out though a source has them.
+                        optional_target:
+                          type: integer
+                          minimum: 0
+                          default: 0
+                          description: Optional Games a Run must Clear besides every
+                            Core Game. 0 when left out on create.
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot
@@ -10903,9 +10992,10 @@ paths:
       tags:
       - Challenges
       description: Members. The games a Pool definition resolves to against the GameDB
-        now, oldest release first, paginated, so the bot and the website can show
-        them before saving. 422 `invalid_challenge` for an empty definition, unknown
-        ids, or a game both included and excluded.
+        now, Core and Optional together, oldest release first, paginated, so the bot
+        and the website can show them before saving (an empty definition has none).
+        422 `invalid_challenge` for unknown ids, or a game in more than one of the
+        core, optional and excluded lists.
       parameters:
       - name: page
         in: query
@@ -10949,29 +11039,44 @@ paths:
               properties:
                 data:
                   type: object
-                  description: The Pool (challenge_format pool). On edit, only the
-                    keys given change.
+                  description: 'The Pool (challenge_format pool): a Run Finishes by
+                    Clearing every Core Game plus `optional_target` Optional Games.
+                    Sources (Franchises and Series) only add Optional Games, leaving
+                    out Add-ons (games with a parent game); a game is Core only when
+                    listed in `core_game_ids` (docs/adr/0014). Needs at least one
+                    Core Game or a target of at least 1, and the target can''t exceed
+                    the Optional Games when saved. A game may be in only one of the
+                    three game lists. On edit, only the keys given change; none of
+                    it is locked once Runs exist.'
                   properties:
                     franchise_ids:
                       type: array
                       items:
                         type: integer
-                      description: GameDB franchises whose games are in the Pool.
+                      description: Franchises whose games (not Add-ons) are Optional
+                        Games.
                     collection_ids:
                       type: array
                       items:
                         type: integer
-                      description: GameDB collections whose games are in the Pool.
-                    included_game_ids:
+                      description: Series (IGDB collections) whose games (not Add-ons)
+                        are Optional Games.
+                    core_game_ids:
                       type: array
                       items:
                         type: integer
-                      description: Games in the Pool whatever their franchise.
+                      description: 'Core Games: every Run must Clear them.'
+                    optional_game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Optional Games picked by hand, whatever their sources;
+                        Add-ons allowed.
                     excluded_game_ids:
                       type: array
                       items:
                         type: integer
-                      description: Games left out of the chosen franchises and collections.
+                      description: Games kept out though a source has them.
               required:
               - data
         required: true
@@ -11018,7 +11123,7 @@ paths:
       tags:
       - Challenges
       description: Members. A hidden Challenge is 404 except for Moderators and above
-        and its Host. Adds the Pool's `game_count` and `run_count`.
+        and its Host. Adds the Pool's Optional Games and counts, and `run_count`.
       parameters:
       - name: acting_user_id
         in: query
@@ -11047,13 +11152,17 @@ paths:
       - Challenges
       description: 'The Host, for their own; any Moderator or above, for a club-hosted
         one. Only the keys given change. Once the Challenge has any Run its rules
-        are locked: a change to the Format, schedule, Season, Pool or slot range is
-        409 `rules_locked` with the `fields` it would change (sending them unchanged
-        is fine). Name, description and end date stay editable, except that an Always
+        are locked: a change to the Format, schedule, Season or slot range is 409
+        `rules_locked` with the `fields` it would change (sending them unchanged is
+        fine). Name, description and end date stay editable, except that an Always
         Open Challenge that reached its end date is Closed for good (`ended_at`):
-        a change to its schedule or end date is 422 `invalid_challenge`. Refusals
-        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
-        422 `invalid_challenge`).'
+        a change to its schedule or end date is 422 `invalid_challenge`. A Pool''s
+        games, sources and Optional target stay editable with Runs: the Runs are then
+        brought up to date (one that now meets the goal Finishes), and a save that
+        adds Core Games or raises the target queues one `challenge_dm` `pool_goal_changed`
+        per member with an Active Run who keeps Challenge DMs on. Refusals carry `{
+        error, message }`; `message` is written for members (403 `forbidden`, 422
+        `invalid_challenge`).'
       parameters: []
       responses:
         '200':
@@ -11092,8 +11201,8 @@ paths:
                       - challenge_format
                       - schedule
                       - season
-                      - pool
                       - slots
+                      - assignment
         '422':
           description: invalid_challenge, including a new schedule or end date for
             a Challenge Closed for good
@@ -11156,39 +11265,51 @@ paths:
                           example: 02-28
                     pool:
                       type: object
-                      description: The Pool (challenge_format pool). On edit, only
-                        the keys given change.
+                      description: 'The Pool (challenge_format pool): a Run Finishes
+                        by Clearing every Core Game plus `optional_target` Optional
+                        Games. Sources (Franchises and Series) only add Optional Games,
+                        leaving out Add-ons (games with a parent game); a game is
+                        Core only when listed in `core_game_ids` (docs/adr/0014).
+                        Needs at least one Core Game or a target of at least 1, and
+                        the target can''t exceed the Optional Games when saved. A
+                        game may be in only one of the three game lists. On edit,
+                        only the keys given change; none of it is locked once Runs
+                        exist.'
                       properties:
                         franchise_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB franchises whose games are in the Pool.
+                          description: Franchises whose games (not Add-ons) are Optional
+                            Games.
                         collection_ids:
                           type: array
                           items:
                             type: integer
-                          description: GameDB collections whose games are in the Pool.
-                        included_game_ids:
+                          description: Series (IGDB collections) whose games (not
+                            Add-ons) are Optional Games.
+                        core_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games in the Pool whatever their franchise.
+                          description: 'Core Games: every Run must Clear them.'
+                        optional_game_ids:
+                          type: array
+                          items:
+                            type: integer
+                          description: Optional Games picked by hand, whatever their
+                            sources; Add-ons allowed.
                         excluded_game_ids:
                           type: array
                           items:
                             type: integer
-                          description: Games left out of the chosen franchises and
-                            collections.
-                        target:
-                          oneOf:
-                          - type: integer
-                            minimum: 1
-                          - type: string
-                            enum:
-                            - all
-                          description: Cleared games needed to Finish, or "all" for
-                            every game in the Pool. Required on create.
+                          description: Games kept out though a source has them.
+                        optional_target:
+                          type: integer
+                          minimum: 0
+                          default: 0
+                          description: Optional Games a Run must Clear besides every
+                            Core Game. 0 when left out on create.
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot

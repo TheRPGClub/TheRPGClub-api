@@ -34,7 +34,8 @@ RSpec.describe "api/v1/challenge runs behavior", type: :request do
       expect(json.fetch("data")).to include(
         "status" => "active", "ended_at" => nil,
         "window" => { "starts_on" => "2026-10-15", "ends_on" => nil },
-        "progress" => { "in_progress" => 0, "cleared" => 0, "target" => 1 }, "entries" => []
+        "progress" => { "in_progress" => 0, "cleared" => 0, "target" => 1, "core" => { "cleared" => 0, "total" => 0 },
+                        "optional" => { "cleared" => 0, "target" => 1 } }, "entries" => []
       )
       expect(json.dig("data", "challenge")).to include("id" => challenge.id, "name" => "Fall of Final Fantasy")
       expect(json.dig("data", "user", "user_id")).to eq(member.user_id)

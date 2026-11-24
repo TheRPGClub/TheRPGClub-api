@@ -10,14 +10,20 @@ RSpec.describe 'api/v1/challenges', type: :request do
   }
   pool = {
     type: :object,
-    description: 'The Pool (challenge_format pool). On edit, only the keys given change.',
+    description: 'The Pool (challenge_format pool): a Run Finishes by Clearing every Core Game plus ' \
+                 '`optional_target` Optional Games. Sources (Franchises and Series) only add Optional Games, ' \
+                 'leaving out Add-ons (games with a parent game); a game is Core only when listed in ' \
+                 '`core_game_ids` (docs/adr/0014). Needs at least one Core Game or a target of at least 1, and ' \
+                 'the target can\'t exceed the Optional Games when saved. A game may be in only one of the ' \
+                 'three game lists. On edit, only the keys given change; none of it is locked once Runs exist.',
     properties: {
-      franchise_ids: { type: :array, items: { type: :integer }, description: 'GameDB franchises whose games are in the Pool.' },
-      collection_ids: { type: :array, items: { type: :integer }, description: 'GameDB collections whose games are in the Pool.' },
-      included_game_ids: { type: :array, items: { type: :integer }, description: 'Games in the Pool whatever their franchise.' },
-      excluded_game_ids: { type: :array, items: { type: :integer }, description: 'Games left out of the chosen franchises and collections.' },
-      target: { oneOf: [ { type: :integer, minimum: 1 }, { type: :string, enum: %w[all] } ],
-                description: 'Cleared games needed to Finish, or "all" for every game in the Pool. Required on create.' }
+      franchise_ids: { type: :array, items: { type: :integer }, description: 'Franchises whose games (not Add-ons) are Optional Games.' },
+      collection_ids: { type: :array, items: { type: :integer }, description: 'Series (IGDB collections) whose games (not Add-ons) are Optional Games.' },
+      core_game_ids: { type: :array, items: { type: :integer }, description: 'Core Games: every Run must Clear them.' },
+      optional_game_ids: { type: :array, items: { type: :integer }, description: 'Optional Games picked by hand, whatever their sources; Add-ons allowed.' },
+      excluded_game_ids: { type: :array, items: { type: :integer }, description: 'Games kept out though a source has them.' },
+      optional_target: { type: :integer, minimum: 0, default: 0,
+                         description: 'Optional Games a Run must Clear besides every Core Game. 0 when left out on create.' }
     }
   }
   slots = {
@@ -118,8 +124,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
 
     post 'Create a Challenge' do
       tags 'Challenges'
-      description 'Regulars, Moderators, Admins and Superadmins (a member without the Regulars role gets 403 ' \
-                  '"You need the Regulars role to create a Challenge."). The acting member becomes the Host, or ' \
+      description 'Any member, for a Slots or Pool Challenge; an Assignment Challenge needs a Moderator or above ' \
+                  '(403 "Only Moderators and above can create an Assignment Challenge."). The acting member becomes the Host, or ' \
                   'the club with `hosted_by_club` (Moderator and above). A name another Challenge already has ' \
                   'is allowed and adds a `duplicate_name` warning to `meta.warnings`. Queues a ' \
                   '`challenge_announce` bot job (payload ChallengeAnnounceJobPayload, event `challenge_created`). ' +
@@ -152,7 +158,7 @@ RSpec.describe 'api/v1/challenges', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'not a Regular or staff, club-hosted without Moderator, or (bot) `feature_unavailable`' do
+      response '403', 'Assignment or club-hosted without Moderator, or (bot) `feature_unavailable`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -167,16 +173,17 @@ RSpec.describe 'api/v1/challenges', type: :request do
   path '/api/v1/challenges/pool_preview' do
     post 'Preview the games a draft Pool resolves to' do
       tags 'Challenges'
-      description 'Members. The games a Pool definition resolves to against the GameDB now, oldest release ' \
-                  'first, paginated, so the bot and the website can show them before saving. 422 ' \
-                  '`invalid_challenge` for an empty definition, unknown ids, or a game both included and excluded.'
+      description 'Members. The games a Pool definition resolves to against the GameDB now, Core and Optional ' \
+                  'together, oldest release first, paginated, so the bot and the website can show them before ' \
+                  'saving (an empty definition has none). 422 `invalid_challenge` for unknown ids, or a game in ' \
+                  'more than one of the core, optional and excluded lists.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: pool.merge(properties: pool[:properties].except(:target)) },
+        properties: { data: pool.merge(properties: pool[:properties].except(:optional_target)) },
         required: %w[data]
       }
 
@@ -219,7 +226,7 @@ RSpec.describe 'api/v1/challenges', type: :request do
     get 'Show a Challenge' do
       tags 'Challenges'
       description 'Members. A hidden Challenge is 404 except for Moderators and above and its Host. Adds the ' \
-                  'Pool\'s `game_count` and `run_count`.'
+                  'Pool\'s Optional Games and counts, and `run_count`.'
       produces 'application/json'
       parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string }
 
@@ -236,10 +243,13 @@ RSpec.describe 'api/v1/challenges', type: :request do
       tags 'Challenges'
       description 'The Host, for their own; any Moderator or above, for a club-hosted one. Only the keys given ' \
                   'change. Once the Challenge has any Run its rules are locked: a change to the Format, ' \
-                  'schedule, Season, Pool or slot range is 409 `rules_locked` with the `fields` it would change ' \
+                  'schedule, Season or slot range is 409 `rules_locked` with the `fields` it would change ' \
                   '(sending them unchanged is fine). Name, description and end date stay editable, except that an ' \
                   'Always Open Challenge that reached its end date is Closed for good (`ended_at`): a change to its ' \
-                  'schedule or end date is 422 `invalid_challenge`. ' + refusal
+                  'schedule or end date is 422 `invalid_challenge`. A Pool\'s games, sources and Optional ' \
+                  'target stay editable with Runs: the Runs are then brought up to date (one that now meets the ' \
+                  'goal Finishes), and a save that adds Core Games or raises the target queues one ' \
+                  '`challenge_dm` `pool_goal_changed` per member with an Active Run who keeps Challenge DMs on. ' + refusal
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -257,7 +267,7 @@ RSpec.describe 'api/v1/challenges', type: :request do
       response '409', 'rules_locked' do
         schema type: :object, properties: {
           error: { type: :string, enum: %w[rules_locked] }, message: { type: :string },
-          fields: { type: :array, items: { type: :string, enum: %w[challenge_format schedule season pool slots] } }
+          fields: { type: :array, items: { type: :string, enum: %w[challenge_format schedule season slots assignment] } }
         }
       end
 

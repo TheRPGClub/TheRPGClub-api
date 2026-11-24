@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -183,7 +183,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
     t.bigint "challenge_id", null: false
     t.bigint "game_id", null: false
     t.string "inclusion", limit: 8, null: false
-    t.check_constraint "inclusion::text = ANY (ARRAY['include'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
+    t.datetime "added_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.check_constraint "inclusion::text = ANY (ARRAY['core'::character varying, 'optional'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
   end
 
   create_table "challenge_run_entries", force: :cascade do |t|
@@ -236,7 +237,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
     t.integer "season_start_day", limit: 2
     t.integer "season_end_month", limit: 2
     t.integer "season_end_day", limit: 2
-    t.integer "pool_target"
     t.boolean "hidden", default: false, null: false
     t.string "created_by", limit: 30
     t.string "updated_by", limit: 30
@@ -254,13 +254,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
     t.boolean "counts_past_play", default: false, null: false
     t.string "tint_fill", limit: 7, null: false
     t.string "tint_hi", limit: 7, null: false
+    t.integer "pool_optional_target", default: 0, null: false
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
     t.check_constraint "challenge_format::text <> 'assignment'::text OR schedule::text = 'always_open'::text AND ends_on IS NULL", name: "ck_challenges_assignment_schedule"
     t.check_constraint "NOT counts_past_play OR schedule::text = 'always_open'::text", name: "ck_challenges_past_play_always_open"
     t.check_constraint "challenge_format::text = ANY (ARRAY['slots'::character varying, 'pool'::character varying, 'assignment'::character varying]::text[])", name: "ck_challenges_format"
-    t.check_constraint "pool_target IS NULL OR pool_target >= 1", name: "ck_challenges_pool_target"
+    t.check_constraint "pool_optional_target >= 0", name: "ck_challenges_pool_optional_target"
     t.check_constraint "schedule::text = 'always_open'::text OR ends_on IS NULL", name: "ck_challenges_ends_on"
     t.check_constraint "schedule::text = ANY (ARRAY['always_open'::character varying, 'seasonal'::character varying]::text[])", name: "ck_challenges_schedule"
     t.check_constraint "slots_first_year IS NULL OR slots_last_year IS NULL OR slots_first_year <= slots_last_year", name: "ck_challenges_slots_range"

@@ -3,7 +3,8 @@
 module Api
   module V1
     # Challenges (GLOSSARY.md, "Challenges"; spec #376, ticket #377). Members
-    # list and read them; Regulars and staff create them; the Host and staff
+    # list and read them; any member creates a Slots or Pool Challenge, and
+    # staff an Assignment one (spec api#442); the Host and staff
     # change them as Challenges::Actor decides. Gated by the `challenges`
     # Feature.
     #
@@ -69,7 +70,7 @@ module Api
       # `meta.warnings`. Queues a `challenge_announce` bot job.
       def create
         data = request_data
-        return forbid(Challenges::Refusals::CREATE) unless actor.can_create?
+        return forbid(Challenges::Refusals::CREATE) unless actor.can_create?(data["challenge_format"])
 
         club = ActiveModel::Type::Boolean.new.cast(data["hosted_by_club"]) ? true : false
         return forbid(Challenges::Refusals::CLUB_HOSTED) if club && !actor.can_host_for_club?
@@ -155,10 +156,12 @@ module Api
       end
 
       # POST /api/v1/challenges/pool_preview
-      # Body: { "data": { franchise_ids, collection_ids, included_game_ids, excluded_game_ids } }
+      # Body: { "data": { franchise_ids, collection_ids, core_game_ids,
+      # optional_game_ids, excluded_game_ids } }
       #
-      # The games a draft Pool definition resolves to, oldest release first,
-      # so the bot and the website can show them before saving.
+      # The games a draft Pool definition resolves to, Core and Optional,
+      # oldest release first, so the bot and the website can show them
+      # before saving.
       def pool_preview
         definition = Challenges::PoolDefinition.parse(request_data.except("acting_user_id"))
         errors = definition.errors

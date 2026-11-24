@@ -12,7 +12,7 @@ RSpec.describe Challenges::Runs do
   let!(:member) { create(:user) }
   let!(:pool_challenge) { create(:challenge) }
   let!(:slots_challenge) do
-    create(:challenge, challenge_format: "slots", pool_target: nil, slots_first_year: 1995, slots_last_year: 1999)
+    create(:challenge, challenge_format: "slots", slots_first_year: 1995, slots_last_year: 1999)
   end
   let!(:pool_run) { create(:challenge_run, challenge: pool_challenge, user: member) }
   let!(:slots_run) { create(:challenge_run, challenge: slots_challenge, user: member) }

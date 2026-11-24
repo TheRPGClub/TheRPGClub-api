@@ -1212,16 +1212,30 @@ module OpenapiSchemas
                                                        "#141417), where it clears 4.5:1.")
       ),
       ChallengePool: obj(
-        _description: "A Pool Challenge's settings. A game is in the Pool if it belongs to a chosen franchise or " \
-                      "collection and is not excluded, or if it is included by hand; it is resolved against the " \
-                      "GameDB when read.",
-        target: { oneOf: [ { type: :integer, minimum: 1 }, { type: :string, enum: %w[all] } ],
-                  description: "Cleared games needed to Finish, or \"all\" for every game in the Pool." },
+        _description: "A Pool Challenge's settings (docs/adr/0014): a Run Finishes by Clearing every Core Game " \
+                      "plus `optional_target` Optional Games. Optional Games are the games of the sources " \
+                      "(Franchises, and Series, which the API calls collections) less Add-ons, plus those picked " \
+                      "by hand, less the excluded and Core games; resolved against the GameDB when read.",
+        optional_target: int.merge(minimum: 0, description: "Optional Games a Run must Clear besides every Core Game."),
         franchises: { type: :array, items: obj(franchise_id: int, name: str) },
-        collections: { type: :array, items: obj(collection_id: int, name: str) },
-        included_games: { type: :array, items: obj(game_id: int, title: str) },
+        collections: { type: :array, items: obj(collection_id: int, name: str),
+                       description: "IGDB collections, shown to members as Series." },
+        core_games: { type: :array, items: ref("ChallengePostGame"), description: "Oldest release first." },
+        optional_games: { type: :array, nullable: true, description: "Oldest release first. Show and " \
+                                                                     "announcements only; null in lists.",
+                          items: obj(
+                            game_id: int, title: str, cover_url: str(nullable: true),
+                            source: str(enum: [ Challenges::PoolSources::HAND, *Challenges::PoolSources::ALL.map(&:key) ])
+                              .merge(description: "Where it comes from: picked by hand, else its first source."),
+                            new: bool.merge(description: "Joined the Pool in the last " \
+                                                         "#{Challenges::Formats::Pool::NEW_FOR.in_days.to_i} days, " \
+                                                         "after the Challenge was created. A Franchise link from " \
+                                                         "before link times were kept, and a Series, never counts.")
+                          ) },
         excluded_games: { type: :array, items: obj(game_id: int, title: str) },
-        game_count: int(nullable: true).merge(description: "Games in the Pool now. Show and announcements only.")
+        core_count: int,
+        optional_count: int(nullable: true).merge(description: "Show and announcements only."),
+        game_count: int(nullable: true).merge(description: "Core and Optional Games now. Show and announcements only.")
       ),
       ChallengeSlots: obj(
         _description: "A Slots Challenge's range: one slot per release year (ticket #381).",
@@ -1415,7 +1429,13 @@ module OpenapiSchemas
           in_progress: int.merge(description: "Games In Progress: in the member's Now Playing."),
           cleared: int.merge(description: "Games Cleared by a Game Completion dated inside the window; for " \
                                            "Slots, the slots filled."),
-          target: int.merge(description: "Cleared games needed to Finish; for Slots, the Run's slots so far."),
+          target: int.merge(description: "Cleared games needed to Finish (for a Pool, its Core Games plus the " \
+                                         "Optional target); for Slots, the Run's slots so far."),
+          core: obj(cleared: int, total: int).merge(description: "Pool only (absent otherwise): Core Games " \
+                                                                 "Cleared, of how many. All are needed."),
+          optional: obj(cleared: int, target: int).merge(description: "Pool only (absent otherwise): Optional " \
+                                                                       "Games Cleared, every one counted, and " \
+                                                                       "how many are needed."),
           caught_up: bool.merge(description: "Slots only (absent otherwise): an Active Run whose range ends at " \
                                              "the current year, with every slot so far Cleared. Worked out " \
                                              "when read, so it lapses on 1 January.")
@@ -1550,13 +1570,21 @@ module OpenapiSchemas
                       "(with `edition`, `backlog_count` and `minimum`), sent to every member still in the server; " \
                       "`pick_reminder`, 2 days before an Edition's pick deadline, a Santa who hasn't picked for " \
                       "their `recipient` (with `edition` and `days_left`), sent only to members who keep Challenge " \
-                      "DMs on.",
+                      "DMs on; `pool_goal_changed`, a Pool edit added Core Games or raised the Optional target " \
+                      "of the member's Active Run (with `run`, `added_core_games` and `optional_target`), one per " \
+                      "save, sent only to members who keep Challenge DMs on.",
         _required: %w[event user_id challenge feature_key],
-        event: str(enum: %w[season_ending left_out_of_draw pick_reminder]),
+        event: str(enum: %w[season_ending left_out_of_draw pick_reminder pool_goal_changed]),
         user_id: str.merge(description: "The member to DM."),
         challenge: ref("Challenge"),
-        run: ref("ChallengeRun").merge(description: "season_ending only: the member's Run, as GET " \
-                                                     "/api/v1/challenge_runs/{id} serves it."),
+        run: ref("ChallengeRun").merge(description: "season_ending and pool_goal_changed: the member's Run, as " \
+                                                     "GET /api/v1/challenge_runs/{id} serves it."),
+        added_core_games: { type: :array, items: ref("ChallengePostGame"),
+                            description: "pool_goal_changed only: the Core Games the edit added, oldest release " \
+                                         "first (empty when only the target rose)." },
+        optional_target: obj(from: int, to: int).merge(
+          nullable: true, description: "pool_goal_changed only: the raised Optional target; null when unchanged."
+        ),
         season: ref("ChallengeSeasonDates").merge(description: "season_ending only."),
         days_left: int.merge(example: 7, description: "season_ending: days from today to the Season's last day " \
                                                       "(7 unless sent late); pick_reminder: days to the pick " \
