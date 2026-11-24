@@ -205,6 +205,16 @@ RSpec.describe "api/v1/challenges Core and Optional Games", type: :request do
       newness = show(challenge).fetch("optional_games").to_h { |game| [ game["title"], game["new"] ] }
       expect(newness).to eq("Final Fantasy Tactics" => false, "Final Fantasy VII" => true)
     end
+
+    it "marks a hand pick new though a Series or Franchise that holds it has no join time" do
+      challenge = created_pool(franchise_ids: [ franchise.franchise_id ], core_game_ids: [ ff1.game_id ])
+      travel 1.day
+
+      edit_pool(challenge, pool: { optional_game_ids: [ ff7.game_id ] })
+
+      newness = show(challenge).fetch("optional_games").to_h { |game| [ game["title"], game["new"] ] }
+      expect(newness).to include("Final Fantasy VII" => true, "Final Fantasy VI" => false)
+    end
   end
 
   describe "Finishing a Run" do
@@ -364,6 +374,20 @@ RSpec.describe "api/v1/challenges Core and Optional Games", type: :request do
 
       create_slots(as: host)
       expect(response).to have_http_status(:created)
+    end
+
+    it "refuses a Host below Moderator switching their Challenge to Assignment by editing" do
+      create_slots(as: host)
+      challenge = Challenge.find(json.dig("data", "id"))
+
+      edit_pool(challenge, challenge_format: "assignment")
+
+      expect(response).to have_http_status(:forbidden)
+      expect(json.fetch("message")).to eq("Only Moderators and above can create an Assignment Challenge.")
+      expect(challenge.reload.challenge_format).to eq("slots")
+
+      edit_pool(challenge, challenge_format: "slots", name: "Birth Years Again")
+      expect(response).to have_http_status(:ok), response.body
     end
 
     it "refuses an Assignment Challenge below Moderator" do

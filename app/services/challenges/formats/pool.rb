@@ -50,7 +50,11 @@ module Challenges
 
       # A Pool needs a goal (a Core Game, or a target of at least 1), and
       # the target can't ask for more Optional Games than the Pool has now.
-      def self.errors(settings, _challenge = nil)
+      # An edit of a Pool already short of its target (a source shrank
+      # since: `base`, the stored settings) still saves when it leaves the
+      # Pool no shorter: the target not raised and no Optional Game fewer.
+      # The Pool then shows its goal as it is.
+      def self.errors(settings, _challenge = nil, base: nil)
         definition = settings.definition
         messages = definition.errors
         return messages if messages.any?
@@ -59,11 +63,19 @@ module Challenges
         if definition.core_game_ids.empty? && target.zero?
           messages << "A Pool needs at least one Core Game or an Optional target of at least 1"
         end
-        if target.positive? && (count = definition.optional_games.count) < target
+        if target.positive? && (count = definition.optional_games.count) < target && !no_shorter?(settings, base, count)
           messages << "The Optional target (#{target}) is more than the #{count} Optional Games in the Pool"
         end
         messages
       end
+
+      def self.no_shorter?(settings, base, count)
+        return false unless base
+        return true if settings == base
+
+        settings.optional_target <= base.optional_target && count >= base.definition.optional_games.count
+      end
+      private_class_method :no_shorter?
 
       # Writes the settings. A game kept Core or Optional keeps the time it
       # joined; a game new to the hand-picked lists joined now (when the

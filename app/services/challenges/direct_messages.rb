@@ -113,7 +113,7 @@ module Challenges
 
       summary = %(#{club ? 'Post in #dev' : "Tell #{Challenges.display_name(host)}"} that #{proposal.game.title} ) +
                 %(was proposed for "#{challenge.name}")
-      payload = { event: "pool_proposal", club_hosted: club, challenge: challenge_json(challenge),
+      payload = { event: "pool_proposal", club_hosted: club, challenge: challenge_json(challenge, viewer: decider(host)),
                   proposal: ChallengePoolProposalResource.serialize(proposal) }
       payload[:user_id] = host.user_id unless club
       BotJob.enqueue!(kind: KIND, requested_by: proposal.user_id, summary: summary, payload: payload)
@@ -137,11 +137,23 @@ module Challenges
       )
     end
 
-    def self.challenge_json(challenge)
+    # `viewer` (a Challenges::Actor) serializes it as that member reads it,
+    # with what only a decider sees (`pending_proposals`, `list_notices`).
+    def self.challenge_json(challenge, viewer: nil)
       challenge = ChallengeResource.preloaded(Challenge.where(id: challenge.id)).first!
-      ChallengeResource.new(challenge, params: { detail: true }).serializable_hash
+      ChallengeResource.new(challenge, params: { detail: true, actor: viewer }).serializable_hash
     end
     private_class_method :challenge_json
+
+    # Who decides a proposal, as a Challenges::Actor: the Host, or for a
+    # club-hosted Challenge (`host` nil) the staff who see the #dev post.
+    def self.decider(host)
+      return Challenges::Actor.new(user_id: nil, regular: true, moderator: true) unless host
+
+      Challenges::Actor.new(user_id: host.user_id, regular: host.role_regular? ? true : false,
+        moderator: host.moderator_or_above? ? true : false)
+    end
+    private_class_method :decider
 
     # Reminds the members of `runs` (Active Runs of `challenge`'s Season)
     # that the Season ends on `ends_on`. Queued by the lifecycle job, so they

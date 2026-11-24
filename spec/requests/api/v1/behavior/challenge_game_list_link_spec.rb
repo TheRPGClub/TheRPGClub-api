@@ -415,6 +415,73 @@ RSpec.describe "api/v1 Game Lists linked to Challenges", type: :request do
     end
   end
 
+  describe "a Pool short of its Optional target after a source shrinks" do
+    let!(:challenge) { created_from(list) }
+
+    before do
+      add_entry(list, wuchang)
+      add_entry(list, lies)
+      edit(challenge, pool: { optional_target: 2 })
+      expect(response).to have_http_status(:ok), response.body
+      remove_entry(list, lies)
+    end
+
+    it "still saves a rename, keeping its goal as is" do
+      edit(challenge, name: "Souls Winter")
+
+      expect(response).to have_http_status(:ok), response.body
+      expect(json.dig("data", "pool")).to include("optional_target" => 2, "optional_count" => 1)
+    end
+
+    it "still clears a list notice with Remove" do
+      remove_entry(list, wo_long)
+
+      resolve(challenge, notices(challenge).first.fetch("id"), "remove")
+
+      expect(response).to have_http_status(:ok), response.body
+      expect(ids(json.dig("data", "pool", "core_games"))).to eq([ nioh.game_id, wukong.game_id ])
+    end
+
+    it "still accepts a proposal as a Core Game" do
+      post "/api/v1/challenges/#{challenge.id}/pool_proposals", params: { data: { game_id: lies.game_id } },
+        headers: auth_headers_for(other), as: :json
+      expect(response).to have_http_status(:created), response.body
+
+      post "/api/v1/challenges/#{challenge.id}/pool_proposals/#{json.dig('data', 'id')}/accept",
+        params: { data: { as: "core" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok), response.body
+    end
+
+    it "refuses an edit that raises the target or takes an Optional Game away" do
+      edit(challenge, pool: { optional_target: 3 })
+      expect(response).to have_http_status(:unprocessable_content)
+
+      edit(challenge, pool: { core_game_ids: [ nioh.game_id, wo_long.game_id, wukong.game_id, wuchang.game_id ] })
+      expect(response).to have_http_status(:unprocessable_content)
+
+      edit(challenge, pool: { optional_target: 1 })
+      expect(response).to have_http_status(:ok), response.body
+    end
+  end
+
+  describe "leaving Pool" do
+    it "ends the link, clearing its notices and declining pending proposals" do
+      challenge = created_from(list)
+      remove_entry(list, wo_long)
+      post "/api/v1/challenges/#{challenge.id}/pool_proposals", params: { data: { game_id: lies.game_id } },
+        headers: auth_headers_for(other), as: :json
+      proposal = ChallengePoolProposal.find(json.dig("data", "id"))
+
+      edit(challenge, challenge_format: "slots", slots: { first_year: 1990, last_year: 1999 })
+
+      expect(response).to have_http_status(:ok), response.body
+      expect(challenge.reload.pool_game_list_id).to be_nil
+      expect(ChallengePoolListNotice.where(challenge_id: challenge.id)).to be_empty
+      expect(proposal.reload).to have_attributes(status: "declined", decided_by: owner.user_id)
+    end
+  end
+
   describe "handing the Challenge to another Host" do
     it "ends the link, keeping the games and clearing its notices" do
       challenge = created_from(list)

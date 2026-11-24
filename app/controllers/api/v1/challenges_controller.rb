@@ -106,6 +106,8 @@ module Api
         return forbid(Challenges::Refusals::EDIT) unless actor.can_edit?(challenge)
 
         data = request_data.except("acting_user_id")
+        return forbid(Challenges::Refusals::CREATE) unless can_switch_format?(challenge, data)
+
         add = ActiveModel::Type::Boolean.new.cast(data.delete("add_to_list")) ? true : false
         refuse_add_to_list(challenge) if add
         return if performed?
@@ -262,6 +264,16 @@ module Api
 
         challenge.pool_game_list_id = list.id
         data.merge("pool" => Challenges::ListLink.pool_with_list(pool, list))
+      end
+
+      # Switching the Format by editing needs what creating in that Format
+      # needs (an Assignment: a Moderator or above). Sending the Format
+      # unchanged is fine.
+      def can_switch_format?(challenge, data)
+        return true unless data.key?("challenge_format")
+        return true if data["challenge_format"].to_s == challenge.challenge_format
+
+        actor.can_create?(data["challenge_format"])
       end
 
       def refuse_add_to_list(challenge)

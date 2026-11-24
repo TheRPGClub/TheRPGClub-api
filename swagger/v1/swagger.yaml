@@ -11593,8 +11593,13 @@ paths:
         the viewer is the list''s owner, or staff for a club list on a club-hosted
         Challenge: see `pool.game_list.can_add`; 422 without a linked list; 422 `list_full`
         past 500 games, saving nothing). Editing a removed Core Game out of the Pool
-        clears its list notice. Refusals carry `{ error, message }`; `message` is
-        written for members (403 `forbidden`, 422 `invalid_challenge`).'
+        clears its list notice. Switching the Format to Assignment needs a Moderator
+        or above (403 "Only Moderators and above can create an Assignment Challenge.").
+        A Pool that leaves Pool ends its Game List link (clearing its list notices)
+        and declines its pending Pool Proposals. A Pool already short of its Optional
+        target (a source shrank) still saves an edit that leaves it no shorter: the
+        target not raised and no Optional Game fewer. Refusals carry `{ error, message
+        }`; `message` is written for members (403 `forbidden`, 422 `invalid_challenge`).'
       parameters: []
       responses:
         '200':
@@ -11607,8 +11612,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Challenge"
         '403':
-          description: neither the Host nor a Moderator, or `add_to_list` from someone
-            who may not touch the list
+          description: neither the Host nor a Moderator, a switch to Assignment below
+            Moderator, or `add_to_list` from someone who may not touch the list
           content:
             application/json:
               schema:
@@ -17876,7 +17881,9 @@ paths:
         creates a Franchise IGDB doesn''t have, returning 201. With `igdb_franchise_id`,
         the admin/service find-or-create keyed on it (the bot''s `ensureFranchise`):
         the existing franchise with 200 when the IGDB id is already known, or a new
-        one with 201; `name` is applied only when a new row is created.'
+        one with 201; `name` is applied only when a new row is created. It resolves
+        as an IGDB import does: a merged Franchise answers with its merge target (200),
+        and one an Admin deleted is refused with 422 `franchise_deleted`.'
       parameters: []
       responses:
         '201':
@@ -17889,7 +17896,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Franchise"
         '200':
-          description: existing franchise (matched on IGDB id)
+          description: existing franchise (matched on IGDB id), or the one it was
+            merged into
           content:
             application/json:
               schema:
@@ -17913,7 +17921,8 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: validation failed (an empty `igdb_franchise_id`, or a blank
-            or too-long `name`)
+            or too-long `name`), or the IGDB id names a Franchise an Admin deleted
+            (`franchise_deleted`)
           content:
             application/json:
               schema:

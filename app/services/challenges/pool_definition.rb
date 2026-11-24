@@ -85,7 +85,9 @@ module Challenges
     # person made Optional is "hand", joined at `hand_added_at[game_id]`;
     # otherwise its first source in PoolSources::ALL names it, and it joined
     # when the earliest of its sources took it in (nil when a source does
-    # not know, which counts as long ago).
+    # not know, which counts as long ago). A hand pick joined at the
+    # earliest time known: a source that does not know can't make a game
+    # the Host just picked old.
     def optional_origins(game_ids, hand_added_at: {})
       joins = Hash.new { |hash, key| hash[key] = [] }
       sources.each do |source, ids|
@@ -93,9 +95,11 @@ module Challenges
       end
       game_ids.index_with do |game_id|
         found = joins[game_id]
-        found.unshift([ PoolSources::HAND, hand_added_at[game_id] ]) if optional_game_ids.include?(game_id)
+        hand = optional_game_ids.include?(game_id)
+        found.unshift([ PoolSources::HAND, hand_added_at[game_id] ]) if hand
         times = found.map(&:last)
-        { source: found.first&.first, joined_at: times.include?(nil) ? nil : times.min }
+        joined = hand || times.exclude?(nil) ? times.compact.min : nil
+        { source: found.first&.first, joined_at: joined }
       end
     end
 
