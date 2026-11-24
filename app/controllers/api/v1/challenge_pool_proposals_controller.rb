@@ -4,7 +4,7 @@ module Api
   module V1
     # Pool Proposals (GLOSSARY.md, "Pool Proposal"; spec api#442, ticket
     # api#447): any member who can see a Pool Challenge proposes a game; the
-    # Host, or a Moderator or above for a club-hosted Challenge, accepts it
+    # Host, or any Moderator or above, accepts it
     # as a Core or Optional Game or declines it (Challenges::PoolProposals).
     # Gated by the `challenges` Feature.
     #
@@ -22,6 +22,9 @@ module Api
       end
       rescue_from Challenges::Invalid do |error|
         render json: { error: "invalid_challenge", message: error.message }, status: :unprocessable_content
+      end
+      rescue_from GameLists::Refused do |error|
+        render json: { error: error.code, message: error.message, **error.details }, status: error.status
       end
 
       # GET /api/v1/challenges/:challenge_id/pool_proposals?status=pending
@@ -54,10 +57,25 @@ module Api
       end
 
       # POST /api/v1/challenges/:challenge_id/pool_proposals/:id/accept
-      # Body: { "data": { "as": "core" | "optional" } }
+      # Body: { "data": { "as": "core" | "optional", "add_to_list": true } }
+      #
+      # `add_to_list` also adds the game to the linked Game List; only who
+      # may touch that list (Actor#can_add_to_list?).
       def accept
-        as = request_data["as"]
-        decide { |proposal| Challenges::PoolProposals.accept!(proposal, as: as, by: actor.user_id) }
+        data = request_data
+        as = data["as"]
+        add = ActiveModel::Type::Boolean.new.cast(data["add_to_list"]) ? true : false
+        decide do |proposal|
+          challenge = proposal.challenge
+          if add
+            raise Challenges::Invalid, "This Challenge has no linked Game List to add to" unless challenge.pool_game_list_id
+            unless actor.can_add_to_list?(challenge, challenge.pool_game_list)
+              next forbid(Challenges::Refusals::ADD_TO_LIST)
+            end
+          end
+
+          Challenges::PoolProposals.accept!(proposal, as: as, by: actor.user_id, add_to_list: add)
+        end
       end
 
       # POST /api/v1/challenges/:challenge_id/pool_proposals/:id/decline
@@ -76,7 +94,8 @@ module Api
         return forbid(Challenges::Refusals::DECIDE_PROPOSALS) unless actor.can_decide_proposals?(challenge)
 
         proposal = ChallengePoolProposal.where(challenge_id: challenge.id).find(params[:id])
-        render_proposal(yield(proposal))
+        decided = yield(proposal)
+        render_proposal(decided) unless performed?
       end
 
       def render_proposal(proposal, status: :ok)

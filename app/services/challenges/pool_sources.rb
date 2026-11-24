@@ -12,8 +12,7 @@ module Challenges
   #   challenge_sql  SQL of (challenge_id, game_id) for the Challenges
   #                `:ids`, for reading many Pools at once (PoolCovers)
   #
-  # A new source (a linked Game List) is one more entry here plus its list
-  # in PoolDefinition.
+  # A new source is one more entry here plus its list in PoolDefinition.
   module PoolSources
     # A game a person made Optional by hand.
     HAND = "hand"
@@ -26,6 +25,20 @@ module Challenges
 
       def joins(ids, game_ids) = joins_of.call(ids, game_ids)
     end
+
+    # The Game List the Challenge was started from (ticket api#448; at most
+    # one, `challenges.pool_game_list_id`). A game joined when its entry was
+    # added. First, as the Host's own pick of games names a game best.
+    LIST = Source.new(
+      key: "list", label: "Game List", member: :game_list_ids, model: GameList,
+      game_ids_of: ->(ids) { GameListEntry.where(game_list_id: ids).select(:game_id) },
+      joins_of: ->(ids, game_ids) { GameListEntry.where(game_list_id: ids, game_id: game_ids).pluck(:game_id, :added_at) },
+      challenge_sql: <<~SQL.squish
+        SELECT c.id AS challenge_id, e.game_id FROM challenges c
+          JOIN game_list_entries e ON e.game_list_id = c.pool_game_list_id
+          WHERE c.id IN (:ids)
+      SQL
+    )
 
     FRANCHISE = Source.new(
       key: "franchise", label: "franchise", member: :franchise_ids, model: GamedbFranchise,
@@ -51,6 +64,6 @@ module Challenges
       SQL
     )
 
-    ALL = [ FRANCHISE, SERIES ].freeze
+    ALL = [ LIST, FRANCHISE, SERIES ].freeze
   end
 end

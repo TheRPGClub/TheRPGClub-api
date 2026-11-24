@@ -21,7 +21,7 @@ module Api
       # Pool games, oldest release first.
       POOL_ORDER = "gamedb_games.initial_release_date ASC NULLS LAST, gamedb_games.title ASC"
 
-      WRITES = %i[create update destroy hide unhide change_host change_tint].freeze
+      WRITES = %i[create update destroy hide unhide change_host change_tint resolve_list_notice].freeze
 
       before_action :require_acting_member!, only: WRITES
 
@@ -30,6 +30,10 @@ module Api
       end
       rescue_from Challenges::RulesLocked do |error|
         render json: { error: "rules_locked", message: error.message, fields: error.fields }, status: :conflict
+      end
+      # Adding to a full linked Game List (add_to_list).
+      rescue_from GameLists::Refused do |error|
+        render json: { error: error.code, message: error.message, **error.details }, status: error.status
       end
 
       # GET /api/v1/challenges?open=true&challenge_format=pool&q=final
@@ -51,7 +55,7 @@ module Api
         scope = name_filter(scope)
 
         render_collection(ChallengeResource.preloaded(scope), resource: ChallengeResource,
-          default_order: { created_at: :desc, id: :desc }, params: { today: Challenges.today },
+          default_order: { created_at: :desc, id: :desc }, params: { today: Challenges.today, actor: actor },
           prepare: ->(challenges) { { overview: Challenges::Overview.of(challenges) } })
       end
 
@@ -68,6 +72,9 @@ module Api
       # `hosted_by_club` is true (Moderator and above). A name another
       # Challenge already has is allowed, with a `duplicate_name` warning in
       # `meta.warnings`. Queues a `challenge_announce` bot job.
+      #
+      # `pool.game_list_id` starts the Pool from a Game List: its games come
+      # in as Core Games and the list stays linked (Challenges::ListLink).
       def create
         data = request_data
         return forbid(Challenges::Refusals::CREATE) unless actor.can_create?(data["challenge_format"])
@@ -77,6 +84,9 @@ module Api
 
         challenge = Challenge.new(host_user_id: club ? nil : actor.user_id, created_by: actor.user_id,
           updated_by: actor.user_id)
+        data = link_list(challenge, data, club: club)
+        return if performed?
+
         Challenge.transaction do
           Challenges::Form.new(challenge, data.except("hosted_by_club", "acting_user_id")).save!
           Challenges::Announcements.challenge_created!(reload(challenge), by: actor.user_id)
@@ -85,13 +95,39 @@ module Api
       end
 
       # PATCH /api/v1/challenges/:id
-      # Body: { "data": { ...any of create's fields but hosted_by_club } }
+      # Body: { "data": { ...any of create's fields but hosted_by_club and
+      # pool.game_list_id, add_to_list } }
+      #
+      # With `add_to_list`, the games the edit puts in the Pool by hand (new
+      # Core or Optional Games) also go into the linked Game List; only who
+      # may touch that list (Actor#can_add_to_list?).
       def update
         challenge = find_visible
         return forbid(Challenges::Refusals::EDIT) unless actor.can_edit?(challenge)
 
-        challenge.updated_by = actor.user_id
-        Challenges::Form.new(challenge, request_data.except("acting_user_id")).save!
+        data = request_data.except("acting_user_id")
+        add = ActiveModel::Type::Boolean.new.cast(data.delete("add_to_list")) ? true : false
+        refuse_add_to_list(challenge) if add
+        return if performed?
+
+        Challenge.transaction do
+          before = hand_picked(challenge)
+          challenge.updated_by = actor.user_id
+          Challenges::Form.new(challenge, data).save!
+          Challenges::ListLink.add_games!(challenge, hand_picked(challenge) - before) if add
+        end
+        render_challenge(challenge)
+      end
+
+      # POST /api/v1/challenges/:id/list_notices/:notice_id/remove and /keep
+      #
+      # Clears a list notice; Remove also takes its game out of the Pool.
+      # Whoever may edit the Challenge.
+      def resolve_list_notice
+        challenge = find_visible
+        return forbid(Challenges::Refusals::EDIT) unless actor.can_edit?(challenge)
+
+        Challenges::ListLink.resolve_notice!(challenge, params[:notice_id], params[:resolution], by: actor.user_id)
         render_challenge(challenge)
       end
 
@@ -135,16 +171,20 @@ module Api
             raise Challenges::Invalid, "#{host_id} is not a member"
           end
 
-          challenge.update!(host_user_id: host_id, updated_by: actor.user_id)
+          Challenge.transaction do
+            # A linked Game List belongs with its Host (Challenges::ListLink).
+            Challenges::ListLink.end!(challenge) if host_id != challenge.host_user_id
+            challenge.update!(host_user_id: host_id, updated_by: actor.user_id)
+          end
         end
       end
 
       # PUT /api/v1/challenges/:id/tint
       # Body: { "data": { "tint": "teal" | { "fill": "#rrggbb", "hi": "#rrggbb" } | null } }
       #
-      # The Host changes their own Challenge's tint (as PATCH can), and a
-      # Moderator or above any Challenge's, which PATCH does not let them
-      # edit. Null gives the Challenge its curated tint back.
+      # The Host changes their own Challenge's tint, and a Moderator or above
+      # any Challenge's, as PATCH can. Null gives the Challenge its curated
+      # tint back.
       def change_tint
         data = request_data
         challenge = find_visible
@@ -205,6 +245,37 @@ module Api
       end
 
       private
+
+      # Takes `pool.game_list_id` out of a create's data, checks the actor
+      # may start the Challenge from that list, links it and puts its games
+      # in as Core Games. Renders the refusal (and returns nil) otherwise.
+      def link_list(challenge, data, club:)
+        pool = data["pool"]
+        return data unless pool.is_a?(Hash) && pool.key?("game_list_id")
+        unless data["challenge_format"].to_s == Challenges::Formats::Pool::KEY
+          raise Challenges::Invalid, "pool game_list_id is only for a Pool Challenge"
+        end
+
+        list = Challenges::ListLink.readable(pool["game_list_id"], actor.user_id)
+        raise Challenges::Invalid, "pool game_list_id must be a Game List you can see" unless list
+        return forbid(Challenges::Refusals::LINK_LIST) unless actor.can_link_list?(list, club: club)
+
+        challenge.pool_game_list_id = list.id
+        data.merge("pool" => Challenges::ListLink.pool_with_list(pool, list))
+      end
+
+      def refuse_add_to_list(challenge)
+        unless challenge.pool_game_list_id
+          raise Challenges::Invalid, "This Challenge has no linked Game List to add to"
+        end
+
+        forbid(Challenges::Refusals::ADD_TO_LIST) unless actor.can_add_to_list?(challenge, challenge.pool_game_list)
+      end
+
+      # The games a person put in the Pool as Core or Optional.
+      def hand_picked(challenge)
+        ChallengePoolGame.where(challenge_id: challenge.id, inclusion: %w[core optional]).pluck(:game_id)
+      end
 
       def moderate
         challenge = find_visible

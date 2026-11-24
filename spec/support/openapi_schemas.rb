@@ -1194,9 +1194,16 @@ module OpenapiSchemas
                        "tint instead). Show and announcements only; null in lists."
         ),
         pending_proposals: int(nullable: true).merge(
-          description: "A Pool Challenge's pending Pool Proposals, for the Host (staff for a club-hosted one); " \
-                       "null for other viewers, in lists, in bot payloads and for Slots and Assignment."
+          description: "A Pool Challenge's pending Pool Proposals, for the Host and Moderators and above; null for " \
+                       "other viewers, in lists, in bot payloads and for Slots and Assignment."
         ),
+        list_notices: {
+          type: :array, nullable: true,
+          description: "A Pool Challenge's open list notices (ticket api#448): Core Games whose entry left the " \
+                       "linked Game List, oldest first, for the Host and Moderators and above to Remove or Keep " \
+                       "(POST /challenges/{id}/list_notices/{notice_id}/remove|keep). Null as pending_proposals is.",
+          items: obj(id: int, game: ref("ChallengePostGame"), created_at: ts)
+        },
         hidden: bool.merge(description: "Hidden by a Moderator: listed only for Moderators and above and the Host."),
         ended_at: ts(nullable: true).merge(
           description: "When an Always Open Challenge reached its end date and Closed for good (set the day after " \
@@ -1206,7 +1213,7 @@ module OpenapiSchemas
       ),
       ChallengePoolProposal: obj(
         _description: "A Pool Proposal (ticket api#447): a member asked for a game to join a Pool Challenge. " \
-                      "Pending until the Host (staff for a club-hosted Challenge) accepts it as a Core or " \
+                      "Pending until the Host or a Moderator accepts it as a Core or " \
                       "Optional Game, or declines it.",
         id: int, challenge_id: int, game: ref("ChallengePostGame"),
         proposer: ref("ChallengeMember"),
@@ -1234,9 +1241,19 @@ module OpenapiSchemas
       ChallengePool: obj(
         _description: "A Pool Challenge's settings (docs/adr/0014): a Run Finishes by Clearing every Core Game " \
                       "plus `optional_target` Optional Games. Optional Games are the games of the sources " \
-                      "(Franchises, and Series, which the API calls collections) less Add-ons, plus those picked " \
-                      "by hand, less the excluded and Core games; resolved against the GameDB when read.",
+                      "(the linked Game List, Franchises, and Series, which the API calls collections) less " \
+                      "Add-ons, plus those picked by hand, less the excluded and Core games; resolved against the " \
+                      "GameDB when read.",
         optional_target: int.merge(minimum: 0, description: "Optional Games a Run must Clear besides every Core Game."),
+        game_list: obj(
+          id: int, name: str,
+          visible: bool.merge(description: "Whether the viewer can open the list (a Private list is its owner's " \
+                                           "alone). Clients show \"Made from <name>\", linked when visible, and " \
+                                           "hide it when the game_lists Feature is hidden from the viewer."),
+          can_add: bool.merge(description: "Whether the viewer may send `add_to_list`: the list's owner, or staff " \
+                                           "for a club list on a club-hosted Challenge.")
+        ).merge(nullable: true, description: "The Game List the Pool was started from, which feeds it Optional " \
+                                             "Games (ticket api#448); null when none or the link ended."),
         franchises: { type: :array, items: obj(franchise_id: int, name: str) },
         collections: { type: :array, items: obj(collection_id: int, name: str),
                        description: "IGDB collections, shown to members as Series." },
@@ -1246,11 +1263,13 @@ module OpenapiSchemas
                           items: obj(
                             game_id: int, title: str, cover_url: str(nullable: true),
                             source: str(enum: [ Challenges::PoolSources::HAND, *Challenges::PoolSources::ALL.map(&:key) ])
-                              .merge(description: "Where it comes from: picked by hand, else its first source."),
+                              .merge(description: "Where it comes from: picked by hand, else its first source " \
+                                                  "(list, franchise, series in that order)."),
                             new: bool.merge(description: "Joined the Pool in the last " \
                                                          "#{Challenges::Formats::Pool::NEW_FOR.in_days.to_i} days, " \
-                                                         "after the Challenge was created. A Franchise link from " \
-                                                         "before link times were kept, and a Series, never counts.")
+                                                         "after the Challenge was created (from a list, when its " \
+                                                         "entry was added). A Franchise link from before link " \
+                                                         "times were kept, and a Series, never counts.")
                           ) },
         excluded_games: { type: :array, items: obj(game_id: int, title: str) },
         core_count: int,
@@ -1344,6 +1363,12 @@ module OpenapiSchemas
       ),
       # GameListResource (spec api#442, ticket api#446): a Game List. A
       # single list (show, and every write that returns one) adds `entries`.
+      GameListFeedsChallenges: obj(
+        _description: "409 for deleting a Game List that feeds a Pool Challenge, or making it Private, without " \
+                      "`confirm` (ticket api#448). `message` says what confirming does.",
+        error: str(enum: %w[list_feeds_challenges]), message: str,
+        challenges: { type: :array, items: obj(id: int, name: str) }
+      ),
       GameList: obj(
         id: int, name: str(maxLength: GameList::NAME_MAX),
         description: str(nullable: true, maxLength: GameList::DESCRIPTION_MAX),

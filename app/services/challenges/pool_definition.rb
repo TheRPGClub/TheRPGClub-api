@@ -5,8 +5,9 @@ module Challenges
   # Game"; docs/adr/0014), resolved against the GameDB whenever it is read:
   #
   #   Core      the games a person made Core (`core_game_ids`)
-  #   Optional  the games of the live sources (SOURCES: the chosen
-  #             Franchises and Series), less Add-ons (games with a parent
+  #   Optional  the games of the live sources (PoolSources::ALL: the
+  #             linked Game List and the chosen Franchises and Series),
+  #             less Add-ons (games with a parent
   #             game), plus the games a person made Optional, less the
   #             excluded and the Core games
   #
@@ -16,9 +17,16 @@ module Challenges
   #
   #   definition = PoolDefinition.parse("franchise_ids" => [ 1 ], "core_game_ids" => [ 9 ])
   #   definition.optional_games # => GamedbGame relation
+  #
+  # `game_list_ids` (the linked list, at most one) is stored on the
+  # Challenge and set only on create (Challenges::ListLink), so a request
+  # never parses it.
   PoolDefinition = Data.define(:franchise_ids, :collection_ids, :core_game_ids, :optional_game_ids,
-    :excluded_game_ids) do
+    :excluded_game_ids, :game_list_ids) do
     def self.empty = new(**members.index_with { [] })
+
+    # The lists a request may give.
+    def self.parsed_members = members - [ :game_list_ids ]
 
     # A Challenge's stored definition.
     def self.of(challenge)
@@ -26,6 +34,7 @@ module Challenges
       new(
         franchise_ids: challenge.pool_franchises.map(&:franchise_id).sort,
         collection_ids: challenge.pool_collections.map(&:collection_id).sort,
+        game_list_ids: [ challenge.pool_game_list_id ].compact,
         **PoolSources::HAND_LISTS.to_h { |inclusion, key| [ key, games.select { |row| row.inclusion == inclusion }.map(&:game_id).sort ] }
       )
     end
@@ -35,7 +44,7 @@ module Challenges
     def self.parse(input, base: empty)
       raise Invalid, "pool must be an object" unless input.is_a?(Hash)
 
-      base.with(**members.filter_map do |key|
+      base.with(**parsed_members.filter_map do |key|
         next unless input.key?(key.to_s)
 
         [ key, ids(input[key.to_s], key) ]

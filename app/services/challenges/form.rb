@@ -49,6 +49,7 @@ module Challenges
         assign_format
         assign_schedule
         refuse_reopening if challenge.ended_at
+        refuse_linking
         format = Formats.fetch(challenge.challenge_format)
         before_settings = stored_settings(format)
         settings = format.parse(@data[format::KEY], base: before_settings)
@@ -86,6 +87,17 @@ module Challenges
       # Counts past play is a Slots setting, which a switch to Slots gives
       # in full (stored_settings), and which no other Format keeps.
       challenge.counts_past_play = false if challenge.challenge_format_changed?
+      # Only a Pool is fed by a linked Game List.
+      challenge.pool_game_list_id = nil if challenge.challenge_format != Formats::Pool::KEY
+    end
+
+    # A Game List is linked only on create (Challenges::ListLink), which
+    # takes `pool.game_list_id` out of the data first.
+    def refuse_linking
+      pool = @data[Formats::Pool::KEY]
+      return unless pool.is_a?(Hash) && pool.key?("game_list_id")
+
+      raise Invalid, "pool game_list_id can only be set when the Challenge is created"
     end
 
     def assign_schedule

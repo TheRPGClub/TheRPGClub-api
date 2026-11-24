@@ -367,12 +367,18 @@ RSpec.describe "api/v1/challenges behavior", type: :request do
         "franchises" => [ a_hash_including("franchise_id" => franchise.franchise_id) ])
     end
 
-    it "refuses other members and Moderators on a member's Challenge" do
+    it "refuses other members on a member's Challenge" do
       edit(as: create(:user, role_regular: true), name: "Mine now")
       expect(response).to have_http_status(:forbidden)
+      expect(json.fetch("message")).to eq("Only the Host or a Moderator can edit this Challenge.")
+    end
 
-      edit(as: moderator, name: "Mine now")
-      expect(response).to have_http_status(:forbidden)
+    it "lets a Moderator edit a member's Challenge" do
+      edit(as: moderator, description: "Fixed a typo.")
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("description" => "Fixed a typo.", "updated_by" => moderator.user_id)
+      expect(json.dig("data", "host", "user_id")).to eq(regular.user_id)
     end
 
     it "lets any Moderator edit a club-hosted Challenge" do

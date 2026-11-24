@@ -32,6 +32,7 @@ RSpec.describe 'api/v1/game_lists', type: :request do
       meta: { '$ref' => '#/components/schemas/PaginationMeta' }
     }
   }
+  feeds = { '$ref' => '#/components/schemas/GameListFeedsChallenges' }
   one_list = { type: :object, properties: { data: { '$ref' => '#/components/schemas/GameList' } } }
   one_entry = { type: :object, properties: { data: { '$ref' => '#/components/schemas/GameListEntry' } } }
   error = { '$ref' => '#/components/schemas/Error' }
@@ -129,13 +130,17 @@ RSpec.describe 'api/v1/game_lists', type: :request do
     patch 'Edit a Game List' do
       tags 'Game Lists'
       description "Changes only the fields given. #{rules} 403 \"#{GameLists::Refusals::EDIT}\", or " \
-                  "\"#{GameLists::Refusals::VISIBILITY}\" for a visibility change by someone else. Returns the " \
+                  "\"#{GameLists::Refusals::VISIBILITY}\" for a visibility change by someone else. Making a " \
+                  'list that feeds a Pool Challenge Private is 409 `list_feeds_challenges` (naming the ' \
+                  'Challenges) unless `confirm`; with it, the club keeps a Members-visible copy (taken over from ' \
+                  'the owner) that the Challenges relink to, and the owner\'s list goes Private. Returns the ' \
                   "list. #{refusal} #{gate}"
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: list_fields.merge(acting_user_id: acting_user_id) } },
+        properties: { data: { type: :object, properties: list_fields.merge(acting_user_id: acting_user_id,
+          confirm: { type: :boolean, description: 'Go ahead though the list feeds a Challenge.' }) } },
         required: %w[data]
       }
 
@@ -155,6 +160,10 @@ RSpec.describe 'api/v1/game_lists', type: :request do
         schema error
       end
 
+      response '409', 'list_feeds_challenges: confirm needed' do
+        schema feeds
+      end
+
       response '422', 'invalid_game_list, as on create' do
         schema error
       end
@@ -162,15 +171,27 @@ RSpec.describe 'api/v1/game_lists', type: :request do
 
     delete 'Delete a Game List' do
       tags 'Game Lists'
-      description "Deletes the list with its entries. #{rules} 403 \"#{GameLists::Refusals::DELETE}\". The bot " \
-                  "names the member with the `acting_user_id` query parameter. #{gate}"
+      description "Deletes the list with its entries. #{rules} 403 \"#{GameLists::Refusals::DELETE}\". A list " \
+                  'that feeds a Pool Challenge needs `confirm` (409 `list_feeds_challenges`, naming the ' \
+                  'Challenges): a member\'s list then goes to the club instead (`owner` null, `taken_over_from` ' \
+                  'set, Members-visible; `taken_over: true`) and keeps feeding them; a club list is deleted and ' \
+                  'the links end, the Challenges keeping their games. The bot names the member with the ' \
+                  "`acting_user_id` query parameter. #{gate}"
       produces 'application/json'
       parameter name: :acting_user_id, in: :query, required: false, schema: { type: :string }
+      parameter name: :confirm, in: :query, required: false, schema: { type: :boolean },
+        description: 'Go ahead though the list feeds a Challenge.'
 
-      response '200', 'deleted' do
+      response '200', 'deleted, or taken over by the club' do
         schema type: :object, properties: {
-          data: { type: :object, properties: { id: { type: :integer }, deleted: { type: :boolean } } }
+          data: { type: :object, properties: { id: { type: :integer }, deleted: { type: :boolean },
+                                               taken_over: { type: :boolean,
+                                                             description: 'The club kept it, as it feeds a Challenge.' } } }
         }
+      end
+
+      response '409', 'list_feeds_challenges: confirm needed' do
+        schema feeds
       end
 
       response '400', 'the bot named no `acting_user_id`' do

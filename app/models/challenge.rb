@@ -11,7 +11,7 @@
 #
 # Every Challenge has exactly one Challenge Format, and each Format keeps its
 # own settings (Challenges::Formats): a Pool's definition is its sources
-# (Franchises and Series) plus its Core, Optional and excluded games, and a
+# (a linked Game List, Franchises and Series) plus its Core, Optional and excluded games, and a
 # Run needs every Core Game and `pool_optional_target` Optional Games;
 # a Slots range runs from `slots_first_year` (null: each member's birth year)
 # to `slots_last_year` (null: the current year); an Assignment's Edition
@@ -42,6 +42,10 @@ class Challenge < ApplicationRecord
   has_many :pool_collections, class_name: "ChallengePoolCollection", dependent: nil, inverse_of: :challenge
   has_many :pool_games, class_name: "ChallengePoolGame", dependent: nil, inverse_of: :challenge
   has_many :editions, class_name: "ChallengeEdition", dependent: nil, inverse_of: :challenge
+  # The Game List a Pool was started from, a live source (Challenges::ListLink).
+  belongs_to :pool_game_list, class_name: "GameList", optional: true, inverse_of: false
+  # Rows go with the Challenge (the foreign key cascades).
+  has_many :pool_list_notices, class_name: "ChallengePoolListNotice", dependent: nil, inverse_of: :challenge
 
   validates :name, presence: true, length: { maximum: NAME_MAX }
   validates :description, length: { maximum: DESCRIPTION_MAX }

@@ -3866,9 +3866,29 @@ components:
         pending_proposals:
           type: integer
           nullable: true
-          description: A Pool Challenge's pending Pool Proposals, for the Host (staff
-            for a club-hosted one); null for other viewers, in lists, in bot payloads
+          description: A Pool Challenge's pending Pool Proposals, for the Host and
+            Moderators and above; null for other viewers, in lists, in bot payloads
             and for Slots and Assignment.
+        list_notices:
+          type: array
+          nullable: true
+          description: 'A Pool Challenge''s open list notices (ticket api#448): Core
+            Games whose entry left the linked Game List, oldest first, for the Host
+            and Moderators and above to Remove or Keep (POST /challenges/{id}/list_notices/{notice_id}/remove|keep).
+            Null as pending_proposals is.'
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              game:
+                "$ref": "#/components/schemas/ChallengePostGame"
+              created_at:
+                type: string
+                format: date-time
+            required:
+            - id
+            - created_at
         hidden:
           type: boolean
           description: 'Hidden by a Moderator: listed only for Moderators and above
@@ -3956,8 +3976,8 @@ components:
       - created_at
       - updated_at
       description: 'A Pool Proposal (ticket api#447): a member asked for a game to
-        join a Pool Challenge. Pending until the Host (staff for a club-hosted Challenge)
-        accepts it as a Core or Optional Game, or declines it.'
+        join a Pool Challenge. Pending until the Host or a Moderator accepts it as
+        a Core or Optional Game, or declines it.'
     ChallengeTint:
       type: object
       properties:
@@ -3988,6 +4008,30 @@ components:
           type: integer
           minimum: 0
           description: Optional Games a Run must Clear besides every Core Game.
+        game_list:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            visible:
+              type: boolean
+              description: Whether the viewer can open the list (a Private list is
+                its owner's alone). Clients show "Made from <name>", linked when visible,
+                and hide it when the game_lists Feature is hidden from the viewer.
+            can_add:
+              type: boolean
+              description: 'Whether the viewer may send `add_to_list`: the list''s
+                owner, or staff for a club list on a club-hosted Challenge.'
+          required:
+          - id
+          - name
+          - visible
+          - can_add
+          nullable: true
+          description: The Game List the Pool was started from, which feeds it Optional
+            Games (ticket api#448); null when none or the link ended.
         franchises:
           type: array
           items:
@@ -4037,15 +4081,16 @@ components:
                 type: string
                 enum:
                 - hand
+                - list
                 - franchise
                 - series
                 description: 'Where it comes from: picked by hand, else its first
-                  source.'
+                  source (list, franchise, series in that order).'
               new:
                 type: boolean
                 description: Joined the Pool in the last 14 days, after the Challenge
-                  was created. A Franchise link from before link times were kept,
-                  and a Series, never counts.
+                  was created (from a list, when its entry was added). A Franchise
+                  link from before link times were kept, and a Series, never counts.
             required:
             - game_id
             - title
@@ -4078,9 +4123,9 @@ components:
       - core_count
       description: 'A Pool Challenge''s settings (docs/adr/0014): a Run Finishes by
         Clearing every Core Game plus `optional_target` Optional Games. Optional Games
-        are the games of the sources (Franchises, and Series, which the API calls
-        collections) less Add-ons, plus those picked by hand, less the excluded and
-        Core games; resolved against the GameDB when read.'
+        are the games of the sources (the linked Game List, Franchises, and Series,
+        which the API calls collections) less Add-ons, plus those picked by hand,
+        less the excluded and Core games; resolved against the GameDB when read.'
     ChallengeSlots:
       type: object
       properties:
@@ -4364,6 +4409,33 @@ components:
       - signup_open
       - signed_up_count
       - signed_up
+    GameListFeedsChallenges:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+          - list_feeds_challenges
+        message:
+          type: string
+        challenges:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+            required:
+            - id
+            - name
+      required:
+      - error
+      - message
+      description: 409 for deleting a Game List that feeds a Pool Challenge, or making
+        it Private, without `confirm` (ticket api#448). `message` says what confirming
+        does.
     GameList:
       type: object
       properties:
@@ -10026,9 +10098,8 @@ paths:
       tags:
       - Challenges
       description: Members (the `challenges` Feature) who can see the Challenge. Newest
-        first. Those who decide (the Host; staff for a club-hosted Challenge) see
-        every proposal; other members see their own. The bot names the member it reads
-        for with `acting_user_id`.
+        first. Those who decide (the Host and Moderators and above) see every proposal;
+        other members see their own. The bot names the member it reads for with `acting_user_id`.
       parameters:
       - name: status
         in: query
@@ -10166,13 +10237,15 @@ paths:
       summary: Accept a Pool Proposal
       tags:
       - Challenges
-      description: 'The Host, or any Moderator or above for a club-hosted Challenge
-        (403 "Only the Host can accept or decline Pool Proposals; for a club-hosted
-        Challenge, any Moderator or above." otherwise). Puts the game in the Pool
+      description: 'The Host, or any Moderator or above (403 "Only the Host or a Moderator
+        can accept or decline Pool Proposals." otherwise). Puts the game in the Pool
         as a Core or Optional Game (picked by hand), lifting an exclusion, as a Pool
         edit would: Runs are brought up to date, and a new Core Game queues `pool_goal_changed`
         DMs. Queues a `challenge_dm` `pool_proposal_accepted` for the proposer when
-        they keep Challenge DMs on and didn''t accept it themselves. 409 `already_decided`;
+        they keep Challenge DMs on and didn''t accept it themselves. With `add_to_list`,
+        the game also goes into the linked Game List (403 "Only the Game List''s owner
+        can add games to it from this Challenge." unless `pool.game_list.can_add`;
+        422 `invalid_challenge` without a linked list, 422 `list_full`). 409 `already_decided`;
         422 `invalid_proposal` for an `as` other than core or optional.'
       parameters: []
       responses:
@@ -10186,7 +10259,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/ChallengePoolProposal"
         '403':
-          description: not a decider
+          description: not a decider, or `add_to_list` from someone who may not touch
+            the list
           content:
             application/json:
               schema:
@@ -10198,7 +10272,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: invalid_proposal
+          description: invalid_proposal, invalid_challenge or list_full
           content:
             application/json:
               schema:
@@ -10221,6 +10295,9 @@ paths:
                       enum:
                       - core
                       - optional
+                    add_to_list:
+                      type: boolean
+                      description: Also add the game to the linked Game List.
                     acting_user_id:
                       type: string
                       description: Service only, required.
@@ -10241,9 +10318,8 @@ paths:
       summary: Decline a Pool Proposal
       tags:
       - Challenges
-      description: 'The Host, or any Moderator or above for a club-hosted Challenge
-        (403 "Only the Host can accept or decline Pool Proposals; for a club-hosted
-        Challenge, any Moderator or above." otherwise). Leaves the Pool alone and
+      description: 'The Host, or any Moderator or above (403 "Only the Host or a Moderator
+        can accept or decline Pool Proposals." otherwise). Leaves the Pool alone and
         sends no DM; the game may be proposed again. 409 `already_decided`. The bot
         sends `{ "data": { "acting_user_id": "..." } }`.'
       responses:
@@ -11074,8 +11150,9 @@ paths:
         (Moderator and above). A name another Challenge already has is allowed and
         adds a `duplicate_name` warning to `meta.warnings`. Queues a `challenge_announce`
         bot job (payload ChallengeAnnounceJobPayload, event `challenge_created`).
-        Refusals carry `{ error, message }`; `message` is written for members (403
-        `forbidden`, 422 `invalid_challenge`).
+        `pool.game_list_id` starts a Pool from a Game List (ticket api#448). Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_challenge`).
       parameters: []
       responses:
         '201':
@@ -11101,7 +11178,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '403':
-          description: Assignment or club-hosted without Moderator, or (bot) `feature_unavailable`
+          description: Assignment or club-hosted without Moderator, a Game List that
+            isn't theirs to link, or (bot) `feature_unavailable`
           content:
             application/json:
               schema:
@@ -11171,14 +11249,14 @@ paths:
                       type: object
                       description: 'The Pool (challenge_format pool): a Run Finishes
                         by Clearing every Core Game plus `optional_target` Optional
-                        Games. Sources (Franchises and Series) only add Optional Games,
-                        leaving out Add-ons (games with a parent game); a game is
-                        Core only when listed in `core_game_ids` (docs/adr/0014).
-                        Needs at least one Core Game or a target of at least 1, and
-                        the target can''t exceed the Optional Games when saved. A
-                        game may be in only one of the three game lists. On edit,
-                        only the keys given change; none of it is locked once Runs
-                        exist.'
+                        Games. Sources (a linked Game List, Franchises and Series)
+                        only add Optional Games, leaving out Add-ons (games with a
+                        parent game); a game is Core only when listed in `core_game_ids`
+                        (docs/adr/0014). Needs at least one Core Game or a target
+                        of at least 1, and the target can''t exceed the Optional Games
+                        when saved. A game may be in only one of the three game lists.
+                        On edit, only the keys given change; none of it is locked
+                        once Runs exist.'
                       properties:
                         franchise_ids:
                           type: array
@@ -11214,6 +11292,17 @@ paths:
                           default: 0
                           description: Optional Games a Run must Clear besides every
                             Core Game. 0 when left out on create.
+                        game_list_id:
+                          type: integer
+                          description: 'Create only (422 on edit): start the Pool
+                            from this Game List. Its games come in as Core Games,
+                            except those this request makes Optional or excludes,
+                            and the list stays linked: games later added to it arrive
+                            as Optional Games. A member''s own list, for a Challenge
+                            they host; a club list, for a club-hosted one (403 "Only
+                            a Game List''s owner can start a Challenge from it, hosted
+                            by them; a club list, a Moderator or above, for a club-hosted
+                            Challenge."). 422 for a list the member can''t see.'
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot
@@ -11367,13 +11456,13 @@ paths:
                   type: object
                   description: 'The Pool (challenge_format pool): a Run Finishes by
                     Clearing every Core Game plus `optional_target` Optional Games.
-                    Sources (Franchises and Series) only add Optional Games, leaving
-                    out Add-ons (games with a parent game); a game is Core only when
-                    listed in `core_game_ids` (docs/adr/0014). Needs at least one
-                    Core Game or a target of at least 1, and the target can''t exceed
-                    the Optional Games when saved. A game may be in only one of the
-                    three game lists. On edit, only the keys given change; none of
-                    it is locked once Runs exist.'
+                    Sources (a linked Game List, Franchises and Series) only add Optional
+                    Games, leaving out Add-ons (games with a parent game); a game
+                    is Core only when listed in `core_game_ids` (docs/adr/0014). Needs
+                    at least one Core Game or a target of at least 1, and the target
+                    can''t exceed the Optional Games when saved. A game may be in
+                    only one of the three game lists. On edit, only the keys given
+                    change; none of it is locked once Runs exist.'
                   properties:
                     franchise_ids:
                       type: array
@@ -11403,6 +11492,17 @@ paths:
                       items:
                         type: integer
                       description: Games kept out though a source has them.
+                    game_list_id:
+                      type: integer
+                      description: 'Create only (422 on edit): start the Pool from
+                        this Game List. Its games come in as Core Games, except those
+                        this request makes Optional or excludes, and the list stays
+                        linked: games later added to it arrive as Optional Games.
+                        A member''s own list, for a Challenge they host; a club list,
+                        for a club-hosted one (403 "Only a Game List''s owner can
+                        start a Challenge from it, hosted by them; a club list, a
+                        Moderator or above, for a club-hosted Challenge."). 422 for
+                        a list the member can''t see.'
               required:
               - data
         required: true
@@ -11476,19 +11576,25 @@ paths:
       summary: Edit a Challenge
       tags:
       - Challenges
-      description: 'The Host, for their own; any Moderator or above, for a club-hosted
-        one. Only the keys given change. Once the Challenge has any Run its rules
-        are locked: a change to the Format, schedule, Season or slot range is 409
-        `rules_locked` with the `fields` it would change (sending them unchanged is
-        fine). Name, description and end date stay editable, except that an Always
-        Open Challenge that reached its end date is Closed for good (`ended_at`):
-        a change to its schedule or end date is 422 `invalid_challenge`. A Pool''s
-        games, sources and Optional target stay editable with Runs: the Runs are then
-        brought up to date (one that now meets the goal Finishes), and a save that
-        adds Core Games or raises the target queues one `challenge_dm` `pool_goal_changed`
-        per member with an Active Run who keeps Challenge DMs on. Refusals carry `{
-        error, message }`; `message` is written for members (403 `forbidden`, 422
-        `invalid_challenge`).'
+      description: 'The Host, for their own; any Moderator or above, for any Challenge
+        (403 "Only the Host or a Moderator can edit this Challenge."). Only the keys
+        given change. Once the Challenge has any Run its rules are locked: a change
+        to the Format, schedule, Season or slot range is 409 `rules_locked` with the
+        `fields` it would change (sending them unchanged is fine). Name, description
+        and end date stay editable, except that an Always Open Challenge that reached
+        its end date is Closed for good (`ended_at`): a change to its schedule or
+        end date is 422 `invalid_challenge`. A Pool''s games, sources and Optional
+        target stay editable with Runs: the Runs are then brought up to date (one
+        that now meets the goal Finishes), and a save that adds Core Games or raises
+        the target queues one `challenge_dm` `pool_goal_changed` per member with an
+        Active Run who keeps Challenge DMs on. With `add_to_list`, the games the edit
+        newly makes Core or Optional by hand also go into the linked Game List (403
+        "Only the Game List''s owner can add games to it from this Challenge." unless
+        the viewer is the list''s owner, or staff for a club list on a club-hosted
+        Challenge: see `pool.game_list.can_add`; 422 without a linked list; 422 `list_full`
+        past 500 games, saving nothing). Editing a removed Core Game out of the Pool
+        clears its list notice. Refusals carry `{ error, message }`; `message` is
+        written for members (403 `forbidden`, 422 `invalid_challenge`).'
       parameters: []
       responses:
         '200':
@@ -11501,7 +11607,8 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Challenge"
         '403':
-          description: not the Host (or, club-hosted, not a Moderator)
+          description: neither the Host nor a Moderator, or `add_to_list` from someone
+            who may not touch the list
           content:
             application/json:
               schema:
@@ -11593,14 +11700,14 @@ paths:
                       type: object
                       description: 'The Pool (challenge_format pool): a Run Finishes
                         by Clearing every Core Game plus `optional_target` Optional
-                        Games. Sources (Franchises and Series) only add Optional Games,
-                        leaving out Add-ons (games with a parent game); a game is
-                        Core only when listed in `core_game_ids` (docs/adr/0014).
-                        Needs at least one Core Game or a target of at least 1, and
-                        the target can''t exceed the Optional Games when saved. A
-                        game may be in only one of the three game lists. On edit,
-                        only the keys given change; none of it is locked once Runs
-                        exist.'
+                        Games. Sources (a linked Game List, Franchises and Series)
+                        only add Optional Games, leaving out Add-ons (games with a
+                        parent game); a game is Core only when listed in `core_game_ids`
+                        (docs/adr/0014). Needs at least one Core Game or a target
+                        of at least 1, and the target can''t exceed the Optional Games
+                        when saved. A game may be in only one of the three game lists.
+                        On edit, only the keys given change; none of it is locked
+                        once Runs exist.'
                       properties:
                         franchise_ids:
                           type: array
@@ -11636,6 +11743,17 @@ paths:
                           default: 0
                           description: Optional Games a Run must Clear besides every
                             Core Game. 0 when left out on create.
+                        game_list_id:
+                          type: integer
+                          description: 'Create only (422 on edit): start the Pool
+                            from this Game List. Its games come in as Core Games,
+                            except those this request makes Optional or excludes,
+                            and the list stays linked: games later added to it arrive
+                            as Optional Games. A member''s own list, for a Challenge
+                            they host; a club list, for a club-hosted one (403 "Only
+                            a Game List''s owner can start a Challenge from it, hosted
+                            by them; a club list, a Moderator or above, for a club-hosted
+                            Challenge."). 422 for a list the member can''t see.'
                     slots:
                       type: object
                       description: 'The slot range (challenge_format slots): one slot
@@ -11722,6 +11840,10 @@ paths:
                         on the fill, and the hi on ink #0b0b0d and #141417; otherwise
                         422 `invalid_challenge`. Left out on create, the Challenge
                         gets its curated tint. Not a rule: editable after Runs exist.'
+                    add_to_list:
+                      type: boolean
+                      description: Also add the games put in the Pool by hand to the
+                        linked Game List.
               required:
               - data
         required: true
@@ -11905,10 +12027,10 @@ paths:
       summary: Change a Challenge's tint
       tags:
       - Challenges
-      description: The Host, for their own (PATCH takes `tint` too), and a Moderator
-        or above for any Challenge, which PATCH does not let them edit. 403 "Only
-        the Host or a Moderator can change this Challenge's tint."; 422 `invalid_challenge`
-        without `tint`, or for a tint PATCH would refuse.
+      description: The Host, for their own, and a Moderator or above for any Challenge
+        (PATCH takes `tint` too). 403 "Only the Host or a Moderator can change this
+        Challenge's tint."; 422 `invalid_challenge` without `tint`, or for a tint
+        PATCH would refuse.
       parameters: []
       responses:
         '200':
@@ -11992,9 +12114,10 @@ paths:
       summary: Hand a Challenge to another Host
       tags:
       - Challenges
-      description: Moderator and above. Hands it to another member (who needs no role)
-        or, with `hosted_by_club`, to the club. 422 `invalid_challenge` for neither,
-        or an unknown member.
+      description: 'Moderator and above. Hands it to another member (who needs no
+        role) or, with `hosted_by_club`, to the club. A new Host ends the link to
+        a Game List: its Optional Games from the list stay, as picked by hand, and
+        its list notices go. 422 `invalid_challenge` for neither, or an unknown member.'
       parameters: []
       responses:
         '200':
@@ -12039,6 +12162,100 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/challenges/{id}/list_notices/{notice_id}/remove":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: notice_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Remove a list notice's game
+      tags:
+      - Challenges
+      description: 'Whoever may edit the Challenge (the Host or a Moderator). A list
+        notice says a Core Game''s entry left the linked Game List (Challenge `list_notices`).
+        Takes the game out of the Pool as a Pool edit would (Runs are brought up to
+        date), excluding it when another source still holds it, and clears the notice.
+        The bot sends `{ "data": { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such notice on this Challenge, or a Challenge hidden from
+            the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_challenge: the Pool would be left without a goal,
+            or the target above its Optional Games'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/challenges/{id}/list_notices/{notice_id}/keep":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: notice_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Keep a list notice's game
+      tags:
+      - Challenges
+      description: 'Whoever may edit the Challenge (the Host or a Moderator). A list
+        notice says a Core Game''s entry left the linked Game List (Challenge `list_notices`).
+        Leaves the game a Core Game, and clears the notice. The bot sends `{ "data":
+        { "acting_user_id": "..." } }`.'
+      responses:
+        '200':
+          description: the Challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Challenge"
+        '403':
+          description: neither the Host nor a Moderator
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such notice on this Challenge, or a Challenge hidden from
+            the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/codex/entries":
     get:
       summary: Search Club Codex entries
@@ -19214,12 +19431,15 @@ paths:
         list; only Admins and above delete a club list; only the owner changes visibility.
         403 "Only its owner can edit this Game List; a Members-visible or club one,
         any Moderator or above.", or "Only its owner can change who sees this Game
-        List." for a visibility change by someone else. Returns the list. Refusals
-        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
-        422 `invalid_game_list`). Members (the `game_lists` Feature): not found for
-        non-staff in Preview and for everyone when Off; the service token is not gated,
-        but a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
-        from the member it acts for.'
+        List." for a visibility change by someone else. Making a list that feeds a
+        Pool Challenge Private is 409 `list_feeds_challenges` (naming the Challenges)
+        unless `confirm`; with it, the club keeps a Members-visible copy (taken over
+        from the owner) that the Challenges relink to, and the owner''s list goes
+        Private. Returns the list. Refusals carry `{ error, message }`; `message`
+        is written for members (403 `forbidden`, 422 `invalid_game_list`). Members
+        (the `game_lists` Feature): not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
       parameters: []
       responses:
         '200':
@@ -19251,6 +19471,12 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+        '409':
+          description: 'list_feeds_challenges: confirm needed'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GameListFeedsChallenges"
         '422':
           description: invalid_game_list, as on create
           content:
@@ -19292,6 +19518,9 @@ paths:
                       description: 'Service only, required on every write: the Discord
                         user id of the member the bot acts for. Their stored roles
                         decide what they may do, and the Feature Flag applies to them.'
+                    confirm:
+                      type: boolean
+                      description: Go ahead though the list feeds a Challenge.
               required:
               - data
         required: true
@@ -19305,7 +19534,11 @@ paths:
         edit club lists and any Members-visible list, and delete a member''s Members-visible
         list; only Admins and above delete a club list; only the owner changes visibility.
         403 "Only its owner or a Moderator can delete this Game List; a club one,
-        an Admin.". The bot names the member with the `acting_user_id` query parameter.
+        an Admin.". A list that feeds a Pool Challenge needs `confirm` (409 `list_feeds_challenges`,
+        naming the Challenges): a member''s list then goes to the club instead (`owner`
+        null, `taken_over_from` set, Members-visible; `taken_over: true`) and keeps
+        feeding them; a club list is deleted and the links end, the Challenges keeping
+        their games. The bot names the member with the `acting_user_id` query parameter.
         Members (the `game_lists` Feature): not found for non-staff in Preview and
         for everyone when Off; the service token is not gated, but a bot write gets
         403 `feature_unavailable` when the Flag hides the Feature from the member
@@ -19316,9 +19549,15 @@ paths:
         required: false
         schema:
           type: string
+      - name: confirm
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Go ahead though the list feeds a Challenge.
       responses:
         '200':
-          description: deleted
+          description: deleted, or taken over by the club
           content:
             application/json:
               schema:
@@ -19331,6 +19570,15 @@ paths:
                         type: integer
                       deleted:
                         type: boolean
+                      taken_over:
+                        type: boolean
+                        description: The club kept it, as it feeds a Challenge.
+        '409':
+          description: 'list_feeds_challenges: confirm needed'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/GameListFeedsChallenges"
         '400':
           description: the bot named no `acting_user_id`
           content:
