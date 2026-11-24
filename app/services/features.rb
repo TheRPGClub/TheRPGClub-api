@@ -106,7 +106,12 @@ module Features
     define("club_codex", "Club Codex", core: false,
       website: [ "Codex" ],
       bot: [ "/codex", "/funfact" ],
-      posts: [ "Daily Fun Fact" ])
+      posts: [ "Daily Fun Fact" ]),
+    # Spec api#442. Registered after Feature Flags shipped, so it has no
+    # stored state and starts in Preview.
+    define("game_lists", "Game Lists", core: false,
+      website: [ "Lists", "Profile Lists", "Game page Lists" ],
+      bot: [ "/list", "Add to list" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

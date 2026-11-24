@@ -1281,6 +1281,42 @@ module OpenapiSchemas
         ).merge(nullable: true, description: "The member reading. Null for the bot without acting_user_id, and " \
                                              "in bot job payloads.")
       ),
+      # GameListResource (spec api#442, ticket api#446): a Game List. A
+      # single list (show, and every write that returns one) adds `entries`.
+      GameList: obj(
+        id: int, name: str(maxLength: GameList::NAME_MAX),
+        description: str(nullable: true, maxLength: GameList::DESCRIPTION_MAX),
+        visibility: str(enum: GameList::VISIBILITIES, description: "members (any member reads it) or private " \
+          "(only its owner, never staff). A club list is always members."),
+        sort: str(enum: GameList::SORTS, description: "How its games are shown: ranked (by `position`), " \
+          "alphabetical (by title) or added (newest first)."),
+        club: bool.merge(description: "True when the club owns it (owner is null)."),
+        owner: ref("ChallengeMember", nullable: true).merge(description: "The member who owns it; null for a club list."),
+        taken_over_from: ref("ChallengeMember", nullable: true).merge(
+          description: "The member the club took this list over from; null unless taken over."),
+        taken_over_at: ts(nullable: true),
+        entry_count: int,
+        preview_games: { type: :array, maxItems: GameLists::Overview::PREVIEW_MAX,
+                         items: obj(game_id: int, title: str, cover_url: str(nullable: true)),
+                         description: "Its first games in its own sort's order, for covers." },
+        viewer: ref("GameListViewer"),
+        entries: { type: :array, items: ref("GameListEntry"),
+                   description: "A single list only: every game, in its sort's order." },
+        created_at: ts, updated_at: ts,
+        _required: %w[id name description visibility sort club owner taken_over_from taken_over_at entry_count
+                      preview_games viewer created_at updated_at]
+      ),
+      # What the caller may do with a Game List (GameLists::Actor).
+      GameListViewer: obj(can_edit: bool, can_delete: bool),
+      # GameListEntryResource (spec api#442, ticket api#446): a game in a list.
+      GameListEntry: obj(
+        game_id: int,
+        position: int.merge(description: "Its place in the ranked order, from 1, whatever the list's sort."),
+        note: str(nullable: true, maxLength: GameListEntry::NOTE_MAX),
+        added_at: ts,
+        game: ref("GameSummary"),
+        _required: %w[game_id position note added_at game]
+      ),
       ChallengeMember: obj(
         user_id: str, username: str, global_name: str(nullable: true),
         discord_avatar: str(nullable: true).merge(

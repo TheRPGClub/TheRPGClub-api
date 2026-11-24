@@ -58,6 +58,8 @@ Rails.application.routes.draw do
           get "threads", to: "threads#game_index"
           # Achievement Hub game showcase (api-09).
           get "achievement_sets", to: "achievements#game_sets"
+          # Game Lists (ticket api#446): the lists holding the game.
+          get "game_lists", to: "game_lists#game_index"
         end
       end
 
@@ -160,6 +162,8 @@ Rails.application.routes.draw do
           patch "challenge_settings", to: "challenge_settings#update"
           # Challenges (ticket #378): the member's Runs, for their profile.
           get "challenge_runs", to: "challenge_runs#user_index"
+          # Game Lists (ticket api#446): the member's lists, for their profile.
+          get "game_lists", to: "game_lists#user_index"
           get "news_category_preferences", to: "news_category_preferences#show"
           patch "news_category_preferences", to: "news_category_preferences#update"
           get "game_keys", to: "game_keys#user_index"
@@ -541,6 +545,18 @@ Rails.application.routes.draw do
       # Challenge Activity (spec api#421, ticket api#424): the club-wide feed
       # of recent Challenge happenings for the dashboard panel.
       get    "challenge_activity",                to: "challenge_activity#index"
+      # Game Lists (spec api#442, ticket api#446): members' and the club's
+      # lists of games, and each list's entries by game id. The fixed
+      # `entries/order` precedes the entry routes so it is never read as a
+      # game id.
+      resources :game_lists, only: %i[index show create update destroy] do
+        member do
+          put    "entries/order",    action: :order
+          post   "entries/:game_id", action: :add_entry
+          patch  "entries/:game_id", action: :update_entry
+          delete "entries/:game_id", action: :remove_entry
+        end
+      end
     end
   end
 end
