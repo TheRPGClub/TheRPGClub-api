@@ -95,7 +95,43 @@ module OpenapiSchemas
 
       # ---- taxonomy / lookup master tables (read-only) ---------------------
       Company: obj(company_id: int, name: str, igdb_company_id: int(nullable: true)),
-      Franchise: obj(franchise_id: int, name: str, igdb_franchise_id: int(nullable: true)),
+      Franchise: obj(franchise_id: int, name: str, igdb_franchise_id: int(nullable: true),
+        created_by: str(nullable: true).merge(description: "Who created it by hand; null for IGDB's.")),
+      # A game's Franchise as the game's relations list it (spec api#442).
+      GameFranchise: extends("Franchise",
+        mainline: bool.merge(description: "Whether the game is Mainline in this Franchise.")),
+      FranchiseGame: obj(
+        _description: "A game on a Franchise's page.",
+        game_id: int, title: str, cover_url: str(nullable: true), release_year: int(nullable: true),
+        mainline: bool, source: str(enum: %w[igdb manual]).merge(description: "Where the link came from."),
+        parent_game_name: str(nullable: true).merge(description: "An Add-on's parent game, as IGDB names it.")
+      ),
+      FranchiseAddOnGroup: obj(
+        _description: "Add-ons under their parent game. The last group has a null parent and holds the " \
+                      "Add-ons whose parent isn't in GameDB.",
+        parent: {
+          allOf: [ obj(game_id: int, title: str, cover_url: str(nullable: true), release_year: int(nullable: true),
+            in_franchise: bool.merge(description: "Whether the parent is in this Franchise too.")) ],
+          nullable: true
+        },
+        games: array_of("FranchiseGame")
+      ),
+      FranchisePage: extends("Franchise", required: %w[games viewer],
+        games: obj(
+          _required: %w[mainline other add_ons],
+          mainline: array_of("FranchiseGame"),
+          other: array_of("FranchiseGame"),
+          add_ons: array_of("FranchiseAddOnGroup").merge(description: "Games with a parent game, by parent.")
+        ),
+        viewer: obj(
+          can_edit: bool.merge(description: "Regulars and above: link, unlink, Mainline, create."),
+          can_admin: bool.merge(description: "Admins and above.")
+        )),
+      FranchiseLink: obj(
+        franchise_id: int, game_id: int, source: str(enum: %w[igdb manual]), mainline: bool,
+        created_at: ts(nullable: true).merge(description: "Null for links older than Franchise editing."),
+        created_by: str(nullable: true)
+      ),
       Genre: obj(genre_id: int, name: str, igdb_genre_id: int(nullable: true)),
       Engine: obj(engine_id: int, name: str, igdb_engine_id: int(nullable: true)),
       Mode: obj(mode_id: int, name: str, igdb_game_mode_id: int(nullable: true)),
