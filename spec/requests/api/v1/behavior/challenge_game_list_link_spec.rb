@@ -324,6 +324,17 @@ RSpec.describe "api/v1 Game Lists linked to Challenges", type: :request do
       expect(GameList.find(list.id).owner_user_id).to eq(owner.user_id)
     end
 
+    it "keeps a taken-over list when the member it came from is deleted" do
+      delete "/api/v1/game_lists/#{list.id}", params: { confirm: true }, headers: auth_headers_for(owner)
+      expect(response).to have_http_status(:ok), response.body
+
+      RpgClubUser.where(user_id: owner.user_id).delete_all
+
+      kept = GameList.find(list.id)
+      expect(kept).to have_attributes(owner_user_id: nil, taken_over_from_user_id: nil)
+      expect(kept.taken_over_at).to be_present
+    end
+
     it "hands a deleted list to the club, still feeding the Challenge" do
       travel_to(Time.zone.parse("2026-11-20 10:00:00")) do
         delete "/api/v1/game_lists/#{list.id}", params: { confirm: true }, headers: auth_headers_for(owner)

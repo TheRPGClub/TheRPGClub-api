@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -408,9 +408,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
     t.datetime "updated_at", null: false
     t.index ["owner_user_id", "updated_at"], name: "ix_game_lists_owner_updated"
     t.index ["updated_at"], name: "ix_game_lists_updated"
-    t.check_constraint "(taken_over_from_user_id IS NULL) = (taken_over_at IS NULL)", name: "ck_game_lists_taken_over_together"
     t.check_constraint "owner_user_id IS NOT NULL OR visibility::text = 'members'::text", name: "ck_game_lists_club_members"
     t.check_constraint "sort::text = ANY (ARRAY['ranked'::character varying, 'alphabetical'::character varying, 'added'::character varying]::text[])", name: "ck_game_lists_sort"
+    t.check_constraint "taken_over_from_user_id IS NULL OR taken_over_at IS NOT NULL", name: "ck_game_lists_taken_over_at"
     t.check_constraint "visibility::text = ANY (ARRAY['members'::character varying, 'private'::character varying]::text[])", name: "ck_game_lists_visibility"
   end
 
