@@ -75,13 +75,17 @@ Rails.application.routes.draw do
       resources :perspectives, only: %i[index show create]
       resources :modes, only: %i[index show create]
       # Franchise editing (spec api#442): Regulars and above link and unlink
-      # games and set Mainline.
-      resources :franchises, only: %i[index show create] do
+      # games, set Mainline and undo changes; Admins and above rename, merge
+      # and delete.
+      resources :franchises, only: %i[index show create update destroy] do
         member do
           put "games/:game_id", action: :link_game, as: :link_game
           delete "games/:game_id", action: :unlink_game, as: :unlink_game
+          post "merge"
+          get "changes", to: "franchise_changes#index"
         end
       end
+      post "franchise_changes/:id/undo", to: "franchise_changes#undo", as: :undo_franchise_change
       resources :companies, only: %i[index show]
       resources :engines, only: %i[index show create]
 

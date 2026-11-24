@@ -161,12 +161,15 @@ module Gamedb
     # Franchises as #sync_simple! does, but around hand edits (spec api#442,
     # Gamedb::FranchiseEditor): a pair a person unlinked is never linked
     # again, and an existing link keeps its `source` and `mainline`. Like
-    # every taxonomy sync it only adds links, so a `manual` link stays.
+    # every taxonomy sync it only adds links, so a `manual` link stays. A
+    # merged Franchise's id resolves to its target and a deleted one is
+    # skipped (GamedbFranchise.for_igdb_ref); an existing Franchise keeps its
+    # name, so a rename (`name_locked`) stays.
     def sync_franchises!(game, refs)
       unlinked = GamedbFranchiseUnlink.where(game_id: game.game_id).pluck(:franchise_id).to_set
       Array(refs).each do |ref|
-        franchise = find_or_create_lookup(GamedbFranchise, :igdb_franchise_id, ref)
-        next if unlinked.include?(franchise.franchise_id)
+        franchise = GamedbFranchise.for_igdb_ref(ref)
+        next if franchise.nil? || unlinked.include?(franchise.franchise_id)
 
         GamedbGameFranchise.create_with(source: "igdb")
           .find_or_create_by!(game_id: game.game_id, franchise_id: franchise.franchise_id)

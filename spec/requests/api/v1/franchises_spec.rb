@@ -108,6 +108,224 @@ RSpec.describe 'api/v1/franchises', type: :request do
     end
   end
 
+  path '/api/v1/franchises/{id}' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbFranchise id.'
+
+    patch 'Rename a franchise' do
+      tags 'Franchises'
+      description 'Admins and above (the acting member\'s stored roles). Renames the Franchise and sets ' \
+                  '`name_locked`, so IGDB re-imports keep the name. Recorded in the history (undoable).'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            required: %w[name],
+            properties: {
+              name: { type: :string, maxLength: 255 },
+              acting_user_id: { type: :string, description: 'Bot only: the member it acts for.' }
+            }
+          }
+        }
+      }
+
+      response '200', 'the renamed franchise' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Franchise' } }
+      end
+
+      response '400', 'missing `data`, or the bot names no acting member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: below Admin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'franchise not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'a blank or too-long `name`, or the Franchise was merged (`franchise_merged`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    delete 'Delete a franchise' do
+      tags 'Franchises'
+      description 'Admins and above. Deletes the Franchise and its links, takes it out of every Pool\'s ' \
+                  'sources (Core Games stay), and remembers an IGDB Franchise so re-imports don\'t create it ' \
+                  'again. Franchises merged into it go too. Recorded in the history (not undoable).'
+      parameter name: :acting_user_id, in: :query, schema: { type: :string }, required: false,
+        description: 'Bot only: the member it acts for.'
+
+      response '204', 'deleted' do
+      end
+
+      response '400', 'the bot names no acting member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: below Admin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'franchise not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/franchises/{id}/merge' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true,
+      description: 'The GamedbFranchise to merge away.'
+
+    post 'Merge a franchise into another' do
+      tags 'Franchises'
+      description 'Admins and above. Moves the links to `into_id` (a game in both stays Mainline if it was in ' \
+                  'either), moves remembered unlinks, repoints Pool sources and sets `merged_into_id`, so ' \
+                  're-imports naming the merged IGDB id resolve to the target. Recorded in the target\'s ' \
+                  'history (not undoable). Answers with the target.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            required: %w[into_id],
+            properties: {
+              into_id: { type: :integer, description: 'The Franchise to merge into.' },
+              acting_user_id: { type: :string, description: 'Bot only: the member it acts for.' }
+            }
+          }
+        }
+      }
+
+      response '200', 'the target franchise' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Franchise' } }
+      end
+
+      response '400', 'missing `data`, or the bot names no acting member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: below Admin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'franchise or target not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'into itself (`invalid_merge`), or either side already merged (`franchise_merged`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/franchises/{id}/changes' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbFranchise id.'
+
+    get 'A franchise\'s change history' do
+      tags 'Franchises'
+      description 'Regulars and above. Every change to the Franchise, newest first, with who made it, who ' \
+                  'undid it and whether the viewer can undo it now.'
+      produces 'application/json'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 25, maximum: 500 }, required: false
+      parameter name: :acting_user_id, in: :query, schema: { type: :string }, required: false,
+        description: 'Bot only: the member it acts for.'
+
+      response '200', 'changes' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/FranchiseChange' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '400', 'the bot names no acting member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: below Regular' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'franchise not found (or deleted)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/franchise_changes/{id}/undo' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'The change id.'
+
+    post 'Undo a franchise change' do
+      tags 'Franchises'
+      description 'Regulars and above. Undoes a link, unlink, Mainline or rename change and marks it undone ' \
+                  '(`undone_at`, `undone_by`); no new history row is written. Refused when the change was ' \
+                  'already undone, or a later change (or a merge, or a change outside the history) touched ' \
+                  'the same game or name.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: false, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: { acting_user_id: { type: :string, description: 'Bot only: the member it acts for.' } }
+          }
+        }
+      }
+
+      response '200', 'the change, now undone' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/FranchiseChange' } }
+      end
+
+      response '400', 'the bot names no acting member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: below Regular' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'change not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', '`already_undone`, or `superseded` by a later change' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'create, merge and delete can\'t be undone (`not_undoable`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/franchises/{id}/games/{game_id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbFranchise id.'
     parameter name: :game_id, in: :path, schema: { type: :string }, required: true, description: 'GamedbGame id.'

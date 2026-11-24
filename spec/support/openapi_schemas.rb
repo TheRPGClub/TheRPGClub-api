@@ -96,7 +96,10 @@ module OpenapiSchemas
       # ---- taxonomy / lookup master tables (read-only) ---------------------
       Company: obj(company_id: int, name: str, igdb_company_id: int(nullable: true)),
       Franchise: obj(franchise_id: int, name: str, igdb_franchise_id: int(nullable: true),
-        created_by: str(nullable: true).merge(description: "Who created it by hand; null for IGDB's.")),
+        created_by: str(nullable: true).merge(description: "Who created it by hand; null for IGDB's."),
+        name_locked: bool.merge(description: "An Admin renamed it, so IGDB re-imports keep the name."),
+        merged_into_id: int(nullable: true).merge(description: "The Franchise it was merged into. A merged " \
+                                                                "Franchise is off the list and refuses changes.")),
       # A game's Franchise as the game's relations list it (spec api#442).
       GameFranchise: extends("Franchise",
         mainline: bool.merge(description: "Whether the game is Mainline in this Franchise.")),
@@ -131,6 +134,30 @@ module OpenapiSchemas
         franchise_id: int, game_id: int, source: str(enum: %w[igdb manual]), mainline: bool,
         created_at: ts(nullable: true).merge(description: "Null for links older than Franchise editing."),
         created_by: str(nullable: true)
+      ),
+      FranchiseChange: obj(
+        _description: "A row of a Franchise's history (spec api#442).",
+        _required: %w[change_id franchise_id action user_id created_at can_undo],
+        change_id: int, franchise_id: int,
+        game_id: int(nullable: true).merge(description: "Set for a change to one game's link."),
+        game_title: str(nullable: true),
+        action: str(enum: GamedbFranchiseChange::ACTIONS),
+        before: json.merge(description: "The values it changed, before: `{ source, mainline, created_at, " \
+                                        "created_by }` for unlink (null for link, or `{ unlinked_by, " \
+                                        "unlinked_at }` when the link replaced a removal), `{ mainline }`, " \
+                                        "`{ name, name_locked }` for rename, `{ franchise_id, name, " \
+                                        "igdb_franchise_id, games }` for merge (the Franchise merged in) and " \
+                                        "`{ name, igdb_franchise_id, games }` for delete."),
+        after: json.merge(description: "The values after (null for unlink and delete)."),
+        user_id: str(nullable: true).merge(description: "Who made it."),
+        username: str(nullable: true),
+        created_at: ts,
+        undone_at: ts(nullable: true),
+        undone_by: str(nullable: true).merge(description: "Who undid it."),
+        undone_by_username: str(nullable: true),
+        can_undo: bool.merge(description: "The viewer may undo it now: an undoable action (link, unlink, " \
+                                          "Mainline, rename), not undone, and nothing later touched the same " \
+                                          "game or name.")
       ),
       Genre: obj(genre_id: int, name: str, igdb_genre_id: int(nullable: true)),
       Engine: obj(engine_id: int, name: str, igdb_engine_id: int(nullable: true)),

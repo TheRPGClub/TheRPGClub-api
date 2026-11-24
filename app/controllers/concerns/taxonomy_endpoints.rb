@@ -34,13 +34,17 @@ module TaxonomyEndpoints
     # @param resource [Class] the Alba resource used to serialize it
     # @param igdb_id_column [Symbol, nil] the unique IGDB-id column to upsert on;
     #   omit to leave the table read-only (no `create` action)
-    def serves_taxonomy(model, resource:, igdb_id_column: nil)
+    # @param scope [Proc, nil] returns the relation `index` lists (default:
+    #   every record)
+    def serves_taxonomy(model, resource:, igdb_id_column: nil, scope: nil)
+      listed = scope || -> { model.all }
+
       define_method(:index) do
-        scope = model.all
-        scope = scope.where("name ILIKE ?", "%#{taxonomy_query}%") if params[:q].present?
+        records = listed.call
+        records = records.where("name ILIKE ?", "%#{taxonomy_query}%") if params[:q].present?
 
         cache_key = [ model.name, taxonomy_version(model), params[:q], params[:page], params[:per] ]
-        render_collection(scope, resource: resource, default_order: { name: :asc }, cache_key: cache_key)
+        render_collection(records, resource: resource, default_order: { name: :asc }, cache_key: cache_key)
       end
 
       define_method(:show) do
