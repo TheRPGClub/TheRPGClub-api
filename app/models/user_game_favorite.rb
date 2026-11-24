@@ -4,6 +4,11 @@ class UserGameFavorite < ApplicationRecord
   self.table_name = "user_game_favorites"
   self.primary_key = "entry_id"
 
+  include ShelfOrder
+
+  # The list's display order (FavoritesController#index, ShelfOrder).
+  SHELF_ORDER = { sort_order: :asc, created_at: :desc, entry_id: :desc }.freeze
+
   belongs_to :user,
     class_name: "RpgClubUser",
     foreign_key: :user_id,

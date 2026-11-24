@@ -9,13 +9,21 @@ RSpec.describe 'api/v1/favorites', type: :request do
     sort_order: { type: :integer, nullable: true, description: 'Optional manual sort position.' },
     note: { type: :string, nullable: true, description: 'Optional free-text note.' }
   }
+  # Update also takes `position`, the single-move reorder (spec api#451 story 15).
+  update_writable = writable.merge(
+    position: { type: :integer, minimum: 1,
+                description: 'Moves the entry to this 1-based place in the member\'s list (past the end means ' \
+                             'last) and renumbers the whole list `sort_order` 1..n in display order, in one ' \
+                             'transaction. Use this to reorder; not combinable with `sort_order` ' \
+                             '(422 `invalid_position`).' }
+  )
 
   path '/api/v1/users/{user_id}/favorites' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
     get 'List a user\'s favorites' do
       tags 'Favorites'
-      description 'Ordered by `sort_order` ascending, then `created_at` descending. Open to any ' \
+      description 'Ordered by `sort_order` ascending (nulls last), then `created_at` descending. Open to any ' \
                   'authenticated caller.'
       produces 'application/json'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
@@ -94,13 +102,13 @@ RSpec.describe 'api/v1/favorites', type: :request do
 
     patch 'Update a favorite' do
       tags 'Favorites'
-      description 'Owner-only. Partial update: send any subset of the writable columns.'
+      description 'Owner-only. Partial update: send any subset of the writable columns. A `position` moves the entry within the member\'s list and renumbers the rest server-side.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable } },
+        properties: { data: { type: :object, properties: update_writable } },
         required: %w[data]
       }
 
@@ -116,7 +124,7 @@ RSpec.describe 'api/v1/favorites', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed, or `invalid_position`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -133,7 +141,7 @@ RSpec.describe 'api/v1/favorites', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable } }
+        properties: { data: { type: :object, properties: update_writable } }
       }
 
       response '200', 'updated' do

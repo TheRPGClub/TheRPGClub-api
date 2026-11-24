@@ -423,7 +423,8 @@ module OpenapiSchemas
       # BacklogEntryResource: trimmed columns + embedded game/platform.
       BacklogEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
-        note: str(nullable: true), game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+        note: str(nullable: true), sort_order: int(nullable: true),
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
       # backlog#pick (BacklogPickResource): the suggested entry, from the backlog
       # or the collection, with its game, platform and HLTB times. `hours` is the
@@ -524,7 +525,7 @@ module OpenapiSchemas
       # FavoriteEntryResource (no platform association).
       FavoriteEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, note: str(nullable: true),
-        game: ref("GameSummary")
+        sort_order: int(nullable: true), game: ref("GameSummary")
       ),
       # The now-playing embedded game (NowPlayingEmbeds): the GameSummary shape
       # plus the game's linked Discord thread, derived per-entry (#104).

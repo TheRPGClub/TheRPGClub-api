@@ -13,6 +13,7 @@ module Api
     # the owner).
     class NowPlayingController < ApplicationController
       include CodedRefusals
+      include ShelfPositioning
 
       feature :now_playing
 
@@ -59,7 +60,7 @@ module Api
       def user_index
         scope = UserNowPlaying.with_now_playing_details.where(user_id: params[:user_id]).preload(:game, :platform)
         render_collection(scope, resource: NowPlayingEntryResource,
-          default_order: { sort_order: :asc, added_at: :desc, entry_id: :desc })
+          default_order: UserNowPlaying::SHELF_ORDER)
       end
 
       # GET /api/v1/now_playing/:id
@@ -100,9 +101,17 @@ module Api
       #
       # Partial update of `note`, `platform_id`, `sort_order` and/or `added_at`
       # (the day the member started playing; 422 `added_in_future` after today).
+      # A `position` (1-based) moves the entry within the member's list and
+      # renumbers the rest (ShelfOrder); 422 `invalid_position` when bad.
       def update
+        position = shelf_position
+        return if performed?
+
         record = UserNowPlaying.find(params[:id])
-        record.update!(update_data)
+        ActiveRecord::Base.transaction do
+          record.update!(update_data)
+          record.move_to_position!(position) if position
+        end
         render json: { data: serialize_entry(record.entry_id, NowPlayingMemberEntryResource) }
       rescue ActiveRecord::RecordInvalid => e
         render_coded_refusal(e, %i[added_in_future])
