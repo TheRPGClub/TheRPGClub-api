@@ -450,6 +450,7 @@ RSpec.describe "api/v1/games behavior", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(json.dig("data", "description")).to eq("new description")
+      expect(json.dig("data", "featured_video_url")).to eq("https://youtu.be/xyz")
       game.reload
       expect(game.description).to eq("new description")
       expect(game.featured_video_url).to eq("https://youtu.be/xyz")
