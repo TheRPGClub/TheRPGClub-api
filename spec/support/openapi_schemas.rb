@@ -96,7 +96,10 @@ module OpenapiSchemas
       # ---- taxonomy / lookup master tables (read-only) ---------------------
       Company: obj(company_id: int, name: str, igdb_company_id: int(nullable: true)),
       Franchise: obj(franchise_id: int, name: str, igdb_franchise_id: int(nullable: true),
-        created_by: str(nullable: true).merge(description: "Who created it by hand; null for IGDB's.")),
+        created_by: str(nullable: true).merge(description: "Who created it by hand; null for IGDB's."),
+        name_locked: bool.merge(description: "An Admin renamed it, so IGDB re-imports keep the name."),
+        merged_into_id: int(nullable: true).merge(description: "The Franchise it was merged into. A merged " \
+                                                                "Franchise is off the list and refuses changes.")),
       # A game's Franchise as the game's relations list it (spec api#442).
       GameFranchise: extends("Franchise",
         mainline: bool.merge(description: "Whether the game is Mainline in this Franchise.")),
@@ -131,6 +134,30 @@ module OpenapiSchemas
         franchise_id: int, game_id: int, source: str(enum: %w[igdb manual]), mainline: bool,
         created_at: ts(nullable: true).merge(description: "Null for links older than Franchise editing."),
         created_by: str(nullable: true)
+      ),
+      FranchiseChange: obj(
+        _description: "A row of a Franchise's history (spec api#442).",
+        _required: %w[change_id franchise_id action user_id created_at can_undo],
+        change_id: int, franchise_id: int,
+        game_id: int(nullable: true).merge(description: "Set for a change to one game's link."),
+        game_title: str(nullable: true),
+        action: str(enum: GamedbFranchiseChange::ACTIONS),
+        before: json.merge(description: "The values it changed, before: `{ source, mainline, created_at, " \
+                                        "created_by }` for unlink (null for link, or `{ unlinked_by, " \
+                                        "unlinked_at }` when the link replaced a removal), `{ mainline }`, " \
+                                        "`{ name, name_locked }` for rename, `{ franchise_id, name, " \
+                                        "igdb_franchise_id, games }` for merge (the Franchise merged in) and " \
+                                        "`{ name, igdb_franchise_id, games }` for delete."),
+        after: json.merge(description: "The values after (null for unlink and delete)."),
+        user_id: str(nullable: true).merge(description: "Who made it."),
+        username: str(nullable: true),
+        created_at: ts,
+        undone_at: ts(nullable: true),
+        undone_by: str(nullable: true).merge(description: "Who undid it."),
+        undone_by_username: str(nullable: true),
+        can_undo: bool.merge(description: "The viewer may undo it now: an undoable action (link, unlink, " \
+                                          "Mainline, rename), not undone, and nothing later touched the same " \
+                                          "game or name.")
       ),
       Genre: obj(genre_id: int, name: str, igdb_genre_id: int(nullable: true)),
       Engine: obj(engine_id: int, name: str, igdb_engine_id: int(nullable: true)),
@@ -1294,6 +1321,42 @@ module OpenapiSchemas
           eligible: bool.merge(description: "backlog_count meets the 5-game minimum to sign up.")
         ).merge(nullable: true, description: "The member reading. Null for the bot without acting_user_id, and " \
                                              "in bot job payloads.")
+      ),
+      # GameListResource (spec api#442, ticket api#446): a Game List. A
+      # single list (show, and every write that returns one) adds `entries`.
+      GameList: obj(
+        id: int, name: str(maxLength: GameList::NAME_MAX),
+        description: str(nullable: true, maxLength: GameList::DESCRIPTION_MAX),
+        visibility: str(enum: GameList::VISIBILITIES, description: "members (any member reads it) or private " \
+          "(only its owner, never staff). A club list is always members."),
+        sort: str(enum: GameList::SORTS, description: "How its games are shown: ranked (by `position`), " \
+          "alphabetical (by title) or added (newest first)."),
+        club: bool.merge(description: "True when the club owns it (owner is null)."),
+        owner: ref("ChallengeMember", nullable: true).merge(description: "The member who owns it; null for a club list."),
+        taken_over_from: ref("ChallengeMember", nullable: true).merge(
+          description: "The member the club took this list over from; null unless taken over."),
+        taken_over_at: ts(nullable: true),
+        entry_count: int,
+        preview_games: { type: :array, maxItems: GameLists::Overview::PREVIEW_MAX,
+                         items: obj(game_id: int, title: str, cover_url: str(nullable: true)),
+                         description: "Its first games in its own sort's order, for covers." },
+        viewer: ref("GameListViewer"),
+        entries: { type: :array, items: ref("GameListEntry"),
+                   description: "A single list only: every game, in its sort's order." },
+        created_at: ts, updated_at: ts,
+        _required: %w[id name description visibility sort club owner taken_over_from taken_over_at entry_count
+                      preview_games viewer created_at updated_at]
+      ),
+      # What the caller may do with a Game List (GameLists::Actor).
+      GameListViewer: obj(can_edit: bool, can_delete: bool),
+      # GameListEntryResource (spec api#442, ticket api#446): a game in a list.
+      GameListEntry: obj(
+        game_id: int,
+        position: int.merge(description: "Its place in the ranked order, from 1, whatever the list's sort."),
+        note: str(nullable: true, maxLength: GameListEntry::NOTE_MAX),
+        added_at: ts,
+        game: ref("GameSummary"),
+        _required: %w[game_id position note added_at game]
       ),
       ChallengeMember: obj(
         user_id: str, username: str, global_name: str(nullable: true),

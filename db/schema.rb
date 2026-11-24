@@ -356,6 +356,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
     t.check_constraint "state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[])", name: "ck_feature_flags_state"
   end
 
+  create_table "game_list_entries", primary_key: ["game_list_id", "game_id"], force: :cascade do |t|
+    t.bigint "game_list_id", null: false
+    t.bigint "game_id", null: false
+    t.integer "position", null: false
+    t.string "note", limit: 280
+    t.timestamptz "added_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["game_id"], name: "ix_game_list_entries_game"
+    t.index ["game_list_id", "position"], name: "ix_game_list_entries_position"
+    t.check_constraint "\"position\" >= 1", name: "ck_game_list_entries_position"
+  end
+
+  create_table "game_lists", force: :cascade do |t|
+    t.string "owner_user_id", limit: 30
+    t.string "name", limit: 100, null: false
+    t.string "description", limit: 500
+    t.string "visibility", limit: 8, default: "members", null: false
+    t.string "sort", limit: 12, default: "ranked", null: false
+    t.string "taken_over_from_user_id", limit: 30
+    t.timestamptz "taken_over_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["owner_user_id", "updated_at"], name: "ix_game_lists_owner_updated"
+    t.index ["updated_at"], name: "ix_game_lists_updated"
+    t.check_constraint "(taken_over_from_user_id IS NULL) = (taken_over_at IS NULL)", name: "ck_game_lists_taken_over_together"
+    t.check_constraint "owner_user_id IS NOT NULL OR visibility::text = 'members'::text", name: "ck_game_lists_club_members"
+    t.check_constraint "sort::text = ANY (ARRAY['ranked'::character varying, 'alphabetical'::character varying, 'added'::character varying]::text[])", name: "ck_game_lists_sort"
+    t.check_constraint "visibility::text = ANY (ARRAY['members'::character varying, 'private'::character varying]::text[])", name: "ck_game_lists_visibility"
+  end
+
   create_table "gamedb_collections", primary_key: "collection_id", force: :cascade do |t|
     t.bigint "igdb_collection_id"
     t.string "name", limit: 255, null: false
@@ -370,11 +399,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
     t.unique_constraint ["igdb_company_id"], name: "gamedb_companies_igdb_company_id_key"
   end
 
+  create_table "gamedb_deleted_franchises", primary_key: "igdb_franchise_id", force: :cascade do |t|
+    t.string "name", limit: 255, null: false
+    t.string "deleted_by", limit: 30
+    t.datetime "deleted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+  end
+
   create_table "gamedb_engines", primary_key: "engine_id", force: :cascade do |t|
     t.bigint "igdb_engine_id"
     t.string "name", limit: 255, null: false
 
     t.unique_constraint ["igdb_engine_id"], name: "gamedb_engines_igdb_engine_id_key"
+  end
+
+  create_table "gamedb_franchise_changes", force: :cascade do |t|
+    t.bigint "franchise_id", null: false
+    t.bigint "game_id"
+    t.string "action", limit: 20, null: false
+    t.jsonb "before"
+    t.jsonb "after"
+    t.string "user_id", limit: 30
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.datetime "undone_at"
+    t.string "undone_by", limit: 30
+    t.index ["franchise_id", "game_id", "id"], name: "ix_gamedb_franchise_changes_game"
+    t.index ["franchise_id", "id"], name: "ix_gamedb_franchise_changes_franchise"
+    t.check_constraint "action::text = ANY (ARRAY['link'::character varying, 'unlink'::character varying, 'mainline_on'::character varying, 'mainline_off'::character varying, 'create'::character varying, 'rename'::character varying, 'merge'::character varying, 'delete'::character varying]::text[])", name: "ck_gamedb_franchise_changes_action"
   end
 
   create_table "gamedb_franchise_unlinks", primary_key: ["game_id", "franchise_id"], force: :cascade do |t|
@@ -388,7 +438,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
     t.bigint "igdb_franchise_id"
     t.string "name", limit: 255, null: false
     t.string "created_by", limit: 30
-
+    t.boolean "name_locked", default: false, null: false
+    t.bigint "merged_into_id"
+    t.index ["merged_into_id"], name: "index_gamedb_franchises_on_merged_into_id"
     t.unique_constraint ["igdb_franchise_id"], name: "gamedb_franchises_igdb_franchise_id_key"
   end
 
@@ -1597,8 +1649,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_120000) do
   add_foreign_key "codex_entry_mentions", "codex_entries", column: "entry_id", name: "fk_codex_entry_mentions_entry", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_codex_entry_mentions_user", on_delete: :cascade
   add_foreign_key "daily_fun_fact_posts", "codex_entries", column: "entry_id", name: "fk_daily_fun_fact_posts_entry", on_delete: :nullify
+  add_foreign_key "game_list_entries", "game_lists", name: "fk_game_list_entries_list", on_delete: :cascade
+  add_foreign_key "game_list_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_game_list_entries_game", on_delete: :cascade
+  add_foreign_key "game_lists", "rpg_club_users", column: "owner_user_id", primary_key: "user_id", name: "fk_game_lists_owner", on_delete: :cascade
+  add_foreign_key "game_lists", "rpg_club_users", column: "taken_over_from_user_id", primary_key: "user_id", name: "fk_game_lists_taken_over_from", on_delete: :nullify
+  add_foreign_key "gamedb_franchise_changes", "gamedb_games", column: "game_id", primary_key: "game_id", on_delete: :cascade
   add_foreign_key "gamedb_franchise_unlinks", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", on_delete: :cascade
   add_foreign_key "gamedb_franchise_unlinks", "gamedb_games", column: "game_id", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "gamedb_franchises", "gamedb_franchises", column: "merged_into_id", primary_key: "franchise_id"
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"

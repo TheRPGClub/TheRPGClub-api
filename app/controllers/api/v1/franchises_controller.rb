@@ -6,19 +6,19 @@ module Api
     # endpoints (TaxonomyEndpoints). A Franchise's page groups its games as
     # Mainline, Other and Add-ons, with what the viewer may change
     # (Gamedb::FranchiseGames). Regulars and above link and unlink games, set
-    # Mainline and create Franchises with no IGDB id (spec api#442), all
-    # through Gamedb::FranchiseEditor. The bot keeps its admin/service
-    # upsert by IGDB id on `POST /franchises`.
+    # Mainline and create Franchises with no IGDB id; Admins and above
+    # rename, merge and delete them (spec api#442), all through
+    # Gamedb::FranchiseEditor, which records each change in the history
+    # (FranchiseChangesController). The bot keeps its admin/service upsert
+    # by IGDB id on `POST /franchises`.
     #
-    # Rights come from the acting member's stored roles (docs/adr/0005): the
-    # signed-in member, or the member the bot names in `acting_user_id`.
+    # Rights: FranchiseRights. A merged Franchise leaves the list and
+    # search, still shows (with `merged_into_id`), and refuses changes.
     class FranchisesController < ApplicationController
       include TaxonomyEndpoints
-      include ActingMember
+      include FranchiseRights
 
-      EDIT_REFUSAL = "You need the Regulars role to change Franchises."
-
-      serves_taxonomy GamedbFranchise, resource: FranchiseResource
+      serves_taxonomy GamedbFranchise, resource: FranchiseResource, scope: -> { GamedbFranchise.current }
 
       # GET /api/v1/franchises/:id
       #
@@ -54,7 +54,7 @@ module Api
       # Links the game (as `manual`) if it isn't linked, and sets Mainline
       # when `mainline` is given. Answers with the link.
       def link_game
-        return unless require_editor!
+        return unless require_editor! && require_unmerged!
 
         mainline = link_mainline
         return if performed?
@@ -68,9 +68,51 @@ module Api
       # Unlinks the game and remembers it, so an IGDB re-import doesn't add
       # it back. 204, also when it wasn't linked.
       def unlink_game
-        return unless require_editor!
+        return unless require_editor! && require_unmerged!
 
         editor.unlink!(franchise, game)
+        head :no_content
+      end
+
+      # PATCH /api/v1/franchises/:id
+      # Body: { "data": { "name" } }
+      #
+      # Admins and above. Renames the Franchise and locks the name, so IGDB
+      # re-imports keep it.
+      def update
+        return unless require_franchise_admin! && require_unmerged!
+
+        editor.rename!(franchise, name: request_data["name"])
+        bump_taxonomy_version(GamedbFranchise)
+        render json: { data: FranchiseResource.new(franchise).serializable_hash }
+      end
+
+      # POST /api/v1/franchises/:id/merge
+      # Body: { "data": { "into_id" } }
+      #
+      # Admins and above. Merges this Franchise into `into_id` and answers
+      # with the target.
+      def merge
+        return unless require_franchise_admin!
+
+        target = GamedbFranchise.find(request_data["into_id"])
+        editor.merge!(franchise, into: target)
+        bump_taxonomy_version(GamedbFranchise)
+        render json: { data: FranchiseResource.new(target.reload).serializable_hash }
+      rescue Gamedb::FranchiseEditor::MergeRefused => e
+        message = e.reason == :invalid_merge ? "A Franchise can't be merged into itself." : "That Franchise was merged into another."
+        render json: { error: e.reason.to_s, message: message }, status: :unprocessable_content
+      end
+
+      # DELETE /api/v1/franchises/:id
+      #
+      # Admins and above. Deletes the Franchise and takes it out of every
+      # Pool's sources; an IGDB Franchise isn't created again by re-imports.
+      def destroy
+        return unless require_franchise_admin!
+
+        editor.delete!(franchise)
+        bump_taxonomy_version(GamedbFranchise)
         head :no_content
       end
 
@@ -82,47 +124,19 @@ module Api
         upsert_taxonomy(GamedbFranchise, FranchiseResource, :igdb_franchise_id)
       end
 
-      # A DELETE carries no body, so the bot names its member in the query.
-      def acting_user_id
-        return @acting_user_id if defined?(@acting_user_id)
-        return super unless current_principal&.service? && request.delete?
-
-        @acting_user_id = params[:acting_user_id].presence&.to_s
-      end
-
       def franchise = @franchise ||= GamedbFranchise.find(params[:id])
 
       def game = @game ||= GamedbGame.select(:game_id, :updated_at).find(params[:game_id])
 
       def editor = Gamedb::FranchiseEditor.new(user_id: acting_user_id)
 
-      def can_edit?
-        member_rights { |member| member.role_regular? || member.moderator_or_above? } ||
-          (!current_principal.service? && regular_or_staff?)
-      end
+      # 422 `franchise_merged` for a change to a merged Franchise (the
+      # target is the one to change).
+      def require_unmerged!
+        return true unless franchise.merged?
 
-      def can_admin?
-        member_rights(&:admin_or_above?) || (!current_principal.service? && admin_or_above?)
-      end
-
-      # For the bot, the named member's stored roles (false when it names
-      # none); nil for a signed-in member, whose roles StaffGates reads.
-      def member_rights
-        return nil unless current_principal.service?
-
-        acting_member ? (yield(acting_member) ? true : false) : false
-      end
-
-      # 400 for the bot without an acting member; 403 unless Regular or
-      # above.
-      def require_editor!
-        if current_principal.service? && acting_user_id.blank?
-          render json: { error: "acting_user_id required" }, status: :bad_request
-          return false
-        end
-        return true if can_edit?
-
-        render json: { error: "forbidden", message: EDIT_REFUSAL }, status: :forbidden
+        render json: { error: "franchise_merged", message: "This Franchise was merged into another.",
+                       merged_into_id: franchise.merged_into_id }, status: :unprocessable_content
         false
       end
 

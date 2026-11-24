@@ -266,7 +266,7 @@ module Api
 
       def pool_sources_for(query)
         like = "%#{ActiveRecord::Base.sanitize_sql_like(query)}%"
-        franchises = GamedbFranchise.where("name ILIKE ?", like).order(:name).limit(25)
+        franchises = GamedbFranchise.current.where("name ILIKE ?", like).order(:name).limit(25)
         franchise_counts = GamedbGameFranchise.where(franchise_id: franchises.map(&:franchise_id)).group(:franchise_id).count
         collections = GamedbCollection.where("name ILIKE ?", like).order(:name).limit(25)
         collection_counts = GamedbGame.where(collection_id: collections.map(&:collection_id)).group(:collection_id).count
