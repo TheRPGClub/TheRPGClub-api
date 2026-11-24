@@ -5,8 +5,9 @@ module Challenges
   # they may do (spec #376, "Who can do what"). The API decides from the
   # member's stored roles, never from the bot's token (docs/adr/0005).
   #
-  #   create          Regulars, Moderators, Admins and Superadmins; a
-  #                   club-hosted Challenge needs a Moderator or above
+  #   create          any member, for Slots and Pool; an Assignment
+  #                   Challenge, or one hosted by the club, needs a
+  #                   Moderator or above (spec api#442)
   #   edit            the Host, for their own; a Moderator or above for a
   #                   club-hosted one
   #   delete          the Host while it has no Runs; a Moderator or above
@@ -19,7 +20,7 @@ module Challenges
     def regular? = regular
     def moderator_or_above? = moderator
 
-    def can_create? = regular? || moderator_or_above?
+    def can_create?(challenge_format) = challenge_format.to_s != Formats::Assignment::KEY || moderator_or_above?
 
     def can_host_for_club? = moderator_or_above?
 
@@ -38,7 +39,7 @@ module Challenges
 
   # The refusal messages members see, as the bot and the website show them.
   module Refusals
-    CREATE = "You need the Regulars role to create a Challenge."
+    CREATE = "Only Moderators and above can create an Assignment Challenge."
     CLUB_HOSTED = "Only Moderators and above can create a Challenge hosted by the club."
     EDIT = "Only the Host can edit this Challenge; a club-hosted one, any Moderator or above."
     DELETE = "Only the Host or a Moderator can delete this Challenge."

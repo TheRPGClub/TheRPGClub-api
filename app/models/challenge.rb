@@ -10,9 +10,9 @@
 # club's time zone; the timed effects belong to the lifecycle job.
 #
 # Every Challenge has exactly one Challenge Format, and each Format keeps its
-# own settings (Challenges::Formats): a Pool's definition is the chosen
-# franchises and collections plus games included or excluded by hand, and
-# its target is `pool_target` Cleared games (null: every game in the Pool);
+# own settings (Challenges::Formats): a Pool's definition is its sources
+# (Franchises and Series) plus its Core, Optional and excluded games, and a
+# Run needs every Core Game and `pool_optional_target` Optional Games;
 # a Slots range runs from `slots_first_year` (null: each member's birth year)
 # to `slots_last_year` (null: the current year); an Assignment's Edition
 # calendar is the sign-up cutoff, pick deadline and reveal date, each a month
@@ -23,7 +23,8 @@
 # curated one, chosen on create unless the request set one.
 #
 # Once the Challenge has any Run its rules are locked (RULE_ATTRIBUTES and
-# the Format's settings); its name, description and end date stay editable.
+# the Format's locked settings, which for a Pool are none); its name,
+# description and end date stay editable.
 class Challenge < ApplicationRecord
   FORMATS = %w[slots pool assignment].freeze
   SCHEDULES = %w[always_open seasonal].freeze
@@ -46,7 +47,7 @@ class Challenge < ApplicationRecord
   validates :description, length: { maximum: DESCRIPTION_MAX }
   validates :challenge_format, inclusion: { in: FORMATS, message: "must be one of #{FORMATS.join(', ')}" }
   validates :schedule, inclusion: { in: SCHEDULES, message: "must be always_open or seasonal" }
-  validates :pool_target, numericality: { only_integer: true, greater_than_or_equal_to: 1 }, allow_nil: true
+  validates :pool_optional_target, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validate :schedule_fits
 
   before_create :assign_curated_tint, unless: :tint_fill?
@@ -96,12 +97,6 @@ class Challenge < ApplicationRecord
     pair ||= (Challenges::Tint.fallback(self) if persisted?)
     self.tint_fill = pair&.fill
     self.tint_hi = pair&.hi
-  end
-
-  # How many games a Pool Challenge's Pool holds now (the target "all").
-  # Remembered on this record, which Runs loaded together share.
-  def pool_game_count
-    @pool_game_count ||= Challenges::PoolDefinition.of(self).games.count
   end
 
   private

@@ -86,7 +86,7 @@ RSpec.describe "api/v1/challenges Slots behavior", type: :request do
   # A Slots Challenge ranging over `first`..`last` (nil: the member's birth
   # year, and the current year).
   def slots(first = nil, last = nil, **attrs)
-    create(:challenge, challenge_format: "slots", pool_target: nil, slots_first_year: first, slots_last_year: last,
+    create(:challenge, challenge_format: "slots", slots_first_year: first, slots_last_year: last,
       **attrs)
   end
 

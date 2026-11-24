@@ -22,7 +22,7 @@ RSpec.describe "api/v1/challenges pool progress behavior", type: :request do
 
   def pool_of(challenge, *games)
     ChallengePoolGame.where(challenge_id: challenge.id).delete_all
-    games.each { |pool_game| ChallengePoolGame.create!(challenge: challenge, game: pool_game, inclusion: "include") }
+    games.each { |pool_game| ChallengePoolGame.create!(challenge: challenge, game: pool_game, inclusion: "optional") }
     challenge.reload
   end
 

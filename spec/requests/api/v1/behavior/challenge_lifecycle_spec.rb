@@ -51,7 +51,7 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
     it "carries last Season's Finishers, the Pool's first games and the key art and tint for the post" do
       challenge = seasonal("06-21..09-22")
       cover = create(:game_image, :primary)
-      ChallengePoolGame.create!(challenge: challenge, game: cover.game, inclusion: "include")
+      ChallengePoolGame.create!(challenge: challenge, game: cover.game, inclusion: "optional")
       alice, bob, carol, dave = create_list(:user, 4, role_member: true)
       season = ->(year) { { season_starts_on: Date.new(year, 6, 21), season_ends_on: Date.new(year, 9, 22) } }
       create(:challenge_run, challenge: challenge, user: carol, status: "finished", ended_at: Time.utc(2026, 8, 1),
@@ -273,7 +273,7 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
 
     it "fills on 1 January with a Cleared game waiting for it, Catching the Run Up again, once" do
       challenge = travel_to(club_time("2026-10-01 12:00")) do
-        create(:challenge, challenge_format: "slots", pool_target: nil, slots_first_year: 2025, slots_last_year: nil)
+        create(:challenge, challenge_format: "slots", slots_first_year: 2025, slots_last_year: nil)
       end
       run_id = travel_to(club_time("2026-10-02 12:00")) do
         start_run(challenge).tap do
@@ -301,7 +301,7 @@ RSpec.describe "api/v1/challenge lifecycle behavior", type: :request do
 
     it "is due again only on the next 1 January" do
       travel_to(club_time("2026-10-01 12:00")) do
-        create(:challenge, challenge_format: "slots", pool_target: nil, slots_first_year: 2025, slots_last_year: nil)
+        create(:challenge, challenge_format: "slots", slots_first_year: 2025, slots_last_year: nil)
       end
 
       tick("2026-10-01 12:01")

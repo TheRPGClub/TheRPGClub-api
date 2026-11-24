@@ -1,9 +1,10 @@
 # frozen_string_literal: true
 
-# A game a Pool Challenge's Host included in, or excluded from, the Pool by
-# hand (Challenges::PoolDefinition).
+# A game a person put in a Pool Challenge as a Core or Optional Game, or
+# excluded from its sources, and when (`added_at`, for "new";
+# Challenges::PoolDefinition).
 class ChallengePoolGame < ApplicationRecord
-  INCLUSIONS = %w[include exclude].freeze
+  INCLUSIONS = %w[core optional exclude].freeze
 
   self.primary_key = %i[challenge_id game_id]
 

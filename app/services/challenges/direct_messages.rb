@@ -19,7 +19,12 @@ module Challenges
   # it, under `edition`) for having `backlog_count` games in their backlog,
   # under the `minimum`; and "pick_reminder", a Santa who hasn't picked for
   # their `recipient` ({ user_id, username, global_name }) 2 days before the
-  # Edition's pick deadline (`days_left`), with the Edition under `edition`.
+  # Edition's pick deadline (`days_left`), with the Edition under `edition`;
+  # and "pool_goal_changed", a Pool edit that grew the goal of the member's
+  # Active Run (as GET /api/v1/challenge_runs/{id} serves it, under `run`):
+  # the Core Games it added under `added_core_games` ({ game_id, title,
+  # cover_url }, oldest release first) and a raised Optional target under
+  # `optional_target` ({ from, to }, null when unchanged).
   module DirectMessages
     KIND = "challenge_dm"
 
@@ -63,6 +68,30 @@ module Challenges
           payload: { event: "pick_reminder", user_id: signup.user_id, challenge: challenge_json, edition: edition_json,
                      recipient: Challenges.member(signup.recipient),
                      days_left: (edition.pick_deadline_on - today).to_i }
+        )
+      end
+    end
+
+    # Tells each member with an Active Run of `challenge` who keeps
+    # Challenge DMs on that a Pool edit grew their goal: one DM per save,
+    # naming the Core Games added and the raised target. Queued for the
+    # member who edited (`challenge.updated_by`).
+    def self.pool_goal_changed!(challenge, added_core_game_ids:, optional_target:)
+      runs = challenge.runs.where(status: "active", user_id: reachable.select(:user_id))
+      return unless runs.exists?
+
+      challenge = ChallengeResource.preloaded(Challenge.where(id: challenge.id)).first!
+      challenge_json = ChallengeResource.new(challenge, params: { detail: true }).serializable_hash
+      added = GamedbGame.where(game_id: added_core_game_ids).preload(:images)
+        .order(Arel.sql("initial_release_date ASC NULLS LAST, title ASC"))
+        .map { |game| { game_id: game.game_id, title: game.title, cover_url: game.cover_url } }
+      ChallengeRunResource.preloaded(runs).find_each do |run|
+        BotJob.enqueue!(
+          kind: KIND, requested_by: challenge.updated_by,
+          summary: %(Tell #{Challenges.display_name(run.user)} the goal of "#{challenge.name}" changed),
+          payload: { event: "pool_goal_changed", user_id: run.user_id, challenge: challenge_json,
+                     run: ChallengeRunResource.new(run).serializable_hash, added_core_games: added,
+                     optional_target: optional_target }
         )
       end
     end

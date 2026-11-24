@@ -4,8 +4,8 @@ module Challenges
   # The first games of several Pools at once, for cover walls and list
   # flyers: `{ game_id, title, cover_url }` (cover_url null for a game without
   # one), those with a cover first, then by title, then id. One query ranks
-  # every Pool's games (the same Pool rule as PoolDefinition#games), one more
-  # reads the games and their images.
+  # every Pool's games (the same Pool rule as PoolDefinition#games, over
+  # PoolSources), one more reads the games and their images.
   #
   #   Challenges::PoolCovers.of([ 3, 7 ], limit: 4) # => { 3 => [ { game_id:, title:, cover_url: }, ... ], 7 => [] }
   module PoolCovers
@@ -24,21 +24,19 @@ module Challenges
       covers
     end
 
+    # Sourced games that are not Add-ons and not excluded, and every game
+    # a person made Core or Optional.
     RANKED_SQL = <<~SQL.squish.freeze
       WITH sourced AS (
-        SELECT pf.challenge_id, gf.game_id FROM challenge_pool_franchises pf
-          JOIN gamedb_game_franchises gf ON gf.franchise_id = pf.franchise_id
-          WHERE pf.challenge_id IN (:ids)
-        UNION
-        SELECT pc.challenge_id, g.game_id FROM challenge_pool_collections pc
-          JOIN gamedb_games g ON g.collection_id = pc.collection_id
-          WHERE pc.challenge_id IN (:ids)
+        #{PoolSources::ALL.map(&:challenge_sql).join(' UNION ')}
       ), pool AS (
         SELECT s.challenge_id, s.game_id FROM sourced s
+          JOIN gamedb_games sg ON sg.game_id = s.game_id AND sg.parent_igdb_id IS NULL
           WHERE NOT EXISTS (SELECT 1 FROM challenge_pool_games x WHERE x.challenge_id = s.challenge_id
             AND x.game_id = s.game_id AND x.inclusion = 'exclude')
         UNION
-        SELECT challenge_id, game_id FROM challenge_pool_games WHERE inclusion = 'include' AND challenge_id IN (:ids)
+        SELECT challenge_id, game_id FROM challenge_pool_games
+          WHERE inclusion IN ('core', 'optional') AND challenge_id IN (:ids)
       )
       SELECT challenge_id, game_id FROM (
         SELECT pool.challenge_id, pool.game_id, ROW_NUMBER() OVER (
