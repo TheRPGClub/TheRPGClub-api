@@ -17,7 +17,12 @@ RSpec.describe 'api/v1/now_playing', type: :request do
     platform_id: { type: :integer, nullable: true, description: 'Platform association.' },
     sort_order: { type: :integer, nullable: true, description: 'Ascending display order.' },
     added_at: { type: :string, format: 'date-time',
-                description: 'When the member started playing (a date is read as that UTC day). Not after today.' }
+                description: 'When the member started playing (a date is read as that UTC day). Not after today.' },
+    position: { type: :integer, minimum: 1,
+                description: 'Moves the entry to this 1-based place in the member\'s list (past the end means ' \
+                             'last) and renumbers the whole list `sort_order` 1..n in display order, in one ' \
+                             'transaction. Use this to reorder; not combinable with `sort_order` ' \
+                             '(422 `invalid_position`).' }
   }
 
   path '/api/v1/users/{user_id}/now_playing' do
@@ -152,7 +157,7 @@ RSpec.describe 'api/v1/now_playing', type: :request do
       tags 'Now Playing'
       description 'Owner-only. Partial update of `note`, `platform_id`, `sort_order` and/or `added_at` ' \
                   '(the day the member started playing; 422 `added_in_future` when after today in club time). ' \
-                  '`note_updated_at` is stamped server-side when the note changes.'
+                  '`note_updated_at` is stamped server-side when the note changes. A `position` moves the entry within the member\'s list and renumbers the rest server-side.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -174,7 +179,7 @@ RSpec.describe 'api/v1/now_playing', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed, `added_in_future` or `invalid_position`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

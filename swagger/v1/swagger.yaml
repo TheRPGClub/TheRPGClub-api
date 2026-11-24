@@ -1218,6 +1218,9 @@ components:
         note:
           type: string
           nullable: true
+        sort_order:
+          type: integer
+          nullable: true
         game:
           "$ref": "#/components/schemas/GameSummary"
         platform:
@@ -1601,6 +1604,9 @@ components:
           type: integer
         note:
           type: string
+          nullable: true
+        sort_order:
+          type: integer
           nullable: true
         game:
           "$ref": "#/components/schemas/GameSummary"
@@ -8463,8 +8469,8 @@ paths:
       summary: List a user's backlog
       tags:
       - Backlog
-      description: Ordered by `sort_order` ascending then `created_at` descending.
-        Open to any authenticated caller.
+      description: Ordered by `sort_order` ascending (nulls last), then `created_at`
+        descending. Open to any authenticated caller.
       parameters:
       - name: page
         in: query
@@ -8724,7 +8730,9 @@ paths:
       summary: Update a backlog entry
       tags:
       - Backlog
-      description: 'Owner-only. Partial update: send any subset of the writable columns.'
+      description: 'Owner-only. Partial update: send any subset of the writable columns.
+        A `position` moves the entry within the member''s list and renumbers the rest
+        server-side.'
       parameters: []
       responses:
         '200':
@@ -8749,7 +8757,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `invalid_position`
           content:
             application/json:
               schema:
@@ -8785,6 +8793,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
               required:
               - data
         required: true
@@ -8836,6 +8851,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
         required: true
     delete:
       summary: Delete a backlog entry
@@ -17228,8 +17250,8 @@ paths:
       summary: List a user's favorites
       tags:
       - Favorites
-      description: Ordered by `sort_order` ascending, then `created_at` descending.
-        Open to any authenticated caller.
+      description: Ordered by `sort_order` ascending (nulls last), then `created_at`
+        descending. Open to any authenticated caller.
       parameters:
       - name: page
         in: query
@@ -17386,7 +17408,9 @@ paths:
       summary: Update a favorite
       tags:
       - Favorites
-      description: 'Owner-only. Partial update: send any subset of the writable columns.'
+      description: 'Owner-only. Partial update: send any subset of the writable columns.
+        A `position` moves the entry within the member''s list and renumbers the rest
+        server-side.'
       parameters: []
       responses:
         '200':
@@ -17411,7 +17435,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `invalid_position`
           content:
             application/json:
               schema:
@@ -17443,6 +17467,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
               required:
               - data
         required: true
@@ -17489,6 +17520,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
         required: true
     delete:
       summary: Delete a favorite
@@ -26239,7 +26277,8 @@ paths:
       description: Owner-only. Partial update of `note`, `platform_id`, `sort_order`
         and/or `added_at` (the day the member started playing; 422 `added_in_future`
         when after today in club time). `note_updated_at` is stamped server-side when
-        the note changes.
+        the note changes. A `position` moves the entry within the member's list and
+        renumbers the rest server-side.
       parameters: []
       responses:
         '200':
@@ -26264,7 +26303,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, `added_in_future` or `invalid_position`
           content:
             application/json:
               schema:
@@ -26301,6 +26340,13 @@ paths:
                       format: date-time
                       description: When the member started playing (a date is read
                         as that UTC day). Not after today.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
               required:
               - data
         required: true
@@ -26352,6 +26398,13 @@ paths:
                       format: date-time
                       description: When the member started playing (a date is read
                         as that UTC day). Not after today.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
         required: true
     delete:
       summary: Delete a now-playing entry

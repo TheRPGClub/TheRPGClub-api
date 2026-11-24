@@ -3,6 +3,8 @@
 module Api
   module V1
     class BacklogController < ApplicationController
+      include ShelfPositioning
+
       feature :backlog
 
       before_action :require_owner!, only: %i[pick create update destroy]
@@ -13,7 +15,7 @@ module Api
 
       def index
         scope = UserGameBacklog.where(user_id: params[:user_id]).preload(:game, :platform)
-        render_collection(scope, resource: BacklogEntryResource, default_order: { sort_order: :asc, created_at: :desc })
+        render_collection(scope, resource: BacklogEntryResource, default_order: UserGameBacklog::SHELF_ORDER)
       end
 
       # GET /api/v1/users/:user_id/backlog/pick
@@ -48,9 +50,17 @@ module Api
         render json: { data: BacklogEntryResource.new(record).serializable_hash }, status: :created
       end
 
+      # A `position` (1-based) moves the entry within the member's list and
+      # renumbers the rest (ShelfOrder), alongside any other changed fields.
       def update
+        position = shelf_position
+        return if performed?
+
         record = UserGameBacklog.find(params[:id])
-        record.update!(writable_data)
+        ActiveRecord::Base.transaction do
+          record.update!(writable_data)
+          record.move_to_position!(position) if position
+        end
         record.reload
         render json: { data: BacklogEntryResource.new(record).serializable_hash }
       end

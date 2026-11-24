@@ -27,13 +27,13 @@ RSpec.describe "api/v1/favorites behavior", type: :request do
       expect(json.dig("data", 0, "game")).to include("game_id" => first.gamedb_game_id)
     end
 
-    it "does not expose the dropped bookkeeping columns" do
+    it "exposes sort_order but not the timestamps" do
       create(:favorite, user: owner, sort_order: 1)
 
       get "/api/v1/users/#{owner.user_id}/favorites", headers: service_headers
 
       entry = json.fetch("data").first
-      expect(entry).not_to have_key("sort_order")
+      expect(entry).to include("sort_order" => 1)
       expect(entry).not_to have_key("created_at")
       expect(entry).not_to have_key("updated_at")
     end
@@ -187,5 +187,14 @@ RSpec.describe "api/v1/favorites behavior", type: :request do
       expect(response).to have_http_status(:forbidden)
       expect(UserGameFavorite.exists?(favorite.entry_id)).to be(true)
     end
+  end
+
+  describe "reordering (spec api#451 story 15)" do
+    let(:factory) { :favorite }
+    let(:list_path) { "/api/v1/users/#{owner.user_id}/favorites" }
+
+    def entry_path(entry) = "/api/v1/favorites/#{entry.entry_id}"
+
+    it_behaves_like "a reorderable shelf list"
   end
 end

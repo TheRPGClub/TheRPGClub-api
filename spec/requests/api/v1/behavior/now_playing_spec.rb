@@ -367,4 +367,13 @@ RSpec.describe "api/v1/now_playing behavior", type: :request do
       expect(UserNowPlaying.exists?(entry.entry_id)).to be(true)
     end
   end
+
+  describe "reordering (spec api#451 story 15)" do
+    let(:factory) { :now_playing_entry }
+    let(:list_path) { "/api/v1/users/#{owner.user_id}/now_playing" }
+
+    def entry_path(entry) = "/api/v1/now_playing/#{entry.entry_id}"
+
+    it_behaves_like "a reorderable shelf list"
+  end
 end

@@ -133,4 +133,13 @@ RSpec.describe "api/v1/backlog behavior", type: :request do
       expect(UserGameBacklog.exists?(entry.entry_id)).to be(true)
     end
   end
+
+  describe "reordering (spec api#451 story 15)" do
+    let(:factory) { :backlog_entry }
+    let(:list_path) { "/api/v1/users/#{owner.user_id}/backlog" }
+
+    def entry_path(entry) = "/api/v1/backlog/#{entry.entry_id}"
+
+    it_behaves_like "a reorderable shelf list"
+  end
 end

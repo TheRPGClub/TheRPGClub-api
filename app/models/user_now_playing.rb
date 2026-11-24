@@ -6,6 +6,10 @@ class UserNowPlaying < ApplicationRecord
 
   # Run progress follows every commit (Challenges::CountsTowardRuns).
   include Challenges::CountsTowardRuns
+  include ShelfOrder
+
+  # The user's list display order (NowPlayingController#user_index, ShelfOrder).
+  SHELF_ORDER = { sort_order: :asc, added_at: :desc, entry_id: :desc }.freeze
 
   # The bot caps a user's now-playing list at 10 entries; the API enforces the
   # same ceiling on create so a migrated `/now-playing add` can't exceed it.
