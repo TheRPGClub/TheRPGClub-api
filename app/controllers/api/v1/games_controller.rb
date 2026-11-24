@@ -332,7 +332,7 @@ module Api
             releases: releases_for(game),
             companies: GameCompanyResource.new(companies).serializable_hash,
             collection: game.collection && CollectionResource.new(game.collection).serializable_hash,
-            franchises: FranchiseResource.new(game.franchises.order(:name)).serializable_hash,
+            franchises: franchises_for(game),
             genres: GenreResource.new(game.genres.order(:name)).serializable_hash,
             engines: EngineResource.new(game.engines.order(:name)).serializable_hash,
             modes: ModeResource.new(game.modes.order(:name)).serializable_hash,
@@ -341,6 +341,13 @@ module Api
             alternates: GameResource.new(game.alternate_games).serializable_hash
           }
         end
+      end
+
+      # The game's Franchises by name, each with whether the game is Mainline
+      # in it (spec api#442).
+      def franchises_for(game)
+        links = game.game_franchises.eager_load(:franchise).order("gamedb_franchises.name", :franchise_id)
+        links.map { |link| FranchiseResource.new(link.franchise).serializable_hash.merge("mainline" => link.mainline) }
       end
 
       # Mirror the game-scoped now_playing / completions / threads endpoints
