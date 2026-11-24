@@ -199,8 +199,11 @@ module OpenapiSchemas
         cover_url: str(nullable: true), art_url: str(nullable: true), logo_url: str(nullable: true)
       ),
       # games#index / #show / create-from-IGDB (GameResource): GameSummary plus
-      # the GOTM/NR-GOTM winner flags selected by the `without_images` scope.
-      Game: extends("GameSummary", gotm_won: bool, nr_gotm_won: bool, required: %w[gotm_won nr_gotm_won]),
+      # the Featured Video link and the GOTM/NR-GOTM winner flags selected by
+      # the `without_images` scope.
+      Game: extends("GameSummary",
+        featured_video_url: str(nullable: true), gotm_won: bool, nr_gotm_won: bool,
+        required: %w[featured_video_url gotm_won nr_gotm_won]),
       # TrackedGameResource, the game in the Review Feed and the drafts
       # listing: Game plus the month each track was last won.
       TrackedGame: extends("Game",

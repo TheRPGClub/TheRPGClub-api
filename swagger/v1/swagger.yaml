@@ -540,11 +540,15 @@ components:
       - "$ref": "#/components/schemas/GameSummary"
       - type: object
         properties:
+          featured_video_url:
+            type: string
+            nullable: true
           gotm_won:
             type: boolean
           nr_gotm_won:
             type: boolean
         required:
+        - featured_video_url
         - gotm_won
         - nr_gotm_won
     TrackedGame:

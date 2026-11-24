@@ -7,7 +7,7 @@
 # `initial_release_date` and the derived image URLs. `igdb_id`, `slug` and
 # `logo_url` are kept because they are plausible Discord bot fields (the bot's
 # source is not auditable — see issue #36); everything else `GamedbGame`
-# exposes (`featured_video_url`, `collection_id`, `parent_*`, `thumbnail_*`,
+# exposes (`collection_id`, `parent_*`, `thumbnail_*`,
 # `created_at`/`updated_at`) is dropped.
 #
 # This omits `gotm_won`/`nr_gotm_won`: those are SQL aliases selected only by
