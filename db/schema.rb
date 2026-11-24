@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -353,6 +353,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
     t.datetime "updated_at", null: false
     t.index ["key"], name: "index_feature_flags_on_key", unique: true
     t.check_constraint "state::text = ANY (ARRAY['off'::character varying, 'preview'::character varying, 'live'::character varying]::text[])", name: "ck_feature_flags_state"
+  end
+
+  create_table "game_list_entries", primary_key: ["game_list_id", "game_id"], force: :cascade do |t|
+    t.bigint "game_list_id", null: false
+    t.bigint "game_id", null: false
+    t.integer "position", null: false
+    t.string "note", limit: 280
+    t.timestamptz "added_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["game_id"], name: "ix_game_list_entries_game"
+    t.index ["game_list_id", "position"], name: "ix_game_list_entries_position"
+    t.check_constraint "\"position\" >= 1", name: "ck_game_list_entries_position"
+  end
+
+  create_table "game_lists", force: :cascade do |t|
+    t.string "owner_user_id", limit: 30
+    t.string "name", limit: 100, null: false
+    t.string "description", limit: 500
+    t.string "visibility", limit: 8, default: "members", null: false
+    t.string "sort", limit: 12, default: "ranked", null: false
+    t.string "taken_over_from_user_id", limit: 30
+    t.timestamptz "taken_over_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["owner_user_id", "updated_at"], name: "ix_game_lists_owner_updated"
+    t.index ["updated_at"], name: "ix_game_lists_updated"
+    t.check_constraint "(taken_over_from_user_id IS NULL) = (taken_over_at IS NULL)", name: "ck_game_lists_taken_over_together"
+    t.check_constraint "owner_user_id IS NOT NULL OR visibility::text = 'members'::text", name: "ck_game_lists_club_members"
+    t.check_constraint "sort::text = ANY (ARRAY['ranked'::character varying, 'alphabetical'::character varying, 'added'::character varying]::text[])", name: "ck_game_lists_sort"
+    t.check_constraint "visibility::text = ANY (ARRAY['members'::character varying, 'private'::character varying]::text[])", name: "ck_game_lists_visibility"
   end
 
   create_table "gamedb_collections", primary_key: "collection_id", force: :cascade do |t|
@@ -1582,6 +1611,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_23_150000) do
   add_foreign_key "codex_entry_mentions", "codex_entries", column: "entry_id", name: "fk_codex_entry_mentions_entry", on_delete: :cascade
   add_foreign_key "codex_entry_mentions", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_codex_entry_mentions_user", on_delete: :cascade
   add_foreign_key "daily_fun_fact_posts", "codex_entries", column: "entry_id", name: "fk_daily_fun_fact_posts_entry", on_delete: :nullify
+  add_foreign_key "game_list_entries", "game_lists", name: "fk_game_list_entries_list", on_delete: :cascade
+  add_foreign_key "game_list_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_game_list_entries_game", on_delete: :cascade
+  add_foreign_key "game_lists", "rpg_club_users", column: "owner_user_id", primary_key: "user_id", name: "fk_game_lists_owner", on_delete: :cascade
+  add_foreign_key "game_lists", "rpg_club_users", column: "taken_over_from_user_id", primary_key: "user_id", name: "fk_game_lists_taken_over_from", on_delete: :nullify
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"

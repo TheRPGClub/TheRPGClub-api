@@ -4050,6 +4050,132 @@ components:
       - signup_open
       - signed_up_count
       - signed_up
+    GameList:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          nullable: true
+          maxLength: 500
+        visibility:
+          type: string
+          enum:
+          - members
+          - private
+          description: members (any member reads it) or private (only its owner, never
+            staff). A club list is always members.
+        sort:
+          type: string
+          enum:
+          - ranked
+          - alphabetical
+          - added
+          description: 'How its games are shown: ranked (by `position`), alphabetical
+            (by title) or added (newest first).'
+        club:
+          type: boolean
+          description: True when the club owns it (owner is null).
+        owner:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: The member who owns it; null for a club list.
+        taken_over_from:
+          allOf:
+          - "$ref": "#/components/schemas/ChallengeMember"
+          nullable: true
+          description: The member the club took this list over from; null unless taken
+            over.
+        taken_over_at:
+          type: string
+          format: date-time
+          nullable: true
+        entry_count:
+          type: integer
+        preview_games:
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              cover_url:
+                type: string
+                nullable: true
+            required:
+            - game_id
+            - title
+          description: Its first games in its own sort's order, for covers.
+        viewer:
+          "$ref": "#/components/schemas/GameListViewer"
+        entries:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GameListEntry"
+          description: 'A single list only: every game, in its sort''s order.'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - name
+      - description
+      - visibility
+      - sort
+      - club
+      - owner
+      - taken_over_from
+      - taken_over_at
+      - entry_count
+      - preview_games
+      - viewer
+      - created_at
+      - updated_at
+    GameListViewer:
+      type: object
+      properties:
+        can_edit:
+          type: boolean
+        can_delete:
+          type: boolean
+      required:
+      - can_edit
+      - can_delete
+    GameListEntry:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        position:
+          type: integer
+          description: Its place in the ranked order, from 1, whatever the list's
+            sort.
+        note:
+          type: string
+          nullable: true
+          maxLength: 280
+        added_at:
+          type: string
+          format: date-time
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+      required:
+      - game_id
+      - position
+      - note
+      - added_at
+      - game
     ChallengeMember:
       type: object
       properties:
@@ -16688,6 +16814,7 @@ paths:
         - challenges
         - release_calendar
         - club_codex
+        - game_lists
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -17742,6 +17869,737 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: unknown user
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/game_lists":
+    get:
+      summary: List Game Lists
+      tags:
+      - Game Lists
+      description: 'The lists the caller may read (every Members-visible list, and
+        their own Private ones): club lists first, then the most recently changed
+        (a change to its games counts). The bot may name the member it reads for with
+        `acting_user_id`, without which it sees what a member with no lists of their
+        own sees. Members (the `game_lists` Feature): not found for non-staff in Preview
+        and for everyone when Off; the service token is not gated, but a bot write
+        gets 403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Only lists whose name contains `q`, ignoring case, its characters
+          taken literally.
+      - name: game_id
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Only lists holding this game.
+      - name: owner
+        in: query
+        required: false
+        schema:
+          type: string
+        description: "`club` for the club's lists, or a member's Discord user id for
+          theirs."
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Game Lists, without their entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameList"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create a Game List
+      tags:
+      - Game Lists
+      description: 'Any member creates a list they own; with `club`, a Moderator or
+        above creates a club list (403 "Only Moderators and above can create a club
+        Game List."), which is always Members-visible. Returns the list. Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_game_list`). Members (the `game_lists` Feature): not found for
+        non-staff in Preview and for everyone when Off; the service token is not gated,
+        but a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: the new list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id` (or one
+            with no stored record)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: "`forbidden` for a club list without the role, or (bot) `feature_unavailable`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_game_list: a missing or too long name, a too long
+            description, an unknown visibility or sort, a field that isn''t text,
+            or a Private club list'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                      nullable: true
+                      maxLength: 500
+                    visibility:
+                      type: string
+                      enum:
+                      - members
+                      - private
+                      description: members when left out on create. Only the owner
+                        changes it.
+                    sort:
+                      type: string
+                      enum:
+                      - ranked
+                      - alphabetical
+                      - added
+                      description: ranked when left out on create.
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    club:
+                      type: boolean
+                      description: The club owns it (Moderator and above).
+                  required:
+                  - name
+              required:
+              - data
+        required: true
+  "/api/v1/game_lists/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Game List
+      tags:
+      - Game Lists
+      description: 'The list with every game, in its sort''s order. A Private list
+        is read and changed only by its owner (staff can''t read it either; it is
+        not found for them). The owner does everything with their own lists; Moderators
+        and above edit club lists and any Members-visible list, and delete a member''s
+        Members-visible list; only Admins and above delete a club list; only the owner
+        changes visibility. The bot may name the member it reads for with `acting_user_id`,
+        without which it sees what a member with no lists of their own sees. Members
+        (the `game_lists` Feature): not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: the list with its entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '404':
+          description: no such list, a Private list of someone else, or the Feature
+            is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Game List
+      tags:
+      - Game Lists
+      description: 'Changes only the fields given. A Private list is read and changed
+        only by its owner (staff can''t read it either; it is not found for them).
+        The owner does everything with their own lists; Moderators and above edit
+        club lists and any Members-visible list, and delete a member''s Members-visible
+        list; only Admins and above delete a club list; only the owner changes visibility.
+        403 "Only its owner can edit this Game List; a Members-visible or club one,
+        any Moderator or above.", or "Only its owner can change who sees this Game
+        List." for a visibility change by someone else. Returns the list. Refusals
+        carry `{ error, message }`; `message` is written for members (403 `forbidden`,
+        422 `invalid_game_list`). Members (the `game_lists` Feature): not found for
+        non-staff in Preview and for everyone when Off; the service token is not gated,
+        but a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '400':
+          description: missing `data`, or the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the caller can't edit it, or change its visibility; or (bot)
+            `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid_game_list, as on create
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 100
+                    description:
+                      type: string
+                      nullable: true
+                      maxLength: 500
+                    visibility:
+                      type: string
+                      enum:
+                      - members
+                      - private
+                      description: members when left out on create. Only the owner
+                        changes it.
+                    sort:
+                      type: string
+                      enum:
+                      - ranked
+                      - alphabetical
+                      - added
+                      description: ranked when left out on create.
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Game List
+      tags:
+      - Game Lists
+      description: 'Deletes the list with its entries. A Private list is read and
+        changed only by its owner (staff can''t read it either; it is not found for
+        them). The owner does everything with their own lists; Moderators and above
+        edit club lists and any Members-visible list, and delete a member''s Members-visible
+        list; only Admins and above delete a club list; only the owner changes visibility.
+        403 "Only its owner or a Moderator can delete this Game List; a club one,
+        an Admin.". The bot names the member with the `acting_user_id` query parameter.
+        Members (the `game_lists` Feature): not found for non-staff in Preview and
+        for everyone when Off; the service token is not gated, but a bot write gets
+        403 `feature_unavailable` when the Flag hides the Feature from the member
+        it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+        '400':
+          description: the bot named no `acting_user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the caller can't delete it, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/game_lists/{id}/entries/order":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Set a Game List's ranked order
+      tags:
+      - Game Lists
+      description: "`game_ids` names every game of the list once, first to last; each
+        game's `position` follows. The ranked order is kept whatever the list's sort.
+        Whoever can edit the list may. Returns the list. Members (the `game_lists`
+        Feature): not found for non-staff in Preview and for everyone when Off; the
+        service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for."
+      parameters: []
+      responses:
+        '200':
+          description: the list in its new order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameList"
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read, or the Feature is hidden
+            from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_order: `game_ids` leaves a game out, repeats one or
+            names one not in the list'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    game_ids:
+                      type: array
+                      items:
+                        type: integer
+                      maxItems: 500
+                  required:
+                  - game_ids
+              required:
+              - data
+        required: true
+  "/api/v1/game_lists/{id}/entries/{game_id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Add a game to a Game List
+      tags:
+      - Game Lists
+      description: 'Adds the GameDB game last in the ranked order, with an optional
+        note. A list holds a game at most once and at most 500 games. Whoever can
+        edit the list may. Members (the `game_lists` Feature): not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '201':
+          description: the entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameListEntry"
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such list the caller can read or no such game, or the Feature
+            is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: 'already_in_list: the list holds the game'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'list_full: the list holds 500 games; invalid_game_list: a
+            note over 280 characters or not text'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    note:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+    patch:
+      summary: Change a game's note
+      tags:
+      - Game Lists
+      description: 'Replaces the note; null or blank removes it. Whoever can edit
+        the list may. Members (the `game_lists` Feature): not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters: []
+      responses:
+        '200':
+          description: the entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GameListEntry"
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the list doesn't hold the game, or no such list the caller
+            can read
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_game_list: no `note`, or one too long or not text'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    acting_user_id:
+                      type: string
+                      description: 'Service only, required on every write: the Discord
+                        user id of the member the bot acts for. Their stored roles
+                        decide what they may do, and the Feature Flag applies to them.'
+                    note:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+                  required:
+                  - note
+              required:
+              - data
+        required: true
+    delete:
+      summary: Remove a game from a Game List
+      tags:
+      - Game Lists
+      description: 'Removes the game; the games after it move up one place. Whoever
+        can edit the list may. The bot names the member with the `acting_user_id`
+        query parameter. Members (the `game_lists` Feature): not found for non-staff
+        in Preview and for everyone when Off; the service token is not gated, but
+        a bot write gets 403 `feature_unavailable` when the Flag hides the Feature
+        from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      game_list_id:
+                        type: integer
+                      game_id:
+                        type: integer
+                      deleted:
+                        type: boolean
+        '403':
+          description: the caller can't edit the list, or (bot) `feature_unavailable`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the list doesn't hold the game, or no such list the caller
+            can read
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/game_lists":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+    get:
+      summary: List a member's Game Lists
+      tags:
+      - Game Lists
+      description: 'For their profile: all of the caller''s own lists, or another
+        member''s Members-visible ones, most recently changed first. The bot may name
+        the member it reads for with `acting_user_id`, without which it sees what
+        a member with no lists of their own sees. Members (the `game_lists` Feature):
+        not found for non-staff in Preview and for everyone when Off; the service
+        token is not gated, but a bot write gets 403 `feature_unavailable` when the
+        Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the member's lists, without their entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameList"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/game_lists":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: List a game's Game Lists
+      tags:
+      - Game Lists
+      description: 'The lists holding the game that the caller may read, club lists
+        first, then the most recently changed; `meta.count` is how many there are
+        ("In 4 Game Lists"). The bot may name the member it reads for with `acting_user_id`,
+        without which it sees what a member with no lists of their own sees. Members
+        (the `game_lists` Feature): not found for non-staff in Preview and for everyone
+        when Off; the service token is not gated, but a bot write gets 403 `feature_unavailable`
+        when the Flag hides the Feature from the member it acts for.'
+      parameters:
+      - name: acting_user_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: the lists, without their entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GameList"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: no such game, or the Feature is hidden from the caller
           content:
             application/json:
               schema:
