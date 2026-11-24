@@ -38,6 +38,18 @@ RSpec.describe "api/v1/favorites behavior", type: :request do
       expect(entry).not_to have_key("updated_at")
     end
 
+    it "filters by game_id with an exact meta.count" do
+      keeper = create(:favorite, user: owner)
+      create(:favorite, user: owner)
+      create(:favorite, user: other_user, game: keeper.game)
+
+      get "/api/v1/users/#{owner.user_id}/favorites",
+        params: { game_id: keeper.gamedb_game_id }, headers: service_headers
+
+      expect(json.fetch("data").map { |e| e.fetch("entry_id") }).to eq([ keeper.entry_id ])
+      expect(json.dig("meta", "count")).to eq(1)
+    end
+
     it "requires authentication" do
       get "/api/v1/users/#{owner.user_id}/favorites"
 

@@ -25,6 +25,18 @@ RSpec.describe "api/v1/backlog behavior", type: :request do
       expect(json.dig("data", 0, "game")).to include("game_id" => entry.gamedb_game_id)
     end
 
+    it "filters by game_id with an exact meta.count" do
+      keeper = create(:backlog_entry, user: owner)
+      create(:backlog_entry, user: owner)
+      create(:backlog_entry, user: other_user, game: keeper.game)
+
+      get "/api/v1/users/#{owner.user_id}/backlog",
+        params: { game_id: keeper.gamedb_game_id }, headers: service_headers
+
+      expect(json.fetch("data").map { |e| e.fetch("entry_id") }).to eq([ keeper.entry_id ])
+      expect(json.dig("meta", "count")).to eq(1)
+    end
+
     it "requires authentication" do
       get "/api/v1/users/#{owner.user_id}/backlog"
 

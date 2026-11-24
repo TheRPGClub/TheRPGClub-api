@@ -11,8 +11,11 @@ module Api
       # record) and the key is generated, so neither is accepted in the body.
       WRITABLE_ATTRS = %w[gamedb_game_id note sort_order].freeze
 
+      # `game_id` (optional) narrows to one game's entry by exact
+      # `gamedb_game_id`, so the game page need not read the whole list.
       def index
         scope = UserGameFavorite.where(user_id: params[:user_id]).preload(:game)
+        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
         render_collection(scope, resource: FavoriteEntryResource, default_order: UserGameFavorite::SHELF_ORDER)
       end
 

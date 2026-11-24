@@ -8470,8 +8470,15 @@ paths:
       tags:
       - Backlog
       description: Ordered by `sort_order` ascending (nulls last), then `created_at`
-        descending. Open to any authenticated caller.
+        descending. Open to any authenticated caller. The optional `game_id` narrows
+        to one game (`meta.count` stays exact for the filtered set).
       parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to backlog entries of this game (`gamedb_game_id`).
       - name: page
         in: query
         schema:
@@ -17251,8 +17258,15 @@ paths:
       tags:
       - Favorites
       description: Ordered by `sort_order` ascending (nulls last), then `created_at`
-        descending. Open to any authenticated caller.
+        descending. Open to any authenticated caller. The optional `game_id` narrows
+        to one game (`meta.count` stays exact for the filtered set).
       parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to favorites of this game (`gamedb_game_id`).
       - name: page
         in: query
         schema:

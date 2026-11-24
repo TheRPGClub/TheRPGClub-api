@@ -26,8 +26,11 @@ RSpec.describe 'api/v1/backlog', type: :request do
     get 'List a user\'s backlog' do
       tags 'Backlog'
       description 'Ordered by `sort_order` ascending (nulls last), then `created_at` descending. Open to any ' \
-                  'authenticated caller.'
+                  'authenticated caller. The optional `game_id` narrows to one game (`meta.count` stays exact ' \
+                  'for the filtered set).'
       produces 'application/json'
+      parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter to backlog entries of this game (`gamedb_game_id`).'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
