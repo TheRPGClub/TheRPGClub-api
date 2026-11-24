@@ -7652,7 +7652,7 @@ components:
       - count
       - latest_unlocked_at
       - unlocks
-      description: "`count` is every Unlock of the card; `unlocks` holds at most 8,
+      description: "`count` is every Unlock of the card; `unlocks` holds at most 60,
         newest first."
     AchievementFeedHighlight:
       allOf:

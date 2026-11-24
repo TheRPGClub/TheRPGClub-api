@@ -129,7 +129,7 @@ RSpec.describe 'api/v1/achievements', type: :request do
     get 'The community Achievement feed' do
       tags 'Achievements'
       description '`view=latest` (default): cards grouping Unlocks per member + Achievement Set + UTC day of ' \
-                  '`unlocked_at`, newest first, each with its count and up to 8 Unlocks (`AchievementFeedGroup`). ' \
+                  '`unlocked_at`, newest first, each with its count and up to 60 Unlocks (`AchievementFeedGroup`). ' \
                   '`meta.count` counts cards. `view=highlights`: one card per Highlight Unlock, newest first ' \
                   '(`AchievementFeedHighlight`). Cards carry `kind` to tell them apart.'
       produces 'application/json'
