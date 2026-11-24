@@ -38,7 +38,7 @@ module Api
       #
       # Without an IGDB id, a Regular or above creates a new Franchise
       # (201). With one, it is the admin/service find-or-create by IGDB id
-      # (TaxonomyEndpoints#upsert_taxonomy).
+      # (upsert_by_igdb_id).
       def create
         return upsert_by_igdb_id if request_data.key?("igdb_franchise_id")
         return unless require_editor!
@@ -118,10 +118,30 @@ module Api
 
       private
 
+      # The upsert goes through GamedbFranchise.for_igdb_ref, as an IGDB
+      # import does: a merged Franchise answers with its target (200), and
+      # one an Admin deleted is refused (422 `franchise_deleted`) rather
+      # than made again.
       def upsert_by_igdb_id
         return unless require_admin_or_service!
 
-        upsert_taxonomy(GamedbFranchise, FranchiseResource, :igdb_franchise_id)
+        igdb_id = request_data["igdb_franchise_id"].presence
+        if igdb_id.blank?
+          return render(json: { error: "igdb_franchise_id is required" }, status: :unprocessable_content)
+        end
+
+        known = GamedbFranchise.exists?(igdb_franchise_id: igdb_id)
+        franchise = GamedbFranchise.for_igdb_ref({ igdb_id: igdb_id, name: request_data["name"] })
+        return refuse_deleted unless franchise
+
+        bump_taxonomy_version(GamedbFranchise) unless known
+        render json: { data: FranchiseResource.new(franchise).serializable_hash }, status: known ? :ok : :created
+      end
+
+      def refuse_deleted
+        render json: { error: "franchise_deleted",
+                       message: "An Admin deleted this Franchise, so it isn't made again." },
+          status: :unprocessable_content
       end
 
       def franchise = @franchise ||= GamedbFranchise.find(params[:id])

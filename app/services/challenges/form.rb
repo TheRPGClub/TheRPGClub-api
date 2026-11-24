@@ -53,11 +53,12 @@ module Challenges
         format = Formats.fetch(challenge.challenge_format)
         before_settings = stored_settings(format)
         settings = format.parse(@data[format::KEY], base: before_settings)
-        refuse_invalid(format.errors(settings, challenge))
+        refuse_invalid(format.errors(settings, challenge, base: before_settings))
         check_unlocked(before, rules(format, settings)) if locked
 
         challenge.save!
         format.apply!(challenge, settings)
+        left_pool! if @leaving_pool
         edited(format, before_settings, settings) if locked
       end
       challenge
@@ -87,8 +88,17 @@ module Challenges
       # Counts past play is a Slots setting, which a switch to Slots gives
       # in full (stored_settings), and which no other Format keeps.
       challenge.counts_past_play = false if challenge.challenge_format_changed?
-      # Only a Pool is fed by a linked Game List.
-      challenge.pool_game_list_id = nil if challenge.challenge_format != Formats::Pool::KEY
+      @leaving_pool = challenge.persisted? && challenge.challenge_format_changed? &&
+        challenge.challenge_format_was == Formats::Pool::KEY
+    end
+
+    # Only a Pool is fed by a linked Game List and takes Pool Proposals: a
+    # Challenge leaving Pool ends its link (with its list notices) and
+    # declines the proposals still pending.
+    def left_pool!
+      ListLink.end!(challenge)
+      ChallengePoolProposal.pending.where(challenge_id: challenge.id)
+        .update_all(status: "declined", decided_by: challenge.updated_by, decided_at: Time.current)
     end
 
     # A Game List is linked only on create (Challenges::ListLink), which

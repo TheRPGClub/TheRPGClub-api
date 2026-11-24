@@ -34,7 +34,9 @@ RSpec.describe 'api/v1/franchises', type: :request do
                   'roles; the bot names it in `data.acting_user_id`) creates a Franchise IGDB doesn\'t have, ' \
                   'returning 201. With `igdb_franchise_id`, the admin/service find-or-create keyed on it (the ' \
                   'bot\'s `ensureFranchise`): the existing franchise with 200 when the IGDB id is already known, ' \
-                  'or a new one with 201; `name` is applied only when a new row is created.'
+                  'or a new one with 201; `name` is applied only when a new row is created. It resolves as an ' \
+                  'IGDB import does: a merged Franchise answers with its merge target (200), and one an Admin ' \
+                  'deleted is refused with 422 `franchise_deleted`.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -59,7 +61,7 @@ RSpec.describe 'api/v1/franchises', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Franchise' } }
       end
 
-      response '200', 'existing franchise (matched on IGDB id)' do
+      response '200', 'existing franchise (matched on IGDB id), or the one it was merged into' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Franchise' } }
       end
 
@@ -72,7 +74,8 @@ RSpec.describe 'api/v1/franchises', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed (an empty `igdb_franchise_id`, or a blank or too-long `name`)' do
+      response '422', 'validation failed (an empty `igdb_franchise_id`, or a blank or too-long `name`), or ' \
+                      'the IGDB id names a Franchise an Admin deleted (`franchise_deleted`)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

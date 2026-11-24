@@ -287,6 +287,19 @@ RSpec.describe "api/v1/challenges/:id/pool_proposals", type: :request do
       expect(dms("pool_proposal").last.requested_by_user_id).to eq(proposer.user_id)
     end
 
+    it "serializes the Challenge for the Host, so it says how many proposals wait" do
+      proposed(excluded_game)
+      proposed(proposed_game)
+
+      expect(dms("pool_proposal").last.payload.dig("challenge", "pending_proposals")).to eq(2)
+    end
+
+    it "counts the proposals waiting in the #dev event for a club-hosted Challenge" do
+      proposed(proposed_game, on: club)
+
+      expect(dms("pool_proposal").last.payload.dig("challenge", "pending_proposals")).to eq(1)
+    end
+
     it "queues one #dev event without a user for a club-hosted Challenge" do
       expect { proposed(proposed_game, on: club) }.to change { dms("pool_proposal").count }.by(1)
 

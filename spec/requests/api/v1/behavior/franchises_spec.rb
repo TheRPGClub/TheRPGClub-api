@@ -118,6 +118,29 @@ RSpec.describe "api/v1/franchises behavior", type: :request do
       expect(json.fetch("data")).to include("franchise_id" => existing.franchise_id, "name" => "Original Name")
     end
 
+    it "answers with the merge target when the IGDB id names a merged Franchise" do
+      target = create(:franchise, name: "Kept")
+      create(:franchise, name: "Merged", igdb_franchise_id: 424_242, merged_into: target)
+
+      expect {
+        post "/api/v1/franchises", params: payload, headers: service_headers, as: :json
+      }.not_to change(GamedbFranchise, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("franchise_id" => target.franchise_id, "name" => "Kept")
+    end
+
+    it "refuses an IGDB id an Admin deleted, without making it again" do
+      GamedbDeletedFranchise.create!(igdb_franchise_id: 424_242, name: "Suikoden")
+
+      expect {
+        post "/api/v1/franchises", params: payload, headers: service_headers, as: :json
+      }.not_to change(GamedbFranchise, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("franchise_deleted")
+    end
+
     it "allows an admin user" do
       post "/api/v1/franchises", params: payload, headers: auth_headers_for(create(:user, :admin)), as: :json
 

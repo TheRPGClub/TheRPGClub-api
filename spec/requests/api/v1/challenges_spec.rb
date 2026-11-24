@@ -267,7 +267,12 @@ RSpec.describe 'api/v1/challenges', type: :request do
                   'Challenge." unless the viewer is ' \
                   'the list\'s owner, or staff for a club list on a club-hosted Challenge: see ' \
                   '`pool.game_list.can_add`; 422 without a linked list; 422 `list_full` past 500 games, saving ' \
-                  'nothing). Editing a removed Core Game out of the Pool clears its list notice. ' + refusal
+                  'nothing). Editing a removed Core Game out of the Pool clears its list notice. Switching the ' \
+                  'Format to Assignment needs a Moderator or above (403 "Only Moderators and above can create ' \
+                  'an Assignment Challenge."). A Pool that leaves Pool ends its Game List link (clearing its list ' \
+                  'notices) and declines its pending Pool Proposals. A Pool already short of its Optional target ' \
+                  '(a source shrank) still saves an edit that leaves it no shorter: the target not raised and no ' \
+                  'Optional Game fewer. ' + refusal
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -280,7 +285,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Challenge' } }
       end
 
-      response '403', 'neither the Host nor a Moderator, or `add_to_list` from someone who may not touch the list' do
+      response '403', 'neither the Host nor a Moderator, a switch to Assignment below Moderator, or `add_to_list` ' \
+                      'from someone who may not touch the list' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

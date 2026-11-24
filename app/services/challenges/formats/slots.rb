@@ -68,7 +68,7 @@ module Challenges
       end
       private_class_method :parse_year
 
-      def self.errors(settings, challenge)
+      def self.errors(settings, challenge, **)
         errors = range_errors(settings)
         errors << PAST_PLAY_ALWAYS_OPEN if settings.counts_past_play && challenge.seasonal?
         errors
