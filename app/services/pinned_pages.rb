@@ -35,6 +35,7 @@ module PinnedPages
     page("members"),
     page("news", feature: "news_hub"),
     page("codex", feature: "club_codex"),
+    page("lists", feature: "game_lists"),
     page("giveaways", feature: "giveaways"),
     page("suggestions", feature: "suggestions"),
     page("staff_desk", staff: :moderator),
