@@ -13,8 +13,11 @@ module Api
       # record) and the key is generated, so neither is accepted in the body.
       WRITABLE_ATTRS = %w[gamedb_game_id platform_id note sort_order].freeze
 
+      # `game_id` (optional) narrows to one game's entries by exact
+      # `gamedb_game_id`, so the game page need not read the whole list.
       def index
         scope = UserGameBacklog.where(user_id: params[:user_id]).preload(:game, :platform)
+        scope = scope.where(gamedb_game_id: params[:game_id]) if params[:game_id].present?
         render_collection(scope, resource: BacklogEntryResource, default_order: UserGameBacklog::SHELF_ORDER)
       end
 
