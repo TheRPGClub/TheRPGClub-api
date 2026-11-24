@@ -12,6 +12,8 @@ module Api
     # create/update/destroy are owner-only (the bot's service token counts as
     # the owner).
     class NowPlayingController < ApplicationController
+      include CodedRefusals
+
       feature :now_playing
 
       before_action :require_owner!, only: %i[create update destroy]
@@ -96,11 +98,14 @@ module Api
 
       # PATCH/PUT /api/v1/now_playing/:id
       #
-      # Partial update of `note`, `platform_id` and/or `sort_order`.
+      # Partial update of `note`, `platform_id`, `sort_order` and/or `added_at`
+      # (the day the member started playing; 422 `added_in_future` after today).
       def update
         record = UserNowPlaying.find(params[:id])
         record.update!(update_data)
         render json: { data: serialize_entry(record.entry_id, NowPlayingMemberEntryResource) }
+      rescue ActiveRecord::RecordInvalid => e
+        render_coded_refusal(e, %i[added_in_future])
       end
 
       # DELETE /api/v1/now_playing/:id
@@ -125,9 +130,10 @@ module Api
       end
 
       # The columns a client may change on update (the issue's `note`,
-      # `platform_id`, `sort_order`; `note_updated_at` is stamped server-side).
+      # `platform_id`, `sort_order`, plus `added_at`, the member's started day;
+      # `note_updated_at` is stamped server-side).
       def update_data
-        request_data.slice("note", "platform_id", "sort_order")
+        request_data.slice("note", "platform_id", "sort_order", "added_at")
       end
 
       def sanitize_like(value)

@@ -5,7 +5,8 @@ require 'swagger_helper'
 RSpec.describe 'api/v1/now_playing', type: :request do
   # The client-writable UserNowPlaying columns. `user_id` comes from the path on
   # create; `sort_order` is server-assigned on create (appended last) but
-  # client-settable on update; `added_at`/`note_updated_at` are server-managed.
+  # client-settable on update, as is `added_at` (the day the member started
+  # playing); `note_updated_at` is server-managed.
   create_writable = {
     gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create.' },
     platform_id: { type: :integer, nullable: true, description: 'Optional platform association.' },
@@ -14,7 +15,9 @@ RSpec.describe 'api/v1/now_playing', type: :request do
   update_writable = {
     note: { type: :string, nullable: true, description: 'Free-text note (max 500 chars).' },
     platform_id: { type: :integer, nullable: true, description: 'Platform association.' },
-    sort_order: { type: :integer, nullable: true, description: 'Ascending display order.' }
+    sort_order: { type: :integer, nullable: true, description: 'Ascending display order.' },
+    added_at: { type: :string, format: 'date-time',
+                description: 'When the member started playing (a date is read as that UTC day). Not after today.' }
   }
 
   path '/api/v1/users/{user_id}/now_playing' do
@@ -147,7 +150,8 @@ RSpec.describe 'api/v1/now_playing', type: :request do
 
     patch 'Update a now-playing entry' do
       tags 'Now Playing'
-      description 'Owner-only. Partial update of `note`, `platform_id` and/or `sort_order`. ' \
+      description 'Owner-only. Partial update of `note`, `platform_id`, `sort_order` and/or `added_at` ' \
+                  '(the day the member started playing; 422 `added_in_future` when after today in club time). ' \
                   '`note_updated_at` is stamped server-side when the note changes.'
       consumes 'application/json'
       produces 'application/json'

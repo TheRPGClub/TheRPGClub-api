@@ -63,6 +63,10 @@ class UserNowPlaying < ApplicationRecord
   # index — surfaced as a 422 rather than a DB 500.
   validates :gamedb_game_id, uniqueness: { scope: :user_id }, allow_nil: true
   validate :within_entry_limit, on: :create
+  # `added_at` is the day the member started playing (spec api#451): a member
+  # may correct it, but not to nothing or to after today (the club day).
+  validates :added_at, presence: true, on: :update
+  validate :added_not_in_future, if: :added_at_changed?
 
   # Append new entries after the user's current highest position so the bot's
   # ascending `sort_order` display order is preserved without the client
@@ -83,6 +87,12 @@ class UserNowPlaying < ApplicationRecord
 
   def stamp_note_updated_at
     self.note_updated_at = note.present? ? Time.current : nil
+  end
+
+  def added_not_in_future
+    return unless added_at && ClubDay.after_today?(added_at)
+
+    errors.add(:added_at, :added_in_future, message: "can't be in the future")
   end
 
   def within_entry_limit

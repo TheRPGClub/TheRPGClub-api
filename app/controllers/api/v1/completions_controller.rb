@@ -3,7 +3,12 @@
 module Api
   module V1
     class CompletionsController < ApplicationController
+      include CodedRefusals
+
       feature :game_completions
+
+      # The date checks a create or update can be refused with (422 `error`).
+      DATE_REFUSALS = %i[finished_in_future started_after_finished].freeze
 
       before_action :require_owner!, only: %i[export update destroy]
       # A Superadmin may also log a Game Completion for another member (the
@@ -12,7 +17,8 @@ module Api
 
       # Caller-settable columns. `user_id` comes from the path (or the existing
       # record) and the key is generated, so neither is accepted in the body.
-      WRITABLE_ATTRS = %w[gamedb_game_id platform_id completion_type completed_at final_playtime_hrs note].freeze
+      WRITABLE_ATTRS = %w[gamedb_game_id platform_id completion_type started_at completed_at final_playtime_hrs
+                          note].freeze
 
       def index
         scope = filtered_completions(UserGameCompletion.where(user_id: params[:user_id]))
@@ -115,28 +121,39 @@ module Api
 
       # `data.announce` (optional boolean) queues `completion_announce` so the
       # bot posts it to the completions channel; `meta.announce_job_id` is that
-      # job (null when none was queued). When a Superadmin logs one for another
-      # member the game also leaves that member's Now Playing, as the bot does.
+      # job (null when none was queued). `data.leave_now_playing` (optional
+      # boolean) takes the game off the member's Now Playing in the same
+      # transaction; when a Superadmin logs one for another member that always
+      # happens, as the bot does. `meta.left_now_playing` says whether an entry
+      # was removed.
       def create
         announce = request_data["announce"]
-        unless [ nil, true, false ].include?(announce)
-          return render(json: { error: "announce must be a boolean" }, status: :unprocessable_content)
+        leave_now_playing = request_data["leave_now_playing"]
+        { "announce" => announce, "leave_now_playing" => leave_now_playing }.each do |name, value|
+          next if [ nil, true, false ].include?(value)
+
+          return render(json: { error: "#{name} must be a boolean" }, status: :unprocessable_content)
         end
 
         RpgClubUser.find(params[:user_id]) if logged_for_another_member?
 
-        record, announce_job = UserGameCompletion.transaction do
+        record, announce_job, left = UserGameCompletion.transaction do
           completion = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
-          if logged_for_another_member?
-            # Skips callbacks; the completion's own commit refreshes the
-            # member's Runs (Challenges::CountsTowardRuns) after this too.
-            UserNowPlaying.where(user_id: completion.user_id, gamedb_game_id: completion.gamedb_game_id).delete_all
-          end
-          [ completion, (enqueue_announce(completion) if announce) ]
+          removed =
+            if leave_now_playing || logged_for_another_member?
+              # Skips callbacks; the completion's own commit refreshes the
+              # member's Runs (Challenges::CountsTowardRuns) after this too.
+              UserNowPlaying.where(user_id: completion.user_id, gamedb_game_id: completion.gamedb_game_id).delete_all
+            else
+              0
+            end
+          [ completion, (enqueue_announce(completion) if announce), removed.positive? ]
         end
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash,
-                       meta: { announce_job_id: announce_job&.id } }, status: :created
+                       meta: { announce_job_id: announce_job&.id, left_now_playing: left } }, status: :created
+      rescue ActiveRecord::RecordInvalid => e
+        render_coded_refusal(e, DATE_REFUSALS)
       end
 
       def update
@@ -144,6 +161,8 @@ module Api
         record.update!(writable_data)
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash }
+      rescue ActiveRecord::RecordInvalid => e
+        render_coded_refusal(e, DATE_REFUSALS)
       end
 
       def destroy

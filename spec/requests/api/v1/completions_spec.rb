@@ -7,7 +7,10 @@ RSpec.describe 'api/v1/completions', type: :request do
   writable = {
     gamedb_game_id: { type: :integer, description: 'The game (gamedb_games.game_id). Required on create.' },
     completion_type: { type: :string, description: 'How it was completed (e.g. "main", "100%"). Required on create.' },
-    completed_at: { type: :string, format: 'date-time', nullable: true, description: 'When the game was completed.' },
+    started_at: { type: :string, format: 'date', nullable: true,
+                  description: 'The day the member started the game (optional). Not after the finished day.' },
+    completed_at: { type: :string, format: 'date-time', nullable: true,
+                    description: 'When the game was completed. Not after today (club day).' },
     final_playtime_hrs: { type: :number, nullable: true, description: 'Final playtime in hours.' },
     platform_id: { type: :integer, nullable: true, description: 'Optional platform association.' },
     note: { type: :string, nullable: true, description: 'Optional free-text note.' }
@@ -63,8 +66,12 @@ RSpec.describe 'api/v1/completions', type: :request do
                   '`completion_id`, `user_id`, `game_id`, `actor_user_id`) so the bot posts the completion; ' \
                   '`meta.announce_job_id` is that job (null when none was queued), for polling ' \
                   '`GET /api/v1/bot_jobs/{id}`. ' \
+                  '`leave_now_playing: true` removes the game from the member\'s Now Playing in the same ' \
+                  'transaction; `meta.left_now_playing` says whether an entry was removed. ' \
                   'When a Superadmin logs one for another member, the game is also removed from that ' \
-                  "member's Now Playing."
+                  "member's Now Playing. `started_at` may not be after the finished day " \
+                  '(422 `started_after_finished`) and `completed_at` may not be after today in club time ' \
+                  '(422 `finished_in_future`).'
       consumes 'application/json'
       produces 'application/json'
 
@@ -74,7 +81,9 @@ RSpec.describe 'api/v1/completions', type: :request do
           data: {
             type: :object,
             properties: writable.merge(
-              announce: { type: :boolean, description: 'Queue a bot announcement of the completion. Defaults to false.' }
+              announce: { type: :boolean, description: 'Queue a bot announcement of the completion. Defaults to false.' },
+              leave_now_playing: { type: :boolean,
+                                   description: 'Take the game off the member\'s Now Playing. Defaults to false.' }
             ),
             required: %w[gamedb_game_id completion_type]
           }
@@ -97,7 +106,8 @@ RSpec.describe 'api/v1/completions', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed, or `announce` is not a boolean' do
+      response '422', 'validation failed (`started_after_finished`, `finished_in_future`), or `announce` / ' \
+                      '`leave_now_playing` is not a boolean' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -166,7 +176,8 @@ RSpec.describe 'api/v1/completions', type: :request do
       description 'Owner-only. Every completion the user has, unpaginated and in the list order ' \
                   '(`completed_at` descending, then `created_at` descending), as a `text/csv` attachment ' \
                   'named `completions.csv`. The columns match the Discord bot\'s export: ' \
-                  '`ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime (Hours),Note,Created At`. ' \
+                  '`ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime (Hours),Note,Created At`, then ' \
+                  '`Started Date` (`YYYY-MM-DD`, empty when unknown). ' \
                   '`Completed Date` is the UTC date (`YYYY-MM-DD`) and `Created At` is an ISO-8601 UTC ' \
                   'timestamp with milliseconds. Empty values are blank. Fields that contain a comma, ' \
                   'quote or line break are quoted (RFC 4180). A user with no completions gets only the ' \
@@ -268,7 +279,8 @@ RSpec.describe 'api/v1/completions', type: :request do
 
     patch 'Update a completion' do
       tags 'Completions'
-      description 'Owner-only. Partial update: send any subset of the writable columns.'
+      description 'Owner-only. Partial update: send any subset of the writable columns. The date checks ' \
+                  'match create (422 `started_after_finished`, `finished_in_future`).'
       consumes 'application/json'
       produces 'application/json'
 
