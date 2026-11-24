@@ -14,6 +14,8 @@ module Challenges
   #             lifting an exclusion, so Runs refresh and a new Core Game DMs
   #             the members in a Run as any Pool edit does. Tells the
   #             proposer (DirectMessages.pool_proposal_accepted!).
+  #             With `add_to_list`, the game also goes into the linked
+  #             Game List (Challenges::ListLink.add_games!).
   #   decline!  only marks it declined.
   #
   # Each runs under the Challenge's row lock, so two decisions, or a proposal
@@ -47,7 +49,7 @@ module Challenges
 
     # Accepts the pending `proposal` as a Core or Optional Game (`as`) for
     # the member `by`.
-    def self.accept!(proposal, as:, by:)
+    def self.accept!(proposal, as:, by:, add_to_list: false)
       as = as.to_s
       unless ChallengePoolProposal::ACCEPTED_AS.include?(as)
         raise ProposalRefused.new("invalid_proposal", "as must be core or optional.", status: UNPROCESSABLE)
@@ -56,6 +58,7 @@ module Challenges
       decide(proposal, by: by) do |challenge|
         challenge.updated_by = by
         Form.new(challenge, "pool" => pool_with(PoolDefinition.of(challenge), proposal.game_id, as)).save!
+        ListLink.add_games!(challenge, [ proposal.game_id ]) if add_to_list
         proposal.update!(status: "accepted", accepted_as: as, decided_by: by, decided_at: Time.current)
         DirectMessages.pool_proposal_accepted!(proposal)
       end

@@ -178,16 +178,25 @@ RSpec.describe "api/v1/challenges/:id/pool_proposals", type: :request do
       expect(json).to include("error" => "already_decided")
     end
 
-    it "is for the Host only, not the proposer or other members" do
+    it "is for the Host, not the proposer or other members" do
       id = proposed(proposed_game)
 
-      [ proposer, other, moderator ].each do |member|
+      [ proposer, other ].each do |member|
         accept(id, "core", as: member)
         expect(response).to have_http_status(:forbidden)
         decline(id, as: member)
         expect(response).to have_http_status(:forbidden)
       end
-      expect(json.fetch("message")).to start_with("Only the Host")
+      expect(json.fetch("message")).to eq("Only the Host or a Moderator can accept or decline Pool Proposals.")
+    end
+
+    it "is for any Moderator or above on a member's Challenge too" do
+      id = proposed(proposed_game)
+
+      accept(id, "core", as: moderator)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "decider", "user_id")).to eq(moderator.user_id)
     end
 
     it "is for any Moderator or above on a club-hosted Challenge" do
@@ -213,10 +222,10 @@ RSpec.describe "api/v1/challenges/:id/pool_proposals", type: :request do
       json.fetch("data").map { |proposal| proposal.fetch("id") }
     end
 
-    it "lists every proposal for the Host, newest first, and only their own for other members" do
+    it "lists every proposal for the Host and staff, newest first, and only their own for other members" do
       expect(index(as: host)).to eq([ theirs, mine ])
+      expect(index(as: moderator)).to eq([ theirs, mine ])
       expect(index(as: proposer)).to eq([ mine ])
-      expect(index(as: moderator)).to eq([])
     end
 
     it "filters by status" do

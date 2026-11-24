@@ -4,8 +4,9 @@ module GameLists
   # A Game List's entries (spec api#442): adding a game, its note, removing
   # it and the ranked order. Each write holds the list's lock, so the
   # 500-entry limit and the positions stay right under concurrent edits, and
-  # touches the list, so it moves up the index. Removing goes through here so
-  # a linked Challenge can react (ticket api#448).
+  # touches the list, so it moves up the index. Adding and removing tell the
+  # Challenges the list feeds (Challenges::ListLink): a Core Game removed
+  # opens a list notice, and one added back clears it.
   #
   # Positions run 1..n in the ranked order: a new game goes last, and
   # removing one closes the gap. The ranked order is kept whatever the
@@ -27,7 +28,9 @@ module GameLists
           raise Refused.new("list_full", "A Game List holds at most #{GameList::ENTRIES_MAX} games.")
         end
 
-        list.entries.create!(game_id: game.game_id, note: note, position: count + 1, added_at: Time.current)
+        entry = list.entries.create!(game_id: game.game_id, note: note, position: count + 1, added_at: Time.current)
+        Challenges::ListLink.entry_added!(list, game.game_id)
+        entry
       end
     end
 
@@ -38,12 +41,17 @@ module GameLists
       entry
     end
 
-    # Removes the game and closes the gap in the ranked order.
+    # Removes the game and closes the gap in the ranked order. The
+    # Challenges the list feeds are locked first, as Challenge writes that
+    # touch the list lock them (Challenges::ListLink).
     def remove!(list, game_id)
-      list.with_lock do
+      GameList.transaction do
+        Challenges::ListLink.lock_linked(list)
+        list.lock!
         entry = list.entries.find_by!(game_id: game_id)
         entry.destroy!
         list.entries.where("position > ?", entry.position).update_all("position = position - 1")
+        Challenges::ListLink.entry_removed!(list, entry.game_id)
         entry
       end
     end

@@ -527,11 +527,17 @@ Rails.application.routes.draw do
         end
       end
       # Pool Proposals (ticket api#447): members propose games for a Pool;
-      # the Host (staff for a club-hosted Challenge) accepts or declines.
+      # the Host or a Moderator accepts or declines.
       get  "challenges/:challenge_id/pool_proposals", to: "challenge_pool_proposals#index"
       post "challenges/:challenge_id/pool_proposals", to: "challenge_pool_proposals#create"
       post "challenges/:challenge_id/pool_proposals/:id/accept", to: "challenge_pool_proposals#accept"
       post "challenges/:challenge_id/pool_proposals/:id/decline", to: "challenge_pool_proposals#decline"
+      # List notices (ticket api#448): a Core Game left the linked Game List;
+      # whoever may edit the Challenge removes it from the Pool or keeps it.
+      post "challenges/:id/list_notices/:notice_id/remove", to: "challenges#resolve_list_notice",
+        defaults: { resolution: "remove" }
+      post "challenges/:id/list_notices/:notice_id/keep", to: "challenges#resolve_list_notice",
+        defaults: { resolution: "keep" }
       # Runs (ticket #378): start one of a Challenge, list a Challenge's
       # Runs, read, abandon and delete one; a member's Runs are under users.
       # A slot move (ticket #381) puts a game of a Slots Run in another year.

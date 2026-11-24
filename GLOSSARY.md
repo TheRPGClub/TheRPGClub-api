@@ -348,7 +348,7 @@ A game in a Pool that counts toward a Run but is not required. A Run needs as ma
 _Avoid_: Bonus game, extra, side game
 
 **Pool Proposal**:
-A member's proposal that a game be added to a Pool Challenge. The Host, or staff for a club-hosted Challenge, accepts it as a Core or Optional Game or declines it.
+A member's proposal that a game be added to a Pool Challenge. The Host, or a Moderator or above, accepts it as a Core or Optional Game or declines it.
 _Avoid_: Suggestion (that is for the bot or website), nomination (that is for GOTM), pitch
 
 **Assignment**:

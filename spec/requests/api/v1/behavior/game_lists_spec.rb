@@ -159,7 +159,7 @@ RSpec.describe "api/v1/game_lists behavior", type: :request do
 
       delete path, headers: auth_headers_for(moderator)
       expect(response).to have_http_status(:ok)
-      expect(json.fetch("data")).to eq("id" => list.id, "deleted" => true)
+      expect(json.fetch("data")).to eq("id" => list.id, "deleted" => true, "taken_over" => false)
     end
 
     it "lets the owner delete it, with its entries" do

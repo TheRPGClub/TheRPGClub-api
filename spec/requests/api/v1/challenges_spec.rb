@@ -11,7 +11,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
   pool = {
     type: :object,
     description: 'The Pool (challenge_format pool): a Run Finishes by Clearing every Core Game plus ' \
-                 '`optional_target` Optional Games. Sources (Franchises and Series) only add Optional Games, ' \
+                 '`optional_target` Optional Games. Sources (a linked Game List, Franchises and Series) only add ' \
+                 'Optional Games, ' \
                  'leaving out Add-ons (games with a parent game); a game is Core only when listed in ' \
                  '`core_game_ids` (docs/adr/0014). Needs at least one Core Game or a target of at least 1, and ' \
                  'the target can\'t exceed the Optional Games when saved. A game may be in only one of the ' \
@@ -23,7 +24,15 @@ RSpec.describe 'api/v1/challenges', type: :request do
       optional_game_ids: { type: :array, items: { type: :integer }, description: 'Optional Games picked by hand, whatever their sources; Add-ons allowed.' },
       excluded_game_ids: { type: :array, items: { type: :integer }, description: 'Games kept out though a source has them.' },
       optional_target: { type: :integer, minimum: 0, default: 0,
-                         description: 'Optional Games a Run must Clear besides every Core Game. 0 when left out on create.' }
+                         description: 'Optional Games a Run must Clear besides every Core Game. 0 when left out on create.' },
+      game_list_id: { type: :integer,
+                      description: 'Create only (422 on edit): start the Pool from this Game List. Its games come in ' \
+                                   'as Core Games, except those this request makes Optional or excludes, and the ' \
+                                   'list stays linked: games later added to it arrive as Optional Games. A member\'s ' \
+                                   'own list, for a Challenge they host; a club list, for a club-hosted one (403 ' \
+                                   '"Only a Game List\'s owner can start a Challenge from it, hosted by them; a ' \
+                                   'club list, a Moderator or above, for a club-hosted Challenge."). 422 for a ' \
+                                   'list the member can\'t see.' }
     }
   }
   slots = {
@@ -128,7 +137,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
                   '(403 "Only Moderators and above can create an Assignment Challenge."). The acting member becomes the Host, or ' \
                   'the club with `hosted_by_club` (Moderator and above). A name another Challenge already has ' \
                   'is allowed and adds a `duplicate_name` warning to `meta.warnings`. Queues a ' \
-                  '`challenge_announce` bot job (payload ChallengeAnnounceJobPayload, event `challenge_created`). ' +
+                  '`challenge_announce` bot job (payload ChallengeAnnounceJobPayload, event `challenge_created`). ' \
+                  '`pool.game_list_id` starts a Pool from a Game List (ticket api#448). ' +
                   refusal
       consumes 'application/json'
       produces 'application/json'
@@ -158,7 +168,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '403', 'Assignment or club-hosted without Moderator, or (bot) `feature_unavailable`' do
+      response '403', 'Assignment or club-hosted without Moderator, a Game List that isn\'t theirs to link, or ' \
+                      '(bot) `feature_unavailable`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -241,7 +252,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
 
     patch 'Edit a Challenge' do
       tags 'Challenges'
-      description 'The Host, for their own; any Moderator or above, for a club-hosted one. Only the keys given ' \
+      description "The Host, for their own; any Moderator or above, for any Challenge (403 \"Only the Host or a Moderator can edit this Challenge.\"). " \
+                  'Only the keys given ' \
                   'change. Once the Challenge has any Run its rules are locked: a change to the Format, ' \
                   'schedule, Season or slot range is 409 `rules_locked` with the `fields` it would change ' \
                   '(sending them unchanged is fine). Name, description and end date stay editable, except that an ' \
@@ -249,18 +261,26 @@ RSpec.describe 'api/v1/challenges', type: :request do
                   'schedule or end date is 422 `invalid_challenge`. A Pool\'s games, sources and Optional ' \
                   'target stay editable with Runs: the Runs are then brought up to date (one that now meets the ' \
                   'goal Finishes), and a save that adds Core Games or raises the target queues one ' \
-                  '`challenge_dm` `pool_goal_changed` per member with an Active Run who keeps Challenge DMs on. ' + refusal
+                  '`challenge_dm` `pool_goal_changed` per member with an Active Run who keeps Challenge DMs on. ' \
+                  'With `add_to_list`, the games the edit newly makes Core or Optional by hand also go into the ' \
+                  'linked Game List (403 "Only the Game List\'s owner can add games to it from this ' \
+                  'Challenge." unless the viewer is ' \
+                  'the list\'s owner, or staff for a club list on a club-hosted Challenge: see ' \
+                  '`pool.game_list.can_add`; 422 without a linked list; 422 `list_full` past 500 games, saving ' \
+                  'nothing). Editing a removed Core Game out of the Pool clears its list notice. ' + refusal
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
-        type: :object, properties: { data: { type: :object, properties: writable } }, required: %w[data]
+        type: :object, properties: { data: { type: :object, properties: writable.merge(
+          add_to_list: { type: :boolean, description: 'Also add the games put in the Pool by hand to the linked Game List.' }
+        ) } }, required: %w[data]
       }
 
       response '200', 'edited' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Challenge' } }
       end
 
-      response '403', 'not the Host (or, club-hosted, not a Moderator)' do
+      response '403', 'neither the Host nor a Moderator, or `add_to_list` from someone who may not touch the list' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -361,8 +381,8 @@ RSpec.describe 'api/v1/challenges', type: :request do
 
     put 'Change a Challenge\'s tint' do
       tags 'Challenges'
-      description 'The Host, for their own (PATCH takes `tint` too), and a Moderator or above for any Challenge, ' \
-                  'which PATCH does not let them edit. 403 "Only the Host or a Moderator can change this ' \
+      description 'The Host, for their own, and a Moderator or above for any Challenge (PATCH takes `tint` ' \
+                  'too). 403 "Only the Host or a Moderator can change this ' \
                   'Challenge\'s tint."; 422 `invalid_challenge` without `tint`, or for a tint PATCH would refuse.'
       consumes 'application/json'
       produces 'application/json'
@@ -393,7 +413,9 @@ RSpec.describe 'api/v1/challenges', type: :request do
     put 'Hand a Challenge to another Host' do
       tags 'Challenges'
       description 'Moderator and above. Hands it to another member (who needs no role) or, with ' \
-                  '`hosted_by_club`, to the club. 422 `invalid_challenge` for neither, or an unknown member.'
+                  '`hosted_by_club`, to the club. A new Host ends the link to a Game List: its Optional Games ' \
+                  'from the list stay, as picked by hand, and its list notices go. 422 `invalid_challenge` for ' \
+                  'neither, or an unknown member.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -414,6 +436,46 @@ RSpec.describe 'api/v1/challenges', type: :request do
 
       response '422', 'invalid_challenge' do
         schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  { 'remove' => 'Remove a list notice\'s game', 'keep' => 'Keep a list notice\'s game' }.each do |resolution, summary|
+    path "/api/v1/challenges/{id}/list_notices/{notice_id}/#{resolution}" do
+      parameter name: :id, in: :path, schema: { type: :integer }, required: true
+      parameter name: :notice_id, in: :path, schema: { type: :integer }, required: true
+
+      post summary do
+        tags 'Challenges'
+        description 'Whoever may edit the Challenge (the Host or a Moderator). A list notice says a Core Game\'s ' \
+                    'entry left the linked Game List (Challenge `list_notices`). ' +
+                    (if resolution == 'remove'
+                       'Takes the game out of the Pool as a Pool edit would (Runs are brought up to date), ' \
+                         'excluding it when another source still holds it, '
+                     else
+                       'Leaves the game a Core Game, '
+                     end) +
+                    'and clears the notice. The bot sends `{ "data": { "acting_user_id": "..." } }`.'
+        produces 'application/json'
+
+        response '200', 'the Challenge' do
+          schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Challenge' } }
+        end
+
+        response '403', 'neither the Host nor a Moderator' do
+          schema '$ref' => '#/components/schemas/Error'
+        end
+
+        response '404', 'no such notice on this Challenge, or a Challenge hidden from the caller' do
+          schema '$ref' => '#/components/schemas/Error'
+        end
+
+        next unless resolution == 'remove'
+
+        response '422', 'invalid_challenge: the Pool would be left without a goal, or the target above its ' \
+                        'Optional Games' do
+          schema '$ref' => '#/components/schemas/Error'
+        end
       end
     end
   end

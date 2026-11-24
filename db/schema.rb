@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -187,6 +187,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_140000) do
     t.check_constraint "inclusion::text = ANY (ARRAY['core'::character varying, 'optional'::character varying, 'exclude'::character varying]::text[])", name: "ck_challenge_pool_games_inclusion"
   end
 
+  create_table "challenge_pool_list_notices", force: :cascade do |t|
+    t.bigint "challenge_id", null: false
+    t.bigint "game_id", null: false
+    t.timestamptz "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.index ["challenge_id", "game_id"], name: "ux_challenge_pool_list_notices", unique: true
+    t.index ["game_id"], name: "ix_challenge_pool_list_notices_game"
+  end
+
   create_table "challenge_pool_proposals", force: :cascade do |t|
     t.bigint "challenge_id", null: false
     t.bigint "game_id", null: false
@@ -274,8 +282,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_140000) do
     t.string "tint_fill", limit: 7, null: false
     t.string "tint_hi", limit: 7, null: false
     t.integer "pool_optional_target", default: 0, null: false
+    t.bigint "pool_game_list_id"
     t.index "lower((name)::text)", name: "ix_challenges_lower_name"
     t.index ["host_user_id"], name: "ix_challenges_host"
+    t.index ["pool_game_list_id"], name: "ix_challenges_pool_game_list", where: "(pool_game_list_id IS NOT NULL)"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
     t.check_constraint "challenge_format::text <> 'assignment'::text OR schedule::text = 'always_open'::text AND ends_on IS NULL", name: "ck_challenges_assignment_schedule"
     t.check_constraint "NOT counts_past_play OR schedule::text = 'always_open'::text", name: "ck_challenges_past_play_always_open"
@@ -1653,6 +1663,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_140000) do
   add_foreign_key "challenge_pool_franchises", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", name: "fk_challenge_pool_franchises_franchise", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "challenges", name: "fk_challenge_pool_games_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_games", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_games_game", on_delete: :cascade
+  add_foreign_key "challenge_pool_list_notices", "challenges", name: "fk_challenge_pool_list_notices_challenge", on_delete: :cascade
+  add_foreign_key "challenge_pool_list_notices", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_list_notices_game", on_delete: :cascade
   add_foreign_key "challenge_pool_proposals", "challenges", name: "fk_challenge_pool_proposals_challenge", on_delete: :cascade
   add_foreign_key "challenge_pool_proposals", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_challenge_pool_proposals_game", on_delete: :cascade
   add_foreign_key "challenge_pool_proposals", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_pool_proposals_user", on_delete: :cascade
@@ -1662,6 +1674,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_140000) do
   add_foreign_key "challenge_runs", "challenge_editions", column: "edition_id", name: "fk_challenge_runs_edition", on_delete: :cascade
   add_foreign_key "challenge_runs", "challenges", name: "fk_challenge_runs_challenge", on_delete: :cascade
   add_foreign_key "challenge_runs", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_challenge_runs_user", on_delete: :cascade
+  add_foreign_key "challenges", "game_lists", column: "pool_game_list_id", name: "fk_challenges_pool_game_list", on_delete: :nullify
   add_foreign_key "challenges", "rpg_club_users", column: "host_user_id", primary_key: "user_id", name: "fk_challenges_host", on_delete: :nullify
   add_foreign_key "codex_entries", "rpg_club_users", column: "author_user_id", primary_key: "user_id", name: "fk_codex_entries_author"
   add_foreign_key "codex_entry_images", "codex_entries", column: "entry_id", name: "fk_codex_entry_images_entry", on_delete: :cascade

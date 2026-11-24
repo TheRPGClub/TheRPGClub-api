@@ -86,28 +86,35 @@ module Api
       end
 
       # PATCH /api/v1/game_lists/:id
-      # Body: { "data": { any of name, description, visibility, sort } }
+      # Body: { "data": { any of name, description, visibility, sort; confirm } }
+      #
+      # Making a list that feeds a Challenge Private needs `confirm`
+      # (GameLists::Lifecycle).
       def update
         list = find_readable
         return forbid(GameLists::Refusals::EDIT) unless actor.can_edit?(list)
 
-        attributes = list_fields(request_data)
+        data = request_data
+        attributes = list_fields(data)
         return if performed?
         if attributes.key?("visibility") && attributes["visibility"] != list.visibility &&
            !actor.can_change_visibility?(list)
           return forbid(GameLists::Refusals::VISIBILITY)
         end
 
-        render_list(GameLists::Lifecycle.update!(list, attributes))
+        render_list(GameLists::Lifecycle.update!(list, attributes, confirm: confirmed?(data["confirm"])))
       end
 
-      # DELETE /api/v1/game_lists/:id
+      # DELETE /api/v1/game_lists/:id?confirm=true
+      #
+      # Deleting a list that feeds a Challenge needs `confirm`; a member's
+      # such list goes to the club instead (`taken_over: true`).
       def destroy
         list = find_readable
         return forbid(GameLists::Refusals::DELETE) unless actor.can_delete?(list)
 
-        GameLists::Lifecycle.destroy!(list)
-        render json: { data: { id: list.id, deleted: true } }
+        taken_over = GameLists::Lifecycle.destroy!(list, confirm: confirmed?(params[:confirm]))
+        render json: { data: { id: list.id, deleted: true, taken_over: taken_over } }
       end
 
       # POST /api/v1/game_lists/:id/entries/:game_id
@@ -226,6 +233,8 @@ module Api
         else scope.where(owner_user_id: params[:owner].to_s)
         end
       end
+
+      def confirmed?(value) = ActiveModel::Type::Boolean.new.cast(value) ? true : false
 
       def refuse(message)
         render json: { error: "invalid_game_list", message: message }, status: :unprocessable_content

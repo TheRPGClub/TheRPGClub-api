@@ -85,6 +85,8 @@ module Challenges
         end
         ChallengePoolGame.insert_all!(rows) if rows.any?
         challenge.pool_games.reset
+        # A list notice is about a Core Game; one no longer Core needs none.
+        ChallengePoolListNotice.where(challenge_id: challenge.id).where.not(game_id: definition.core_game_ids).delete_all
       end
 
       def self.replace(model, challenge, column, ids)
@@ -151,13 +153,16 @@ module Challenges
       # The Pool as the API serves it. Lists carry the sources, the Core and
       # excluded games (from the Challenge's preloaded rows); the show
       # (`detail`) adds the Optional Games, resolved live, and the counts.
-      def self.as_json(challenge, settings, detail: false, now: Time.current)
+      # `game_list` is the linked list, `visible` and `can_add` for `viewer`
+      # (a Challenges::Actor; without one, as for a member who owns no list).
+      def self.as_json(challenge, settings, detail: false, now: Time.current, viewer: nil)
         definition = settings.definition
         rows = challenge.pool_games.to_a
         core = rows.select { |row| row.inclusion == "core" }.map(&:game)
         optional = optional_json(challenge, definition, rows, now) if detail
         {
           optional_target: settings.optional_target,
+          game_list: game_list_json(challenge, viewer),
           franchises: challenge.pool_franchises.map { |row| { franchise_id: row.franchise_id, name: row.franchise.name } }
             .sort_by { |source| source[:franchise_id] },
           collections: challenge.pool_collections.map { |row| { collection_id: row.collection_id, name: row.collection.name } }
@@ -171,6 +176,15 @@ module Challenges
           game_count: optional && (core.size + optional.size)
         }
       end
+
+      def self.game_list_json(challenge, viewer)
+        list = challenge.pool_game_list
+        return nil unless list
+
+        { id: list.id, name: list.name, visible: !list.private? || list.owned_by?(viewer&.user_id),
+          can_add: viewer ? viewer.can_add_to_list?(challenge, list) : false }
+      end
+      private_class_method :game_list_json
 
       def self.optional_json(challenge, definition, rows, now)
         games = definition.optional_games.preload(:images)
