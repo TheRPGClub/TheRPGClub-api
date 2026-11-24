@@ -111,9 +111,152 @@ components:
         igdb_franchise_id:
           type: integer
           nullable: true
+        created_by:
+          type: string
+          nullable: true
+          description: Who created it by hand; null for IGDB's.
       required:
       - franchise_id
       - name
+    GameFranchise:
+      allOf:
+      - "$ref": "#/components/schemas/Franchise"
+      - type: object
+        properties:
+          mainline:
+            type: boolean
+            description: Whether the game is Mainline in this Franchise.
+        required:
+        - mainline
+    FranchiseGame:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+        release_year:
+          type: integer
+          nullable: true
+        mainline:
+          type: boolean
+        source:
+          type: string
+          enum:
+          - igdb
+          - manual
+          description: Where the link came from.
+        parent_game_name:
+          type: string
+          nullable: true
+          description: An Add-on's parent game, as IGDB names it.
+      required:
+      - game_id
+      - title
+      - mainline
+      - source
+      description: A game on a Franchise's page.
+    FranchiseAddOnGroup:
+      type: object
+      properties:
+        parent:
+          allOf:
+          - type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              cover_url:
+                type: string
+                nullable: true
+              release_year:
+                type: integer
+                nullable: true
+              in_franchise:
+                type: boolean
+                description: Whether the parent is in this Franchise too.
+            required:
+            - game_id
+            - title
+            - in_franchise
+          nullable: true
+        games:
+          type: array
+          items:
+            "$ref": "#/components/schemas/FranchiseGame"
+      description: Add-ons under their parent game. The last group has a null parent
+        and holds the Add-ons whose parent isn't in GameDB.
+    FranchisePage:
+      allOf:
+      - "$ref": "#/components/schemas/Franchise"
+      - type: object
+        properties:
+          games:
+            type: object
+            properties:
+              mainline:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/FranchiseGame"
+              other:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/FranchiseGame"
+              add_ons:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/FranchiseAddOnGroup"
+                description: Games with a parent game, by parent.
+            required:
+            - mainline
+            - other
+            - add_ons
+          viewer:
+            type: object
+            properties:
+              can_edit:
+                type: boolean
+                description: 'Regulars and above: link, unlink, Mainline, create.'
+              can_admin:
+                type: boolean
+                description: Admins and above.
+            required:
+            - can_edit
+            - can_admin
+        required:
+        - games
+        - viewer
+    FranchiseLink:
+      type: object
+      properties:
+        franchise_id:
+          type: integer
+        game_id:
+          type: integer
+        source:
+          type: string
+          enum:
+          - igdb
+          - manual
+        mainline:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null for links older than Franchise editing.
+        created_by:
+          type: string
+          nullable: true
+      required:
+      - franchise_id
+      - game_id
+      - source
+      - mainline
     Genre:
       type: object
       properties:
@@ -16980,13 +17123,15 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
     post:
-      summary: Create or upsert a franchise
+      summary: Create a franchise, or upsert one by IGDB id
       tags:
       - Franchises
-      description: Admin/service-only find-or-create keyed on `igdb_franchise_id`
-        (the bot's `ensureFranchise`). Returns the existing franchise with 200 when
-        the IGDB id is already known, or creates it and returns 201. `name` is applied
-        only when a new row is created.
+      description: 'Two uses. Without `igdb_franchise_id`, a Regular or above (by
+        the acting member''s stored roles; the bot names it in `data.acting_user_id`)
+        creates a Franchise IGDB doesn''t have, returning 201. With `igdb_franchise_id`,
+        the admin/service find-or-create keyed on it (the bot''s `ensureFranchise`):
+        the existing franchise with 200 when the IGDB id is already known, or a new
+        one with 201; `name` is applied only when a new row is created.'
       parameters: []
       responses:
         '201':
@@ -17007,14 +17152,23 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/Franchise"
+        '400':
+          description: missing `data`, or the bot creating by hand names no acting
+            member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '403':
-          description: forbidden — caller is not an admin or service
+          description: 'forbidden: an upsert by a caller who is not an admin or the
+            service, or a hand-made Franchise by a member below Regular'
           content:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed (missing `igdb_franchise_id` or blank `name`)
+          description: validation failed (an empty `igdb_franchise_id`, or a blank
+            or too-long `name`)
           content:
             application/json:
               schema:
@@ -17036,12 +17190,18 @@ paths:
                   properties:
                     name:
                       type: string
+                      maxLength: 255
                       description: Franchise name (set only on create).
                     igdb_franchise_id:
                       type: integer
-                      description: IGDB franchise id. Required; the upsert key.
+                      description: 'IGDB franchise id: the upsert key. Leave it out
+                        to create a Franchise by hand.'
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only, creating by hand: the member it acts
+                        for.'
                   required:
-                  - igdb_franchise_id
+                  - name
               required:
               - data
         required: true
@@ -17057,6 +17217,17 @@ paths:
       summary: Show franchise
       tags:
       - Franchises
+      description: 'A Franchise''s page: its columns, its games grouped as `mainline`,
+        `other` and `add_ons` (games with a parent game, under their parent when it
+        is in GameDB), each with cover and release year, oldest first, and `viewer`
+        (what the acting member may change).'
+      parameters:
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member `viewer` is for.'
       responses:
         '200':
           description: franchise
@@ -17066,7 +17237,7 @@ paths:
                 type: object
                 properties:
                   data:
-                    "$ref": "#/components/schemas/Franchise"
+                    "$ref": "#/components/schemas/FranchisePage"
         '404':
           description: franchise not found
           content:
@@ -17079,6 +17250,109 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/franchises/{id}/games/{game_id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbFranchise id.
+    - name: game_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    put:
+      summary: Link a game to a franchise
+      tags:
+      - Franchises
+      description: Regulars and above (the acting member's stored roles). Links the
+        game as `manual` if it isn't linked (forgetting an earlier unlink of the pair),
+        and sets Mainline when `mainline` is given. An existing link keeps its source.
+        Hand links survive IGDB re-imports.
+      parameters: []
+      responses:
+        '200':
+          description: the link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FranchiseLink"
+        '400':
+          description: the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: below Regular'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: franchise or game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`mainline` is not a boolean (`invalid_mainline`)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    mainline:
+                      type: boolean
+                      description: Mark (true) or unmark (false) the game as Mainline;
+                        leave out to keep it.
+                    acting_user_id:
+                      type: string
+                      description: 'Bot only: the member it acts for.'
+    delete:
+      summary: Unlink a game from a franchise
+      tags:
+      - Franchises
+      description: Regulars and above. Removes the link and remembers it, so an IGDB
+        re-import doesn't add it back. Succeeds also when the game wasn't linked.
+      parameters:
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member it acts for.'
+      responses:
+        '204':
+          description: unlinked
+        '400':
+          description: the bot names no acting member
+        '403':
+          description: 'forbidden: below Regular'
+        '404':
+          description: franchise or game not found
+        '401':
+          description: unauthenticated
   "/api/v1/games/{id}/hltb/lookup":
     parameters:
     - name: id
@@ -19100,7 +19374,7 @@ paths:
                       franchises:
                         type: array
                         items:
-                          "$ref": "#/components/schemas/Franchise"
+                          "$ref": "#/components/schemas/GameFranchise"
                       genres:
                         type: array
                         items:
@@ -19293,7 +19567,7 @@ paths:
                           franchises:
                             type: array
                             items:
-                              "$ref": "#/components/schemas/Franchise"
+                              "$ref": "#/components/schemas/GameFranchise"
                           genres:
                             type: array
                             items:

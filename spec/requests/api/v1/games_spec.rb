@@ -12,7 +12,7 @@ RSpec.describe 'api/v1/games', type: :request do
       releases:     { type: :array, items: { '$ref' => '#/components/schemas/Release' } },
       companies:    { type: :array, items: { '$ref' => '#/components/schemas/GameCompany' } },
       collection:   { allOf: [ { '$ref' => '#/components/schemas/Collection' } ], nullable: true },
-      franchises:   { type: :array, items: { '$ref' => '#/components/schemas/Franchise' } },
+      franchises:   { type: :array, items: { '$ref' => '#/components/schemas/GameFranchise' } },
       genres:       { type: :array, items: { '$ref' => '#/components/schemas/Genre' } },
       engines:      { type: :array, items: { '$ref' => '#/components/schemas/Engine' } },
       modes:        { type: :array, items: { '$ref' => '#/components/schemas/Mode' } },

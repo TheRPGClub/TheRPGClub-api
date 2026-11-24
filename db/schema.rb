@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -405,9 +405,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_100000) do
     t.unique_constraint ["igdb_engine_id"], name: "gamedb_engines_igdb_engine_id_key"
   end
 
+  create_table "gamedb_franchise_unlinks", primary_key: ["game_id", "franchise_id"], force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "franchise_id", null: false
+    t.string "unlinked_by", limit: 30
+    t.datetime "unlinked_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+  end
+
   create_table "gamedb_franchises", primary_key: "franchise_id", force: :cascade do |t|
     t.bigint "igdb_franchise_id"
     t.string "name", limit: 255, null: false
+    t.string "created_by", limit: 30
 
     t.unique_constraint ["igdb_franchise_id"], name: "gamedb_franchises_igdb_franchise_id_key"
   end
@@ -437,6 +445,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_100000) do
   create_table "gamedb_game_franchises", primary_key: ["game_id", "franchise_id"], force: :cascade do |t|
     t.bigint "franchise_id", null: false
     t.bigint "game_id", null: false
+    t.string "source", limit: 10, default: "igdb", null: false
+    t.boolean "mainline", default: false, null: false
+    t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }
+    t.string "created_by", limit: 30
+    t.index ["franchise_id"], name: "index_gamedb_game_franchises_on_franchise_id"
+    t.check_constraint "source::text = ANY (ARRAY['igdb'::character varying, 'manual'::character varying]::text[])", name: "ck_gamedb_game_franchises_source"
   end
 
   create_table "gamedb_game_genres", primary_key: ["game_id", "genre_id"], force: :cascade do |t|
@@ -1615,6 +1629,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_100000) do
   add_foreign_key "game_list_entries", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_game_list_entries_game", on_delete: :cascade
   add_foreign_key "game_lists", "rpg_club_users", column: "owner_user_id", primary_key: "user_id", name: "fk_game_lists_owner", on_delete: :cascade
   add_foreign_key "game_lists", "rpg_club_users", column: "taken_over_from_user_id", primary_key: "user_id", name: "fk_game_lists_taken_over_from", on_delete: :nullify
+  add_foreign_key "gamedb_franchise_unlinks", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", on_delete: :cascade
+  add_foreign_key "gamedb_franchise_unlinks", "gamedb_games", column: "game_id", primary_key: "game_id", on_delete: :cascade
   add_foreign_key "gamedb_game_companies", "gamedb_companies", column: "company_id", primary_key: "company_id", name: "fk_gc_company"
   add_foreign_key "gamedb_game_companies", "gamedb_games", column: "game_id", primary_key: "game_id", name: "fk_gc_game", on_delete: :cascade
   add_foreign_key "gamedb_game_engines", "gamedb_engines", column: "engine_id", primary_key: "engine_id", name: "fk_ge_engine"

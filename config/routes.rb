@@ -74,7 +74,14 @@ Rails.application.routes.draw do
       resources :themes, only: %i[index show create]
       resources :perspectives, only: %i[index show create]
       resources :modes, only: %i[index show create]
-      resources :franchises, only: %i[index show create]
+      # Franchise editing (spec api#442): Regulars and above link and unlink
+      # games and set Mainline.
+      resources :franchises, only: %i[index show create] do
+        member do
+          put "games/:game_id", action: :link_game, as: :link_game
+          delete "games/:game_id", action: :unlink_game, as: :unlink_game
+        end
+      end
       resources :companies, only: %i[index show]
       resources :engines, only: %i[index show create]
 
