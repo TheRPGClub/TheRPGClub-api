@@ -24,7 +24,13 @@ module Challenges
   # Active Run (as GET /api/v1/challenge_runs/{id} serves it, under `run`):
   # the Core Games it added under `added_core_games` ({ game_id, title,
   # cover_url }, oldest release first) and a raised Optional target under
-  # `optional_target` ({ from, to }, null when unchanged).
+  # `optional_target` ({ from, to }, null when unchanged); "pool_proposal",
+  # a member proposed a game for the Host's Pool (the proposal, as
+  # GET /api/v1/challenges/{id}/pool_proposals serves it, under `proposal`,
+  # note included), with `club_hosted: false`; for a club-hosted Challenge
+  # the same event goes once with `club_hosted: true` and no `user_id`, for
+  # the bot to post in #dev; and "pool_proposal_accepted", the member's
+  # proposal was accepted (`proposal.accepted_as` says as what).
   module DirectMessages
     KIND = "challenge_dm"
 
@@ -95,6 +101,47 @@ module Challenges
         )
       end
     end
+
+    # Tells the Host of `proposal`'s Challenge about it, when they keep
+    # Challenge DMs on and didn't propose it themselves; for a club-hosted
+    # Challenge, queues one event for #dev instead. Queued for the proposer.
+    def self.pool_proposal!(proposal)
+      challenge = proposal.challenge
+      club = challenge.club_hosted?
+      host = club ? nil : reachable.find_by(user_id: challenge.host_user_id)
+      return unless club || (host && host.user_id != proposal.user_id)
+
+      summary = %(#{club ? 'Post in #dev' : "Tell #{Challenges.display_name(host)}"} that #{proposal.game.title} ) +
+                %(was proposed for "#{challenge.name}")
+      payload = { event: "pool_proposal", club_hosted: club, challenge: challenge_json(challenge),
+                  proposal: ChallengePoolProposalResource.serialize(proposal) }
+      payload[:user_id] = host.user_id unless club
+      BotJob.enqueue!(kind: KIND, requested_by: proposal.user_id, summary: summary, payload: payload)
+    end
+
+    # Tells the proposer their proposal was accepted, when they keep
+    # Challenge DMs on and didn't accept it themselves. Queued for the member
+    # who accepted it.
+    def self.pool_proposal_accepted!(proposal)
+      return if proposal.user_id == proposal.decided_by
+
+      user = reachable.find_by(user_id: proposal.user_id)
+      return unless user
+
+      challenge = proposal.challenge
+      BotJob.enqueue!(
+        kind: KIND, requested_by: proposal.decided_by,
+        summary: %(Tell #{Challenges.display_name(user)} that #{proposal.game.title} joined "#{challenge.name}"),
+        payload: { event: "pool_proposal_accepted", user_id: user.user_id, challenge: challenge_json(challenge),
+                   proposal: ChallengePoolProposalResource.serialize(proposal) }
+      )
+    end
+
+    def self.challenge_json(challenge)
+      challenge = ChallengeResource.preloaded(Challenge.where(id: challenge.id)).first!
+      ChallengeResource.new(challenge, params: { detail: true }).serializable_hash
+    end
+    private_class_method :challenge_json
 
     # Reminds the members of `runs` (Active Runs of `challenge`'s Season)
     # that the Season ends on `ends_on`. Queued by the lifecycle job, so they
