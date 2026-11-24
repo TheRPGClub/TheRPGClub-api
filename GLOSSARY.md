@@ -76,7 +76,7 @@ _Avoid_: Refresh, poll
 ## Games
 
 **Game Completion**:
-A member's record that they finished a game, with how thoroughly (main story, main story plus side content, or completionist) and when. Distinct from an Achievement Hub Completion.
+A member's record that they finished a game, with how thoroughly (main story, main story plus side content, or completionist), when they started (optional) and finished. Distinct from an Achievement Hub Completion.
 _Avoid_: Completion (unqualified), beat, finish
 
 **Release**:

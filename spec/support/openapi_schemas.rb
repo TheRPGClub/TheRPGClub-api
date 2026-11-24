@@ -423,7 +423,8 @@ module OpenapiSchemas
       # BacklogEntryResource: trimmed columns + embedded game/platform.
       BacklogEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
-        note: str(nullable: true), game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+        note: str(nullable: true), sort_order: int(nullable: true),
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
       # backlog#pick (BacklogPickResource): the suggested entry, from the backlog
       # or the collection, with its game, platform and HLTB times. `hours` is the
@@ -486,7 +487,9 @@ module OpenapiSchemas
       # is the row's insert time (NOT NULL), exposed for the bot's CSV export (#102).
       CompletionEntry: obj(
         completion_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
-        note: str(nullable: true), completion_type: str, completed_at: ts(nullable: true),
+        note: str(nullable: true), completion_type: str,
+        started_at: date(nullable: true, description: "The day the member started the game (optional)."),
+        completed_at: ts(nullable: true),
         final_playtime_hrs: num(nullable: true), created_at: ts,
         game: ref("GameSummary"), platform: ref("Platform", nullable: true)
       ),
@@ -522,7 +525,7 @@ module OpenapiSchemas
       # FavoriteEntryResource (no platform association).
       FavoriteEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, note: str(nullable: true),
-        game: ref("GameSummary")
+        sort_order: int(nullable: true), game: ref("GameSummary")
       ),
       # The now-playing embedded game (NowPlayingEmbeds): the GameSummary shape
       # plus the game's linked Discord thread, derived per-entry (#104).
@@ -1754,6 +1757,9 @@ module OpenapiSchemas
       CompletionCreateMeta: obj(
         announce_job_id: int(nullable: true).merge(
           description: "The completion_announce bot job. Null when `announce` was not set."
+        ),
+        left_now_playing: bool.merge(
+          description: "Whether the game was taken off the member's Now Playing with this completion."
         )
       ),
       # GotmRoundWrites (round create, entry update) meta: the queued

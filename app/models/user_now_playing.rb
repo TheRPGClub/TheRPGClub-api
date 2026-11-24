@@ -6,6 +6,10 @@ class UserNowPlaying < ApplicationRecord
 
   # Run progress follows every commit (Challenges::CountsTowardRuns).
   include Challenges::CountsTowardRuns
+  include ShelfOrder
+
+  # The user's list display order (NowPlayingController#user_index, ShelfOrder).
+  SHELF_ORDER = { sort_order: :asc, added_at: :desc, entry_id: :desc }.freeze
 
   # The bot caps a user's now-playing list at 10 entries; the API enforces the
   # same ceiling on create so a migrated `/now-playing add` can't exceed it.
@@ -63,6 +67,10 @@ class UserNowPlaying < ApplicationRecord
   # index — surfaced as a 422 rather than a DB 500.
   validates :gamedb_game_id, uniqueness: { scope: :user_id }, allow_nil: true
   validate :within_entry_limit, on: :create
+  # `added_at` is the day the member started playing (spec api#451): a member
+  # may correct it, but not to nothing or to after today (the club day).
+  validates :added_at, presence: true, on: :update
+  validate :added_not_in_future, if: :added_at_changed?
 
   # Append new entries after the user's current highest position so the bot's
   # ascending `sort_order` display order is preserved without the client
@@ -71,6 +79,17 @@ class UserNowPlaying < ApplicationRecord
   # Stamp `note_updated_at` whenever the note changes (set to now when a note is
   # present, cleared to null when blank) — the bot's note edit flow reads it.
   before_save :stamp_note_updated_at, if: :note_changed?
+
+  # `added_at` stays a real moment (the bot and Challenges read it), and its
+  # day is its club day (ClubDay.day_of). A date-only write (the website's
+  # `YYYY-MM-DD` or a Date) names a day, stored as noon club time on it.
+  def added_at=(value)
+    day = (value if value.is_a?(Date) && !value.is_a?(DateTime)) ||
+          (Date.iso8601(value.strip) if value.is_a?(String) && ClubDay::DATE_ONLY.match?(value.strip))
+    super(day ? ClubDay.noon(day) : value)
+  rescue Date::Error
+    super
+  end
 
   private
 
@@ -83,6 +102,12 @@ class UserNowPlaying < ApplicationRecord
 
   def stamp_note_updated_at
     self.note_updated_at = note.present? ? Time.current : nil
+  end
+
+  def added_not_in_future
+    return unless added_at && ClubDay.day_of(added_at) > ClubDay.today
+
+    errors.add(:added_at, :added_in_future, message: "can't be in the future")
   end
 
   def within_entry_limit

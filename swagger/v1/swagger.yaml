@@ -1218,6 +1218,9 @@ components:
         note:
           type: string
           nullable: true
+        sort_order:
+          type: integer
+          nullable: true
         game:
           "$ref": "#/components/schemas/GameSummary"
         platform:
@@ -1462,6 +1465,11 @@ components:
           nullable: true
         completion_type:
           type: string
+        started_at:
+          type: string
+          format: date
+          nullable: true
+          description: The day the member started the game (optional).
         completed_at:
           type: string
           format: date-time
@@ -1596,6 +1604,9 @@ components:
           type: integer
         note:
           type: string
+          nullable: true
+        sort_order:
+          type: integer
           nullable: true
         game:
           "$ref": "#/components/schemas/GameSummary"
@@ -5751,6 +5762,12 @@ components:
           nullable: true
           description: The completion_announce bot job. Null when `announce` was not
             set.
+        left_now_playing:
+          type: boolean
+          description: Whether the game was taken off the member's Now Playing with
+            this completion.
+      required:
+      - left_now_playing
     GotmReloadMeta:
       type: object
       properties:
@@ -8452,9 +8469,17 @@ paths:
       summary: List a user's backlog
       tags:
       - Backlog
-      description: Ordered by `sort_order` ascending then `created_at` descending.
-        Open to any authenticated caller.
+      description: Ordered by `sort_order` ascending (nulls last), then `created_at`
+        descending. Open to any authenticated caller. The optional `game_id` narrows
+        to one game (`meta.count` stays exact for the filtered set).
       parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to backlog entries of this game (`gamedb_game_id`). A
+          non-integer matches nothing.
       - name: page
         in: query
         schema:
@@ -8713,7 +8738,9 @@ paths:
       summary: Update a backlog entry
       tags:
       - Backlog
-      description: 'Owner-only. Partial update: send any subset of the writable columns.'
+      description: 'Owner-only. Partial update: send any subset of the writable columns.
+        A `position` moves the entry within the member''s list and renumbers the rest
+        server-side.'
       parameters: []
       responses:
         '200':
@@ -8738,7 +8765,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `invalid_position`
           content:
             application/json:
               schema:
@@ -8774,6 +8801,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
               required:
               - data
         required: true
@@ -8825,6 +8859,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
         required: true
     delete:
       summary: Delete a backlog entry
@@ -16117,14 +16158,16 @@ paths:
           type: string
           format: date-time
         required: false
-        description: Only completions with `completed_at` on or after this time.
+        description: 'Only completions with `completed_at` on or after this time (a
+          date-only value: from the start of that club day).'
       - name: completed_before
         in: query
         schema:
           type: string
           format: date-time
         required: false
-        description: Only completions with `completed_at` on or before this time.
+        description: 'Only completions with `completed_at` on or before this time
+          (a date-only value: to the end of that club day).'
       - name: page
         in: query
         schema:
@@ -16184,9 +16227,14 @@ paths:
         `platform_id` and `note` are optional. `announce: true` queues a `completion_announce`
         bot job (payload `completion_id`, `user_id`, `game_id`, `actor_user_id`) so
         the bot posts the completion; `meta.announce_job_id` is that job (null when
-        none was queued), for polling `GET /api/v1/bot_jobs/{id}`. When a Superadmin
+        none was queued), for polling `GET /api/v1/bot_jobs/{id}`. `leave_now_playing:
+        true` removes the game from the member''s Now Playing in the same transaction;
+        `meta.left_now_playing` says whether an entry was removed. When a Superadmin
         logs one for another member, the game is also removed from that member''s
-        Now Playing.'
+        Now Playing. `started_at` may not be after the finished day (422 `started_after_finished`),
+        nor after today without one (422 `started_in_future`), and `completed_at`
+        may not be after today in club time (422 `finished_in_future`). A coded 422
+        is used only when the date check is the only problem.'
       parameters: []
       responses:
         '201':
@@ -16213,7 +16261,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed, or `announce` is not a boolean
+          description: validation failed (`started_after_finished`, `started_in_future`,
+            `finished_in_future`), or `announce` / `leave_now_playing` is not a boolean
           content:
             application/json:
               schema:
@@ -16246,11 +16295,21 @@ paths:
                       type: string
                       description: How it was completed (e.g. "main", "100%"). Required
                         on create.
+                    started_at:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: The day the member started the game (optional).
+                        Not after the finished day, nor after today when there is
+                        none. A full timestamp names its club day.
                     completed_at:
                       type: string
                       format: date-time
                       nullable: true
-                      description: When the game was completed.
+                      description: 'The day the game was finished: `YYYY-MM-DD`, or
+                        a timestamp read as its club day (America/New_York). Stored
+                        as noon club time of that day. Not after today (club day).
+                        Omitted on create means today; `null` means unknown.'
                     final_playtime_hrs:
                       type: number
                       nullable: true
@@ -16266,6 +16325,10 @@ paths:
                     announce:
                       type: boolean
                       description: Queue a bot announcement of the completion. Defaults
+                        to false.
+                    leave_now_playing:
+                      type: boolean
+                      description: Take the game off the member's Now Playing. Defaults
                         to false.
                   required:
                   - gamedb_game_id
@@ -16391,10 +16454,11 @@ paths:
         the list order (`completed_at` descending, then `created_at` descending),
         as a `text/csv` attachment named `completions.csv`. The columns match the
         Discord bot''s export: `ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime
-        (Hours),Note,Created At`. `Completed Date` is the UTC date (`YYYY-MM-DD`)
-        and `Created At` is an ISO-8601 UTC timestamp with milliseconds. Empty values
-        are blank. Fields that contain a comma, quote or line break are quoted (RFC
-        4180). A user with no completions gets only the header row.'
+        (Hours),Note,Created At`, then `Started Date` (`YYYY-MM-DD`, empty when unknown).
+        `Completed Date` is the UTC date (`YYYY-MM-DD`) and `Created At` is an ISO-8601
+        UTC timestamp with milliseconds. Empty values are blank. Fields that contain
+        a comma, quote or line break are quoted (RFC 4180). A user with no completions
+        gets only the header row.'
       responses:
         '200':
           description: completions CSV
@@ -16585,7 +16649,9 @@ paths:
       summary: Update a completion
       tags:
       - Completions
-      description: 'Owner-only. Partial update: send any subset of the writable columns.'
+      description: 'Owner-only. Partial update: send any subset of the writable columns.
+        The date checks match create (422 `started_after_finished`, `started_in_future`,
+        `finished_in_future`).'
       parameters: []
       responses:
         '200':
@@ -16637,11 +16703,21 @@ paths:
                       type: string
                       description: How it was completed (e.g. "main", "100%"). Required
                         on create.
+                    started_at:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: The day the member started the game (optional).
+                        Not after the finished day, nor after today when there is
+                        none. A full timestamp names its club day.
                     completed_at:
                       type: string
                       format: date-time
                       nullable: true
-                      description: When the game was completed.
+                      description: 'The day the game was finished: `YYYY-MM-DD`, or
+                        a timestamp read as its club day (America/New_York). Stored
+                        as noon club time of that day. Not after today (club day).
+                        Omitted on create means today; `null` means unknown.'
                     final_playtime_hrs:
                       type: number
                       nullable: true
@@ -16695,11 +16771,21 @@ paths:
                       type: string
                       description: How it was completed (e.g. "main", "100%"). Required
                         on create.
+                    started_at:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: The day the member started the game (optional).
+                        Not after the finished day, nor after today when there is
+                        none. A full timestamp names its club day.
                     completed_at:
                       type: string
                       format: date-time
                       nullable: true
-                      description: When the game was completed.
+                      description: 'The day the game was finished: `YYYY-MM-DD`, or
+                        a timestamp read as its club day (America/New_York). Stored
+                        as noon club time of that day. Not after today (club day).
+                        Omitted on create means today; `null` means unknown.'
                     final_playtime_hrs:
                       type: number
                       nullable: true
@@ -17186,9 +17272,17 @@ paths:
       summary: List a user's favorites
       tags:
       - Favorites
-      description: Ordered by `sort_order` ascending, then `created_at` descending.
-        Open to any authenticated caller.
+      description: Ordered by `sort_order` ascending (nulls last), then `created_at`
+        descending. Open to any authenticated caller. The optional `game_id` narrows
+        to one game (`meta.count` stays exact for the filtered set).
       parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: integer
+        required: false
+        description: Filter to favorites of this game (`gamedb_game_id`). A non-integer
+          matches nothing.
       - name: page
         in: query
         schema:
@@ -17344,7 +17438,9 @@ paths:
       summary: Update a favorite
       tags:
       - Favorites
-      description: 'Owner-only. Partial update: send any subset of the writable columns.'
+      description: 'Owner-only. Partial update: send any subset of the writable columns.
+        A `position` moves the entry within the member''s list and renumbers the rest
+        server-side.'
       parameters: []
       responses:
         '200':
@@ -17369,7 +17465,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, or `invalid_position`
           content:
             application/json:
               schema:
@@ -17401,6 +17497,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
               required:
               - data
         required: true
@@ -17447,6 +17550,13 @@ paths:
                       type: string
                       nullable: true
                       description: Optional free-text note.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
         required: true
     delete:
       summary: Delete a favorite
@@ -26194,8 +26304,12 @@ paths:
       summary: Update a now-playing entry
       tags:
       - Now Playing
-      description: Owner-only. Partial update of `note`, `platform_id` and/or `sort_order`.
-        `note_updated_at` is stamped server-side when the note changes.
+      description: 'Owner-only. Partial update of `note`, `platform_id`, `sort_order`
+        and/or `added_at` (the day the member started playing: a `YYYY-MM-DD` is stored
+        as noon club time on it, a timestamp as given; 422 `added_in_future` when
+        its club day is after today). `note_updated_at` is stamped server-side when
+        the note changes. A `position` moves the entry within the member''s list and
+        renumbers the rest server-side.'
       parameters: []
       responses:
         '200':
@@ -26220,7 +26334,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: validation failed
+          description: validation failed, `added_in_future` or `invalid_position`
           content:
             application/json:
               schema:
@@ -26252,6 +26366,18 @@ paths:
                       type: integer
                       nullable: true
                       description: Ascending display order.
+                    added_at:
+                      type: string
+                      format: date-time
+                      description: When the member started playing (a date is read
+                        as that UTC day). Not after today.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
               required:
               - data
         required: true
@@ -26298,6 +26424,18 @@ paths:
                       type: integer
                       nullable: true
                       description: Ascending display order.
+                    added_at:
+                      type: string
+                      format: date-time
+                      description: When the member started playing (a date is read
+                        as that UTC day). Not after today.
+                    position:
+                      type: integer
+                      minimum: 1
+                      description: Moves the entry to this 1-based place in the member's
+                        list (past the end means last) and renumbers the whole list
+                        `sort_order` 1..n in display order, in one transaction. Use
+                        this to reorder; not combinable with `sort_order` (422 `invalid_position`).
         required: true
     delete:
       summary: Delete a now-playing entry

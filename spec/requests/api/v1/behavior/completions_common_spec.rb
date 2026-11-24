@@ -32,9 +32,9 @@ RSpec.describe "api/v1/completions common behavior", type: :request do
 
   it "returns only games both members completed, with each side's latest entry and count" do
     shared = create(:game)
-    old_left = create(:completion, user: left, game: shared, completed_at: Time.utc(2019, 1, 1))
-    new_left = create(:completion, user: left, game: shared, completed_at: Time.utc(2021, 3, 3))
-    right_entry = create(:completion, user: right, game: shared, completed_at: Time.utc(2022, 4, 4))
+    old_left = create(:completion, user: left, game: shared, completed_at: Date.new(2019, 1, 1))
+    new_left = create(:completion, user: left, game: shared, completed_at: Date.new(2021, 3, 3))
+    right_entry = create(:completion, user: right, game: shared, completed_at: Date.new(2022, 4, 4))
     create(:completion, user: left)               # left only
     create(:completion, user: right)              # right only
     create(:completion, user: viewer, game: shared) # a third member doesn't count
@@ -44,7 +44,7 @@ RSpec.describe "api/v1/completions common behavior", type: :request do
     expect(game_ids(body)).to eq([ shared.game_id ])
     row = body.fetch("data").first
     expect(row.dig("game", "game_id")).to eq(shared.game_id)
-    expect(Time.zone.parse(row.fetch("latest_shared_date"))).to eq(Time.utc(2022, 4, 4))
+    expect(Time.zone.parse(row.fetch("latest_shared_date"))).to eq(ClubDay.noon(Date.new(2022, 4, 4)))
     expect(row.dig("left", "count")).to eq(2)
     expect(row.dig("left", "latest", "completion_id")).to eq(new_left.completion_id)
     expect(row.dig("left", "latest", "game", "game_id")).to eq(shared.game_id)

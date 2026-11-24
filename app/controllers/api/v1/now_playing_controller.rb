@@ -12,6 +12,9 @@ module Api
     # create/update/destroy are owner-only (the bot's service token counts as
     # the owner).
     class NowPlayingController < ApplicationController
+      include CodedRefusals
+      include ShelfPositioning
+
       feature :now_playing
 
       before_action :require_owner!, only: %i[create update destroy]
@@ -57,7 +60,7 @@ module Api
       def user_index
         scope = UserNowPlaying.with_now_playing_details.where(user_id: params[:user_id]).preload(:game, :platform)
         render_collection(scope, resource: NowPlayingEntryResource,
-          default_order: { sort_order: :asc, added_at: :desc, entry_id: :desc })
+          default_order: UserNowPlaying::SHELF_ORDER)
       end
 
       # GET /api/v1/now_playing/:id
@@ -96,11 +99,19 @@ module Api
 
       # PATCH/PUT /api/v1/now_playing/:id
       #
-      # Partial update of `note`, `platform_id` and/or `sort_order`.
+      # Partial update of `note`, `platform_id`, `sort_order` and/or `added_at`
+      # (the day the member started playing; 422 `added_in_future` after today).
+      # A `position` (1-based) moves the entry within the member's list and
+      # renumbers the rest (ShelfOrder); 422 `invalid_position` when bad.
       def update
         record = UserNowPlaying.find(params[:id])
-        record.update!(update_data)
+        position = shelf_position
+        return if performed?
+
+        record.update_at_position!(update_data, position)
         render json: { data: serialize_entry(record.entry_id, NowPlayingMemberEntryResource) }
+      rescue ActiveRecord::RecordInvalid => e
+        render_coded_refusal(e, %i[added_in_future])
       end
 
       # DELETE /api/v1/now_playing/:id
@@ -125,9 +136,10 @@ module Api
       end
 
       # The columns a client may change on update (the issue's `note`,
-      # `platform_id`, `sort_order`; `note_updated_at` is stamped server-side).
+      # `platform_id`, `sort_order`, plus `added_at`, the member's started day;
+      # `note_updated_at` is stamped server-side).
       def update_data
-        request_data.slice("note", "platform_id", "sort_order")
+        request_data.slice("note", "platform_id", "sort_order", "added_at")
       end
 
       def sanitize_like(value)

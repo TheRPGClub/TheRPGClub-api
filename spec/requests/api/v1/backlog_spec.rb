@@ -11,15 +11,26 @@ RSpec.describe 'api/v1/backlog', type: :request do
     sort_order: { type: :integer, nullable: true, description: 'Optional manual sort position.' },
     note: { type: :string, nullable: true, description: 'Optional free-text note.' }
   }
+  # Update also takes `position`, the single-move reorder (spec api#451 story 15).
+  update_writable = writable.merge(
+    position: { type: :integer, minimum: 1,
+                description: 'Moves the entry to this 1-based place in the member\'s list (past the end means ' \
+                             'last) and renumbers the whole list `sort_order` 1..n in display order, in one ' \
+                             'transaction. Use this to reorder; not combinable with `sort_order` ' \
+                             '(422 `invalid_position`).' }
+  )
 
   path '/api/v1/users/{user_id}/backlog' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true
 
     get 'List a user\'s backlog' do
       tags 'Backlog'
-      description 'Ordered by `sort_order` ascending then `created_at` descending. Open to any ' \
-                  'authenticated caller.'
+      description 'Ordered by `sort_order` ascending (nulls last), then `created_at` descending. Open to any ' \
+                  'authenticated caller. The optional `game_id` narrows to one game (`meta.count` stays exact ' \
+                  'for the filtered set).'
       produces 'application/json'
+      parameter name: :game_id, in: :query, schema: { type: :integer }, required: false,
+        description: 'Filter to backlog entries of this game (`gamedb_game_id`). A non-integer matches nothing.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,
@@ -143,13 +154,13 @@ RSpec.describe 'api/v1/backlog', type: :request do
 
     patch 'Update a backlog entry' do
       tags 'Backlog'
-      description 'Owner-only. Partial update: send any subset of the writable columns.'
+      description 'Owner-only. Partial update: send any subset of the writable columns. A `position` moves the entry within the member\'s list and renumbers the rest server-side.'
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable } },
+        properties: { data: { type: :object, properties: update_writable } },
         required: %w[data]
       }
 
@@ -165,7 +176,7 @@ RSpec.describe 'api/v1/backlog', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed, or `invalid_position`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -182,7 +193,7 @@ RSpec.describe 'api/v1/backlog', type: :request do
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable } }
+        properties: { data: { type: :object, properties: update_writable } }
       }
 
       response '200', 'updated' do

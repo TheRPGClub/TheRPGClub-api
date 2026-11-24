@@ -3,15 +3,21 @@
 module Api
   module V1
     class FavoritesController < ApplicationController
+      include GameIdFilter
+      include ShelfPositioning
+
       before_action :require_owner!, only: %i[create update destroy]
 
       # Caller-settable columns. `user_id` comes from the path (or the existing
       # record) and the key is generated, so neither is accepted in the body.
       WRITABLE_ATTRS = %w[gamedb_game_id note sort_order].freeze
 
+      # `game_id` (optional) narrows to one game's entry by exact
+      # `gamedb_game_id`, so the game page need not read the whole list.
       def index
         scope = UserGameFavorite.where(user_id: params[:user_id]).preload(:game)
-        render_collection(scope, resource: FavoriteEntryResource, default_order: { sort_order: :asc, created_at: :desc })
+        scope = by_game(scope)
+        render_collection(scope, resource: FavoriteEntryResource, default_order: UserGameFavorite::SHELF_ORDER)
       end
 
       def show
@@ -28,9 +34,14 @@ module Api
         render json: { data: FavoriteEntryResource.new(record).serializable_hash }, status: :created
       end
 
+      # A `position` (1-based) moves the entry within the member's list and
+      # renumbers the rest (ShelfOrder), alongside any other changed fields.
       def update
         record = UserGameFavorite.find(params[:id])
-        record.update!(writable_data)
+        position = shelf_position
+        return if performed?
+
+        record.update_at_position!(writable_data, position)
         record.reload
         render json: { data: FavoriteEntryResource.new(record).serializable_hash }
       end

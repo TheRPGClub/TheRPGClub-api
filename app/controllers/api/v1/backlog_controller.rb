@@ -3,6 +3,9 @@
 module Api
   module V1
     class BacklogController < ApplicationController
+      include GameIdFilter
+      include ShelfPositioning
+
       feature :backlog
 
       before_action :require_owner!, only: %i[pick create update destroy]
@@ -11,9 +14,12 @@ module Api
       # record) and the key is generated, so neither is accepted in the body.
       WRITABLE_ATTRS = %w[gamedb_game_id platform_id note sort_order].freeze
 
+      # `game_id` (optional) narrows to one game's entries by exact
+      # `gamedb_game_id`, so the game page need not read the whole list.
       def index
         scope = UserGameBacklog.where(user_id: params[:user_id]).preload(:game, :platform)
-        render_collection(scope, resource: BacklogEntryResource, default_order: { sort_order: :asc, created_at: :desc })
+        scope = by_game(scope)
+        render_collection(scope, resource: BacklogEntryResource, default_order: UserGameBacklog::SHELF_ORDER)
       end
 
       # GET /api/v1/users/:user_id/backlog/pick
@@ -48,9 +54,14 @@ module Api
         render json: { data: BacklogEntryResource.new(record).serializable_hash }, status: :created
       end
 
+      # A `position` (1-based) moves the entry within the member's list and
+      # renumbers the rest (ShelfOrder), alongside any other changed fields.
       def update
         record = UserGameBacklog.find(params[:id])
-        record.update!(writable_data)
+        position = shelf_position
+        return if performed?
+
+        record.update_at_position!(writable_data, position)
         record.reload
         render json: { data: BacklogEntryResource.new(record).serializable_hash }
       end

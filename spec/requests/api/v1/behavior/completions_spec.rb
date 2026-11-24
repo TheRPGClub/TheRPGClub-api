@@ -5,6 +5,8 @@ require "rails_helper"
 # Behavior specs for the completion endpoints: reads are open to any
 # authenticated principal, writes are gated to the owner (or the service).
 RSpec.describe "api/v1/completions behavior", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:owner) { create(:user) }
   let(:other_user) { create(:user) }
 
@@ -84,16 +86,17 @@ RSpec.describe "api/v1/completions behavior", type: :request do
   end
 
   describe "GET /api/v1/users/:user_id/completions/export" do
-    let(:header_row) { "ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime (Hours),Note,Created At" }
+    let(:header_row) { "ID,Game ID,Title,Type,Platform ID,Completed Date,Playtime (Hours),Note,Created At,Started Date" }
 
     it "sends the owner a CSV attachment with the bot's columns, newest completion first" do
       platform = create(:platform)
       game = create(:game, title: "Chrono Trigger")
       older = create(:completion, user: owner, game: game, platform: platform,
-        completed_at: Time.utc(2021, 3, 4, 22, 0), final_playtime_hrs: 25.5, note: "great")
+        completed_at: Time.utc(2021, 3, 4, 22, 0), final_playtime_hrs: 25.5, note: "great",
+        started_at: Date.new(2021, 2, 1))
       older.update_columns(created_at: Time.utc(2021, 3, 5, 10, 11, 12.345))
       newer = create(:completion, user: owner, game: game, completion_type: "Completionist",
-        completed_at: Time.utc(2022, 1, 2), final_playtime_hrs: 40)
+        completed_at: Date.new(2022, 1, 2), final_playtime_hrs: 40)
       newer.update_columns(created_at: Time.utc(2022, 1, 2, 8, 0, 0))
       create(:completion, user: other_user)
 
@@ -104,8 +107,8 @@ RSpec.describe "api/v1/completions behavior", type: :request do
       expect(response.headers["Content-Disposition"]).to include("attachment", 'filename="completions.csv"')
       expect(response.body.lines(chomp: true)).to eq([
         header_row,
-        "#{newer.completion_id},#{game.game_id},Chrono Trigger,Completionist,,2022-01-02,40,,2022-01-02T08:00:00.000Z",
-        "#{older.completion_id},#{game.game_id},Chrono Trigger,Main Story,#{platform.platform_id},2021-03-04,25.5,great,2021-03-05T10:11:12.345Z"
+        "#{newer.completion_id},#{game.game_id},Chrono Trigger,Completionist,,2022-01-02,40,,2022-01-02T08:00:00.000Z,",
+        "#{older.completion_id},#{game.game_id},Chrono Trigger,Main Story,#{platform.platform_id},2021-03-04,25.5,great,2021-03-05T10:11:12.345Z,2021-02-01"
       ])
     end
 
@@ -248,6 +251,224 @@ RSpec.describe "api/v1/completions behavior", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
 
+    describe "Started date" do
+      it "records started_at on create and returns it" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(started_at: "2026-11-09", completed_at: "2026-11-20") },
+          headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json.dig("data", "started_at")).to eq("2026-11-09")
+        expect(UserGameCompletion.last.started_at).to eq(Date.new(2026, 11, 9))
+      end
+
+      it "leaves started_at null when it is not given" do
+        post "/api/v1/users/#{owner.user_id}/completions", params: payload, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json.fetch("data")).to include("started_at" => nil)
+      end
+
+      it "accepts a start on the day the game was finished" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(started_at: "2026-11-20", completed_at: "2026-11-20") },
+          headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+      end
+
+      it "422s started_after_finished when started_at is after completed_at" do
+        expect {
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(started_at: "2026-11-21", completed_at: "2026-11-20") },
+            headers: auth_headers_for(owner), as: :json
+        }.not_to change(UserGameCompletion, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to eq("started_after_finished")
+      end
+
+      it "422s started_after_finished when started_at is after today and completed_at is left to default" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(started_at: (ClubDay.today + 2).iso8601) },
+          headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to eq("started_after_finished")
+      end
+
+      it "422s finished_in_future when completed_at is after today in club time" do
+        expect {
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(completed_at: (ClubDay.today + 2).iso8601) },
+            headers: auth_headers_for(owner), as: :json
+        }.not_to change(UserGameCompletion, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json.fetch("error")).to eq("finished_in_future")
+      end
+
+      it "accepts a completion stamped now on a club evening, when the UTC day has already turned" do
+        travel_to(Time.zone.parse("2026-11-24 21:30:00 -05:00")) do
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(completed_at: Time.current.iso8601) },
+            headers: auth_headers_for(owner), as: :json
+
+          expect(response).to have_http_status(:created)
+
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(completed_at: "2026-11-26") },
+            headers: auth_headers_for(owner), as: :json
+
+          expect(json.fetch("error")).to eq("finished_in_future")
+        end
+      end
+
+      it "accepts a completion finished today in club time" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(completed_at: ClubDay.today.iso8601) },
+          headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+      end
+
+      describe "the day rule (a day is a club day, stored at noon club time)" do
+        let(:club_evening) { Time.zone.parse("2026-11-24 21:30:00 -05:00") } # 02:30 UTC on the 25th
+
+        def log(**dates)
+          post "/api/v1/users/#{owner.user_id}/completions",
+            params: { data: payload[:data].merge(dates) }, headers: auth_headers_for(owner), as: :json
+        end
+
+        it "stores a date-only completed_at as noon club time of that day" do
+          log(completed_at: "2026-11-20")
+
+          expect(response).to have_http_status(:created)
+          stored = UserGameCompletion.last.completed_at
+          expect(stored).to eq(ClubDay.noon(Date.new(2026, 11, 20)))
+          expect(stored.utc.to_date).to eq(Date.new(2026, 11, 20))
+        end
+
+        it "stores the bot's full 'now' on a club evening as today, not the UTC tomorrow" do
+          travel_to(club_evening) do
+            log(completed_at: Time.current.iso8601)
+
+            expect(response).to have_http_status(:created)
+            expect(UserGameCompletion.last.finished_on).to eq(Date.new(2026, 11, 24))
+            expect(UserGameCompletion.last.completed_at.utc.to_date).to eq(Date.new(2026, 11, 24))
+          end
+        end
+
+        it "finishes a completion logged with no completed_at today in club time, even on a club evening" do
+          travel_to(club_evening) do
+            log
+
+            expect(response).to have_http_status(:created)
+            expect(UserGameCompletion.last.completed_at).to eq(ClubDay.noon(Date.new(2026, 11, 24)))
+          end
+        end
+
+        it "refuses tomorrow's date on a club evening, when the UTC day has already turned" do
+          travel_to(club_evening) do
+            log(completed_at: "2026-11-25")
+
+            expect(response).to have_http_status(:unprocessable_content)
+            expect(json.fetch("error")).to eq("finished_in_future")
+          end
+        end
+
+        it "stores an explicit completed_at: null as null (an unknown day), not today" do
+          log(completed_at: nil)
+
+          expect(response).to have_http_status(:created)
+          expect(json.dig("data", "completed_at")).to be_nil
+          expect(UserGameCompletion.last.completed_at).to be_nil
+        end
+
+        it "422s started_in_future for a start after today when completed_at is null" do
+          expect { log(completed_at: nil, started_at: (ClubDay.today + 1).iso8601) }
+            .not_to change(UserGameCompletion, :count)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to eq("started_in_future")
+        end
+
+        it "accepts a start of today when completed_at is null" do
+          log(completed_at: nil, started_at: ClubDay.today.iso8601)
+
+          expect(response).to have_http_status(:created)
+        end
+
+        it "reads a full started_at timestamp as its club day" do
+          travel_to(club_evening) do
+            log(started_at: Time.current.iso8601)
+
+            expect(response).to have_http_status(:created)
+            expect(UserGameCompletion.last.started_at).to eq(Date.new(2026, 11, 24))
+          end
+        end
+
+        it "lists every validation error, not just the coded one, when a request has several" do
+          log(completed_at: (ClubDay.today + 2).iso8601, completion_type: nil)
+
+          expect(response).to have_http_status(:unprocessable_content)
+          expect(json.fetch("error")).to include("Completion type can't be blank", "Completed at can't be in the future")
+        end
+      end
+    end
+
+    describe "leave_now_playing" do
+      it "takes the game off the member's own Now Playing and says so" do
+        create(:now_playing_entry, user: owner, game: game)
+        kept = create(:now_playing_entry, user: owner)
+        theirs = create(:now_playing_entry, user: other_user, game: game)
+
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(leave_now_playing: true) }, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json.dig("meta", "left_now_playing")).to be(true)
+        expect(UserNowPlaying.where(user_id: owner.user_id).pluck(:entry_id)).to eq([ kept.entry_id ])
+        expect(UserNowPlaying.exists?(theirs.entry_id)).to be(true)
+      end
+
+      it "reports false when the game was not in Now Playing" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(leave_now_playing: true) }, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json.dig("meta", "left_now_playing")).to be(false)
+      end
+
+      it "reports false and keeps the entry without the flag" do
+        create(:now_playing_entry, user: owner, game: game)
+
+        post "/api/v1/users/#{owner.user_id}/completions", params: payload, headers: auth_headers_for(owner), as: :json
+
+        expect(json.dig("meta", "left_now_playing")).to be(false)
+        expect(UserNowPlaying.where(user_id: owner.user_id).count).to eq(1)
+      end
+
+      it "keeps the Now Playing entry when the completion is refused" do
+        create(:now_playing_entry, user: owner, game: game)
+
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(leave_now_playing: true, completed_at: (ClubDay.today + 3).iso8601) },
+          headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(UserNowPlaying.where(user_id: owner.user_id).count).to eq(1)
+      end
+
+      it "422s for a leave_now_playing flag that is not a boolean" do
+        post "/api/v1/users/#{owner.user_id}/completions",
+          params: { data: payload[:data].merge(leave_now_playing: "yes") }, headers: auth_headers_for(owner), as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(UserGameCompletion.where(user_id: owner.user_id).count).to eq(0)
+      end
+    end
+
     describe "for another member" do
       callers = {
         "anonymous" => [ nil, :unauthorized ],
@@ -339,18 +560,18 @@ RSpec.describe "api/v1/completions behavior", type: :request do
         )
         expect(job.summary).to eq(%(Announce Alice's Game Completion of "Chrono Trigger"))
         expect(job.requested_by_user_id).to eq(superadmin.user_id)
-        expect(json.fetch("meta")).to eq("announce_job_id" => job.id)
+        expect(json.fetch("meta")).to eq("announce_job_id" => job.id, "left_now_playing" => false)
       end
 
       it "queues nothing without the announce flag, or with it false" do
         expect {
           post "/api/v1/users/#{owner.user_id}/completions",
             params: payload, headers: auth_headers_for(superadmin, is_dev: true), as: :json
-          expect(json.fetch("meta")).to eq("announce_job_id" => nil)
+          expect(json.fetch("meta")).to eq("announce_job_id" => nil, "left_now_playing" => false)
           post "/api/v1/users/#{owner.user_id}/completions",
             params: { data: payload[:data].merge(announce: false) },
             headers: auth_headers_for(superadmin, is_dev: true), as: :json
-          expect(json.fetch("meta")).to eq("announce_job_id" => nil)
+          expect(json.fetch("meta")).to eq("announce_job_id" => nil, "left_now_playing" => false)
         }.not_to change(BotJob, :count)
       end
 
@@ -446,6 +667,62 @@ RSpec.describe "api/v1/completions behavior", type: :request do
         params: { data: { note: "x" } }, headers: service_headers, as: :json
 
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "sets and clears started_at" do
+      completion = create(:completion, user: owner, completed_at: Time.utc(2026, 11, 20))
+
+      patch "/api/v1/completions/#{completion.completion_id}",
+        params: { data: { started_at: "2026-11-01" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(json.dig("data", "started_at")).to eq("2026-11-01")
+
+      patch "/api/v1/completions/#{completion.completion_id}",
+        params: { data: { started_at: nil } }, headers: auth_headers_for(owner), as: :json
+
+      expect(completion.reload.started_at).to be_nil
+    end
+
+    it "422s started_after_finished when started_at moves past completed_at" do
+      completion = create(:completion, user: owner, completed_at: Time.utc(2026, 11, 20))
+
+      patch "/api/v1/completions/#{completion.completion_id}",
+        params: { data: { started_at: "2026-11-21" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("started_after_finished")
+      expect(completion.reload.started_at).to be_nil
+    end
+
+    it "422s started_after_finished when completed_at moves before started_at" do
+      completion = create(:completion, user: owner, started_at: Date.new(2026, 11, 10), completed_at: Time.utc(2026, 11, 20))
+
+      patch "/api/v1/completions/#{completion.completion_id}",
+        params: { data: { completed_at: "2026-11-05" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("started_after_finished")
+    end
+
+    it "422s finished_in_future when completed_at moves past today" do
+      completion = create(:completion, user: owner)
+
+      patch "/api/v1/completions/#{completion.completion_id}",
+        params: { data: { completed_at: (ClubDay.today + 2).iso8601 } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("finished_in_future")
+    end
+
+    it "still edits an existing row whose dates were never checked" do
+      completion = create(:completion, user: owner)
+      completion.update_columns(completed_at: Time.utc(2099, 1, 1))
+
+      patch "/api/v1/completions/#{completion.completion_id}",
+        params: { data: { note: "legacy" } }, headers: auth_headers_for(owner), as: :json
+
+      expect(response).to have_http_status(:ok)
     end
 
     it "422s when completion_type is blanked" do

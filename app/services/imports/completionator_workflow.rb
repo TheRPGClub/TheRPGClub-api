@@ -137,7 +137,7 @@ module Imports
       form = build_form(item, game)
       completion_type = attrs.fetch("completion_type", form[:completion_type])
       platform_id = attrs.key?("platform_id") ? parse_platform_id(attrs["platform_id"]) : form[:platform_id]
-      completed_at = attrs.key?("completed_at") ? parse_date(attrs["completed_at"]) : item.completed_at
+      completed_at = completion_day(attrs.key?("completed_at") ? parse_date(attrs["completed_at"]) : item.completed_at)
       playtime = attrs.key?("final_playtime_hours") ? attrs["final_playtime_hours"] : item.playtime_hrs
 
       unless COMPLETION_TYPES.include?(completion_type)
@@ -179,7 +179,7 @@ module Imports
 
       changes = {}
       changes[:completion_type] = item.completion_type if selected.include?("type")
-      changes[:completed_at] = item.completed_at if selected.include?("date")
+      changes[:completed_at] = completion_day(item.completed_at) if selected.include?("date")
       changes[:final_playtime_hrs] = item.playtime_hrs if selected.include?("playtime")
       completion.update!(changes)
       item.update!(status: "updated")
@@ -315,6 +315,10 @@ module Imports
 
       id
     end
+
+    # An import date is a day held as midnight UTC; the completion takes that
+    # day (stored as noon club time, UserGameCompletion#completed_at=).
+    def completion_day(time) = time&.utc&.to_date
 
     def parse_date(value)
       return if value.blank?

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_24_210000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1493,6 +1493,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.string "note", limit: 500
     t.bigint "platform_id"
     t.string "user_id", limit: 50, null: false
+    t.date "started_at"
     t.index ["gamedb_game_id"], name: "ix_ugc_game"
     t.index ["platform_id"], name: "idx_user_game_completions_platform"
     t.index ["user_id"], name: "ix_ugc_user"
