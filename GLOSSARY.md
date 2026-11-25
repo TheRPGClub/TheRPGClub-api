@@ -382,7 +382,7 @@ The club's yearly vote on its best games of a year, held once per year and named
 _Avoid_: GOTY nominations, GOTY round, Year GOTY
 
 **Current GOTY Vote**:
-The GOTY Vote members are shown by default: the one taking nominations or votes, or waiting on a runoff or a tie, if there is one; otherwise the upcoming one.
+The GOTY Vote members are shown by default: the one taking nominations or votes, or waiting on a runoff or a tie, if there is one; otherwise one decided within the last 30 days, so its results stay up; otherwise the upcoming one.
 _Avoid_: Latest GOTY Vote, active year
 
 **Year So Far**:
