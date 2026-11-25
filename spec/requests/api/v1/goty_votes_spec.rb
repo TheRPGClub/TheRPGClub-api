@@ -284,7 +284,7 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
   path '/api/v1/games/goty_eligibility' do
     parameter name: :year, in: :query, required: true, schema: { type: :integer }, description: 'The GOTY Vote year'
     parameter name: :game_ids, in: :query, required: true, schema: { type: :string, example: '12,7,301' },
-              description: 'GameDB game ids separated by commas, at most 50'
+              description: 'GameDB game ids separated by commas, at most 50 distinct (a repeated id counts once)'
 
     get 'Check Game of the Year eligibility for many games' do
       tags 'GOTY Vote'
@@ -304,7 +304,7 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', '`invalid_game_ids` when an id is not a whole number, `too_many_game_ids` above 50' do
+      response '422', '`invalid_game_ids` when an id is not a whole number, `too_many_game_ids` above 50 distinct ids' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

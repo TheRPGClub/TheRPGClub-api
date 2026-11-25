@@ -383,6 +383,13 @@ RSpec.describe "api/v1/goty_votes behavior", type: :request do
       expect(json["error"]).to eq("too_many_game_ids")
     end
 
+    it "caps the distinct ids, so repeats past 50 still answer" do
+      batch(year: 2026, game_ids: ([ in_year.game_id ] * 60).join(","))
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data").map { |item| item["game_id"] }).to eq([ in_year.game_id ])
+    end
+
     it "answers in a fixed number of queries" do
       count_queries = lambda do |games|
         Features.forget_cached_states!

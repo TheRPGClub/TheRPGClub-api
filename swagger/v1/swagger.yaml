@@ -24215,7 +24215,8 @@ paths:
       schema:
         type: string
         example: '12,7,301'
-      description: GameDB game ids separated by commas, at most 50
+      description: GameDB game ids separated by commas, at most 50 distinct (a repeated
+        id counts once)
     get:
       summary: Check Game of the Year eligibility for many games
       tags:
@@ -24247,7 +24248,7 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: "`invalid_game_ids` when an id is not a whole number, `too_many_game_ids`
-            above 50"
+            above 50 distinct ids"
           content:
             application/json:
               schema:

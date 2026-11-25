@@ -97,19 +97,19 @@ module Api
           released_on: result.released_on&.iso8601, date_precision: result.date_precision, source: result.source }
       end
 
-      # The required ?game_ids= (comma separated, or repeated), first
-      # occurrence first; nil after rendering 422 when one is not a whole
-      # number or there are more than the cap.
+      # The required ?game_ids= (comma separated, or repeated), each once,
+      # first occurrence first; nil after rendering 422 when one is not a
+      # whole number or there are more distinct ids than the cap.
       def eligibility_game_ids
         raw = Array(params.require(:game_ids)).flat_map { |value| value.to_s.split(",") }.map(&:strip)
-        if raw.size > ELIGIBILITY_BATCH_CAP
-          render_error("too_many_game_ids", "game_ids holds at most #{ELIGIBILITY_BATCH_CAP} ids")
+        ids = game_ids(raw)&.uniq
+        if ids.nil?
+          render_error("invalid_game_ids", "game_ids must be whole numbers separated by commas, e.g. 1,2,3")
           return
         end
-        ids = game_ids(raw)
-        return ids.uniq if ids
+        return ids if ids.size <= ELIGIBILITY_BATCH_CAP
 
-        render_error("invalid_game_ids", "game_ids must be whole numbers separated by commas, e.g. 1,2,3")
+        render_error("too_many_game_ids", "game_ids holds at most #{ELIGIBILITY_BATCH_CAP} distinct ids")
         nil
       end
 
