@@ -41,14 +41,13 @@ Warden::Strategies.add(:user_session_token) do
   end
 
   def authenticate!
-    session_token = UserSessionToken.find_valid(bearer_token)
-    if session_token
-      user = session_token.user
+    user = UserSessionToken.authenticated_user(bearer_token)
+    if user
       success!(Auth::Principal.discord_user(
         user,
         { "avatar" => user.discord_avatar },
-        is_dev: session_token.is_dev,
-        is_longstanding: session_token.is_longstanding
+        is_dev: user.read_attribute(:session_is_dev),
+        is_longstanding: user.read_attribute(:session_is_longstanding)
       ))
     else
       fail!("Invalid or expired session token")

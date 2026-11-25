@@ -6,7 +6,7 @@ module Api
       include PinnedPagesViewer
 
       def show
-        user = RpgClubUser.find_by(user_id: current_principal.discord_id) if current_principal.discord_user?
+        user = (current_principal.user || RpgClubUser.without_images.find_by(user_id: current_principal.discord_id)) if current_principal.discord_user?
         membership = user&.membership
         if membership
           membership = membership.merge(

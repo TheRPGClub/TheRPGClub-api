@@ -138,6 +138,8 @@ RSpec.describe "feature gate behavior", type: :request do
       reads = []
       callback = lambda do |*, payload|
         sql = payload[:sql]
+        next if sql.include?("user_session_tokens") # authentication's own read
+
         reads << "flags" if sql.include?('FROM "feature_flags"')
         reads << "roles" if sql.include?('"rpg_club_users"."role_admin"')
       end
@@ -168,10 +170,10 @@ RSpec.describe "feature gate behavior", type: :request do
       end
     end
 
-    it "reads the caller's roles for a Preview Feature" do
+    it "reads no roles of its own for a Preview Feature: they come with authentication's read" do
       set_feature_flag("journals", "preview")
 
-      expect(reads_of_gated_request(headers)).to eq([ "flags", "roles" ])
+      expect(reads_of_gated_request(headers)).to eq([ "flags" ])
     end
 
     it "reads nothing for the bot's service token" do

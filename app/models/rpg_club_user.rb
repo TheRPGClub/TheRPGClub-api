@@ -158,6 +158,11 @@ class RpgClubUser < ApplicationRecord
   scope :active, -> { where(is_bot: false, server_left_at: nil) }
   scope :without_images, -> { select(*(column_names - BINARY_COLUMNS)) }
 
+  # without_images' columns, table-qualified for a select alongside a join.
+  def self.qualified_columns_without_images
+    (column_names - BINARY_COLUMNS).map { |column| "#{quoted_table_name}.#{connection.quote_column_name(column)}" }
+  end
+
   validates :user_id, presence: true
 
   def self.upsert_from_discord!(payload)
