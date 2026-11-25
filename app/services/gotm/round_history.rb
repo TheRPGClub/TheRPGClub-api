@@ -7,10 +7,13 @@ module Gotm
   # Filters apply per kind to a round's whole block, as in the bot: `year`
   # matches the trailing four-digit year of `month_year`, and `query` keeps a
   # kind's block for a round when any of its games' titles match, with all of
-  # that block's games. NR-GOTM "N/A" placeholder games are dropped from the
-  # games list, but the round still counts.
+  # that block's games. Each block carries its kind's `nominations_count`.
+  # NR-GOTM "N/A" placeholder games are dropped from the games list, but the
+  # round still counts. Each round carries `closed` (see .closed?): whether
+  # it has a Round Page yet.
   class RoundHistory
-    KINDS = { "gotm" => GotmEntry, "nr_gotm" => NrGotmEntry }.freeze
+    KINDS = Voting::CATEGORIES.keys.to_h { |kind| [ kind, Voting.models_for(kind)[:entry] ] }.freeze
+    NOMINATIONS = Voting::CATEGORIES.keys.to_h { |kind| [ kind, Voting.models_for(kind)[:nomination] ] }.freeze
     KIND_PARAMS = (KINDS.keys + [ "both" ]).freeze
     SORTS = %w[asc desc].freeze
     YEAR_SQL = "SUBSTRING(month_year FROM '(\\d{4})\\s*$')::int"
@@ -18,6 +21,14 @@ module Gotm
 
     # The round number of the latest GOTM round (bot `Gotm.getLatestRound`),
     # or nil when there are no GOTM entries.
+    # Whether a round with this VotingRound (nil when it has none) is closed:
+    # a round without one predates the voting rounds (or never had one); one
+    # with a VotingRound is closed once it is decided, so a round still
+    # voting, in a runoff, tied or awaiting its tally is not.
+    def self.closed?(voting_round)
+      voting_round.nil? || voting_round.decided_at.present?
+    end
+
     def self.latest_round_number
       GotmEntry.maximum(:round_number)
     end
@@ -51,12 +62,16 @@ module Gotm
     def rounds(round_numbers)
       blocks = @kinds.index_with { |kind| entries_by_round(kind, round_numbers) }
       thread_ids = first_thread_ids(blocks.values.flat_map(&:values).flatten.filter_map(&:gamedb_game_id))
+      nomination_counts = @kinds.index_with { |kind| nomination_counts(kind, round_numbers) }
+      voting_rounds = VotingRound.where(round_number: round_numbers).index_by(&:round_number)
 
       round_numbers.map do |number|
-        round = { round_number: number }
+        round = { round_number: number, closed: self.class.closed?(voting_rounds[number]) }
         KINDS.each_key do |kind|
           entries = blocks.dig(kind, number)
-          round[kind.to_sym] = entries && serialize_block(kind, entries, thread_ids)
+          round[kind.to_sym] = entries && serialize_block(kind, entries, thread_ids).merge(
+            nominations_count: nomination_counts.dig(kind, number) || 0
+          )
         end
         round
       end
@@ -102,6 +117,10 @@ module Gotm
         scope = scope.where(round_number: matching)
       end
       scope
+    end
+
+    def nomination_counts(kind, round_numbers)
+      NOMINATIONS.fetch(kind).where(round_number: round_numbers).group(:round_number).count
     end
 
     def entries_by_round(kind, round_numbers, preload: { game: [ :images, :platforms ] })

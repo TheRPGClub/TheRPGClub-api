@@ -125,6 +125,85 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
       expect(round_numbers).to eq([ 1 ])
     end
 
+    it "counts each block's Nominations in its own kind" do
+      create(:gotm_entry, round_number: 1)
+      create(:nr_gotm_entry, round_number: 1)
+      create_list(:gotm_nomination, 3, round_number: 1)
+      create(:nr_gotm_nomination, round_number: 1)
+      create(:gotm_nomination, round_number: 2)
+      create(:gotm_entry, round_number: 3)
+
+      get "/api/v1/gotm_rounds", headers: headers
+
+      by_round = json.fetch("data").index_by { |round| round.fetch("round_number") }
+      expect(by_round.dig(1, "gotm", "nominations_count")).to eq(3)
+      expect(by_round.dig(1, "nr_gotm", "nominations_count")).to eq(1)
+      expect(by_round.dig(3, "gotm", "nominations_count")).to eq(0)
+      expect(by_round.dig(1, "gotm")).not_to have_key("matches")
+    end
+
+    it "matches q against winners only, never Nominations" do
+      create(:gotm_entry, round_number: 1)
+      create(:gotm_nomination, round_number: 1, game: create(:game, title: "Chrono Cross"))
+
+      get "/api/v1/gotm_rounds", params: { q: "chrono" }, headers: headers
+
+      expect(round_numbers).to eq([])
+      expect(json.fetch("meta")).to include("count" => 0)
+    end
+
+    it "loads a page in a fixed number of queries, however many rounds and Nominations it has" do
+      count_queries = lambda do
+        Features.forget_cached_states!
+        queries = 0
+        subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+          queries += 1 unless payload[:name] == "SCHEMA"
+        end
+        begin
+          get "/api/v1/gotm_rounds", params: { q: "zelda" }, headers: headers
+        ensure
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+        expect(response).to have_http_status(:ok)
+        queries
+      end
+      seed_round = lambda do |number|
+        create(:gotm_entry, round_number: number, game: create(:game, title: "Zelda #{number}"))
+        create(:nr_gotm_entry, round_number: number)
+        create_list(:gotm_nomination, 2, round_number: number, game: create(:game, title: "Zelda Nominee #{number}"))
+        create(:nr_gotm_nomination, round_number: number, game: create(:game, title: "Zelda NR #{number}"))
+        create(:voting_round, round_number: number, voting_opens_at: 10.days.ago, voting_closes_at: 8.days.ago,
+          closed_at: 8.days.ago, decided_at: (8.days.ago if number.odd?))
+      end
+
+      headers # sign the viewer in before counting
+      seed_round.call(1)
+      small = count_queries.call
+
+      (2..5).each { |number| seed_round.call(number) }
+      large = count_queries.call
+
+      expect(json.fetch("data").size).to eq(5)
+      expect(large).to eq(small)
+    end
+
+    it "marks a round closed when it has no VotingRound or its VotingRound is decided" do
+      create(:gotm_entry, round_number: 1)
+      create(:voting_round, round_number: 2, voting_opens_at: 10.days.ago, voting_closes_at: 8.days.ago,
+        closed_at: 8.days.ago, decided_at: 8.days.ago)
+      create(:gotm_entry, round_number: 2)
+      create(:voting_round, round_number: 3, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago,
+        closed_at: 2.days.ago, pending_ties: { "gotm" => [ 1, 2 ] })
+      create(:gotm_entry, round_number: 3)
+      create(:voting_round, round_number: 4, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago)
+      create(:gotm_entry, round_number: 4)
+
+      get "/api/v1/gotm_rounds", headers: headers
+
+      closed = json.fetch("data").to_h { |round| [ round.fetch("round_number"), round.fetch("closed") ] }
+      expect(closed).to eq(1 => true, 2 => true, 3 => false, 4 => false)
+    end
+
     it "sorts rounds descending by default and ascending with sort=asc" do
       [ 2, 9, 5 ].each { |number| create(:gotm_entry, round_number: number) }
 

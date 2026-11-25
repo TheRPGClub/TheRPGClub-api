@@ -2630,11 +2630,51 @@ module OpenapiSchemas
       ),
       GotmRoundBlock: obj(
         month_year: str, voting_results_message_id: str(nullable: true), games: array_of("GotmRoundGame"),
-        _required: %w[month_year games]
+        nominations_count: int.merge(description: "Nominations of this kind in the round (0 before they were recorded)."),
+        _required: %w[month_year games nominations_count]
       ),
       GotmRound: obj(
-        round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
-        _required: %w[round_number gotm nr_gotm]
+        round_number: int,
+        closed: bool.merge(description: "Whether the round is decided (or predates voting rounds), so it has a " \
+                                        "Round Page. False while its voting, runoff or tie is still open."),
+        gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
+        _required: %w[round_number closed gotm nr_gotm]
+      ),
+      # Gotm::RoundDetail (GotmRoundsController#show): the Round Page.
+      # One game's row: its earliest Nomination, the game's later Nominations
+      # as `co_nominations`, and the game's anonymous vote totals across all
+      # of them: `votes` is null when the Category had no vote,
+      # `runoff_votes` null unless the game was in the runoff. `user` is null
+      # for an unknown nominator (imported `poll-import-N` placeholders),
+      # shown as "Unknown member".
+      GotmRoundCoNomination: obj(
+        user_id: str, reason: str(nullable: true), nominated_at: ts,
+        user: ref("UserSummary", nullable: true),
+        _required: %w[user_id reason nominated_at user]
+      ),
+      GotmRoundNomination: extends("Nomination",
+        co_nominations: array_of("GotmRoundCoNomination"),
+        votes: int(nullable: true), runoff_votes: int(nullable: true),
+        required: %w[co_nominations votes runoff_votes]),
+      # A winner: the GotmRoundGame plus the earliest Nomination of its game
+      # (null when it wasn't nominated, as in rounds before nominations were
+      # recorded).
+      GotmRoundWinner: extends("GotmRoundGame",
+        nomination: ref("GotmRoundNomination", nullable: true), required: %w[nomination]),
+      # One Category of a round. `winners` is empty when the Category had no
+      # winner; `nominations` holds every Nomination not credited to a winner,
+      # most votes first when `voted`, otherwise in nomination order.
+      GotmRoundCategory: obj(
+        month_year: str(nullable: true), voting_results_message_id: str(nullable: true),
+        voted: bool, runoff: bool,
+        winners: array_of("GotmRoundWinner"), nominations: array_of("GotmRoundNomination"),
+        _required: %w[month_year voted runoff winners nominations]
+      ),
+      GotmRoundDetail: obj(
+        round_number: int, month_year: str(nullable: true),
+        previous: int(nullable: true), next: int(nullable: true),
+        gotm: ref("GotmRoundCategory"), nr_gotm: ref("GotmRoundCategory"),
+        _required: %w[round_number month_year previous next gotm nr_gotm]
       ),
       # Public::WinnersController: one winning game of a recent round, for the
       # unauthenticated www landing. Club content only — no member data,

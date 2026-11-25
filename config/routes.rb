@@ -356,8 +356,9 @@ Rails.application.routes.draw do
           delete "links/:game_id", to: "thread_game_links#destroy"
         end
       end
-      # GOTM / NR-GOTM history grouped and paged by round (read-only).
-      resources :gotm_rounds, only: %i[index] do
+      # GOTM / NR-GOTM history grouped and paged by round, and one closed
+      # round in full for the Round Page (read-only).
+      resources :gotm_rounds, only: %i[index show], param: :round, constraints: { round: /\d+/ } do
         collection { get "current" }
       end
       # `POST .../rounds` adds a whole round in one transaction (#331).
