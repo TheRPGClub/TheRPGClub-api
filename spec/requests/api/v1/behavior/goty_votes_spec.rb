@@ -54,6 +54,61 @@ RSpec.describe "api/v1/goty_votes behavior", type: :request do
       expect(awards[2]["ballot"]).to eq([])
     end
 
+    it "says where each GOTM / NR-GOTM of the Year game won, before and after the freeze" do
+      twice, once, nr, nominated = create_list(:game, 4)
+      create(:gotm_entry, round_number: base, month_year: "January 2026", game_index: 0, game: twice)
+      create(:gotm_entry, round_number: base, month_year: "January 2026", game_index: 1, game: once)
+      create(:gotm_entry, round_number: base + 2, month_year: "March 2026", game: twice)
+      create(:nr_gotm_entry, round_number: base + 1, month_year: "February 2026", game: nr)
+      vote = create(:goty_vote, year: 2026)
+      create(:goty_nomination, year: 2026, game: nominated)
+      won = lambda do |award|
+        award["ballot"].to_h { |game| [ game["game_id"], game["won_in"] ] }
+      end
+      expected_gotm = {
+        twice.game_id => [ { "round_number" => base, "month_year" => "January 2026" },
+                           { "round_number" => base + 2, "month_year" => "March 2026" } ],
+        once.game_id => [ { "round_number" => base, "month_year" => "January 2026" } ]
+      }
+
+      travel_to(Time.utc(2027, 1, 5)) { get "/api/v1/goty_votes/2026", headers: auth_headers_for(member) }
+      awards = json.dig("data", "awards")
+      expect(won.call(awards[0])).to eq(expected_gotm)
+      expect(won.call(awards[1])).to eq(nr.game_id => [ { "round_number" => base + 1, "month_year" => "February 2026" } ])
+      expect(awards[2]["ballot"].map { |game| game["game_id"] }).to eq([ nominated.game_id ])
+      expect(awards[2]["ballot"].first).not_to have_key("won_in")
+
+      nominated.update!(initial_release_date: Date.new(2026, 6, 1))
+      Goty::FreezeCandidates.call(vote, now: vote.voting_opens_at)
+      travel_to(vote.voting_opens_at + 1.hour) { get "/api/v1/goty_votes/2026", headers: auth_headers_for(member) }
+      awards = json.dig("data", "awards")
+      expect(won.call(awards[0])).to eq(expected_gotm)
+      expect(awards[2]["ballot"].first).not_to have_key("won_in")
+    end
+
+    it "loads where the games won in a fixed number of queries" do
+      create(:goty_vote, year: 2026)
+      count = lambda do
+        queries = 0
+        callback = ->(*, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
+        ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+          travel_to(Time.utc(2027, 1, 5)) { get "/api/v1/goty_votes/2026", headers: auth_headers_for(member) }
+        end
+        queries
+      end
+      create(:gotm_entry, round_number: base, month_year: "January 2026", game: create(:game))
+      count.call
+      one = count.call
+
+      create_list(:game, 4).each_with_index do |game, index|
+        create(:gotm_entry, round_number: base + 1 + index, month_year: "May 2026", game: game)
+        create(:nr_gotm_entry, round_number: base + 1 + index, month_year: "May 2026", game: game)
+      end
+
+      expect(count.call).to eq(one)
+      expect(json.dig("data", "awards", 0, "ballot").size).to eq(5)
+    end
+
     it "is not found for a year with no GOTY Vote" do
       get "/api/v1/goty_votes/1999", headers: auth_headers_for(member)
 

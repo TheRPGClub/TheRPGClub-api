@@ -26,6 +26,26 @@ module Goty
     def game_ids(year, award)
       return nominated_game_ids(year) if award.to_s == "game_of_the_year"
 
+      winning_rows(year, award).map(&:last).uniq
+    end
+
+    # Where each GOTM / NR-GOTM of the Year game won, for the ballot labels:
+    # { "gotm" => { gamedb_game_id => [{ round_number:, month_year: }] },
+    #   "nr_gotm" => { ... } }, rounds in order. A game that won more than
+    # one round in the year lists each. One query per Award.
+    def won_in(year)
+      year = Integer(year)
+      ENTRY_MODELS.keys.index_with do |award|
+        winning_rows(year, award).each_with_object({}) do |(round_number, month_year, game_id), out|
+          rounds = (out[game_id] ||= [])
+          rounds << { round_number: round_number, month_year: month_year } unless rounds.last&.dig(:round_number) == round_number
+        end
+      end
+    end
+
+    # [round_number, month_year, gamedb_game_id] for each winning entry of a
+    # round in the year, in round order.
+    def winning_rows(year, award)
       model = ENTRY_MODELS[award.to_s]
       return [] if model.nil?
 
@@ -35,9 +55,8 @@ module Goty
         .where("month_year LIKE ?", "%#{year}%")
         .left_joins(:game).where("TRIM(LOWER(COALESCE(gamedb_games.title, ''))) <> ?", Gotm::RoundHistory::PLACEHOLDER_TITLE)
         .order(:round_number, :game_index)
-        .pluck(:month_year, :gamedb_game_id)
-        .select { |label, _| round_year(label) == year }
-        .map(&:last).uniq
+        .pluck(:round_number, :month_year, :gamedb_game_id)
+        .select { |_, label, _| round_year(label) == year }
     end
 
     def nominated_game_ids(year)

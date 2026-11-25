@@ -3555,7 +3555,7 @@ components:
         ballot:
           type: array
           items:
-            "$ref": "#/components/schemas/GameSummary"
+            "$ref": "#/components/schemas/GotyBallotGame"
           description: 'The Award''s candidates, frozen when voting opens. Before
             then, the live ballot: GOTM and NR-GOTM of the Year list every winner
             of a round labelled with a month of the year, in round order, each game
@@ -3608,6 +3608,27 @@ components:
       - own_votes
       - own_runoff_votes
       - tally
+    GotyBallotGame:
+      allOf:
+      - "$ref": "#/components/schemas/GameSummary"
+      - type: object
+        properties:
+          won_in:
+            type: array
+            description: 'GOTM and NR-GOTM of the Year only (absent on Game of the
+              Year): each round the game won in the year, in round order, so a game
+              that won twice lists both. Kept for frozen candidates too.'
+            items:
+              type: object
+              properties:
+                round_number:
+                  type: integer
+                month_year:
+                  type: string
+                  description: The round's label, e.g. "January 2026".
+              required:
+              - round_number
+              - month_year
     GotyAwardTally:
       type: object
       properties:
@@ -23760,7 +23781,8 @@ paths:
         and the three Awards. Each Award lists its ballot (the candidates frozen when
         voting opens; before then the live ballot: GOTM and NR-GOTM of the Year list
         every winner of the rounds whose `month_year` falls in the year, each game
-        once, and Game of the Year every nominated game once, in the order first nominated),
+        once, and Game of the Year every nominated game once, in the order first nominated;
+        GOTM and NR-GOTM of the Year games also carry `won_in`, the rounds they won),
         the viewer''s own votes and cap, any runoff or pending tie, and the winner
         with how it was decided. As for GOTM votes, the tally''s counts are hidden
         from members while that ballot is open (Admins and the service see them),
