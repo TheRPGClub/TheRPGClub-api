@@ -9,7 +9,9 @@ module Goty
   #     voting_opens_at, voting_closes_at, runoff_opens_at, runoff_closes_at,
   #     decided_at, nomination_cap, days_before (reminders; else null),
   #     awards: [{ award, name, cap, uncontested, runoff_ballot, pending_tie,
-  #                games: [{ gamedb_game_id, title, cover_url, votes, runoff_votes }],
+  #                games: [{ gamedb_game_id, title, cover_url, votes, runoff_votes,
+  #                          won_in (GOTM / NR-GOTM of the Year only):
+  #                            [{ round_number, month_year }] }],
   #                winner: { gamedb_game_id, title, cover_url, decided_by } | nil }] }
   #
   # `games` is the Award's ballot: the live one while nominating (Game of the
@@ -22,6 +24,7 @@ module Goty
 
     def for(vote, kind, days_before: nil)
       ballots = Goty::Standings.ballots(vote)
+      won_in = Goty::Ballots.won_in(vote.year)
       winners = GotyWinner.where(year: vote.year).index_by(&:award)
       games = GamedbGame.where(game_id: ballots.values.flatten | winners.values.map(&:gamedb_game_id))
         .preload(:images).index_by(&:game_id)
@@ -33,11 +36,11 @@ module Goty
         voting_closes_at: vote.voting_closes_at, runoff_opens_at: vote.runoff_opens_at,
         runoff_closes_at: vote.runoff_closes_at, decided_at: vote.decided_at,
         nomination_cap: Goty::Nominate::CAP, days_before: days_before,
-        awards: ballots.map { |award, ids| award(vote, award, ids, games, winners[award], counts) }
+        awards: ballots.map { |award, ids| award(vote, award, ids, games, winners[award], counts, won_in[award]) }
       }
     end
 
-    def award(vote, award, ids, games, winner, counts)
+    def award(vote, award, ids, games, winner, counts, won_in)
       main_closed = vote.closed_at.present?
       runoff_closed = vote.runoff_closed_at.present? || vote.decided_at.present?
       {
@@ -45,10 +48,11 @@ module Goty
         cap: Voting::CastRules.cap(ids.size), uncontested: ids.one?,
         runoff_ballot: Array(vote.runoff_ties[award]), pending_tie: Array(vote.pending_ties[award]),
         games: ids.filter_map do |id|
-          game(games[id])&.merge(
+          row = game(games[id])&.merge(
             votes: main_closed ? counts.fetch([ award, false, id ], 0) : nil,
             runoff_votes: runoff_closed ? counts.fetch([ award, true, id ], 0) : nil
           )
+          won_in && row ? row.merge(won_in: won_in.fetch(id, [])) : row
         end,
         winner: winner && game(games[winner.gamedb_game_id])&.merge(decided_by: winner.decided_by)
       }

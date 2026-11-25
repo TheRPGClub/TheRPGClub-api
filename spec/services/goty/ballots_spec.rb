@@ -82,4 +82,38 @@ RSpec.describe Goty::Ballots do
       expect(described_class.for(2026).fetch("game_of_the_year")).to eq([ shared.game_id, solo.game_id ])
     end
   end
+
+  describe ".won_in" do
+    it "lists every round each GOTM / NR-GOTM of the Year game won, in round order" do
+      twice, once, nr = create_list(:game, 3)
+      create(:gotm_entry, round_number: base, month_year: "January 2026", game_index: 0, game: twice)
+      create(:gotm_entry, round_number: base, month_year: "January 2026", game_index: 1, game: once)
+      create(:gotm_entry, round_number: base + 3, month_year: "April 2026", game: twice)
+      create(:gotm_entry, round_number: base - 1, month_year: "December 2025", game: twice)
+      create(:nr_gotm_entry, round_number: base + 1, month_year: "February 2026", game: nr)
+
+      won_in = described_class.won_in(2026)
+
+      expect(won_in.keys).to eq(%w[gotm nr_gotm])
+      expect(won_in["gotm"]).to eq(
+        twice.game_id => [ { round_number: base, month_year: "January 2026" },
+                           { round_number: base + 3, month_year: "April 2026" } ],
+        once.game_id => [ { round_number: base, month_year: "January 2026" } ]
+      )
+      expect(won_in["nr_gotm"]).to eq(nr.game_id => [ { round_number: base + 1, month_year: "February 2026" } ])
+    end
+
+    it "reads the same rows as the ballot, in one query per Award" do
+      create_list(:game, 3).each_with_index do |game, index|
+        create(:gotm_entry, round_number: base + index, month_year: "May 2026", game: game)
+      end
+
+      queries = 0
+      callback = ->(*, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { described_class.won_in(2026) }
+
+      expect(queries).to eq(2)
+      expect(described_class.won_in(2026)["gotm"].keys).to eq(described_class.for(2026)["gotm"])
+    end
+  end
 end

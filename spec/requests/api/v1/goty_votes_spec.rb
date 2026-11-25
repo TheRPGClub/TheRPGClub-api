@@ -37,7 +37,8 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
                   'Award lists its ballot (the candidates frozen when voting opens; before then the live ' \
                   'ballot: GOTM and NR-GOTM of the Year list every winner of the rounds whose `month_year` falls ' \
                   'in the year, each game once, and Game of the Year every nominated game once, in the order ' \
-                  'first nominated), the viewer\'s own votes and cap, any runoff or pending tie, and the ' \
+                  'first nominated; GOTM and NR-GOTM of the Year games also carry `won_in`, the rounds they won), ' \
+                  'the viewer\'s own votes and cap, any runoff or pending tie, and the ' \
                   'winner with how it was decided. As for GOTM votes, the tally\'s counts are hidden from ' \
                   'members while that ballot is open (Admins and the service see them), and once the GOTY Vote ' \
                   'is decided the `result` names every voter. Behind the `goty_vote` Feature. 404 for a year ' \

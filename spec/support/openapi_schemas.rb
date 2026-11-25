@@ -1106,7 +1106,7 @@ module OpenapiSchemas
         awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year.")),
       GotyAward: obj(
         award: str(enum: Goty::AWARDS.keys), name: str,
-        ballot: array_of("GameSummary").merge(
+        ballot: array_of("GotyBallotGame").merge(
           description: "The Award's candidates, frozen when voting opens. Before then, the live ballot: GOTM and " \
                        "NR-GOTM of the Year list every winner of a round labelled with a month of the year, in " \
                        "round order, each game once; Game of the Year every game members nominated, each once, in " \
@@ -1124,6 +1124,14 @@ module OpenapiSchemas
         winner: ref("GotyAwardWinner", nullable: true),
         _required: %w[award name ballot cap runoff_ballot pending_tie own_votes own_runoff_votes tally]
       ),
+      # A ballot game: GOTM and NR-GOTM of the Year games add the rounds they
+      # won (ticket api#479); Game of the Year games have no `won_in`.
+      GotyBallotGame: extends("GameSummary", required: [],
+        won_in: { type: :array, description: "GOTM and NR-GOTM of the Year only (absent on Game of the Year): " \
+                                             "each round the game won in the year, in round order, so a game " \
+                                             "that won twice lists both. Kept for frozen candidates too.",
+                  items: obj(round_number: int, month_year: str.merge(description: 'The round\'s label, e.g. ' \
+                                                                                   '"January 2026".')) }),
       # The anonymous tally: hidden from members while the ballot is open, as
       # for GOTM votes; staff and the service always see it.
       GotyAwardTally: obj(
