@@ -44,7 +44,8 @@ module Api
 
         sections = {
           "now_playing" => -> { NowPlayingUserEntryResource.new(now_playing_for(game)).serializable_hash },
-          "completions" => -> { CompletionUserEntryResource.new(completions_for(game)).serializable_hash }
+          "completions" => -> { CompletionUserEntryResource.new(completions_for(game)).serializable_hash },
+          "goty_awards" => -> { goty_awards_for(game) }
         }
         render json: { data: game_record_data(game).merge(feature_sections(sections)) }
       end
@@ -255,8 +256,17 @@ module Api
         "now_playing" => :now_playing,
         "completions" => :game_completions,
         "associations" => :voting_gotm,
-        "collection_owners" => :collection
+        "collection_owners" => :collection,
+        "goty_awards" => :goty_vote
       }.freeze
+
+      # The GOTY Vote Awards the game won (the game page's badge), newest year
+      # first, in Award order within a year. A year counts once it is decided.
+      def goty_awards_for(game)
+        rows = game.goty_winners.joins(:goty_vote).where.not(goty_votes: { decided_at: nil }).pluck(:year, :award)
+        rows.sort_by { |year, award| [ -year, Goty::AWARDS.keys.index(award) ] }
+          .map { |year, award| { year: year, award: award } }
+      end
 
       def feature_sections(sections)
         sections.select { |name, _| can_use_feature?(SECTION_FEATURES.fetch(name)) }.transform_values(&:call)

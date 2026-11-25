@@ -18,7 +18,7 @@ module Api
       OPENING_ATTRS = %w[nominations_open_at voting_opens_at].freeze
 
       def index
-        render_collection(GotyVote.all, resource: GotyVoteSummaryResource, default_order: { year: :desc })
+        render_collection(GotyVote.includes(winners: { game: :images }), resource: GotyVoteSummaryResource, default_order: { year: :desc })
       end
 
       # GET /api/v1/goty_votes/:year[?user_id=]: the Awards show the
