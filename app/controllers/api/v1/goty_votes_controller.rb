@@ -28,6 +28,14 @@ module Api
         render_vote(GotyVote.find(params[:year]))
       end
 
+      # GET /api/v1/goty_votes/current[?user_id=]: the Current GOTY Vote
+      # (GotyVote.current), as #show renders it; 404 when none is open,
+      # waiting, decided within the last 30 days or upcoming.
+      def current
+        vote = GotyVote.current or raise ActiveRecord::RecordNotFound, "no current GOTY Vote"
+        render_vote(vote)
+      end
+
       # PATCH /api/v1/goty_votes/:year { data: { nominations_open_at, voting_opens_at, voting_closes_at } }
       def update
         vote = GotyVote.find(params[:year])
@@ -65,14 +73,45 @@ module Api
       def eligibility
         year = year_param or return
         game = GamedbGame.find(params[:id])
-        result = Goty::Eligibility.check(game, year)
-        render json: { data: {
-          game_id: result.game_id, year: result.year, eligible: result.eligible?, reason: result.reason,
-          released_on: result.released_on&.iso8601, date_precision: result.date_precision, source: result.source
-        } }
+        render json: { data: eligibility_json(Goty::Eligibility.check(game, year)) }
+      end
+
+      # Most games one batch eligibility read answers.
+      ELIGIBILITY_BATCH_CAP = 50
+
+      # GET /api/v1/games/goty_eligibility?year=&game_ids=1,2,3: the same
+      # answer for many games in a fixed number of queries (bot autocomplete,
+      # website search). In the order given; unknown ids are left out.
+      def eligibilities
+        year = year_param or return
+        ids = eligibility_game_ids or return
+        known = GamedbGame.where(game_id: ids).pluck(:game_id).to_set
+        results = Goty::Eligibility.check_all(ids.select { |id| known.include?(id) }, year)
+        render json: { data: results.values.map { |result| eligibility_json(result) } }
       end
 
       private
+
+      def eligibility_json(result)
+        { game_id: result.game_id, year: result.year, eligible: result.eligible?, reason: result.reason,
+          released_on: result.released_on&.iso8601, date_precision: result.date_precision, source: result.source }
+      end
+
+      # The required ?game_ids= (comma separated, or repeated), each once,
+      # first occurrence first; nil after rendering 422 when one is not a
+      # whole number or there are more distinct ids than the cap.
+      def eligibility_game_ids
+        raw = Array(params.require(:game_ids)).flat_map { |value| value.to_s.split(",") }.map(&:strip)
+        ids = game_ids(raw)&.uniq
+        if ids.nil?
+          render_error("invalid_game_ids", "game_ids must be whole numbers separated by commas, e.g. 1,2,3")
+          return
+        end
+        return ids if ids.size <= ELIGIBILITY_BATCH_CAP
+
+        render_error("too_many_game_ids", "game_ids holds at most #{ELIGIBILITY_BATCH_CAP} distinct ids")
+        nil
+      end
 
       def render_vote(vote)
         staff = admin_or_service?

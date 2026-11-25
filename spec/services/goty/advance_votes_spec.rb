@@ -57,12 +57,12 @@ RSpec.describe Goty::AdvanceVotes do
     end
 
     it "runs a year end to end, queuing each post once" do
-      sweep(Time.utc(2026, 11, 20))
-      expect(GotyVote.count).to eq(0)
+      sweep(Time.utc(2026, 1, 1, 4))
+      expect(GotyVote.exists?(2026)).to be(false)
 
-      sweep(Time.utc(2026, 12, 1, 5))
+      sweep(Time.utc(2026, 1, 1, 5))
       vote = GotyVote.find(2026)
-      expect(vote.phase(Time.utc(2026, 12, 1, 5))).to eq("upcoming")
+      expect(vote.phase(Time.utc(2026, 1, 1, 5))).to eq("upcoming")
       expect(kinds).to be_empty
 
       sweep(nominations_open)
@@ -72,7 +72,7 @@ RSpec.describe Goty::AdvanceVotes do
         "voting_opens_at" => voting_open.as_json
       )
       expect(award(payload("goty_nominations_opened"), "gotm")["games"].pluck("title")).to eq([ "Gotm A", "Gotm B" ])
-      expect(VotingEvent.find_by(kind: "goty_nominations_opened").expires_at).to eq(voting_open)
+      expect(VotingEvent.find_by(goty_year: 2026, kind: "goty_nominations_opened").expires_at).to eq(voting_open)
 
       [ new_x, new_x, new_y ].each { |game| create(:goty_nomination, year: 2026, game: game) }
 
@@ -82,7 +82,7 @@ RSpec.describe Goty::AdvanceVotes do
       expect(payload("goty_nomination_reminder_1d")).to include("days_before" => 1)
       expect(award(payload("goty_nomination_reminder_1d"), "game_of_the_year")["games"].pluck("title"))
         .to eq([ "New X", "New Y" ])
-      expect(VotingEvent.find_by(kind: "goty_nomination_reminder_1d").expires_at).to eq(voting_open)
+      expect(VotingEvent.find_by(goty_year: 2026, kind: "goty_nomination_reminder_1d").expires_at).to eq(voting_open)
 
       sweep(voting_open)
       expect(vote.reload.candidates_frozen_at).to eq(voting_open)
@@ -92,7 +92,7 @@ RSpec.describe Goty::AdvanceVotes do
       expect(award(opened, "gotm")["games"].first)
         .to include("gamedb_game_id" => gotm_a.game_id, "title" => "Gotm A", "votes" => nil, "runoff_votes" => nil)
       expect(award(opened, "nr_gotm")).to include("uncontested" => true)
-      expect(VotingEvent.find_by(kind: "goty_voting_opened").expires_at).to eq(vote.voting_closes_at)
+      expect(VotingEvent.find_by(goty_year: 2026, kind: "goty_voting_opened").expires_at).to eq(vote.voting_closes_at)
 
       vote_for("gotm", gotm_a)
       vote_for("gotm", gotm_b)
@@ -109,7 +109,7 @@ RSpec.describe Goty::AdvanceVotes do
         .to include("gamedb_game_id" => new_x.game_id, "decided_by" => "vote")
       expect(award(runoff, "nr_gotm")["winner"]).to include("gamedb_game_id" => nr_only.game_id,
         "decided_by" => "uncontested")
-      expect(VotingEvent.find_by(kind: "goty_runoff_opened").expires_at).to eq(voting_closed + 24.hours)
+      expect(VotingEvent.find_by(goty_year: 2026, kind: "goty_runoff_opened").expires_at).to eq(voting_closed + 24.hours)
 
       vote_for("gotm", gotm_b, runoff: true)
       sweep(voting_closed + 24.hours)
@@ -182,14 +182,33 @@ RSpec.describe Goty::AdvanceVotes do
       expect(vote.reload.phase(voting_closed + 25.hours)).to eq("tie")
     end
 
-    it "creates last year's GOTY Vote in January if December was missed, but never once its vote is due" do
-      sweep(Time.utc(2027, 1, 3))
+    it "catches up the current year's GOTY Vote on the first sweep, queuing no post" do
+      sweep(Time.utc(2026, 11, 25))
+
       expect(GotyVote.pluck(:year)).to eq([ 2026 ])
+      expect(VotingEvent.count).to eq(0)
+    end
+
+    it "creates the new year's GOTY Vote on 1 January (ET) while last year's takes nominations" do
+      create(:goty_vote, year: 2026)
+
+      sweep(Time.utc(2027, 1, 1, 4, 59))
+      expect(GotyVote.pluck(:year)).to eq([ 2026 ])
+
+      sweep(nominations_open)
+      expect(GotyVote.order(:year).pluck(:year)).to eq([ 2026, 2027 ])
+      expect(VotingEvent.where(goty_year: 2027)).to be_empty
+      expect(kinds).to eq(%w[goty_nominations_opened])
+    end
+
+    it "creates last year's missing GOTY Vote in January, but never once its vote is due" do
+      sweep(Time.utc(2027, 1, 3))
+      expect(GotyVote.order(:year).pluck(:year)).to eq([ 2026, 2027 ])
       expect(kinds).to eq(%w[goty_nominations_opened])
 
-      GotyVote.delete_all
+      GotyVote.where(year: 2026).delete_all
       sweep(voting_open)
-      expect(GotyVote.count).to eq(0)
+      expect(GotyVote.pluck(:year)).to eq([ 2027 ])
     end
 
     it "leaves round events alone" do
@@ -212,13 +231,16 @@ RSpec.describe Goty::AdvanceVotes do
     context "with automation on" do
       before { allow(Voting).to receive(:automation_enabled?).and_return(true) }
 
-      it "points at December 1 (ET) before the year's GOTY Vote exists" do
-        expect(described_class.next_event_at(now: Time.utc(2026, 11, 20))).to eq(Time.utc(2026, 12, 1, 5))
+      it "is now while the year's GOTY Vote is missing" do
+        now = Time.utc(2026, 11, 20)
+        expect(described_class.next_event_at(now: now)).to eq(now)
       end
 
-      it "is now while the year's GOTY Vote is missing in December" do
-        now = Time.utc(2026, 12, 2)
-        expect(described_class.next_event_at(now: now)).to eq(now)
+      it "points at 1 January (ET) of next year once this year's GOTY Vote exists" do
+        create(:goty_vote, year: 2026, nominations_open_at: Time.utc(2027, 2, 1, 5),
+          voting_opens_at: Time.utc(2027, 2, 12, 17))
+
+        expect(described_class.next_event_at(now: Time.utc(2026, 11, 20))).to eq(Time.utc(2027, 1, 1, 5))
       end
 
       it "walks the calendar, skipping posts already queued or past their window" do
@@ -235,6 +257,7 @@ RSpec.describe Goty::AdvanceVotes do
       it "skips a reminder that falls before nominations open, instead of reporting it due" do
         late_open = Time.utc(2027, 1, 12, 5)
         create(:goty_vote, year: 2026, nominations_open_at: late_open)
+        create(:goty_vote, year: 2027)
 
         expect(described_class.next_event_at(now: Time.utc(2027, 1, 11))).to eq(late_open)
         described_class.call(now: late_open)
@@ -251,10 +274,11 @@ RSpec.describe Goty::AdvanceVotes do
         expect(described_class.next_event_at(now: voting_open + 1.minute)).to eq(GotyVote.find(2026).voting_closes_at)
       end
 
-      it "points at next December once the year is decided" do
+      it "points at next 1 January once the year is decided and this year's exists" do
         create(:goty_vote, year: 2026, decided_at: Time.utc(2027, 1, 18))
+        create(:goty_vote, year: 2027)
 
-        expect(described_class.next_event_at(now: Time.utc(2027, 2, 1))).to eq(Time.utc(2027, 12, 1, 5))
+        expect(described_class.next_event_at(now: Time.utc(2027, 2, 1))).to eq(Time.utc(2028, 1, 1, 5))
       end
     end
   end

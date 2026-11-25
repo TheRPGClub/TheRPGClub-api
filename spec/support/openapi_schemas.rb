@@ -1103,10 +1103,24 @@ module OpenapiSchemas
         ),
         pending_ties: json(nullable: false).merge(description: "Awards still tied: { award => [gamedb_game_id] }."),
         runoff_ties: json(nullable: false).merge(description: "The runoff's ballot: { award => [gamedb_game_id] }."),
-        awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year.")),
+        awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year."),
+        club_releases: array_of("GotyClubRelease").merge(
+          description: "Only while the phase is upcoming (the Year So Far; absent in every other phase): games " \
+                       "eligible for the year's Game of the Year that at least one current member (no bots, none " \
+                       "who left) has completed, has in Now Playing or has a published Review of, each member " \
+                       "counted once per game. Most played first, then by title, at most 48. Not nominations. " \
+                       "Cached briefly, so a new play can take a few minutes to show."
+        )),
+      # One Year So Far club release (Goty::ClubReleases, spec api#481).
+      GotyClubRelease: obj(
+        game: ref("GameSummary"),
+        members_played: int.merge(description: "Distinct current members holding a Completion, Now Playing " \
+                                               "entry or published Review of the game."),
+        _required: %w[game members_played]
+      ),
       GotyAward: obj(
         award: str(enum: Goty::AWARDS.keys), name: str,
-        ballot: array_of("GameSummary").merge(
+        ballot: array_of("GotyBallotGame").merge(
           description: "The Award's candidates, frozen when voting opens. Before then, the live ballot: GOTM and " \
                        "NR-GOTM of the Year list every winner of a round labelled with a month of the year, in " \
                        "round order, each game once; Game of the Year every game members nominated, each once, in " \
@@ -1124,6 +1138,14 @@ module OpenapiSchemas
         winner: ref("GotyAwardWinner", nullable: true),
         _required: %w[award name ballot cap runoff_ballot pending_tie own_votes own_runoff_votes tally]
       ),
+      # A ballot game: GOTM and NR-GOTM of the Year games add the rounds they
+      # won (ticket api#479); Game of the Year games have no `won_in`.
+      GotyBallotGame: extends("GameSummary", required: [],
+        won_in: { type: :array, description: "GOTM and NR-GOTM of the Year only (absent on Game of the Year): " \
+                                             "each round the game won in the year, in round order, so a game " \
+                                             "that won twice lists both. Kept for frozen candidates too.",
+                  items: obj(round_number: int, month_year: str.merge(description: 'The round\'s label, e.g. ' \
+                                                                                   '"January 2026".')) }),
       # The anonymous tally: hidden from members while the ballot is open, as
       # for GOTM votes; staff and the service always see it.
       GotyAwardTally: obj(
@@ -1163,7 +1185,7 @@ module OpenapiSchemas
         id: int, year: int, user_id: str, gamedb_game_id: int, nominated_at: ts,
         user: ref("UserSummary"), game: ref("GameWithPlatforms")
       ),
-      # Goty::Eligibility (GET /games/{id}/goty_eligibility).
+      # Goty::Eligibility (GET /games/{id}/goty_eligibility; one item of GET /games/goty_eligibility).
       GotyEligibility: obj(
         game_id: int, year: int, eligible: bool,
         reason: str(nullable: true, enum: [ *Goty::Eligibility::REASONS, nil ]).merge(

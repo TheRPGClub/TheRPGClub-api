@@ -8,7 +8,8 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       tags 'GOTY Vote'
       description 'Every year\'s GOTY Vote, newest first, with its derived `phase`, dates and, once it is ' \
                   'decided, each Award\'s `winners` (game and how it was decided). Behind the ' \
-                  '`goty_vote` Feature. The lifecycle creates each year\'s GOTY Vote with the default schedule: ' \
+                  '`goty_vote` Feature. The lifecycle creates each year\'s GOTY Vote on 1 January of that year, with ' \
+                  'the default schedule: ' \
                   'nominations open January 1 of the next year at 00:00, voting opens at noon on the first Friday ' \
                   'on or after January 15 and closes at the end of that Sunday (US Eastern).'
       produces 'application/json'
@@ -28,6 +29,36 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
     end
   end
 
+  path '/api/v1/goty_votes/current' do
+    get 'Show the Current GOTY Vote' do
+      tags 'GOTY Vote'
+      description 'The Current GOTY Vote, the one members are shown by default, in the same shape as ' \
+                  '`GET /goty_votes/{year}`. The first of, in order: (1) a GOTY Vote taking nominations or votes ' \
+                  'or in its runoff (`nominating`, `voting`, `runoff`; earliest year); (2) one waiting on its ' \
+                  'tally or a tie (`closed`, `tie`; earliest year); (3) one decided within the last 30 days ' \
+                  '(`decided`, with its results; the latest decided); (4) the upcoming one (earliest year). So in ' \
+                  'January last year\'s GOTY Vote is current while it runs and for 30 days after it is decided, ' \
+                  'while this year\'s waits upcoming. Each year\'s GOTY Vote exists from 1 January of that year. ' \
+                  'Behind the `goty_vote` Feature. 404 when none applies.'
+      produces 'application/json'
+      parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
+                description: 'Admins and the service: show this member\'s own votes (the bot\'s vote panels). ' \
+                             'Members always see their own.'
+
+      response '200', 'GOTY Vote' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVote' } }, required: %w[data]
+      end
+
+      response '404', 'no Current GOTY Vote' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/goty_votes/{year}' do
     parameter name: :year, in: :path, type: :integer, description: 'The year the GOTY Vote decides, e.g. 2026'
 
@@ -37,11 +68,13 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
                   'Award lists its ballot (the candidates frozen when voting opens; before then the live ' \
                   'ballot: GOTM and NR-GOTM of the Year list every winner of the rounds whose `month_year` falls ' \
                   'in the year, each game once, and Game of the Year every nominated game once, in the order ' \
-                  'first nominated), the viewer\'s own votes and cap, any runoff or pending tie, and the ' \
+                  'first nominated; GOTM and NR-GOTM of the Year games also carry `won_in`, the rounds they won), ' \
+                  'the viewer\'s own votes and cap, any runoff or pending tie, and the ' \
                   'winner with how it was decided. As for GOTM votes, the tally\'s counts are hidden from ' \
                   'members while that ballot is open (Admins and the service see them), and once the GOTY Vote ' \
-                  'is decided the `result` names every voter. Behind the `goty_vote` Feature. 404 for a year ' \
-                  'with no GOTY Vote.'
+                  'is decided the `result` names every voter. While the phase is `upcoming` it also carries ' \
+                  '`club_releases`, the Year So Far\'s played releases (absent in every other phase). Behind ' \
+                  'the `goty_vote` Feature. 404 for a year with no GOTY Vote.'
       produces 'application/json'
       parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
                 description: 'Admins and the service: show this member\'s own votes (the bot\'s vote panels). ' \
@@ -243,6 +276,35 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       end
 
       response '404', 'no such game' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/games/goty_eligibility' do
+    parameter name: :year, in: :query, required: true, schema: { type: :integer }, description: 'The GOTY Vote year'
+    parameter name: :game_ids, in: :query, required: true, schema: { type: :string, example: '12,7,301' },
+              description: 'GameDB game ids separated by commas, at most 50 distinct (a repeated id counts once)'
+
+    get 'Check Game of the Year eligibility for many games' do
+      tags 'GOTY Vote'
+      description 'The batch form of `GET /games/{id}/goty_eligibility`, for greying out ineligible games in ' \
+                  'search with one call: each item is that endpoint\'s answer, in the order the ids were given. ' \
+                  'Unknown ids are left out, and a repeated id is answered once. Costs a fixed number of ' \
+                  'queries however many ids are sent. Behind the `goty_vote` Feature.'
+      produces 'application/json'
+
+      response '200', 'eligibility per known game' do
+        schema type: :object,
+               properties: { data: { type: :array, items: { '$ref' => '#/components/schemas/GotyEligibility' } } },
+               required: %w[data]
+      end
+
+      response '400', 'missing or invalid `year`, or missing `game_ids`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`invalid_game_ids` when an id is not a whole number, `too_many_game_ids` above 50 distinct ids' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

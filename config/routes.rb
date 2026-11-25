@@ -32,6 +32,12 @@ Rails.application.routes.draw do
       resources :games, only: %i[index show create update] do
         resources :images, only: %i[index create update destroy], controller: "game_images"
 
+        # GOTY Vote (ticket api#478): Game of the Year eligibility for many
+        # games at once (?year=&game_ids=1,2,3), before the `:id` routes.
+        collection do
+          get "goty_eligibility", to: "goty_votes#eligibilities"
+        end
+
         member do
           post "refresh-images", to: "games#refresh_images"
           post "refresh-releases", to: "games#refresh_releases"
@@ -440,6 +446,10 @@ Rails.application.routes.draw do
       end
       # The yearly GOTY Vote (spec api#471), keyed by the year it decides.
       resources :goty_votes, param: :year, only: %i[index show update] do
+        # The Current GOTY Vote (spec api#481), in the year's shape.
+        collection do
+          get "current"
+        end
         # Game of the Year nominations (api#473).
         resources :nominations, controller: "goty_nominations", only: %i[index create destroy]
         # Award voting (api#474): cast or toggle, and the admin tie pick.

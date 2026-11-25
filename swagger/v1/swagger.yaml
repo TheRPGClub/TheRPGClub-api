@@ -3537,10 +3537,32 @@ components:
             items:
               "$ref": "#/components/schemas/GotyAward"
             description: 'The three Awards in order: gotm, nr_gotm, game_of_the_year.'
+          club_releases:
+            type: array
+            items:
+              "$ref": "#/components/schemas/GotyClubRelease"
+            description: 'Only while the phase is upcoming (the Year So Far; absent
+              in every other phase): games eligible for the year''s Game of the Year
+              that at least one current member (no bots, none who left) has completed,
+              has in Now Playing or has a published Review of, each member counted
+              once per game. Most played first, then by title, at most 48. Not nominations.
+              Cached briefly, so a new play can take a few minutes to show.'
         required:
         - awards
         - pending_ties
         - runoff_ties
+    GotyClubRelease:
+      type: object
+      properties:
+        game:
+          "$ref": "#/components/schemas/GameSummary"
+        members_played:
+          type: integer
+          description: Distinct current members holding a Completion, Now Playing
+            entry or published Review of the game.
+      required:
+      - game
+      - members_played
     GotyAward:
       type: object
       properties:
@@ -3555,7 +3577,7 @@ components:
         ballot:
           type: array
           items:
-            "$ref": "#/components/schemas/GameSummary"
+            "$ref": "#/components/schemas/GotyBallotGame"
           description: 'The Award''s candidates, frozen when voting opens. Before
             then, the live ballot: GOTM and NR-GOTM of the Year list every winner
             of a round labelled with a month of the year, in round order, each game
@@ -3608,6 +3630,27 @@ components:
       - own_votes
       - own_runoff_votes
       - tally
+    GotyBallotGame:
+      allOf:
+      - "$ref": "#/components/schemas/GameSummary"
+      - type: object
+        properties:
+          won_in:
+            type: array
+            description: 'GOTM and NR-GOTM of the Year only (absent on Game of the
+              Year): each round the game won in the year, in round order, so a game
+              that won twice lists both. Kept for frozen candidates too.'
+            items:
+              type: object
+              properties:
+                round_number:
+                  type: integer
+                month_year:
+                  type: string
+                  description: The round's label, e.g. "January 2026".
+              required:
+              - round_number
+              - month_year
     GotyAwardTally:
       type: object
       properties:
@@ -23706,9 +23749,9 @@ paths:
       description: 'Every year''s GOTY Vote, newest first, with its derived `phase`,
         dates and, once it is decided, each Award''s `winners` (game and how it was
         decided). Behind the `goty_vote` Feature. The lifecycle creates each year''s
-        GOTY Vote with the default schedule: nominations open January 1 of the next
-        year at 00:00, voting opens at noon on the first Friday on or after January
-        15 and closes at the end of that Sunday (US Eastern).'
+        GOTY Vote on 1 January of that year, with the default schedule: nominations
+        open January 1 of the next year at 00:00, voting opens at noon on the first
+        Friday on or after January 15 and closes at the end of that Sunday (US Eastern).'
       parameters:
       - name: page
         in: query
@@ -23744,6 +23787,53 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/goty_votes/current":
+    get:
+      summary: Show the Current GOTY Vote
+      tags:
+      - GOTY Vote
+      description: 'The Current GOTY Vote, the one members are shown by default, in
+        the same shape as `GET /goty_votes/{year}`. The first of, in order: (1) a
+        GOTY Vote taking nominations or votes or in its runoff (`nominating`, `voting`,
+        `runoff`; earliest year); (2) one waiting on its tally or a tie (`closed`,
+        `tie`; earliest year); (3) one decided within the last 30 days (`decided`,
+        with its results; the latest decided); (4) the upcoming one (earliest year).
+        So in January last year''s GOTY Vote is current while it runs and for 30 days
+        after it is decided, while this year''s waits upcoming. Each year''s GOTY
+        Vote exists from 1 January of that year. Behind the `goty_vote` Feature. 404
+        when none applies.'
+      parameters:
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Admins and the service: show this member''s own votes (the bot''s
+          vote panels). Members always see their own.'
+      responses:
+        '200':
+          description: GOTY Vote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyVote"
+                required:
+                - data
+        '404':
+          description: no Current GOTY Vote
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/goty_votes/{year}":
     parameters:
     - name: year
@@ -23760,12 +23850,15 @@ paths:
         and the three Awards. Each Award lists its ballot (the candidates frozen when
         voting opens; before then the live ballot: GOTM and NR-GOTM of the Year list
         every winner of the rounds whose `month_year` falls in the year, each game
-        once, and Game of the Year every nominated game once, in the order first nominated),
+        once, and Game of the Year every nominated game once, in the order first nominated;
+        GOTM and NR-GOTM of the Year games also carry `won_in`, the rounds they won),
         the viewer''s own votes and cap, any runoff or pending tie, and the winner
         with how it was decided. As for GOTM votes, the tally''s counts are hidden
         from members while that ballot is open (Admins and the service see them),
-        and once the GOTY Vote is decided the `result` names every voter. Behind the
-        `goty_vote` Feature. 404 for a year with no GOTY Vote.'
+        and once the GOTY Vote is decided the `result` names every voter. While the
+        phase is `upcoming` it also carries `club_releases`, the Year So Far''s played
+        releases (absent in every other phase). Behind the `goty_vote` Feature. 404
+        for a year with no GOTY Vote.'
       parameters:
       - name: user_id
         in: query
@@ -24104,6 +24197,58 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '404':
           description: no such game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/goty_eligibility":
+    parameters:
+    - name: year
+      in: query
+      required: true
+      schema:
+        type: integer
+      description: The GOTY Vote year
+    - name: game_ids
+      in: query
+      required: true
+      schema:
+        type: string
+        example: '12,7,301'
+      description: GameDB game ids separated by commas, at most 50 distinct (a repeated
+        id counts once)
+    get:
+      summary: Check Game of the Year eligibility for many games
+      tags:
+      - GOTY Vote
+      description: 'The batch form of `GET /games/{id}/goty_eligibility`, for greying
+        out ineligible games in search with one call: each item is that endpoint''s
+        answer, in the order the ids were given. Unknown ids are left out, and a repeated
+        id is answered once. Costs a fixed number of queries however many ids are
+        sent. Behind the `goty_vote` Feature.'
+      responses:
+        '200':
+          description: eligibility per known game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GotyEligibility"
+                required:
+                - data
+        '400':
+          description: missing or invalid `year`, or missing `game_ids`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`invalid_game_ids` when an id is not a whole number, `too_many_game_ids`
+            above 50 distinct ids"
           content:
             application/json:
               schema:
