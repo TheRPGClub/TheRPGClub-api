@@ -43,7 +43,7 @@ class Challenge < ApplicationRecord
   has_many :pool_games, class_name: "ChallengePoolGame", dependent: nil, inverse_of: :challenge
   has_many :editions, class_name: "ChallengeEdition", dependent: nil, inverse_of: :challenge
   # The Game List a Pool was started from, a live source (Challenges::ListLink).
-  belongs_to :pool_game_list, class_name: "GameList", optional: true, inverse_of: false
+  belongs_to :pool_game_list, class_name: "GameList", optional: true, inverse_of: :linked_challenge
   # Rows go with the Challenge (the foreign key cascades).
   has_many :pool_list_notices, class_name: "ChallengePoolListNotice", dependent: nil, inverse_of: :challenge
 

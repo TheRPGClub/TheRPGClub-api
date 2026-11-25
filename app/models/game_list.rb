@@ -28,6 +28,10 @@ class GameList < ApplicationRecord
     foreign_key: :taken_over_from_user_id, primary_key: :user_id, optional: true, inverse_of: false
   # Rows go with the list (the foreign key cascades).
   has_many :entries, class_name: "GameListEntry", dependent: nil, inverse_of: :game_list
+  # The Pool Challenge the list feeds: a list feeds one Challenge at most
+  # (Challenges::ListLink).
+  has_one :linked_challenge, -> { order(:id) }, class_name: "Challenge", foreign_key: :pool_game_list_id,
+    dependent: nil, inverse_of: :pool_game_list
 
   validates :name, presence: true, length: { maximum: NAME_MAX }
   validates :description, length: { maximum: DESCRIPTION_MAX }
