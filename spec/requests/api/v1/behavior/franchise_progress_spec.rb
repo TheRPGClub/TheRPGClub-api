@@ -363,6 +363,32 @@ RSpec.describe "Franchise Progress", type: :request do
     end
   end
 
+  describe "members' image columns" do
+    # avatar_blob and profile_image are large binaries: the members table and
+    # Conquests never read them (RpgClubUser.without_images).
+    def user_selects
+      queries = []
+      callback = ->(*, payload) { queries << payload[:sql] if payload[:sql].include?('FROM "rpg_club_users"') }
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
+      queries
+    end
+
+    it "are never selected by the members table, the Conquest check or its post" do
+      link(ff1, mainline: true)
+      [ other, member ].each { |user| create(:completion, user: user, game: ff1) }
+      UserFranchiseConquest.create!(user: other, franchise: franchise, conquered_at: 1.month.ago)
+
+      queries = user_selects do
+        Franchises::Progress.new(franchise).members
+        Franchises::ConquestCheck.new.for_franchise(franchise)
+      end
+
+      expect(conquest_jobs.count).to eq(1)
+      expect(queries).not_to be_empty
+      expect(queries).to all(satisfy { |sql| !sql.include?('"rpg_club_users".*') && !sql.include?("avatar_blob") })
+    end
+  end
+
   describe "Feature gating" do
     before { link(ff1, mainline: true) }
 

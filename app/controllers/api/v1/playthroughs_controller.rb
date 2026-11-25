@@ -31,16 +31,18 @@ module Api
       # PATCH /api/v1/playthroughs/:id
       # Body: { "data": { "total_minutes": <n|null> } }
       # Sets its total by hand, replacing the measured time; null goes back to
-      # the measured time. 409 `playthrough_closed` once it has ended.
+      # the measured time. 422 `invalid_total_minutes` past 100,000 hours; 409
+      # `playthrough_closed` once it has ended.
       def update
         playthrough = UserGamePlaythrough.find(params[:id])
         total = request_data["total_minutes"]
         return refuse_total unless request_data.key?("total_minutes") &&
-          (total.nil? || (total.is_a?(Integer) && total >= 0))
-        return refuse_closed unless playthrough.open?
+          (total.nil? || (total.is_a?(Integer) && total.between?(0, UserGameManualPlaytime::MAX_MINUTES)))
 
-        playthrough.update!(manual_total_minutes: total)
+        Playtime::Playthroughs.set_total!(playthrough, total)
         render_playtime(playthrough.user_id, playthrough.gamedb_game_id)
+      rescue Playtime::Playthroughs::Closed
+        refuse_closed
       end
 
       # POST /api/v1/playthroughs/:id/abandon
@@ -57,8 +59,8 @@ module Api
       private
 
       def refuse_total
-        render json: { error: "invalid_total_minutes", message: "total_minutes must be a whole number of 0 or more, " \
-                                                               "or null" }, status: :unprocessable_content
+        render json: { error: "invalid_total_minutes", message: "total_minutes must be a whole number from 0 to " \
+                                                               "#{UserGameManualPlaytime::MAX_MINUTES}, or null" }, status: :unprocessable_content
       end
 
       def refuse_closed

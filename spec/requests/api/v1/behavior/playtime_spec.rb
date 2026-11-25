@@ -116,6 +116,22 @@ RSpec.describe "api/v1 playtime behavior", type: :request do
       expect(UserGameManualPlaytime.count).to eq(0)
     end
 
+    it "refuses more than 100,000 hours, after an add too" do
+      add(6_000_001)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("invalid_minutes")
+
+      add(6_000_000, mode: "set")
+      expect(response).to have_http_status(:ok)
+      add(1)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("invalid_minutes")
+
+      add(10**12)
+      expect(json["error"]).to eq("invalid_minutes")
+      expect(UserGameManualPlaytime.sole.minutes).to eq(6_000_000)
+    end
+
     it "is the member's own: another member is refused, a Superadmin and the bot may write for anyone" do
       add(10, as: other)
       expect(response).to have_http_status(:forbidden)
@@ -140,6 +156,15 @@ RSpec.describe "api/v1 playtime behavior", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json.dig("data", "breakdown", "manual_entries"))
         .to contain_exactly(include("id" => entry.id, "minutes" => 75, "note" => "replay", "platform_id" => nil))
+    end
+
+    it "refuses more than 100,000 hours" do
+      patch "/api/v1/manual_playtimes/#{entry.id}", params: { data: { minutes: 6_000_001 } },
+        headers: auth_headers_for(member), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("invalid_minutes")
+      expect(entry.reload.minutes).to eq(60)
     end
 
     it "deletes the entry" do

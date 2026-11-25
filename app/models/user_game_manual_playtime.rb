@@ -14,6 +14,8 @@
 class UserGameManualPlaytime < ApplicationRecord
   ORIGINS = %w[member completion_seed].freeze
   NOTE_MAX = 280
+  # 100,000 hours: past any real figure, and well inside the integer column.
+  MAX_MINUTES = 6_000_000
 
   belongs_to :user,
     class_name: "RpgClubUser",
@@ -34,7 +36,8 @@ class UserGameManualPlaytime < ApplicationRecord
 
   enum :origin, ORIGINS.index_with(&:itself), validate: true
 
-  validates :minutes, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :minutes, numericality: { only_integer: true, greater_than_or_equal_to: 0,
+                                      less_than_or_equal_to: MAX_MINUTES }
   validates :note, length: { maximum: NOTE_MAX }
   validates :keeps_over_provider, :mismatch_acknowledged_provider,
     inclusion: { in: UserLinkedAccount::PROVIDERS }, allow_nil: true

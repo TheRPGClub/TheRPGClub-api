@@ -8,7 +8,8 @@ module Playtime
   #
   #   Playtime::Playthroughs.start!(user_id:, game_id:)       # raises AlreadyOpen
   #   Playtime::Playthroughs.start_unless_open(user_id:, game_id:)
-  #   Playtime::Playthroughs.abandon!(playthrough)
+  #   Playtime::Playthroughs.abandon!(playthrough)                # raises Closed
+  #   Playtime::Playthroughs.set_total!(playthrough, minutes)      # raises Closed
   #   Playtime::Playthroughs.close_for_completion!(completion)
   module Playthroughs
     class AlreadyOpen < StandardError; end
@@ -45,6 +46,16 @@ module Playtime
       finish!(playthrough, "abandoned")
     end
 
+    # Sets its time by hand; nil goes back to the measured time.
+    def set_total!(playthrough, minutes)
+      playthrough.with_lock do
+        raise Closed, "this Playthrough has ended" unless playthrough.open?
+
+        playthrough.update!(manual_total_minutes: minutes)
+      end
+      playthrough
+    end
+
     # A Game Completion was logged: the member's open Playthrough of the game,
     # if any, ends as completed with the Completion and its time. An empty
     # `final_playtime_hrs` on the Completion takes that time in hours (2
@@ -62,13 +73,17 @@ module Playtime
       completion.update_columns(final_playtime_hrs: (playthrough.final_minutes / 60.0).round(2))
     end
 
+    # Locks and re-reads it first, so a Playthrough another request (a
+    # Completion, an abandon) just ended is never ended again.
     def finish!(playthrough, reason, completion_id: nil)
-      raise Closed, "this Playthrough has ended" unless playthrough.open?
+      playthrough.with_lock do
+        raise Closed, "this Playthrough has ended" unless playthrough.open?
 
-      playtime = Ledger.for_game(user_id: playthrough.user_id, game_id: playthrough.gamedb_game_id).total_minutes
-      minutes = playthrough.minutes_at(playtime)
-      playthrough.update!(ended_at: Time.current, end_reason: reason, completion_id: completion_id,
-        final_minutes: minutes)
+        playtime = Ledger.for_game(user_id: playthrough.user_id, game_id: playthrough.gamedb_game_id).total_minutes
+        minutes = playthrough.minutes_at(playtime)
+        playthrough.update!(ended_at: Time.current, end_reason: reason, completion_id: completion_id,
+          final_minutes: minutes)
+      end
       playthrough
     end
     private_class_method :finish!

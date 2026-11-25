@@ -40,15 +40,30 @@ RSpec.describe "playtime:seed_from_completions" do # rubocop:disable RSpec/Descr
     )
   end
 
-  it "raises a member's own entry on that platform, keeping their note" do
+  it "leaves a member's own entry on that platform alone" do
     game = create(:game)
     create(:manual_playtime, user: member, game: game, platform: platform, minutes: 30, note: "save file")
     create(:completion, user: member, game: game, platform: platform, final_playtime_hrs: 1)
 
     run_seed
+
+    expect(entries).to contain_exactly(include(minutes: 30, origin: "member", note: "save file"))
+  end
+
+  it "skips a Completion a Playthrough filled, its time already being Playtime" do
+    game = create(:game)
+    create(:manual_playtime, user: member, game: game, platform: platform, minutes: 600, origin: "completion_seed")
+    filled = create(:completion, user: member, game: game, platform: platform, final_playtime_hrs: 4)
+    create(:playthrough, user: member, game: game, ended_at: Time.current, end_reason: "completed",
+      completion_id: filled.completion_id, final_minutes: 240)
+    other_game = create(:game)
+    other_filled = create(:completion, user: member, game: other_game, platform: platform, final_playtime_hrs: 2)
+    create(:playthrough, user: member, game: other_game, ended_at: Time.current, end_reason: "completed",
+      completion_id: other_filled.completion_id, final_minutes: 120)
+
     run_seed
 
-    expect(entries).to contain_exactly(include(minutes: 90, origin: "completion_seed", note: "save file"))
+    expect(entries).to contain_exactly(include(gamedb_game_id: game.game_id, minutes: 600))
   end
 
   it "skips a game a Provider reports Playtime on for that member" do

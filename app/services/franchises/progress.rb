@@ -60,7 +60,7 @@ module Franchises
     # then by Playtime.
     def members
       facts = Facts.new(self, user_ids: nil)
-      users = RpgClubUser.where(user_id: facts.user_ids, server_left_at: nil).index_by(&:user_id)
+      users = RpgClubUser.without_images.where(user_id: facts.user_ids, server_left_at: nil).index_by(&:user_id)
       rows = users.values.map do |user|
         { user: user, meters: meters(facts, user.user_id), conquered_at: facts.conquered_at(user.user_id) }
       end
