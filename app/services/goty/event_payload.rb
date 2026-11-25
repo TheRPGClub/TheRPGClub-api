@@ -23,8 +23,8 @@ module Goty
     module_function
 
     def for(vote, kind, days_before: nil)
-      ballots = Goty::Standings.ballots(vote)
       won_in = Goty::Ballots.won_in(vote.year)
+      ballots = Goty::Standings.ballots(vote, won_in: won_in)
       winners = GotyWinner.where(year: vote.year).index_by(&:award)
       games = GamedbGame.where(game_id: ballots.values.flatten | winners.values.map(&:gamedb_game_id))
         .preload(:images).index_by(&:game_id)

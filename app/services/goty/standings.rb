@@ -15,8 +15,8 @@ module Goty
     # `viewer_id` is the member whose own votes are shown (nil for none);
     # `staff` sees the counts while the ballots are open.
     def awards(vote, viewer_id: nil, staff: false, now: Time.current)
-      ballots = ballots(vote)
       won_in = Goty::Ballots.won_in(vote.year)
+      ballots = ballots(vote, won_in: won_in)
       votes = GotyBallotVote.where(year: vote.year).pluck(:award, :gamedb_game_id, :runoff, :user_id)
       winners = GotyWinner.where(year: vote.year).index_by(&:award)
       games = games_for(ballots.values.flatten | winners.values.map(&:gamedb_game_id))
@@ -42,8 +42,9 @@ module Goty
       end
     end
 
-    def ballots(vote)
-      return Goty::Ballots.for(vote.year) if vote.candidates_frozen_at.nil?
+    # `won_in` (Goty::Ballots.won_in) spares reading the winning entries again.
+    def ballots(vote, won_in: nil)
+      return Goty::Ballots.for(vote.year, won_in: won_in) if vote.candidates_frozen_at.nil?
 
       frozen = GotyCandidate.where(year: vote.year).order(:position).pluck(:award, :gamedb_game_id)
       Goty::AWARDS.keys.index_with { |award| frozen.select { |row| row[0] == award }.map(&:last) }

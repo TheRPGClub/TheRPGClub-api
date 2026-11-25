@@ -18,21 +18,21 @@ module Goty
     module_function
 
     # { award => [gamedb_game_id, ...] } for every Award, in Goty::AWARDS order.
-    def for(year)
+    # Pass `won_in` (from .won_in for the same year) when the caller has it,
+    # so the winning entries are read once.
+    def for(year, won_in: nil)
       year = Integer(year)
-      Goty::AWARDS.keys.index_with { |award| game_ids(year, award) }
-    end
-
-    def game_ids(year, award)
-      return nominated_game_ids(year) if award.to_s == "game_of_the_year"
-
-      winning_rows(year, award).map(&:last).uniq
+      won_in ||= self.won_in(year)
+      Goty::AWARDS.keys.index_with do |award|
+        award.to_s == "game_of_the_year" ? nominated_game_ids(year) : won_in.fetch(award.to_s, {}).keys
+      end
     end
 
     # Where each GOTM / NR-GOTM of the Year game won, for the ballot labels:
     # { "gotm" => { gamedb_game_id => [{ round_number:, month_year: }] },
     #   "nr_gotm" => { ... } }, rounds in order. A game that won more than
-    # one round in the year lists each. One query per Award.
+    # one round in the year lists each, keyed in the order each game first
+    # won (so the keys are that Award's ballot). One query per Award.
     def won_in(year)
       year = Integer(year)
       ENTRY_MODELS.keys.index_with do |award|

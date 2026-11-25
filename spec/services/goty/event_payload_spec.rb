@@ -31,4 +31,33 @@ RSpec.describe Goty::EventPayload do
     frozen = described_class.for(vote.reload, "goty_voting_opened")
     expect(award(frozen, "gotm")[:games].first).to include(gamedb_game_id: twice.game_id, won_in: expected)
   end
+
+  describe "winning entry reads" do
+    def entry_queries
+      queries = Hash.new(0)
+      callback = lambda do |*, payload|
+        table = payload[:sql][/FROM "(nr_gotm_entries|gotm_entries)"/, 1]
+        queries[table] += 1 if table
+      end
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { yield }
+      queries
+    end
+
+    let(:vote) { create(:goty_vote, year: 2026) }
+
+    before do
+      create(:gotm_entry, round_number: base, month_year: "January 2026", game: create(:game))
+      create(:nr_gotm_entry, round_number: base, month_year: "January 2026", game: create(:game))
+    end
+
+    it "reads each Award's winning entries once for the payload" do
+      expect(entry_queries { described_class.for(vote, "goty_nominations_opened") })
+        .to eq("gotm_entries" => 1, "nr_gotm_entries" => 1)
+    end
+
+    it "reads each Award's winning entries once for the standings" do
+      expect(entry_queries { Goty::Standings.awards(vote) })
+        .to eq("gotm_entries" => 1, "nr_gotm_entries" => 1)
+    end
+  end
 end
