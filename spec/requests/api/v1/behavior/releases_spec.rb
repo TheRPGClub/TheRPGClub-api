@@ -173,6 +173,15 @@ RSpec.describe "api/v1/releases behavior", type: :request do
       expect(json.dig("data", "source")).to eq("manual")
     end
 
+    it "schedules the new Release's announcement right away, without a sync" do
+      post "/api/v1/games/#{game.game_id}/releases",
+        params: payload.deep_merge(data: { release_date: "2027-09-14" }), headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+      announcement = GamedbReleaseAnnouncement.find_by(release_id: json.dig("data", "release_id"))
+      expect(announcement&.announce_at).to eq(Time.utc(2027, 9, 7))
+    end
+
     it "bumps the game's updated_at so the cached relations invalidate" do
       expect {
         post "/api/v1/games/#{game.game_id}/releases", params: payload, headers: service_headers, as: :json

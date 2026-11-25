@@ -15,7 +15,7 @@ class PresencePromptOpt < ApplicationRecord
   SCOPE_ALL = "ALL"
   SCOPE_GAME = "GAME"
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

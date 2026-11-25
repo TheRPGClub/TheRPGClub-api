@@ -65,22 +65,16 @@ module Api
         limit = preview_limit
 
         previews = {
-          now_playing: -> { user.now_playing_entries.with_now_playing_details.preload(:platform, game: :images).order(added_at: :desc).limit(limit).to_a },
-          favorites:   -> { user.game_favorites.preload(game: :images).order(UserGameFavorite::SHELF_ORDER).limit(limit).to_a },
-          reviews:     -> { user.reviews.published.preload(:latest_revision, game: :images).order(published_at: :desc, review_id: :desc).limit(limit).to_a },
-          completions: -> { user.game_completions.preload(:platform, game: :images).order(completed_at: :desc).limit(limit).to_a },
-          journal:     -> { UserGameJournalEntry.journaled_games_for(user.user_id).order(Arel.sql("last_entry_at DESC")).limit(limit).to_a }
+          now_playing: -> { user.now_playing_entries.with_now_playing_details.order(added_at: :desc).limit(limit).to_a },
+          favorites:   -> { user.game_favorites.order(UserGameFavorite::SHELF_ORDER).limit(limit).to_a },
+          reviews:     -> { user.reviews.published.preload(:latest_revision).order(published_at: :desc, review_id: :desc).limit(limit).to_a },
+          completions: -> { user.game_completions.order(completed_at: :desc).limit(limit).to_a },
+          # Its images load with the other previews' (preload_previews).
+          journal:     -> { UserGameJournalEntry.journaled_games_for(user.user_id).unscope(:preload).order(Arel.sql("last_entry_at DESC")).limit(limit).to_a }
         }.select { |key, _| profile_section?(key) }.transform_values(&:call)
+        preload_previews(previews)
 
-        counts = {
-          now_playing: -> { user.now_playing_entries.async_count },
-          favorites:   -> { user.game_favorites.async_count },
-          reviews:     -> { user.reviews.published.async_count },
-          completions: -> { user.game_completions.async_count },
-          backlog:     -> { user.game_backlog_entries.async_count },
-          collections: -> { user.game_collections.async_count },
-          journal:     -> { user.journal_entries.distinct.async_count(:gamedb_game_id) }
-        }.select { |key, _| profile_section?(key) }.transform_values(&:call).transform_values(&:value)
+        counts = profile_counts(user)
 
         render json: {
           data: UserResource.new(user, params: previews.merge(counts: counts)).serializable_hash
@@ -178,6 +172,44 @@ module Api
       end
 
       private
+
+      # Every preview's games (with their images) and platforms in one batch
+      # each, rather than a games + images (+ platforms) read per list.
+      def preload_previews(previews)
+        entries = previews.values_at(:now_playing, :favorites, :reviews, :completions).compact.flatten
+        ActiveRecord::Associations::Preloader.new(records: entries, associations: :game).call
+        games = entries.filter_map(&:game) + previews.fetch(:journal, [])
+        # Every instance, not `uniq`: records compare by id, and the journal's
+        # game objects are distinct from the entries' even for the same game.
+        ActiveRecord::Associations::Preloader.new(records: games, associations: :images).call
+        with_platform = previews.values_at(:now_playing, :completions).compact.flatten
+        ActiveRecord::Associations::Preloader.new(records: with_platform, associations: :platform).call
+      end
+
+      # The profile's counts for the sections the viewer can see, in one
+      # query of scalar subqueries.
+      def profile_counts(user)
+        relations = {
+          now_playing: user.now_playing_entries,
+          favorites: user.game_favorites,
+          reviews: user.reviews.published,
+          completions: user.game_completions,
+          backlog: user.game_backlog_entries,
+          collections: user.game_collections,
+          journal: user.journal_entries.select("COUNT(DISTINCT user_game_journal_entries.gamedb_game_id)")
+        }.select { |key, _| profile_section?(key) }
+        return {} if relations.empty?
+
+        # Built with Arel, not interpolated SQL: each count is its relation's
+        # own (bound) query, aliased by its fixed key.
+        columns = relations.map do |key, relation|
+          relation = relation.select(Arel.star.count) unless key == :journal
+          Arel::Nodes::As.new(Arel::Nodes::Grouping.new(relation.unscope(:order).arel), Arel::Nodes::SqlLiteral.new(key.to_s))
+        end
+        RpgClubUser.connection.select_one(Arel::SelectManager.new.project(*columns))
+          .to_h.symbolize_keys.transform_values(&:to_i)
+      end
+
 
       def query
         ActiveRecord::Base.sanitize_sql_like(params[:q].to_s.strip)

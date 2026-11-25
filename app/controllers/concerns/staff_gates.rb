@@ -109,12 +109,14 @@ module StaffGates
     false
   end
 
-  # The signed-in member's role flags, loaded once per request.
+  # The signed-in member's role flags, read fresh each request: from the row
+  # auth already read (Auth::Principal#user), else loaded once.
   def staff_flag?(flag)
     return false unless current_principal&.discord_user?
 
     @staff_flags ||= begin
-      values = RpgClubUser.where(user_id: current_principal.id).pick(*ROLE_FLAGS)
+      user = current_principal.user
+      values = user ? ROLE_FLAGS.map { |name| user[name] } : RpgClubUser.where(user_id: current_principal.id).pick(*ROLE_FLAGS)
       ROLE_FLAGS.zip(Array(values)).to_h
     end
     @staff_flags[flag] == true

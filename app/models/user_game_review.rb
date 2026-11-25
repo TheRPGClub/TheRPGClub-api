@@ -9,7 +9,7 @@ class UserGameReview < ApplicationRecord
   # The score, title and scorecard every take shares, with their validation.
   include ReviewTake
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

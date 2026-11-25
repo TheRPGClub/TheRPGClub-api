@@ -5,5 +5,5 @@
 # the job runs and however the member's Birth Date changes. Written only by
 # Birthdays::PostJob, when it queues the post.
 class BirthdayPost < ApplicationRecord
-  belongs_to :user, class_name: "RpgClubUser", foreign_key: :user_id, primary_key: :user_id, inverse_of: false
+  belongs_to :user, -> { without_images }, class_name: "RpgClubUser", foreign_key: :user_id, primary_key: :user_id, inverse_of: false
 end

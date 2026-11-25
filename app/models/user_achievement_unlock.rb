@@ -9,7 +9,7 @@ class UserAchievementUnlock < ApplicationRecord
 
   enum :highlight, HIGHLIGHTS.index_with(&:itself), validate: { allow_nil: true }
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

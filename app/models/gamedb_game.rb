@@ -240,16 +240,15 @@ class GamedbGame < ApplicationRecord
     primary_image_url("logo")
   end
 
+  # Always reads the loaded `images` association (loading it if needed, one
+  # query for every kind) rather than a per-kind `images.where(...)`: a list
+  # that forgets to preload `game: :images` then costs 1 query per game, not
+  # 3, and is an association load Bullet sees and raises on in specs.
   def primary_image_url(kind)
-    if images.loaded?
-      return images
-        .select { |image| image.kind == kind }
-        .sort_by { |image| [ image.is_primary ? 0 : 1, image.position.to_i, image.image_id.to_i ] }
-        .first
-        &.url
-    end
-
-    images.where(kind: kind).primary_first.first&.url
+    images
+      .select { |image| image.kind == kind }
+      .min_by { |image| [ image.is_primary ? 0 : 1, image.position.to_i, image.image_id.to_i ] }
+      &.url
   end
 
   # A leading or trailing article in the query is ignored, so "The Last of
@@ -301,6 +300,6 @@ class GamedbGame < ApplicationRecord
       .uniq
       .excluding(game_id)
 
-    GamedbGame.without_images.where(game_id: alternate_ids).order(:title)
+    GamedbGame.without_images.where(game_id: alternate_ids).preload(:images).order(:title)
   end
 end

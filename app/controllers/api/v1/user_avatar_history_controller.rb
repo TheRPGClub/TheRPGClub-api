@@ -13,7 +13,9 @@ module Api
 
       # GET /api/v1/users/:user_id/avatar_history
       def index
+        # The resource leaves out the binary `avatar_blob`, so don't read it.
         scope = RpgClubUserAvatarHistory.where(user_id: params[:user_id])
+          .select(*(RpgClubUserAvatarHistory.column_names - %w[avatar_blob]))
         render_collection(scope, resource: UserAvatarHistoryResource,
           default_order: { changed_at: :desc, event_id: :desc })
       end

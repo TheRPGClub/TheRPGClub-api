@@ -90,7 +90,7 @@ class BotJob < ApplicationRecord
   # Acking a job that already finished the other way.
   class AckConflict < StandardError; end
 
-  belongs_to :requested_by, class_name: "RpgClubUser", foreign_key: :requested_by_user_id,
+  belongs_to :requested_by, -> { without_images }, class_name: "RpgClubUser", foreign_key: :requested_by_user_id,
     primary_key: :user_id, optional: true, inverse_of: false
 
   validates :kind, inclusion: { in: KINDS }

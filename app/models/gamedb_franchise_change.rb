@@ -17,7 +17,7 @@ class GamedbFranchiseChange < ApplicationRecord
   GAME_ACTIONS = %w[link unlink mainline_on mainline_off].freeze
 
   belongs_to :game, class_name: "GamedbGame", optional: true, inverse_of: false
-  belongs_to :user, class_name: "RpgClubUser", primary_key: :user_id, optional: true, inverse_of: false
+  belongs_to :user, -> { without_images }, class_name: "RpgClubUser", primary_key: :user_id, optional: true, inverse_of: false
 
   validates :action, inclusion: { in: ACTIONS }
 

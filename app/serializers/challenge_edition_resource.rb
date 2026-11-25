@@ -102,7 +102,7 @@ class ChallengeEditionResource
     edition.signups.select(&:recipient_user_id).to_h { |signup| [ signup.recipient_user_id, signup.picked_at.present? ] }
   end
 
-  PRELOADS = [ :challenge, { signups: %i[user recipient picked_game], runs: %i[entries challenge] } ].freeze
+  PRELOADS = [ :challenge, { signups: [ :user, :recipient, { picked_game: :images } ], runs: %i[entries challenge] } ].freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)
 

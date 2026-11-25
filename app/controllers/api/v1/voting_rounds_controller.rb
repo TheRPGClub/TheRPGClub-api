@@ -16,7 +16,8 @@ module Api
       UPDATE_ATTRS = %w[voting_opens_at voting_closes_at month_year].freeze
 
       def index
-        render_collection(VotingRound.all, resource: VotingRoundResource, default_order: { round_number: :desc })
+        render_collection(VotingRound.all, resource: VotingRoundResource, default_order: { round_number: :desc },
+          prepare: ->(rounds) { VotingRoundResource.tie_games(rounds) })
       end
 
       # GET /api/v1/voting_rounds/current — the one round being nominated for,

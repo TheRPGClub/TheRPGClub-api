@@ -4,7 +4,7 @@ class UserGameJournalEntry < ApplicationRecord
   self.table_name = "user_game_journal_entries"
   self.primary_key = "entry_id"
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

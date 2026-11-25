@@ -7,7 +7,7 @@
 # default result (no category filter); it never blocks a request and has no
 # effect in Discord.
 class MemberNewsCategoryPreference < ApplicationRecord
-  belongs_to :user, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
+  belongs_to :user, -> { without_images }, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
 
   validates :category_key, inclusion: { in: NewsCategory.keys, message: "is not a News Category" },
     uniqueness: { scope: :user_id }

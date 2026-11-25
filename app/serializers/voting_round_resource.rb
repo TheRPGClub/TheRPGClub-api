@@ -47,12 +47,22 @@ class VotingRoundResource
     embed_games(round.runoff_ties)
   end
 
+  # Every tied game a page of rounds embeds, read once for the page (a
+  # `prepare:` for render_collection) instead of once per round:
+  # `{ tie_games: { game_id => game } }`.
+  def self.tie_games(rounds)
+    ids = rounds.flat_map { |round| [ round.pending_ties, round.runoff_ties ].flat_map { |ties| ties.values.flatten } }.uniq
+    { tie_games: ids.empty? ? {} : GamedbGame.where(game_id: ids).preload(:images).index_by(&:game_id) }
+  end
+
   private
 
-  # { category => [game_id, ...] } with each id swapped for its game.
+  # { category => [game_id, ...] } with each id swapped for its game. Reads
+  # the page's `tie_games` when given, else loads this round's own.
   def embed_games(ties)
     ids = ties.values.flatten
-    games = ids.empty? ? {} : GamedbGame.where(game_id: ids).preload(:images).index_by(&:game_id)
+    games = params[:tie_games] ||
+      (ids.empty? ? {} : GamedbGame.where(game_id: ids).preload(:images).index_by(&:game_id))
     ties.transform_values do |game_ids|
       game_ids.filter_map { |id| games[id] }.map { |game| GameSummaryResource.new(game).serializable_hash }
     end
