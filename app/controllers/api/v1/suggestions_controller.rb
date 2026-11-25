@@ -30,7 +30,8 @@ module Api
 
         scope = viewer_scope
         scope = scope.where(status: statuses) if statuses
-        render_collection(scope, resource: SuggestionResource, default_order: order)
+        render_collection(scope, resource: SuggestionResource, default_order: order,
+          prepare: ->(suggestions) { SuggestionResource.issue_states(suggestions) })
       end
 
       def show
