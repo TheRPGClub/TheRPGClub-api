@@ -163,4 +163,85 @@ RSpec.describe Achievements::ListAccount do
       expect(pending_row.reload.sync_pending_at).to eq(now)
     end
   end
+
+  # PSN Playtime (spec api#457, ticket api#463): the play history is read in
+  # the same listing unit, once per account per Sync Window (ADR 0003).
+  describe "a PSN listing" do
+    let(:client) { instance_double(Psn::Client) }
+    let(:account) do
+      create(:user_linked_account, provider: "psn", sync_mode: "incremental", sync_due_at: now,
+        last_synced_at: now - 6.hours, backfilled_at: now - 2.days)
+    end
+    let(:ps5_set) { create(:achievement_set, provider: "psn", external_id: "NPWR90002_00", platform_label: "PS5") }
+    let!(:ps5_row) do
+      create(:user_achievement_set_progress, linked_account: account, achievement_set: ps5_set,
+        synced_at: now - 6.hours, playtime_minutes: 100)
+    end
+
+    before do
+      allow(Achievements::Providers).to receive(:client_for).with("psn").and_return(client)
+      allow(client).to receive(:played_sets).and_return([])
+    end
+
+    def game(title_id, external_id, minutes)
+      Psn::Client::PlayedGame.new(title_id: title_id, external_id: external_id, title: "Game", minutes: minutes)
+    end
+
+    it "writes each set's Playtime, adding up the editions that share its trophy list" do
+      allow(client).to receive(:played_games).with(account.external_id).and_return([
+        game("PPSA90002_00", "NPWR90002_00", 764), game("CUSA90002_00", "NPWR90002_00", 200)
+      ])
+
+      expect { described_class.call(account) }.not_to have_enqueued_job
+
+      expect(ps5_row.reload.playtime_minutes).to eq(964)
+      expect(account.reload).to have_attributes(sync_status: "ok", last_synced_at: now)
+    end
+
+    it "fills sets the same listing queued, and leaves other members and unplayed sets alone" do
+      unplayed = create(:user_achievement_set_progress, linked_account: account, playtime_minutes: 30,
+        achievement_set: create(:achievement_set, provider: "psn", external_id: "NPWR90004_00"))
+      stranger = create(:user_achievement_set_progress, achievement_set: ps5_set, playtime_minutes: 5,
+        linked_account: create(:user_linked_account, provider: "psn"))
+      allow(client).to receive(:played_sets).and_return([ played("NPWR90001_00", platform_label: "PS5") ])
+      allow(client).to receive(:played_games).and_return([
+        game("PPSA90001_00", "NPWR90001_00", 10_014), game("PPSA90002_00", "NPWR90002_00", 764)
+      ])
+
+      described_class.call(account)
+
+      queued = account.set_progress.joins(:achievement_set).find_by!(achievement_sets: { external_id: "NPWR90001_00" })
+      expect(queued).to have_attributes(playtime_minutes: 10_014, sync_pending_at: now)
+      expect([ ps5_row, unplayed, stranger ].map { |row| row.reload.playtime_minutes }).to eq([ 764, 30, 5 ])
+    end
+
+    it "keeps the stored Playtime when the history is hidden or empty" do
+      allow(client).to receive(:played_games).and_return([])
+
+      described_class.call(account)
+
+      expect(ps5_row.reload.playtime_minutes).to eq(100)
+      expect(account.reload.sync_status).to eq("ok")
+    end
+
+    it "never fails the listing over the play history" do
+      allow(client).to receive(:played_sets).and_return([ played("NPWR90001_00") ])
+      allow(client).to receive(:played_games).and_raise(Psn::Client::Error, "PSN returned HTTP 500")
+
+      described_class.call(account)
+
+      expect(account.reload).to have_attributes(sync_status: "ok", sync_error: nil, sync_due_at: nil)
+      expect(account.set_progress.count).to eq(2)
+      expect(ps5_row.reload.playtime_minutes).to eq(100)
+    end
+
+    it "hands a rate limit to the tick before writing anything, so the listing is retried whole" do
+      allow(client).to receive(:played_sets).and_return([ played("NPWR90001_00") ])
+      allow(client).to receive(:played_games).and_raise(Achievements::Providers::RateLimited.new(retry_after: 60))
+
+      expect { described_class.call(account) }.to raise_error(Achievements::Providers::RateLimited)
+      expect(account.reload.sync_due_at).to eq(now)
+      expect(account.set_progress.count).to eq(1)
+    end
+  end
 end
