@@ -142,8 +142,7 @@ module Api
           []
         else
           ballot(vote_model)
-            .group(:nomination_id, :gamedb_game_id)
-            .select(:nomination_id, :gamedb_game_id, "COUNT(*) AS vote_count")
+            .vote_counts
             .order(Arel.sql("COUNT(*) DESC"), :nomination_id)
         end
 
