@@ -54,6 +54,18 @@ RSpec.describe Voting::CastVote do
         .to raise_error(described_class::VotingClosedError, /closed at/)
     end
 
+    it "rejects a cast whose round closed while it was being checked" do
+      create_round!
+      allow(Voting::CastRules).to receive(:lock!).and_wrap_original do |original, *args|
+        original.call(*args)
+        VotingRound.where(round_number: round).update_all(closed_at: Time.current)
+      end
+
+      expect { cast!("voter", nomination) }
+        .to raise_error(described_class::VotingClosedError, /closed at/)
+      expect(GotmVote.where(round_number: round).count).to eq(0)
+    end
+
     it "rejects a cast once the round is decided, even inside the window" do
       create_round!(decided_at: 1.minute.ago)
 

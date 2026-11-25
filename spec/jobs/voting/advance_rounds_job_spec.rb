@@ -83,6 +83,36 @@ RSpec.describe Voting::AdvanceRoundsJob do
       end
     end
 
+    context "with the GOTY Vote due" do
+      let(:voting_open) { Time.utc(2027, 1, 15, 17) }
+
+      before do
+        round.update!(voting_opens_at: Time.utc(2027, 1, 29, 17))
+        create(:goty_vote, year: 2026)
+      end
+
+      it "sweeps the GOTY Vote when its step comes due before the round's" do
+        perform_at(voting_open - 1.hour)
+        expect(Voting::SweepSchedule.due?(voting_open - 1.minute)).to be(false)
+
+        perform_at(voting_open)
+
+        expect(VotingEvent.where(goty_year: 2026).pluck(:kind)).to include("goty_voting_opened")
+      end
+
+      it "skips the GOTY Vote while it is Off and the round while Voting & GOTM is" do
+        set_feature_flag("goty_vote", "off")
+        perform_at(voting_open)
+        expect(VotingEvent.where(goty_year: 2026)).to be_empty
+
+        set_feature_flag("goty_vote", "live")
+        set_feature_flag("voting_gotm", "off")
+        Voting::SweepSchedule.clear
+        perform_at(voting_open + 1.minute)
+        expect(VotingEvent.where(goty_year: 2026).pluck(:kind)).to include("goty_voting_opened")
+      end
+    end
+
     it "looks again by RECHECK when nothing is scheduled" do
       round.update!(decided_at: Time.utc(2026, 10, 1))
       perform_at(Time.utc(2026, 10, 20))

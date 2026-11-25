@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_135000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -702,6 +702,68 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_runoff_user_game", unique: true
+  end
+
+  create_table "goty_ballot_votes", force: :cascade do |t|
+    t.string "award", limit: 32, null: false
+    t.bigint "gamedb_game_id", null: false
+    t.boolean "runoff", default: false, null: false
+    t.string "user_id", limit: 64, null: false
+    t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.integer "year", null: false
+    t.index ["year", "award", "runoff", "user_id", "gamedb_game_id"], name: "ux_goty_ballot_votes_year_award_runoff_user_game", unique: true
+    t.check_constraint "award::text = ANY (ARRAY['gotm'::character varying, 'nr_gotm'::character varying, 'game_of_the_year'::character varying]::text[])", name: "ck_goty_ballot_votes_award"
+  end
+
+  create_table "goty_candidates", force: :cascade do |t|
+    t.string "award", limit: 32, null: false
+    t.datetime "created_at", null: false
+    t.bigint "gamedb_game_id", null: false
+    t.integer "position", null: false
+    t.datetime "updated_at", null: false
+    t.integer "year", null: false
+    t.index ["year", "award", "gamedb_game_id"], name: "ux_goty_candidates_year_award_game", unique: true
+    t.check_constraint "award::text = ANY (ARRAY['gotm'::character varying, 'nr_gotm'::character varying, 'game_of_the_year'::character varying]::text[])", name: "ck_goty_candidates_award"
+  end
+
+  create_table "goty_nominations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "gamedb_game_id", null: false
+    t.datetime "nominated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 64, null: false
+    t.integer "year", null: false
+    t.index ["year", "gamedb_game_id"], name: "ix_goty_nominations_year_game"
+    t.index ["year", "user_id", "gamedb_game_id"], name: "ux_goty_nominations_year_user_game", unique: true
+  end
+
+  create_table "goty_votes", primary_key: "year", id: :integer, default: nil, force: :cascade do |t|
+    t.datetime "candidates_frozen_at"
+    t.datetime "closed_at"
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.datetime "nominations_open_at", null: false
+    t.jsonb "pending_ties", default: {}, null: false
+    t.datetime "runoff_closed_at"
+    t.datetime "runoff_closes_at"
+    t.datetime "runoff_opens_at"
+    t.jsonb "runoff_ties", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.datetime "voting_closes_at", null: false
+    t.datetime "voting_opens_at", null: false
+  end
+
+  create_table "goty_winners", force: :cascade do |t|
+    t.string "award", limit: 32, null: false
+    t.datetime "created_at", null: false
+    t.string "decided_by", limit: 16, null: false
+    t.bigint "gamedb_game_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "year", null: false
+    t.index ["gamedb_game_id"], name: "ix_goty_winners_game"
+    t.index ["year", "award"], name: "ux_goty_winners_year_award", unique: true
+    t.check_constraint "award::text = ANY (ARRAY['gotm'::character varying, 'nr_gotm'::character varying, 'game_of_the_year'::character varying]::text[])", name: "ck_goty_winners_award"
+    t.check_constraint "decided_by::text = ANY (ARRAY['vote'::character varying, 'runoff'::character varying, 'admin'::character varying, 'uncontested'::character varying]::text[])", name: "ck_goty_winners_decided_by"
   end
 
   create_table "guild_channels", primary_key: "channel_id", id: :string, force: :cascade do |t|
@@ -1675,12 +1737,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
     t.datetime "created_at", null: false
     t.datetime "delivered_at"
     t.datetime "expires_at"
+    t.integer "goty_year"
     t.string "kind", limit: 64, null: false
     t.jsonb "payload", default: {}, null: false
-    t.bigint "round_number", null: false
+    t.bigint "round_number"
     t.datetime "updated_at", null: false
     t.index ["available_at"], name: "ix_voting_events_pending", where: "(delivered_at IS NULL)"
+    t.index ["goty_year", "kind"], name: "ux_voting_events_goty_year_kind", unique: true
     t.index ["round_number", "kind"], name: "ux_voting_events_round_kind", unique: true
+    t.check_constraint "(round_number IS NULL) <> (goty_year IS NULL)", name: "ck_voting_events_round_or_goty_year"
   end
 
   create_table "voting_rounds", primary_key: "round_number", id: :bigint, default: nil, force: :cascade do |t|
@@ -1768,6 +1833,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
   add_foreign_key "gamedb_releases", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", name: "fk_gamedb_releases_platform"
   add_foreign_key "gamedb_releases", "gamedb_regions", column: "region_id", primary_key: "region_id", name: "fk_gamedb_releases_region"
   add_foreign_key "gamedb_search_synonyms", "gamedb_search_synonym_groups", column: "group_id", primary_key: "group_id", name: "fk_gamedb_search_synonyms_group", on_delete: :cascade
+  add_foreign_key "goty_ballot_votes", "gamedb_games", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "goty_ballot_votes", "goty_votes", column: "year", primary_key: "year", on_delete: :cascade
+  add_foreign_key "goty_ballot_votes", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "goty_candidates", "gamedb_games", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "goty_candidates", "goty_votes", column: "year", primary_key: "year", on_delete: :cascade
+  add_foreign_key "goty_nominations", "gamedb_games", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "goty_nominations", "goty_votes", column: "year", primary_key: "year", on_delete: :cascade
+  add_foreign_key "goty_nominations", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "goty_winners", "gamedb_games", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "goty_winners", "goty_votes", column: "year", primary_key: "year", on_delete: :cascade
   add_foreign_key "image_backfill_runs", "rpg_club_users", column: "started_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "live_events", "bot_jobs", on_delete: :nullify
   add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify
@@ -1821,4 +1896,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
   add_foreign_key "user_linked_accounts", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_linked_accounts_user", on_delete: :cascade
   add_foreign_key "user_now_playing", "gamedb_games", primary_key: "game_id", name: "fk_user_now_playing_gamedb"
   add_foreign_key "user_now_playing", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", name: "fk_user_now_playing_platform"
+  add_foreign_key "voting_events", "goty_votes", column: "goty_year", primary_key: "year", on_delete: :cascade
 end

@@ -86,7 +86,7 @@ module Features
       case @feature.key
       when "achievement_hub"
         Achievements::ProviderTickJob.enqueue_all if change.from_state == "off"
-      when "voting_gotm"
+      when "voting_gotm", "goty_vote"
         Voting::SweepSchedule.clear
       when "challenges"
         Challenges::SweepSchedule.clear

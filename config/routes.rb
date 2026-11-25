@@ -60,6 +60,8 @@ Rails.application.routes.draw do
           get "achievement_sets", to: "achievements#game_sets"
           # Game Lists (ticket api#446): the lists holding the game.
           get "game_lists", to: "game_lists#game_index"
+          # GOTY Vote (ticket api#472): Game of the Year eligibility for ?year=.
+          get "goty_eligibility", to: "goty_votes#eligibility"
         end
       end
 
@@ -434,6 +436,16 @@ Rails.application.routes.draw do
         member do
           post "resolve_tie"
           post "publish_results"
+        end
+      end
+      # The yearly GOTY Vote (spec api#471), keyed by the year it decides.
+      resources :goty_votes, param: :year, only: %i[index show update] do
+        # Game of the Year nominations (api#473).
+        resources :nominations, controller: "goty_nominations", only: %i[index create destroy]
+        # Award voting (api#474): cast or toggle, and the admin tie pick.
+        resources :votes, controller: "goty_ballot_votes", only: %i[create]
+        member do
+          post "awards/:award/resolve_tie", to: "goty_votes#resolve_tie", as: :resolve_tie
         end
       end
       post "voting_events/claim",   to: "voting_events#claim"

@@ -4,11 +4,12 @@ module Voting
   # An admin breaks a category's tie by picking one or more of the tied games
   # (a round may legitimately have two winners): the last resort once a
   # runoff has tied again, or a shortcut that settles a category while its
-  # runoff is still open. Once no category is left tied, the round is decided
-  # and the next one scheduled.
+  # runoff is still open. Once no category is left tied, the round is decided,
+  # the next one scheduled and the round_decided post queued. The steps are
+  # Voting::Decide's, shared with the GOTY Vote.
   class ResolveTie
-    class NoTieError < StandardError; end
-    class InvalidPickError < StandardError; end
+    NoTieError = Decide::NoTieError
+    InvalidPickError = Decide::InvalidPickError
 
     def initialize(round, category:, gamedb_game_ids:, now: Time.current)
       @round = round
@@ -18,25 +19,13 @@ module Voting
     end
 
     def call
-      @round.with_lock do
-        tied = Array(@round.pending_ties[@category])
-        raise NoTieError, "round #{@round.round_number} has no pending #{@category} tie" if tied.empty?
-        if @picks.empty? || (@picks - tied).any?
-          raise InvalidPickError, "pick one or more of the tied games: #{tied.join(', ')}"
-        end
-
-        Winners.record!(Voting.models_for(@category).fetch(:entry), @round, @picks)
-        remaining = @round.pending_ties.except(@category)
-        @round.update!(pending_ties: remaining)
-        if remaining.empty?
-          @round.decide!(@now)
-          VotingEvent.emit!(
-            round_number: @round.round_number, kind: "round_decided",
-            payload: { winners: Winners.for_round(@round.round_number) }
-          )
-        end
-        @round
+      Decide.resolve_tie!(RoundContest.new(@round), @category, @picks, now: @now) do
+        VotingEvent.emit!(
+          round_number: @round.round_number, kind: "round_decided",
+          payload: { winners: Winners.for_round(@round.round_number) }
+        )
       end
+      @round
     end
   end
 end

@@ -59,6 +59,26 @@ FactoryBot.define do
     voting_opens_at { 2.days.from_now }
   end
 
+  # Dates default to the GOTY Vote schedule for the year.
+  factory :goty_vote do
+    year { 2026 }
+  end
+
+  # The GOTY Vote for the year must exist (create(:goty_vote) first).
+  factory :goty_nomination do
+    year { 2026 }
+    user
+    game
+  end
+
+  # The GOTY Vote for the year must exist (create(:goty_vote) first).
+  factory :goty_winner do
+    year { 2026 }
+    award { "game_of_the_year" }
+    decided_by { "vote" }
+    game
+  end
+
   factory :voting_info, class: "BotVotingInfo" do
     round_number { SecureRandom.random_number(1_000_000_000) }
     next_vote_at { 2.days.from_now }

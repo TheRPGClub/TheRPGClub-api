@@ -167,8 +167,9 @@ RSpec.describe 'api/v1/games', type: :request do
     get 'Show game' do
       tags 'Games'
       description 'Returns a game with related GOTM/NR-GOTM month info plus now-playing and completion previews. ' \
-                  '`now_playing` is left out for a caller who cannot use the Now Playing Feature, `completions` ' \
-                  'for Game Completions (Feature Flags).'
+                  '`goty_awards` lists every GOTY Vote Award the game won in a decided year, newest year first ' \
+                  '(the game page badge). `now_playing` is left out for a caller who cannot use the Now Playing ' \
+                  'Feature, `completions` for Game Completions and `goty_awards` for GOTY Vote (Feature Flags).'
       produces 'application/json'
 
       response '200', 'game detail' do
@@ -182,7 +183,8 @@ RSpec.describe 'api/v1/games', type: :request do
                   gotm_month_year: { type: :string, nullable: true },
                   nr_gotm_month_year: { type: :string, nullable: true },
                   now_playing: { type: :array, items: { '$ref' => '#/components/schemas/NowPlayingUserEntry' } },
-                  completions: { type: :array, items: { '$ref' => '#/components/schemas/CompletionUserEntry' } }
+                  completions: { type: :array, items: { '$ref' => '#/components/schemas/CompletionUserEntry' } },
+                  goty_awards: { type: :array, items: { '$ref' => '#/components/schemas/GotyAwardWon' } }
                 }
               }
             ]

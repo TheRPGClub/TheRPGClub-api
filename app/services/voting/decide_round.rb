@@ -5,9 +5,10 @@ module Voting
   # leader in the tally is recorded as the winner, a shared lead goes to a
   # runoff limited to the tied games (Voting::DecideRunoff settles it), and a
   # category nobody voted in records nothing. With no ties the round is
-  # decided and the next one scheduled, all in one transaction.
+  # decided and the next one scheduled, all in one transaction. The steps are
+  # Voting::Decide's, shared with the GOTY Vote.
   class DecideRound
-    class VotingNotClosedError < StandardError; end
+    VotingNotClosedError = Decide::VotingNotClosedError
 
     Result = Struct.new(:round, :winners, :ties, keyword_init: true)
 
@@ -17,35 +18,7 @@ module Voting
     end
 
     def call
-      @round.with_lock do
-        raise VotingNotClosedError, "voting for round #{@round.round_number} has not closed" unless @round.voting_ended?(@now)
-        return result if @round.closed_at.present?
-
-        ties = {}
-        Voting::CATEGORIES.each_key do |category|
-          models = Voting.models_for(category)
-          leaders = Tally.leaders(models.fetch(:vote), @round.round_number)
-          next if leaders.empty?
-
-          if leaders.one?
-            Winners.record!(models.fetch(:entry), @round, leaders)
-          else
-            ties[category] = leaders
-          end
-        end
-
-        if ties.empty?
-          @round.decide!(@now)
-        else
-          @round.open_runoff!(ties, @now)
-        end
-        result
-      end
-    end
-
-    private
-
-    def result
+      Decide.close!(RoundContest.new(@round), now: @now)
       Result.new(round: @round, winners: Winners.for_round(@round.round_number), ties: @round.pending_ties)
     end
   end

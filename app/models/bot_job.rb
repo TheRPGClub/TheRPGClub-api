@@ -26,6 +26,7 @@ class BotJob < ApplicationRecord
     giveaway_claim_notice
     giveaway_hub_refresh
     nomination_deleted
+    goty_nomination_deleted
     suggestion_submitted
     suggestion_outcome
     voting_poll_wakeup
@@ -57,6 +58,7 @@ class BotJob < ApplicationRecord
     "giveaway_claim_notice" => "giveaways",
     "giveaway_hub_refresh" => "giveaways",
     "nomination_deleted" => "voting_gotm",
+    "goty_nomination_deleted" => "goty_vote",
     "suggestion_submitted" => "suggestions",
     "suggestion_outcome" => "suggestions",
     "voting_results_publish" => "voting_gotm",

@@ -7,10 +7,11 @@ RSpec.describe 'api/v1/voting_events', type: :request do
     post 'Claim due voting events' do
       tags 'Voting Events'
       description 'Service only. Leases up to `limit` due, unexpired, undelivered events (oldest first) for five ' \
-                  'minutes: post each to Discord, then ack it. An unacked event is handed out again once its ' \
-                  'lease runs out, so delivery is at-least-once. `meta.next_poll_at` is when to claim again: ' \
+                  'minutes, GOTM round events (`round_number`) and GOTY Vote events (`goty_year`, the ' \
+                  '`goty_*` kinds, with a self-contained payload) alike: post each to Discord, then ack it. ' \
+                  'An unacked event is handed out again once its lease runs out, so delivery is at-least-once. `meta.next_poll_at` is when to claim again: ' \
                   'now while events are claimable, else when the next pending event falls due, a lease runs ' \
-                  'out, or the round lifecycle queues its next event; null when nothing is scheduled.'
+                  'out, or the round or GOTY Vote lifecycle queues its next event; null when nothing is scheduled.'
       produces 'application/json'
       parameter name: :limit, in: :query, schema: { type: :integer, default: 10, minimum: 1, maximum: 50 },
         required: false

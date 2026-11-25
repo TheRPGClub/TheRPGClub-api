@@ -117,7 +117,13 @@ module Features
     # (`franchise_conquest`) follow its Flag.
     define("franchise_progress", "Franchise Progress", core: false,
       website: [ "Franchise Progress tab" ],
-      posts: [ "Conquest announcements" ])
+      posts: [ "Conquest announcements" ]),
+    # Spec api#471. Core, so members cannot hide it, but registered after
+    # Feature Flags shipped, so it has no stored state and starts in Preview
+    # until staff set it Live before the first vote opens.
+    define("goty_vote", "GOTY Vote", core: true,
+      website: [ "GOTY Vote page", "Game page GOTY badge" ],
+      bot: [ "/goty" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

@@ -240,7 +240,7 @@ A part of the club's bot and website that staff turn on and off as one unit, cov
 _Avoid_: Module, section, area
 
 **Core Feature**:
-A Feature members cannot hide with a Feature Preference because the club depends on it: the game index, voting and GOTM, and each member's backlog, collection, now playing and completions.
+A Feature members cannot hide with a Feature Preference because the club depends on it: the game index, voting and GOTM (including the GOTY Vote), and each member's backlog, collection, now playing and completions.
 _Avoid_: Required feature, default feature
 
 **Feature Flag**:
@@ -374,6 +374,28 @@ _Avoid_: Suggestion (that is for the bot or website), nomination (that is for GO
 **Assignment**:
 The Challenge Format where another member chooses the game a member must play, such as a Secret Santa pick from their backlog.
 _Avoid_: Gift, pick (when meaning the format)
+
+## GOTY Vote
+
+**GOTY Vote**:
+The club's yearly vote on its best games of a year, held once per year and named for it, such as GOTY Vote 2026. It has three Awards.
+_Avoid_: GOTY nominations, GOTY round, Year GOTY
+
+**Award**:
+One of the three titles a GOTY Vote decides: GOTM of the Year, NR-GOTM of the Year and Game of the Year. Each Award has its own ballot and is voted on like a GOTM round, runoff included. An Award with one candidate goes to it without a vote, and an Award with no candidates is not given that year.
+_Avoid_: Category (that is GOTM vs NR-GOTM in a round), section, prize
+
+**GOTM of the Year**:
+The Award for the best of a year's GOTM winners. Every GOTM winner from the rounds labelled with a month of that year is on the ballot; nobody nominates.
+_Avoid_: GOTM GOTY
+
+**NR-GOTM of the Year**:
+The Award for the best of a year's NR-GOTM winners. Every NR-GOTM winner from the rounds labelled with a month of that year is on the ballot; nobody nominates.
+_Avoid_: NR-GOTM GOTY
+
+**Game of the Year**:
+The Award for the best game first released that year. A game is eligible when its earliest release anywhere falls in that year; an Alternate Version counts by its own release, so a remake can be eligible while the original is not. Each member nominates up to three eligible games, whether or not they have played them; a game with no known release cannot be nominated until staff record one. A game can win Game of the Year as well as GOTM or NR-GOTM of the Year.
+_Avoid_: Year GOTY, GOTY (when meaning only this Award)
 
 ## Club Codex
 

@@ -1070,10 +1070,118 @@ module OpenapiSchemas
                        "Empty when the round had no runoff."
         }
       ),
-      # VotingEventResource: a queued Discord post for the bot. `payload` holds
-      # the ids the post needs (e.g. `winners` / `ties` per category).
+      # GotyVoteSummaryResource (spec api#471): a year's GOTY Vote with its
+      # derived phase and dates.
+      GotyVoteSummary: obj(
+        year: int, name: str.merge(description: 'e.g. "GOTY Vote 2026".'),
+        nominations_open_at: ts, voting_opens_at: ts, voting_closes_at: ts, closed_at: ts(nullable: true),
+        runoff_opens_at: ts(nullable: true), runoff_closes_at: ts(nullable: true),
+        runoff_closed_at: ts(nullable: true), decided_at: ts(nullable: true),
+        phase: str(enum: GotyVote::PHASES).merge(
+          description: "Derived at read time: upcoming, nominating, voting, then closed until the tally is in " \
+                       "(and again after a runoff window), runoff, tie (awaiting an admin), decided."
+        ),
+        nominations_open: bool, voting_open: bool, runoff_open: bool,
+        winners: array_of("GotyVoteWinner").merge(
+          description: "Each Award's winner in Award order (gotm, nr_gotm, game_of_the_year) once the GOTY Vote " \
+                       "is decided; empty before then. An Award with no votes has no winner."
+        )
+      ),
+      # One Award's winner in the GOTY Vote history (GET /goty_votes).
+      GotyVoteWinner: extends("GotyAwardWinner", required: %w[award name gamedb_game_id decided_by game],
+        award: str(enum: Goty::AWARDS.keys), name: str.merge(description: 'e.g. "GOTM of the Year".')),
+      # A GOTY Vote Award a game won (GET /games/{id} `goty_awards`).
+      GotyAwardWon: obj(
+        year: int, award: str(enum: Goty::AWARDS.keys).merge(
+          description: "gotm (GOTM of the Year), nr_gotm (NR-GOTM of the Year) or game_of_the_year."
+        )
+      ),
+      # GotyVoteResource: the summary plus each Award's ballot and standings.
+      GotyVote: extends("GotyVoteSummary", required: %w[awards pending_ties runoff_ties],
+        candidates_frozen_at: ts(nullable: true).merge(
+          description: "When voting opened and each Award's candidates were frozen; until then the ballots are live."
+        ),
+        pending_ties: json(nullable: false).merge(description: "Awards still tied: { award => [gamedb_game_id] }."),
+        runoff_ties: json(nullable: false).merge(description: "The runoff's ballot: { award => [gamedb_game_id] }."),
+        awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year.")),
+      GotyAward: obj(
+        award: str(enum: Goty::AWARDS.keys), name: str,
+        ballot: array_of("GameSummary").merge(
+          description: "The Award's candidates, frozen when voting opens. Before then, the live ballot: GOTM and " \
+                       "NR-GOTM of the Year list every winner of a round labelled with a month of the year, in " \
+                       "round order, each game once; Game of the Year every game members nominated, each once, in " \
+                       "the order first nominated."
+        ),
+        cap: int.merge(description: "The viewer's vote cap on the ballot open now: 1 in the Award's runoff, else " \
+                                    "half its candidates, at least 1."),
+        runoff_ballot: { type: :array, items: int, description: "The Award's runoff games; empty when it had none." },
+        pending_tie: { type: :array, items: int, description: "Tied games still awaiting the runoff or an admin." },
+        own_votes: { type: :array, items: int, description: "The viewer's votes on the main ballot (game ids)." },
+        own_runoff_votes: { type: :array, items: int, description: "The viewer's runoff vote." },
+        tally: ref("GotyAwardTally"),
+        result: { type: :array, items: ref("GotyAwardResult"), nullable: true,
+                  description: "Every candidate's votes and voters, once the GOTY Vote is decided; else null." },
+        winner: ref("GotyAwardWinner", nullable: true),
+        _required: %w[award name ballot cap runoff_ballot pending_tie own_votes own_runoff_votes tally]
+      ),
+      # The anonymous tally: hidden from members while the ballot is open, as
+      # for GOTM votes; staff and the service always see it.
+      GotyAwardTally: obj(
+        counts_hidden: bool, runoff_counts_hidden: bool,
+        games: { type: :array, description: "Each candidate in ballot order; empty while counts_hidden.",
+                 items: obj(gamedb_game_id: int, votes: int,
+                            runoff_votes: int.merge(description: "0 while runoff_counts_hidden.")) }
+      ),
+      GotyAwardResult: obj(
+        gamedb_game_id: int, votes: int, runoff_votes: int,
+        voters: array_of("UserSummary"), runoff_voters: array_of("UserSummary")
+      ),
+      GotyAwardWinner: obj(
+        gamedb_game_id: int, decided_by: str(enum: Voting::Decide::DECIDED_BY).merge(
+          description: "vote (the tally), runoff, admin (after a runoff tied again) or uncontested (the only " \
+                       "candidate)."
+        ),
+        game: ref("GameSummary", nullable: true)
+      ),
+      # GotyBallotVoteResource: a member's vote in one Award.
+      GotyBallotVote: obj(
+        id: int, year: int, award: str(enum: Goty::AWARDS.keys), user_id: str, gamedb_game_id: int, runoff: bool,
+        voted_at: ts, game: ref("GameSummary", nullable: true)
+      ),
+      # The GOTY cast response, shaped as VoteCastResult.
+      GotyVoteCastResult: obj(
+        action: str(enum: %w[voted unvoted]),
+        vote: ref("GotyBallotVote", nullable: true),
+        removed_votes: array_of("GotyBallotVote"),
+        cap: int,
+        runoff: bool,
+        warning: str(nullable: true),
+        _required: %w[action removed_votes cap runoff]
+      ),
+      # GotyNominationResource: a member's Game of the Year nomination.
+      GotyNomination: obj(
+        id: int, year: int, user_id: str, gamedb_game_id: int, nominated_at: ts,
+        user: ref("UserSummary"), game: ref("GameWithPlatforms")
+      ),
+      # Goty::Eligibility (GET /games/{id}/goty_eligibility).
+      GotyEligibility: obj(
+        game_id: int, year: int, eligible: bool,
+        reason: str(nullable: true, enum: [ *Goty::Eligibility::REASONS, nil ]).merge(
+          description: "Why not: `not_released_in_year`, or `release_unknown` (no dated Release and no " \
+                       "initial release date; staff can record a Manual Release). Null when eligible."
+        ),
+        released_on: date(nullable: true).merge(description: "The date judged: the earliest dated Release, " \
+                                                             "or the initial release date."),
+        date_precision: str(nullable: true, enum: [ *GamedbRelease::DATE_PRECISIONS, nil ]),
+        source: str(nullable: true, enum: [ "release", "initial_release_date", nil ])
+      ),
+      # VotingEventResource: a queued Discord post for the bot, for a GOTM round
+      # (`round_number`) or a GOTY Vote (`goty_year`), exactly one of the two.
+      # A round's `payload` holds the ids the post needs (e.g. `winners` /
+      # `ties` per category); a GOTY Vote's is Goty::EventPayload's shape.
       VotingEvent: obj(
-        id: int, round_number: int, kind: str(enum: VotingEvent::KINDS), payload: json(nullable: false),
+        id: int, round_number: int(nullable: true), goty_year: int(nullable: true),
+        kind: str(enum: VotingEvent::KINDS), payload: json(nullable: false),
         available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
         delivered_at: ts(nullable: true), attempts: int
       ),
@@ -1838,13 +1946,15 @@ module OpenapiSchemas
           description: "The gotm_cache_reload bot job. Null when none was queued (the service's own entry edits)."
         )
       ),
-      # NominationsController single-user delete: `deleted` plus the queued
-      # nomination_deleted bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
+      # NominationsController and GotyNominationsController single delete:
+      # `deleted` plus the queued nomination_deleted / goty_nomination_deleted
+      # bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
       NominationDeletedResponse: obj(
         deleted: { type: :boolean, example: true },
         meta: obj(
           announce_job_id: int(nullable: true).merge(
-            description: "The nomination_deleted bot job. Null when none was queued (owner and service deletes)."
+            description: "The nomination_deleted (GOTM, NR-GOTM) or goty_nomination_deleted (Game of the Year) " \
+                         "bot job. Null when none was queued (owner and service deletes)."
           )
         ),
         _required: %w[deleted meta]
@@ -1896,8 +2006,8 @@ module OpenapiSchemas
         pages: { type: :array, items: str(example: "voting"),
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
-                              "gotm_history, challenges, games, reviews, releases, achievements, journals, members, news, " \
-                              "codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
+                              "gotm_history, goty, challenges, games, reviews, releases, achievements, journals, members, " \
+                              "news, codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
                               "public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),
