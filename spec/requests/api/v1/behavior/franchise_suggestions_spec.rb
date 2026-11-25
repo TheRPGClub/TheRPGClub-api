@@ -117,12 +117,20 @@ RSpec.describe "Franchise suggestions", type: :request do
         "parent_title" => "Final Fantasy XVI")
     end
 
-    it "does not guess an Add-on when the parent is not in that Franchise" do
+    it "guesses an Add-on for any game with a parent, naming the parent when it is in GameDB" do
       create(:franchise, name: "Final Fantasy")
       parent = create(:game, title: "Some Parent", igdb_id: SecureRandom.random_number(1_000_000_000))
       game = create(:game, title: "Final Fantasy Extra", parent_igdb_id: parent.igdb_id)
 
-      expect(suggestions_for(game).sole).to include("role" => "mainline", "parent_game_id" => nil,
+      expect(suggestions_for(game).sole).to include("role" => "add_on", "parent_game_id" => parent.game_id,
+        "parent_title" => "Some Parent")
+    end
+
+    it "guesses an Add-on with no parent named when the parent isn't in GameDB" do
+      create(:franchise, name: "Final Fantasy")
+      game = create(:game, title: "Final Fantasy Extra", parent_igdb_id: 987_654_321)
+
+      expect(suggestions_for(game).sole).to include("role" => "add_on", "parent_game_id" => nil,
         "parent_title" => nil)
     end
   end

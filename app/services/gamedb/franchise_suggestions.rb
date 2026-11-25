@@ -15,9 +15,11 @@ module Gamedb
   # above), then Franchises with more reasons, more linked Series games, and
   # longer names.
   #
-  # Each suggestion carries its likely `role` there: `add_on` when the game
-  # has a parent game linked to that Franchise (with `parent_game_id`),
-  # else `mainline` when most of its linked Series games are Mainline there,
+  # Each suggestion carries its likely `role` there: `add_on` whenever the
+  # game has a parent (GLOSSARY.md "Add-on"; FranchiseGames, Browse and
+  # Progress count it as one whatever its Mainline mark), with
+  # `parent_game_id`/`parent_title` when the parent is in GameDB; else
+  # `mainline` when most of its linked Series games are Mainline there,
   # or, with none, when its title starts with the Franchise's name; else
   # `other` (a Spin-off).
   class FranchiseSuggestions
@@ -109,7 +111,7 @@ module Gamedb
     end
 
     def as_json(candidate)
-      add_on = parent_franchise_ids.include?(candidate.franchise.franchise_id)
+      add_on = game.parent_igdb_id.present?
       { franchise: FranchiseResource.new(candidate.franchise).serializable_hash,
         reason: candidate.reason,
         reasons: REASONS & candidate.reasons,
@@ -134,10 +136,6 @@ module Gamedb
       return @parent if defined?(@parent)
 
       @parent = game.parent_igdb_id && GamedbGame.select(:game_id, :title).find_by(igdb_id: game.parent_igdb_id)
-    end
-
-    def parent_franchise_ids
-      @parent_franchise_ids ||= parent ? GamedbGameFranchise.where(game_id: parent.game_id).pluck(:franchise_id) : []
     end
   end
 end

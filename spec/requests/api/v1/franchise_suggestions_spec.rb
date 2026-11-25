@@ -13,8 +13,8 @@ RSpec.describe 'api/v1/franchise_suggestions', type: :request do
                   'in that Series are linked to it (`series_links`), or the game\'s title contains its name as ' \
                   'whole words (`title_match`). Franchises the game is linked to or was unlinked from by hand, ' \
                   'and merged ones, are left out. Ordered by the strongest reason (in that order), then more ' \
-                  'reasons, more linked Series games and longer names. Each has a likely `role`: `add_on` (with ' \
-                  'the parent) when the game\'s parent game is in that Franchise, else `mainline` when most of ' \
+                  'reasons, more linked Series games and longer names. Each has a likely `role`: `add_on` whenever ' \
+                  'the game has a parent (with the parent when it is in GameDB), else `mainline` when most of ' \
                   'its linked Series games are Mainline there or, with none, when the title starts with the ' \
                   'Franchise\'s name, else `other` (a Spin-off). Regulars and above (the acting member\'s stored ' \
                   'roles).'
