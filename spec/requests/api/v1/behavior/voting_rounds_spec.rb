@@ -448,4 +448,36 @@ RSpec.describe "api/v1/voting_rounds behavior", type: :request do
       expect(VotingRound.current.round_number).to eq(base + 1)
     end
   end
+
+  describe "GET /api/v1/voting_rounds" do
+    def tied_round(number)
+      games = create_list(:game, 2)
+      games.each { |game| create(:game_image, :primary, game: game) }
+      ties = { "gotm" => games.map(&:game_id).sort }
+      closed_at = opens_at + 3.days
+      create(:voting_round, round_number: number, voting_opens_at: opens_at, closed_at: closed_at,
+        pending_ties: ties, runoff_ties: ties, runoff_opens_at: closed_at, runoff_closes_at: closed_at + 1.day)
+    end
+
+    def queries_for_index
+      count = 0
+      callback = ->(*, payload) { count += 1 unless payload[:name] == "SCHEMA" }
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        get "/api/v1/voting_rounds", headers: service_headers
+      end
+      count
+    end
+
+    it "embeds every round's tied games in a fixed number of queries" do
+      tied_round(base)
+      one = queries_for_index
+
+      3.times { |i| tied_round(base + 1 + i) }
+      four = queries_for_index
+
+      expect(four).to eq(one)
+      runoff = json.fetch("data").find { |round| round["round_number"] == base + 3 }.dig("runoff_ties", "gotm")
+      expect(runoff.length).to eq(2)
+    end
+  end
 end

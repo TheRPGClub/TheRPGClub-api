@@ -224,4 +224,24 @@ RSpec.describe "api/v1/game_alternates behavior", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
   end
+
+  describe "the alternates list" do
+    it "reads every alternate's images in one query" do
+      2.times do
+        other = create(:game).tap { |game| create(:game_image, :primary, game: game) }
+        GamedbGameAlternate.create!(game_id: game_low.game_id, alt_game_id: other.game_id)
+      end
+      image_sqls = []
+      callback = ->(*, payload) { image_sqls << payload[:sql] if payload[:sql].include?("gamedb_game_images") }
+
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        post "/api/v1/games/#{game_low.game_id}/alternates",
+          params: { data: { alt_game_id: game_high.game_id } }, headers: service_headers, as: :json
+      end
+
+      expect(response).to have_http_status(:created)
+      expect(json.fetch("data").length).to eq(3)
+      expect(image_sqls.size).to eq(1)
+    end
+  end
 end
