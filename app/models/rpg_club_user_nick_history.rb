@@ -7,7 +7,7 @@ class RpgClubUserNickHistory < ApplicationRecord
   self.table_name = "rpg_club_user_nick_history"
   self.primary_key = "event_id"
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

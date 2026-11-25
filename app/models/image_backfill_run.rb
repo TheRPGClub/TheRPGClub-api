@@ -21,7 +21,7 @@ class ImageBackfillRun < ApplicationRecord
   # Starting while another run is queued or running.
   class InProgress < StandardError; end
 
-  belongs_to :started_by, class_name: "RpgClubUser", foreign_key: :started_by_user_id,
+  belongs_to :started_by, -> { without_images }, class_name: "RpgClubUser", foreign_key: :started_by_user_id,
     primary_key: :user_id, optional: true, inverse_of: false
 
   validates :status, inclusion: { in: STATUSES }

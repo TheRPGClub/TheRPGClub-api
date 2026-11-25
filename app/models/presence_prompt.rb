@@ -12,7 +12,7 @@ class PresencePrompt < ApplicationRecord
   # Lifecycle states a prompt moves through, mirroring the bot.
   STATUSES = %w[PENDING ACCEPTED DECLINED OPT_OUT_GAME OPT_OUT_ALL].freeze
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

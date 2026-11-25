@@ -7,7 +7,7 @@ class UserGameCompletion < ApplicationRecord
   # Run progress follows every commit (Challenges::CountsTowardRuns).
   include Challenges::CountsTowardRuns
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

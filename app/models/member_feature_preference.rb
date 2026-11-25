@@ -6,7 +6,7 @@
 # cannot be hidden. Preferences narrow what the website shows
 # (Features::Access#shown?) and never who can use a Feature.
 class MemberFeaturePreference < ApplicationRecord
-  belongs_to :user, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
+  belongs_to :user, -> { without_images }, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
 
   validates :feature_key, uniqueness: { scope: :user_id }
   validate :feature_is_hideable

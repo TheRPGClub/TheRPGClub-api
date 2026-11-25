@@ -7,5 +7,5 @@ class MemberPinnedPage < ApplicationRecord
   # A page appears once per member. The unique index on (user_id, page_key)
   # is the guard: PinnedPages writes with insert_all!, which skips model
   # validations, after refusing a duplicate itself.
-  belongs_to :user, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
+  belongs_to :user, -> { without_images }, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
 end

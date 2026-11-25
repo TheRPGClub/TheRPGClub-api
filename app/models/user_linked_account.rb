@@ -20,7 +20,7 @@ class UserLinkedAccount < ApplicationRecord
   enum :sync_status, SYNC_STATUSES.index_with(&:itself), prefix: :sync, validate: true
   enum :sync_mode, SYNC_MODES.index_with(&:itself), validate: true
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

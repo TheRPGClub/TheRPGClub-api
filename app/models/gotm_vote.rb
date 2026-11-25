@@ -13,7 +13,7 @@ class GotmVote < ApplicationRecord
   self.table_name = "gotm_votes"
   self.primary_key = "vote_id"
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

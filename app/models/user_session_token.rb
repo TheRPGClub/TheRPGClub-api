@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class UserSessionToken < ApplicationRecord
-  belongs_to :user, class_name: "RpgClubUser", foreign_key: :user_id, primary_key: :user_id
+  belongs_to :user, -> { without_images }, class_name: "RpgClubUser", foreign_key: :user_id, primary_key: :user_id
 
   scope :active, -> { where("expires_at > ?", Time.current) }
 
