@@ -3407,6 +3407,151 @@ components:
       - runoff_ended
       - pending_ties
       - runoff_ties
+    GotyVoteSummary:
+      type: object
+      properties:
+        year:
+          type: integer
+        name:
+          type: string
+          description: e.g. "GOTY Vote 2026".
+        nominations_open_at:
+          type: string
+          format: date-time
+        voting_opens_at:
+          type: string
+          format: date-time
+        voting_closes_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        runoff_opens_at:
+          type: string
+          format: date-time
+          nullable: true
+        runoff_closes_at:
+          type: string
+          format: date-time
+          nullable: true
+        runoff_closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        phase:
+          type: string
+          enum:
+          - upcoming
+          - nominating
+          - voting
+          - closed
+          - runoff
+          - tie
+          - decided
+          description: 'Derived at read time: upcoming, nominating, voting, then closed
+            until the tally is in (and again after a runoff window), runoff, tie (awaiting
+            an admin), decided.'
+        nominations_open:
+          type: boolean
+        voting_open:
+          type: boolean
+        runoff_open:
+          type: boolean
+      required:
+      - year
+      - name
+      - nominations_open_at
+      - voting_opens_at
+      - voting_closes_at
+      - phase
+      - nominations_open
+      - voting_open
+      - runoff_open
+    GotyVote:
+      allOf:
+      - "$ref": "#/components/schemas/GotyVoteSummary"
+      - type: object
+        properties:
+          awards:
+            type: array
+            items:
+              "$ref": "#/components/schemas/GotyAward"
+            description: 'The three Awards in order: gotm, nr_gotm, game_of_the_year.'
+        required:
+        - awards
+    GotyAward:
+      type: object
+      properties:
+        award:
+          type: string
+          enum:
+          - gotm
+          - nr_gotm
+          - game_of_the_year
+        name:
+          type: string
+        ballot:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GameSummary"
+          description: 'The Award''s games. GOTM and NR-GOTM of the Year: every winner
+            of a round labelled with a month of the year, in round order, each game
+            once. Game of the Year: empty until nominations land.'
+      required:
+      - award
+      - name
+    GotyEligibility:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        year:
+          type: integer
+        eligible:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+          enum:
+          - not_released_in_year
+          - release_unknown
+          -
+          description: 'Why not: `not_released_in_year`, or `release_unknown` (no
+            dated Release and no initial release date; staff can record a Manual Release).
+            Null when eligible.'
+        released_on:
+          type: string
+          format: date
+          nullable: true
+          description: 'The date judged: the earliest dated Release, or the initial
+            release date.'
+        date_precision:
+          type: string
+          nullable: true
+          enum:
+          - day
+          - month
+          - quarter
+          - year
+          - tba
+          -
+        source:
+          type: string
+          nullable: true
+          enum:
+          - release
+          - initial_release_date
+          -
+      required:
+      - game_id
+      - year
+      - eligible
     VotingEvent:
       type: object
       properties:
@@ -18566,6 +18711,7 @@ paths:
         - club_codex
         - game_lists
         - franchise_progress
+        - goty_vote
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -23271,6 +23417,142 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/goty_votes":
+    get:
+      summary: List GOTY Votes
+      tags:
+      - GOTY Vote
+      description: 'Every year''s GOTY Vote, newest first, with its derived `phase`
+        and dates. Behind the `goty_vote` Feature. The lifecycle creates each year''s
+        GOTY Vote with the default schedule: nominations open January 1 of the next
+        year at 00:00, voting opens at noon on the first Friday on or after January
+        15 and closes at the end of that Sunday (US Eastern).'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: GOTY Votes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GotyVoteSummary"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/goty_votes/{year}":
+    parameters:
+    - name: year
+      in: path
+      description: The year the GOTY Vote decides, e.g. 2026
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: Show a GOTY Vote
+      tags:
+      - GOTY Vote
+      description: 'The year''s GOTY Vote: its `phase` (derived at read time), dates
+        and the three Awards with their ballots. GOTM and NR-GOTM of the Year list
+        every winner of the rounds whose `month_year` falls in the year (a round with
+        several winners puts them all on; a game that won twice appears once). Game
+        of the Year is empty until nominations land. Behind the `goty_vote` Feature.
+        404 for a year with no GOTY Vote.'
+      responses:
+        '200':
+          description: GOTY Vote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyVote"
+                required:
+                - data
+        '404':
+          description: no GOTY Vote for the year
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/games/{id}/goty_eligibility":
+    parameters:
+    - name: id
+      in: path
+      description: GameDB game id
+      required: true
+      schema:
+        type: integer
+    - name: year
+      in: query
+      required: true
+      schema:
+        type: integer
+      description: The GOTY Vote year
+    get:
+      summary: Check Game of the Year eligibility
+      tags:
+      - GOTY Vote
+      description: 'Whether the game may be nominated for the year''s Game of the
+        Year, so the bot and the website can grey out ineligible games in search.
+        Eligible when the game''s earliest dated Release (IGDB or Manual, any region
+        or platform; a year-only date counts) falls in the year; with no dated Release,
+        its initial release date is judged instead, and with neither the reason is
+        `release_unknown`. Each GameDB game stands alone: a remake is judged by its
+        own Releases. Behind the `goty_vote` Feature. 400 without a valid `year`.'
+      responses:
+        '200':
+          description: eligibility
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyEligibility"
+                required:
+                - data
+        '400':
+          description: missing or invalid year
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such game
           content:
             application/json:
               schema:

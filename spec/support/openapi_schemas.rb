@@ -1070,6 +1070,42 @@ module OpenapiSchemas
                        "Empty when the round had no runoff."
         }
       ),
+      # GotyVoteSummaryResource (spec api#471): a year's GOTY Vote with its
+      # derived phase and dates.
+      GotyVoteSummary: obj(
+        year: int, name: str.merge(description: 'e.g. "GOTY Vote 2026".'),
+        nominations_open_at: ts, voting_opens_at: ts, voting_closes_at: ts, closed_at: ts(nullable: true),
+        runoff_opens_at: ts(nullable: true), runoff_closes_at: ts(nullable: true),
+        runoff_closed_at: ts(nullable: true), decided_at: ts(nullable: true),
+        phase: str(enum: GotyVote::PHASES).merge(
+          description: "Derived at read time: upcoming, nominating, voting, then closed until the tally is in " \
+                       "(and again after a runoff window), runoff, tie (awaiting an admin), decided."
+        ),
+        nominations_open: bool, voting_open: bool, runoff_open: bool
+      ),
+      # GotyVoteResource: the summary plus each Award's ballot.
+      GotyVote: extends("GotyVoteSummary", required: %w[awards],
+        awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year.")),
+      GotyAward: obj(
+        award: str(enum: Goty::AWARDS.keys), name: str,
+        ballot: array_of("GameSummary").merge(
+          description: "The Award's games. GOTM and NR-GOTM of the Year: every winner of a round labelled with " \
+                       "a month of the year, in round order, each game once. Game of the Year: empty until " \
+                       "nominations land."
+        )
+      ),
+      # Goty::Eligibility (GET /games/{id}/goty_eligibility).
+      GotyEligibility: obj(
+        game_id: int, year: int, eligible: bool,
+        reason: str(nullable: true, enum: [ *Goty::Eligibility::REASONS, nil ]).merge(
+          description: "Why not: `not_released_in_year`, or `release_unknown` (no dated Release and no " \
+                       "initial release date; staff can record a Manual Release). Null when eligible."
+        ),
+        released_on: date(nullable: true).merge(description: "The date judged: the earliest dated Release, " \
+                                                             "or the initial release date."),
+        date_precision: str(nullable: true, enum: [ *GamedbRelease::DATE_PRECISIONS, nil ]),
+        source: str(nullable: true, enum: [ "release", "initial_release_date", nil ])
+      ),
       # VotingEventResource: a queued Discord post for the bot. `payload` holds
       # the ids the post needs (e.g. `winners` / `ties` per category).
       VotingEvent: obj(

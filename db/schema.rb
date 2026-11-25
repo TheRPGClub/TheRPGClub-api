@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -702,6 +702,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_runoff_user_game", unique: true
+  end
+
+  create_table "goty_votes", primary_key: "year", id: :integer, default: nil, force: :cascade do |t|
+    t.datetime "closed_at"
+    t.datetime "created_at", null: false
+    t.datetime "decided_at"
+    t.datetime "nominations_open_at", null: false
+    t.jsonb "pending_ties", default: {}, null: false
+    t.datetime "runoff_closed_at"
+    t.datetime "runoff_closes_at"
+    t.datetime "runoff_opens_at"
+    t.jsonb "runoff_ties", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.datetime "voting_closes_at", null: false
+    t.datetime "voting_opens_at", null: false
   end
 
   create_table "guild_channels", primary_key: "channel_id", id: :string, force: :cascade do |t|
