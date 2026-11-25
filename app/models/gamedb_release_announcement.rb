@@ -10,4 +10,7 @@ class GamedbReleaseAnnouncement < ApplicationRecord
     inverse_of: :announcement
 
   validates :announce_at, presence: true
+
+  # Any change to an announcement may change what the due feed offers next.
+  after_commit { Gamedb::DueAnnouncementGate.clear }
 end

@@ -99,6 +99,9 @@ module Gamedb
     end
 
     def call
+      # Its writes are raw SQL (no model callbacks), so open the due feed's
+      # gate itself once they commit.
+      DueAnnouncementGate.clear_after_commit
       Result.new(upserted: upsert_announcements, restored: restore_non_canonical, skipped: mark_non_canonical)
     end
 

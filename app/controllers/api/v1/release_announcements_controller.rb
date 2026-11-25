@@ -60,11 +60,25 @@ module Api
       # server-side: any pending announcement whose release has already shipped is
       # stamped skipped first, so it never appears here. Unpaginated; bounded by
       # `limit` (default 25, max 100).
+      #
+      # Until the next pending announcement comes due it answers `[]` from
+      # Gamedb::DueAnnouncementGate without touching the database, so the
+      # hourly poll lets Neon sleep. A query that finds nothing ready records
+      # when the next one is; one that finds some leaves the gate open until
+      # they are sent or skipped.
       def due
         now = Time.current
-        mark_missed_announcements(now)
+        return render(json: { data: [] }) unless Gamedb::DueAnnouncementGate.due?(now)
 
-        render json: { data: DueReleaseAnnouncementResource.new(due_scope(now).limit(due_limit)).serializable_hash }
+        mark_missed_announcements(now)
+        rows = due_scope(now).limit(due_limit).to_a
+        if rows.empty?
+          Gamedb::DueAnnouncementGate.record(next_pending_announce_at(now), now)
+        else
+          Gamedb::DueAnnouncementGate.clear
+        end
+
+        render json: { data: DueReleaseAnnouncementResource.new(rows).serializable_hash }
       end
 
       # GET /api/v1/release_announcements/:id  (id is the release_id)
@@ -160,6 +174,14 @@ module Api
             "gamedb_release_announcements.announce_at ASC, gamedb_releases.release_date ASC, " \
             "gamedb_releases.game_id ASC, gamedb_release_announcements.release_id ASC"
           ))
+      end
+
+      # When the next pending announcement becomes announceable. Pending ones
+      # already past their time but not offered (non-canonical, or their game
+      # was announced) are left to the missed-window sweep at the next query.
+      def next_pending_announce_at(now)
+        GamedbReleaseAnnouncement.where(sent_at: nil, skipped_at: nil)
+          .where("announce_at > ?", now).minimum(:announce_at)
       end
 
       # Optional reason supplied with a skip; `nil` when none was sent.
