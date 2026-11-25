@@ -75,6 +75,7 @@ module Api
       #
       # `pool.game_list_id` starts the Pool from a Game List: its games come
       # in as Core Games and the list stays linked (Challenges::ListLink).
+      # A list that already feeds a Challenge is refused (422).
       def create
         data = request_data
         return forbid(Challenges::Refusals::CREATE) unless actor.can_create?(data["challenge_format"])
@@ -88,6 +89,7 @@ module Api
         return if performed?
 
         Challenge.transaction do
+          Challenges::ListLink.claim!(challenge.pool_game_list_id) if challenge.pool_game_list_id
           Challenges::Form.new(challenge, data.except("hosted_by_club", "acting_user_id")).save!
           Challenges::Announcements.challenge_created!(reload(challenge), by: actor.user_id)
         end

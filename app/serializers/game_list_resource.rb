@@ -8,6 +8,9 @@
 #   entry_count      how many games it holds
 #   preview_games    its first 4 games in its own order, { game_id, title, cover_url }
 #   viewer           what the acting member may do with it (GameLists::Actor)
+#   challenge        the Pool Challenge it feeds, { id, name }, or null (also
+#                    null when that Challenge is hidden); a list feeds one
+#                    Challenge at most, so no other can start from it
 #   entries          (a single list only) every game, in its sort's order
 #
 # Pass `params[:actor]`, and for a page of lists `params[:counts]` and
@@ -43,6 +46,11 @@ class GameListResource
     params.fetch(:actor).viewer(list)
   end
 
+  attribute :challenge do |list|
+    challenge = list.linked_challenge
+    { id: challenge.id, name: challenge.name } if challenge && !challenge.hidden?
+  end
+
   attributes :created_at, :updated_at
 
   attribute :entries, if: proc { params[:detail] } do |list|
@@ -50,7 +58,7 @@ class GameListResource
     GameListEntryResource.new(entries).serializable_hash
   end
 
-  def self.preloaded(scope) = scope.preload(:owner, :taken_over_from)
+  def self.preloaded(scope) = scope.preload(:owner, :taken_over_from, :linked_challenge)
 
   private
 

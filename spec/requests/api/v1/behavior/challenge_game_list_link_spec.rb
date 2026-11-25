@@ -134,6 +134,46 @@ RSpec.describe "api/v1 Game Lists linked to Challenges", type: :request do
       expect(json.fetch("message")).to eq("pool game_list_id can only be set when the Challenge is created")
     end
 
+    it "refuses a list that already feeds a Challenge, ended or hidden ones too" do
+      first = created_from(list)
+
+      create_from(list)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("message")).to eq(
+        "This Game List already feeds \"Souls Autumn\", so another Challenge can't start from it")
+
+      first.update_columns(hidden: true)
+      create_from(list)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("message")).to eq(
+        "This Game List already feeds a Challenge, so another Challenge can't start from it")
+      expect(Challenge.where(pool_game_list_id: list.id).count).to eq(1)
+    end
+
+    it "lets a list start a Challenge again once its link ends" do
+      first = created_from(list)
+      Challenges::ListLink.end!(first)
+
+      expect(created_from(list).pool_game_list_id).to eq(list.id)
+    end
+
+    it "shows the Challenge a list feeds on the list, unless it is hidden" do
+      get "/api/v1/game_lists/#{list.id}", headers: auth_headers_for(other)
+      expect(json.dig("data", "challenge")).to be_nil
+
+      challenge = created_from(list)
+      get "/api/v1/game_lists/#{list.id}", headers: auth_headers_for(other)
+      expect(json.dig("data", "challenge")).to eq("id" => challenge.id, "name" => "Souls Autumn")
+
+      get "/api/v1/game_lists", headers: auth_headers_for(owner)
+      expect(json.fetch("data").find { |row| row["id"] == list.id }.fetch("challenge"))
+        .to eq("id" => challenge.id, "name" => "Souls Autumn")
+
+      challenge.update_columns(hidden: true)
+      get "/api/v1/game_lists/#{list.id}", headers: auth_headers_for(other)
+      expect(json.dig("data", "challenge")).to be_nil
+    end
+
     it "takes the owner's Private list, which other members see as not visible" do
       challenge = created_from(list_of(owner, nioh, visibility: "private", name: "Secret"))
 
