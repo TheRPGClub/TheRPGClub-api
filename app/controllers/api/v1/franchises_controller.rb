@@ -34,6 +34,27 @@ module Api
         ) }
       end
 
+      # GET /api/v1/franchises/browse?q=&letter=&sort=&page=&per=
+      #
+      # The /franchises index (Franchises::Browse): current Franchises as
+      # tiles, `sort` `az` (default), `games` or `plays`, `letter` A to Z or
+      # `#`. The tiles are cached for a few minutes, keyed on the Franchise
+      # list and history so a change shows at once; each tile then gets
+      # `progress` (the viewer's Mainline `{ done, total }`) when the
+      # `franchise_progress` Feature is open to a signed-in member.
+      def browse
+        sort, letter = browse_params
+        return if performed?
+
+        payload = Rails.cache.fetch(browse_cache_key(sort, letter), expires_in: BROWSE_TTL) do
+          browse = Franchises::Browse.new(q: params[:q], letter: letter, sort: sort)
+          pagy, franchises = pagy(browse.scope, **pagy_options(default_per: BROWSE_PER, max_per: BROWSE_MAX_PER))
+          { data: browse.rows(franchises.to_a), meta: pagy_meta(pagy) }
+        end
+
+        render json: with_progress(payload)
+      end
+
       # POST /api/v1/franchises
       # Body: { "data": { "name" } }, or { "data": { "igdb_franchise_id", "name" } }
       #
@@ -128,6 +149,45 @@ module Api
       end
 
       private
+
+      BROWSE_TTL = 10.minutes
+      BROWSE_PER = 48
+      BROWSE_MAX_PER = 120
+
+      # `sort` and `letter` checked against Franchises::Browse; 422
+      # `invalid_sort` / `invalid_letter` otherwise.
+      def browse_params
+        sort = params[:sort].presence || "az"
+        unless Franchises::Browse::SORTS.include?(sort)
+          return render(json: { error: "invalid_sort", message: "sort must be one of: #{Franchises::Browse::SORTS.join(', ')}" },
+            status: :unprocessable_content)
+        end
+
+        letter = params[:letter].presence&.upcase
+        if letter && !Franchises::Browse::LETTERS.include?(letter)
+          return render(json: { error: "invalid_letter", message: "letter must be A to Z or #" },
+            status: :unprocessable_content)
+        end
+
+        [ sort, letter ]
+      end
+
+      # Every hand edit lands in the history and every IGDB import changes
+      # the link count, so both stand in for an updated_at.
+      def browse_cache_key(sort, letter)
+        [ "franchise_browse", taxonomy_version(GamedbFranchise), GamedbFranchiseChange.maximum(:id),
+          GamedbGameFranchise.count, params[:q].to_s.strip.downcase, letter, sort,
+          pagy_options(default_per: BROWSE_PER, max_per: BROWSE_MAX_PER) ]
+      end
+
+      def with_progress(payload)
+        user_id = requester_id
+        return payload unless user_id && can_use_feature?(:franchise_progress)
+
+        rows = payload.fetch(:data)
+        progress = Franchises::Browse.progress(rows.pluck(:franchise_id), user_id)
+        payload.merge(data: rows.map { |row| row.merge(progress: progress.fetch(row[:franchise_id])) })
+      end
 
       # The upsert goes through GamedbFranchise.for_igdb_ref, as an IGDB
       # import does: a merged Franchise answers with its target (200), and

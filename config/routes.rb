@@ -86,6 +86,9 @@ Rails.application.routes.draw do
       # games, set Mainline and undo changes; Admins and above rename, merge
       # and delete.
       resources :franchises, only: %i[index show create update destroy] do
+        # The /franchises index (spec api#487): tiles with counts, covers
+        # and the viewer's Mainline progress.
+        get "browse", on: :collection
         member do
           put "games/:game_id", action: :link_game, as: :link_game
           delete "games/:game_id", action: :unlink_game, as: :unlink_game

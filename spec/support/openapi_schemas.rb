@@ -140,6 +140,29 @@ module OpenapiSchemas
           can_edit: bool.merge(description: "Regulars and above: link, unlink, Mainline, create."),
           can_admin: bool.merge(description: "Admins and above.")
         )),
+      # A Franchise on the /franchises index (spec api#487, ticket api#488).
+      FranchiseTile: obj(
+        _required: %w[franchise_id name games_count mainline_count spin_off_count add_on_count club_plays covers],
+        franchise_id: int, name: str,
+        games_count: int.merge(description: "Every linked game."),
+        mainline_count: int.merge(description: "Mainline games that aren't Add-ons."),
+        spin_off_count: int.merge(description: "Games neither Mainline nor Add-ons."),
+        add_on_count: int.merge(description: "Games with a parent game, whatever their Mainline mark."),
+        first_year: int(nullable: true).merge(description: "The earliest release year of a linked game."),
+        latest_year: int(nullable: true).merge(description: "The latest release year of a linked game."),
+        club_plays: int.merge(description: "Now Playing entries plus Game Completions in the last 90 days, " \
+                                           "on linked games."),
+        covers: {
+          type: :array, maxItems: 3,
+          description: "Newest Mainline first, then Spin-offs, newest first; games with a cover only.",
+          items: obj(_required: %w[game_id title cover_url], game_id: int, title: str, cover_url: str)
+        },
+        progress: obj(
+          _description: "The viewer's Mainline games finished (any Game Completion) of the total. Present only " \
+                        "for a signed-in member the `franchise_progress` Feature is open to.",
+          _required: %w[done total], done: int, total: int
+        )
+      ),
       FranchiseLink: obj(
         franchise_id: int, game_id: int, source: str(enum: %w[igdb manual]), mainline: bool,
         created_at: ts(nullable: true).merge(description: "Null for links older than Franchise editing."),
