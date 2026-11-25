@@ -7,7 +7,7 @@
 class UserAchievementSetProgress < ApplicationRecord
   self.table_name = "user_achievement_set_progress"
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

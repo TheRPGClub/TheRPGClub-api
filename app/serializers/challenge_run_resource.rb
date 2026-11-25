@@ -70,7 +70,7 @@ class ChallengeRunResource
     Challenges::Formats::Slots.run_json(run) if run.challenge.challenge_format == Challenges::Formats::Slots::KEY
   end
 
-  PRELOADS = [ :user, { edition: { signups: %i[user picked_game] }, entries: { game: %i[images releases] },
+  PRELOADS = [ :user, { edition: { signups: [ :user, { picked_game: :images } ] }, entries: { game: %i[images releases] },
                          challenge: %i[pool_franchises pool_collections pool_games] } ].freeze
 
   def self.preloaded(scope) = scope.preload(*PRELOADS)

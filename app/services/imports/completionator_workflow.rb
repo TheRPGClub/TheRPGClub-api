@@ -306,9 +306,14 @@ module Imports
       region = GamedbRegion.find_by(region_code: RELEASE_REGION_CODE)
       return unless region
 
-      GamedbRelease.create!(game_id: game.game_id, platform_id:, region_id: region.region_id,
-        release_date: game.initial_release_date, notes: RELEASE_NOTE)
-      game.touch
+      GamedbRelease.transaction do
+        game.lock!
+        GamedbRelease.create!(game_id: game.game_id, platform_id:, region_id: region.region_id,
+          release_date: game.initial_release_date, notes: RELEASE_NOTE)
+        # Schedule its announcement now, as a Release edit or IGDB refresh does.
+        Gamedb::ReleaseAnnouncementSchedule.call(game.game_id)
+        game.touch
+      end
     end
 
     def parse_platform_id(value)

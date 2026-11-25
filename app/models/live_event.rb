@@ -18,7 +18,7 @@ class LiveEvent < ApplicationRecord
   SNOWFLAKE = /\A\d{1,30}\z/
 
   belongs_to :bot_job, optional: true
-  belongs_to :created_by, class_name: "RpgClubUser", foreign_key: :created_by_user_id,
+  belongs_to :created_by, -> { without_images }, class_name: "RpgClubUser", foreign_key: :created_by_user_id,
     primary_key: :user_id, optional: true, inverse_of: false
 
   normalizes :topic, with: ->(value) { value.to_s.squish }

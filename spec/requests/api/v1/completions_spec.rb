@@ -140,6 +140,38 @@ RSpec.describe 'api/v1/completions', type: :request do
     end
   end
 
+  path '/api/v1/users/{user_id}/completions/months' do
+    parameter name: :user_id, in: :path, schema: { type: :string }, required: true, description: 'Owning RpgClubUser id.'
+
+    get 'Per-month tallies of a user\'s completions' do
+      tags 'Completions'
+      description 'One row per month (`YYYY-MM`, the UTC month of `completed_at`, matching the index\'s `year` ' \
+                  'filter) with that month\'s completion count, newest first. Undated completions collapse into ' \
+                  'a single `month: null` row, last. Unpaginated. Open to any authenticated caller.'
+      produces 'application/json'
+
+      response '200', 'monthly tallies' do
+        schema type: :object, properties: {
+          data: {
+            type: :array,
+            items: {
+              type: :object,
+              properties: {
+                month: { type: :string, nullable: true, example: '2026-08', description: '`YYYY-MM`, or null for undated completions.' },
+                count: { type: :integer }
+              },
+              required: %w[month count]
+            }
+          }
+        }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/users/{user_id}/completions/common' do
     parameter name: :user_id, in: :path, schema: { type: :string }, required: true,
       description: 'The left member.'

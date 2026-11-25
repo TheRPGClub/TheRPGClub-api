@@ -18,7 +18,7 @@ module Api
       # `game_id` (optional) narrows to one game's entries by exact
       # `gamedb_game_id`, so the game page need not read the whole list.
       def index
-        scope = UserGameBacklog.where(user_id: params[:user_id]).preload(:game, :platform)
+        scope = UserGameBacklog.where(user_id: params[:user_id]).preload(:platform, game: :images)
         scope = by_game(scope)
         render_shelf(scope, resource: BacklogEntryResource, default_order: UserGameBacklog::SHELF_ORDER)
       end

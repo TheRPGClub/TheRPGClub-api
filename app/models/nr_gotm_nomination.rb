@@ -7,7 +7,7 @@ class NrGotmNomination < ApplicationRecord
   self.table_name = "nr_gotm_nominations"
   self.primary_key = "nomination_id"
 
-  belongs_to :user,
+  belongs_to :user, -> { without_images },
     class_name: "RpgClubUser",
     foreign_key: :user_id,
     primary_key: :user_id,

@@ -154,6 +154,18 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(UserGameCompletion.find(added.reload.completion_id).platform_id).to eq(switch.platform_id)
     end
 
+    it "schedules the added release's announcement for an upcoming game" do
+      GamedbRegion.find_by(region_code: "WW") || create(:region, region_code: "WW", region_name: "Worldwide")
+      game = game_on("Silksong #{tag}", windows)
+      game.update!(initial_release_date: Date.new(2027, 9, 14))
+      item(game_title: "Silksong #{tag}", platform_name: "Nintendo Switch")
+
+      advance
+
+      release = GamedbRelease.find_by!(game_id: game.game_id, platform_id: switch.platform_id)
+      expect(GamedbReleaseAnnouncement.find_by(release_id: release.release_id)&.announce_at).to eq(Time.utc(2027, 9, 7))
+    end
+
     it "offers the add form when the platform cannot be resolved" do
       game = game_on("Tunic #{tag}", windows, switch)
       pending_item = item(game_title: "Tunic #{tag}", platform_name: "Commodore 64",

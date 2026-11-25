@@ -239,27 +239,38 @@ RSpec.describe "Franchise Progress", type: :request do
         "completion_id" => last.completion_id, "feature_key" => "franchise_progress")
     end
 
-    it "carries the card's covers, Franchise Playtime and who else Conquered it" do
-      [ ff1, ff2 ].each { |game| create(:completion, user: other, game: game) }
-      UserFranchiseConquest.create!(user: other, franchise: franchise, conquered_at: 1.month.ago)
-      create(:game_image, :primary, game: ff2)
-      manual(member, ff1, 600)
-      manual(member, tactics, 60)
+    context "with image URLs configured" do
+      # Image URLs need a public base URL, which CI doesn't set.
+      around do |example|
+        original = ENV["BACKBLAZE_PUBLIC_BASE_URL"]
+        ENV["BACKBLAZE_PUBLIC_BASE_URL"] = "https://cdn.example.test/club"
+        example.run
+      ensure
+        original.nil? ? ENV.delete("BACKBLAZE_PUBLIC_BASE_URL") : ENV["BACKBLAZE_PUBLIC_BASE_URL"] = original
+      end
 
-      complete(ff1)
-      complete(ff2)
+      it "carries the card's covers, Franchise Playtime and who else Conquered it" do
+        [ ff1, ff2 ].each { |game| create(:completion, user: other, game: game) }
+        UserFranchiseConquest.create!(user: other, franchise: franchise, conquered_at: 1.month.ago)
+        create(:game_image, :primary, game: ff2)
+        manual(member, ff1, 600)
+        manual(member, tactics, 60)
 
-      payload = conquest_jobs.sole.payload
-      expect(payload).to include("franchise_name" => "Final Fantasy", "conquered_at" => be_present,
-        "playtime_minutes" => 660, "mainline_playtime_minutes" => 600, "mainline_total" => 2)
-      expect(payload.fetch("covers")).to match([
-        include("game_id" => ff2.game_id, "title" => "Final Fantasy II", "release_year" => 1988,
-          "cover_url" => be_present)
-      ])
-      expect(payload.fetch("also_conquered")).to match([
-        include("user_id" => other.user_id, "name" => "Ivo", "conquered_at" => be_present)
-      ])
-      expect(payload.fetch("also_conquered_count")).to eq(1)
+        complete(ff1)
+        complete(ff2)
+
+        payload = conquest_jobs.sole.payload
+        expect(payload).to include("franchise_name" => "Final Fantasy", "conquered_at" => be_present,
+          "playtime_minutes" => 660, "mainline_playtime_minutes" => 600, "mainline_total" => 2)
+        expect(payload.fetch("covers")).to match([
+          include("game_id" => ff2.game_id, "title" => "Final Fantasy II", "release_year" => 1988,
+            "cover_url" => be_present)
+        ])
+        expect(payload.fetch("also_conquered")).to match([
+          include("user_id" => other.user_id, "name" => "Ivo", "conquered_at" => be_present)
+        ])
+        expect(payload.fetch("also_conquered_count")).to eq(1)
+      end
     end
 
     it "doesn't Conquer through spin-offs, and posts once" do

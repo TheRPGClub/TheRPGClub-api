@@ -333,15 +333,22 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     end
   end
 
+  # Reads never call GitHub: they read the cached states (one cache read per
+  # page), and a missing or stale state queues Github::IssueStateRefreshJob,
+  # which fills the cache for later reads. A stale state keeps being shown
+  # while it refreshes.
   describe "GitHub issue state on reads" do
+    include ActiveJob::TestHelper
+
     let(:viewer_headers) { auth_headers_for(create(:user)) }
+    let(:cache) { ActiveSupport::Cache::MemoryStore.new }
     let!(:approved) do
       create(:suggestion, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 5,
         github_issue_url: "https://github.com/TheRPGClub/TheRPGClub-bot/issues/5")
     end
 
     before do
-      allow(Rails).to receive(:cache).and_return(ActiveSupport::Cache::MemoryStore.new)
+      allow(Rails).to receive(:cache).and_return(cache)
       allow(client).to receive(:issue_state).and_return("closed")
     end
 
@@ -349,10 +356,20 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       json.fetch("data").find { |row| row.fetch("suggestion_id") == record.suggestion_id }
     end
 
-    it "adds the issue's state to approved suggestions, and null to the rest" do
+    def board(**params)
+      get "/api/v1/suggestions", params: params, headers: viewer_headers
+    end
+
+    it "never calls GitHub during a read; a refresh job fills the state for the next one" do
       pending_one = create(:suggestion)
 
-      get "/api/v1/suggestions", headers: viewer_headers
+      board
+      expect(client).not_to have_received(:issue_state)
+      expect(row_for(approved).fetch("github_issue_state")).to be_nil
+      expect(Github::IssueStateRefreshJob).to have_been_enqueued.with([ [ "TheRPGClub/TheRPGClub-bot", 5 ] ])
+
+      perform_enqueued_jobs
+      board
 
       expect(row_for(approved).fetch("github_issue_state")).to eq("closed")
       expect(row_for(pending_one).fetch("github_issue_state")).to be_nil
@@ -360,105 +377,106 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     end
 
     it "shows it on a single suggestion" do
+      Github::IssueStateCache.store("TheRPGClub/TheRPGClub-bot", 5, "closed")
+
       get "/api/v1/suggestions/#{approved.suggestion_id}", headers: viewer_headers
 
       expect(json.dig("data", "github_issue_state")).to eq("closed")
     end
 
-    it "caches the state for about ten minutes" do
-      get "/api/v1/suggestions", headers: viewer_headers
-      get "/api/v1/suggestions/#{approved.suggestion_id}", headers: viewer_headers
-      expect(client).to have_received(:issue_state).once
+    it "reads every state on the page in one cache read" do
+      3.times { |i| create(:suggestion, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 50 + i) }
+      allow(cache).to receive(:read_multi).and_call_original
+      allow(cache).to receive(:read).and_call_original
+
+      board
+
+      expect(cache).to have_received(:read_multi).once
+      expect(cache).not_to have_received(:read).with(/github_issue_state/)
+    end
+
+    it "queues no refresh while every state is fresh" do
+      Github::IssueStateCache.store("TheRPGClub/TheRPGClub-bot", 5, "open")
+
+      board
+
+      expect(row_for(approved).fetch("github_issue_state")).to eq("open")
+      expect(Github::IssueStateRefreshJob).not_to have_been_enqueued
+    end
+
+    it "keeps showing a stale state while it refreshes after about ten minutes" do
+      Github::IssueStateCache.store("TheRPGClub/TheRPGClub-bot", 5, "open")
 
       travel 11.minutes do
-        get "/api/v1/suggestions", headers: viewer_headers
+        board
+        expect(row_for(approved).fetch("github_issue_state")).to eq("open")
+        expect(Github::IssueStateRefreshJob).to have_been_enqueued
+
+        perform_enqueued_jobs
+        board
+        expect(row_for(approved).fetch("github_issue_state")).to eq("closed")
       end
-      expect(client).to have_received(:issue_state).twice
     end
 
-    it "is null, and the read still succeeds, when GitHub fails" do
-      allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub returned HTTP 500")
+    describe "the refresh job" do
+      let(:pairs) { [ [ "TheRPGClub/TheRPGClub-bot", 5 ] ] }
 
-      get "/api/v1/suggestions", headers: viewer_headers
+      it "looks up issues with a short timeout" do
+        Github::IssueStateRefreshJob.perform_now(pairs)
 
-      expect(response).to have_http_status(:ok)
-      expect(row_for(approved).fetch("github_issue_state")).to be_nil
-    end
-
-    it "caches a failure for about ten minutes" do
-      allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
-
-      get "/api/v1/suggestions", headers: viewer_headers
-      travel 9.minutes do
-        get "/api/v1/suggestions", headers: viewer_headers
-      end
-      expect(client).to have_received(:issue_state).once
-
-      travel 11.minutes do
-        get "/api/v1/suggestions", headers: viewer_headers
-      end
-      expect(client).to have_received(:issue_state).twice
-    end
-
-    it "looks up issues with a short timeout" do
-      get "/api/v1/suggestions", headers: viewer_headers
-
-      expect(Github::Client).to have_received(:new).with(timeout: Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS)
-      expect(Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS).to be <= 3
-    end
-
-    context "with many uncached approved suggestions" do
-      let(:cap) { Github::IssueStateCache::MAX_LOOKUPS_PER_REQUEST }
-
-      before do
-        (cap + 6).times do |index|
-          create(:suggestion, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot",
-            github_issue_number: 100 + index)
-        end
+        expect(Github::Client).to have_received(:new).with(timeout: Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS)
+        expect(Github::IssueStateCache::LOOKUP_TIMEOUT_SECONDS).to be <= 3
       end
 
-      def states
-        json.fetch("data").filter_map { |row| row["github_issue_state"] if row["status"] == "approved" }
+      it "skips states another refresh already filled" do
+        Github::IssueStateCache.store(*pairs.first, "open")
+
+        Github::IssueStateRefreshJob.perform_now(pairs)
+
+        expect(client).not_to have_received(:issue_state)
       end
 
-      it "makes at most the cap of GitHub calls per request, leaving the rest null for later views" do
-        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+      it "caches a failure as null for about ten minutes, and the read still succeeds" do
+        allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub returned HTTP 500")
+
+        Github::IssueStateRefreshJob.perform_now(pairs)
+        board
 
         expect(response).to have_http_status(:ok)
-        expect(client).to have_received(:issue_state).exactly(cap).times
-        expect(states.size).to eq(cap)
-
-        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
-
-        expect(client).to have_received(:issue_state).exactly(cap * 2).times
-        expect(states.size).to eq(cap * 2)
+        expect(row_for(approved).fetch("github_issue_state")).to be_nil
+        travel(9.minutes) { board }
+        expect(Github::IssueStateRefreshJob).not_to have_been_enqueued
+        travel(11.minutes) { board }
+        expect(Github::IssueStateRefreshJob).to have_been_enqueued
       end
 
-      it "stops looking up for the rest of the request after a GitHub failure" do
+      it "stops at the first GitHub failure, leaving the rest for a later refresh" do
         allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
+        many = 4.times.map { |i| [ "TheRPGClub/TheRPGClub-bot", 100 + i ] }
 
-        get "/api/v1/suggestions", params: { per: 500 }, headers: viewer_headers
+        Github::IssueStateRefreshJob.perform_now(many)
 
-        expect(response).to have_http_status(:ok)
         expect(client).to have_received(:issue_state).once
       end
-    end
 
-    it "is null without calling GitHub when the GitHub App is not configured" do
-      allow(client).to receive(:configured?).and_return(false)
+      it "calls nothing when the GitHub App is not configured" do
+        allow(client).to receive(:configured?).and_return(false)
 
-      get "/api/v1/suggestions", headers: viewer_headers
+        Github::IssueStateRefreshJob.perform_now(pairs)
+        board
 
-      expect(row_for(approved).fetch("github_issue_state")).to be_nil
-      expect(client).not_to have_received(:issue_state)
-    end
+        expect(client).not_to have_received(:issue_state)
+        expect(row_for(approved).fetch("github_issue_state")).to be_nil
+      end
 
-    it "is null when the issue no longer exists" do
-      allow(client).to receive(:issue_state).and_return(nil)
+      it "leaves the state null when the issue no longer exists" do
+        allow(client).to receive(:issue_state).and_return(nil)
 
-      get "/api/v1/suggestions", headers: viewer_headers
+        Github::IssueStateRefreshJob.perform_now(pairs)
+        board
 
-      expect(row_for(approved).fetch("github_issue_state")).to be_nil
+        expect(row_for(approved).fetch("github_issue_state")).to be_nil
+      end
     end
   end
 

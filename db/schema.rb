@@ -1450,6 +1450,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_160500) do
     t.index ["id"], name: "ix_user_achievement_unlocks_unannounced", where: "(announceable AND (announced_at IS NULL))"
     t.index ["unlocked_at"], name: "ix_user_achievement_unlocks_unlocked_at"
     t.index ["user_id", "achievement_id"], name: "ux_user_achievement_unlocks_user_achievement", unique: true
+    t.index ["user_id", "unlocked_at", "id"], name: "ix_user_achievement_unlocks_user_unlocked_at", order: { unlocked_at: :desc, id: :desc }
     t.index ["user_linked_account_id"], name: "ix_user_achievement_unlocks_linked_account"
   end
 
@@ -1506,9 +1507,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_160500) do
     t.bigint "platform_id"
     t.string "user_id", limit: 50, null: false
     t.date "started_at"
+    t.index ["completed_at", "created_at", "completion_id"], name: "ix_ugc_recent", order: { completed_at: "DESC NULLS LAST", created_at: :desc, completion_id: :desc }
     t.index ["gamedb_game_id"], name: "ix_ugc_game"
     t.index ["platform_id"], name: "idx_user_game_completions_platform"
     t.index ["user_id"], name: "ix_ugc_user"
+    t.index ["user_id", "completed_at", "created_at"], name: "ix_ugc_user_completed_at", order: { completed_at: :desc, created_at: :desc }
     t.check_constraint "completion_type::text = ANY (ARRAY['Main Story'::character varying::text, 'Main Story + Side Content'::character varying::text, 'Completionist'::character varying::text])", name: "ck_user_game_completions_type"
   end
 

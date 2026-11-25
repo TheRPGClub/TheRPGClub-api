@@ -6,6 +6,8 @@ module Challenges
   #
   #   create       the list's games are copied in as Core Games
   #                (pool_with_list) and `challenges.pool_game_list_id` set;
+  #                a list feeds one Challenge at most (claim!), so games
+  #                added to it later always land in that one Challenge;
   #                only on create, by the list's owner for their own
   #                Challenge, or staff for a club list and a club-hosted
   #                one (Actor#can_link_list?)
@@ -44,6 +46,17 @@ module Challenges
       taken = given.optional_game_ids + given.excluded_game_ids
       core = given.core_game_ids | (list.entries.order(:position).pluck(:game_id) - taken)
       pool.merge("core_game_ids" => core)
+    end
+
+    # Inside the create's transaction: locks the list and refuses it when
+    # it already feeds a Challenge, hidden or ended ones included.
+    def claim!(list_id)
+      list = GameList.lock.find(list_id)
+      linked = list.linked_challenge
+      return unless linked
+
+      named = linked.hidden? ? "a Challenge" : "\"#{linked.name}\""
+      raise Invalid, "This Game List already feeds #{named}, so another Challenge can't start from it"
     end
 
     # The Challenges `list` feeds, locked, oldest first.

@@ -561,4 +561,53 @@ RSpec.describe "api/v1/users behavior", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "GET /api/v1/users/:user_id query cost" do
+    let(:profile) { create(:user) }
+    let(:headers) { auth_headers_for(create(:user)) }
+    let(:platform) { create(:platform) }
+
+    def fill_profile(rows)
+      rows.times do
+        game = create(:game).tap { |g| create(:game_image, :primary, game: g) }
+        create(:completion, user: profile, game: game, platform: platform)
+        create(:favorite, user: profile, game: game)
+        create(:review, user: profile, game: game)
+        create(:now_playing_entry, user: profile, game: game, platform: platform)
+        create(:journal_entry, user: profile, game: game)
+        create(:backlog_entry, user: profile, game: game)
+        UserGameManualPlaytime.create!(user_id: profile.user_id, gamedb_game_id: game.game_id, minutes: 90)
+      end
+    end
+
+    def queries_for_profile
+      count = 0
+      callback = lambda do |*, payload|
+        count += 1 unless payload[:name] == "SCHEMA" || payload[:sql].match?(/\A(BEGIN|COMMIT|SAVEPOINT|RELEASE|ROLLBACK)/)
+      end
+      get "/api/v1/users/#{profile.user_id}", headers: headers # warm the Feature Flag cache
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        get "/api/v1/users/#{profile.user_id}", headers: headers
+      end
+      expect(response).to have_http_status(:ok)
+      count
+    end
+
+    # auth 1, member 1, socials 2, the five previews 5 (+ latest revisions 1),
+    # their games, images and platforms batched 3, every count at once 1,
+    # Playtime (spec api#457) 3: the Ledger rows, its open Playthroughs and
+    # the shelves' games.
+    it "reads a full profile in a fixed number of queries" do
+      create(:user_social, user: profile)
+      fill_profile(2)
+      few = queries_for_profile
+
+      fill_profile(3)
+      more = queries_for_profile
+
+      expect(more).to eq(few)
+      expect(few).to be <= 17
+      expect(json.dig("data", "counts")).to include("completions" => 5, "backlog" => 5, "journal" => 5)
+    end
+  end
 end

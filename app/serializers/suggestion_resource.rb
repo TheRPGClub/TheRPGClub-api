@@ -25,10 +25,20 @@ class SuggestionResource
   end
 
   # "open" or "closed" for an approved Suggestion's issue; nil otherwise, or
-  # when GitHub cannot say.
+  # when GitHub cannot say. A list passes the page's states, read at once
+  # (`github_issue_states`, see SuggestionResource.issue_states).
   attribute :github_issue_state do |suggestion|
-    if suggestion.status == "approved"
-      Github::IssueStateCache.fetch(suggestion.target_repo, suggestion.github_issue_number)
-    end
+    next unless suggestion.status == "approved"
+
+    pair = [ suggestion.target_repo, suggestion.github_issue_number ]
+    states = params[:github_issue_states]
+    states ? states[pair] : Github::IssueStateCache.state_for(*pair)
+  end
+
+  # The cached issue states for a page of suggestions, in one cache read (a
+  # `prepare:` for render_collection).
+  def self.issue_states(suggestions)
+    pairs = suggestions.select { |s| s.status == "approved" }.map { |s| [ s.target_repo, s.github_issue_number ] }
+    { github_issue_states: Github::IssueStateCache.states_for(pairs) }
   end
 end

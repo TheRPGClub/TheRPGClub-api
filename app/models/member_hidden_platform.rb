@@ -5,7 +5,7 @@
 # Releases panel. Rows are written only through HiddenPlatformsController,
 # which replaces a member's whole set at once.
 class MemberHiddenPlatform < ApplicationRecord
-  belongs_to :user, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
+  belongs_to :user, -> { without_images }, class_name: "RpgClubUser", primary_key: :user_id, inverse_of: false
   belongs_to :platform, class_name: "GamedbPlatform", primary_key: :platform_id, inverse_of: false
 
   # The member's Hidden Platform ids, in no particular order.

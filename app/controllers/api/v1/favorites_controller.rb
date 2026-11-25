@@ -16,7 +16,7 @@ module Api
       # `game_id` (optional) narrows to one game's entry by exact
       # `gamedb_game_id`, so the game page need not read the whole list.
       def index
-        scope = UserGameFavorite.where(user_id: params[:user_id]).preload(:game)
+        scope = UserGameFavorite.where(user_id: params[:user_id]).preload(game: :images)
         scope = by_game(scope)
         render_shelf(scope, resource: FavoriteEntryResource, default_order: UserGameFavorite::SHELF_ORDER)
       end

@@ -66,7 +66,7 @@ module Completions
     def rows(page)
       game_ids = page.map(&:gamedb_game_id)
       entries = both_users.where(gamedb_game_id: game_ids)
-        .preload(:game, :platform)
+        .preload(:platform, game: :images)
         .order(Arel.sql("completed_at DESC NULLS LAST, completion_id DESC"))
         .group_by { |entry| [ entry.gamedb_game_id, entry.user_id ] }
 

@@ -1428,11 +1428,14 @@ module OpenapiSchemas
                          items: obj(game_id: int, title: str, cover_url: str(nullable: true)),
                          description: "Its first games in its own sort's order, for covers." },
         viewer: ref("GameListViewer"),
+        challenge: obj(id: int, name: str).merge(nullable: true, description: "The Pool Challenge this list " \
+          "feeds (null when none, or when it is hidden). A list feeds one Challenge at most, so no other can " \
+          "start from it."),
         entries: { type: :array, items: ref("GameListEntry"),
                    description: "A single list only: every game, in its sort's order." },
         created_at: ts, updated_at: ts,
         _required: %w[id name description visibility sort club owner taken_over_from taken_over_at entry_count
-                      preview_games viewer created_at updated_at]
+                      preview_games viewer challenge created_at updated_at]
       ),
       # What the caller may do with a Game List (GameLists::Actor).
       GameListViewer: obj(can_edit: bool, can_delete: bool),
