@@ -375,6 +375,28 @@ _Avoid_: Suggestion (that is for the bot or website), nomination (that is for GO
 The Challenge Format where another member chooses the game a member must play, such as a Secret Santa pick from their backlog.
 _Avoid_: Gift, pick (when meaning the format)
 
+## GOTM
+
+**Round**:
+One numbered month of club voting, such as round 135. Members nominate games, then vote, and each Category gets a winner. A round is labelled with a month; older rounds use the month of the vote, newer ones the month after it.
+_Avoid_: Issue, poll, month (when meaning the round)
+
+**Category**:
+One of the two halves of a round: GOTM (Game of the Month, an RPG) and NR-GOTM (Non-RPG Game of the Month). Each Category has its own nominations, vote and winner.
+_Avoid_: Track, Award (that is the GOTY Vote)
+
+**Nomination**:
+A member putting one game forward in one Category of a round, with an optional reason. A member has at most one Nomination per Category per round. Nominations imported from old Discord posts may have an unknown nominator until someone credits them. Staff can remove a Nomination, giving a reason; a removed Nomination does not appear anywhere.
+_Avoid_: Entry (that is the round's winner record), pick, suggestion
+
+**GOTM History**:
+Every closed round with its winners. Each round opens to its Round Page.
+_Avoid_: Archive, ledger, hall of fame
+
+**Round Page**:
+One closed round in full: for each Category, the winner and every other Nomination with who nominated it and why. When the round had a vote, it also shows the vote counts and any runoff. A round that is still taking nominations or votes has no Round Page; it is on the voting page.
+_Avoid_: Round detail, nomination history
+
 ## GOTY Vote
 
 **GOTY Vote**:
