@@ -229,6 +229,16 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
       expect(pinned_for(member)["pages"]).to eq(%w[members])
     end
 
+    it "lets a member pin the GOTY Vote, behind its Feature" do
+      set_feature_flag("goty_vote", "live")
+      pin(member, %w[goty members])
+      expect(response).to have_http_status(:ok)
+      expect(pinned_for(member)["pages"]).to eq(%w[goty members])
+
+      set_feature_flag("goty_vote", "off")
+      expect(pinned_for(member)["pages"]).to eq(%w[members])
+    end
+
     it "leaves out a default page the member hid with a Feature Preference" do
       MemberFeaturePreference.create!(user_id: member.user_id, feature_key: "news_hub")
 

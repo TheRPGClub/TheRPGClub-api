@@ -26,6 +26,7 @@ module PinnedPages
   PAGES = [
     page("voting", feature: "voting_gotm"),
     page("gotm_history", feature: "voting_gotm"),
+    page("goty", feature: "goty_vote"),
     page("challenges", feature: "challenges"),
     page("games", feature: "game_index"),
     page("reviews", feature: "reviews"),

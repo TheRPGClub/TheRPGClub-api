@@ -2006,8 +2006,8 @@ module OpenapiSchemas
         pages: { type: :array, items: str(example: "voting"),
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
-                              "gotm_history, challenges, games, reviews, releases, achievements, journals, members, news, " \
-                              "codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
+                              "gotm_history, goty, challenges, games, reviews, releases, achievements, journals, members, " \
+                              "news, codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
                               "public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),
