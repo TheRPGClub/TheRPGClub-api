@@ -6,11 +6,14 @@ module Gotm
   #
   # Filters apply per kind to a round's whole block, as in the bot: `year`
   # matches the trailing four-digit year of `month_year`, and `query` keeps a
-  # kind's block for a round when any of its games' titles match, with all of
-  # that block's games. NR-GOTM "N/A" placeholder games are dropped from the
-  # games list, but the round still counts.
+  # kind's block for a round when any of its winners' or that kind's
+  # Nominations' titles match, with all of that block's winners. The block
+  # then lists the matching games as `matches` (`won` or `nominated`).
+  # NR-GOTM "N/A" placeholder games are dropped from the games list, but the
+  # round still counts.
   class RoundHistory
     KINDS = { "gotm" => GotmEntry, "nr_gotm" => NrGotmEntry }.freeze
+    NOMINATIONS = { "gotm" => GotmNomination, "nr_gotm" => NrGotmNomination }.freeze
     KIND_PARAMS = (KINDS.keys + [ "both" ]).freeze
     SORTS = %w[asc desc].freeze
     YEAR_SQL = "SUBSTRING(month_year FROM '(\\d{4})\\s*$')::int"
@@ -51,12 +54,17 @@ module Gotm
     def rounds(round_numbers)
       blocks = @kinds.index_with { |kind| entries_by_round(kind, round_numbers) }
       thread_ids = first_thread_ids(blocks.values.flat_map(&:values).flatten.filter_map(&:gamedb_game_id))
+      nomination_counts = @kinds.index_with { |kind| nomination_counts(kind, round_numbers) }
+      matches = @query ? @kinds.index_with { |kind| title_matches(kind, round_numbers) } : {}
 
       round_numbers.map do |number|
         round = { round_number: number }
         KINDS.each_key do |kind|
           entries = blocks.dig(kind, number)
-          round[kind.to_sym] = entries && serialize_block(kind, entries, thread_ids)
+          round[kind.to_sym] = entries && serialize_block(kind, entries, thread_ids).merge(
+            nominations_count: nomination_counts.dig(kind, number) || 0,
+            matches: matches[kind] && serialize_matches(kind, number, entries, matches[kind])
+          )
         end
         round
       end
@@ -96,12 +104,43 @@ module Gotm
       scope = model.all
       scope = scope.where("#{YEAR_SQL} = ?", @year) if @year
       if @query
-        matching = model.joins(:game)
-          .where("gamedb_games.title ILIKE ?", "%#{ActiveRecord::Base.sanitize_sql_like(Gamedb::TitleArticle.strip(@query))}%")
-          .select(:round_number)
-        scope = scope.where(round_number: matching)
+        scope = scope.where(round_number: title_matching(model).select(:round_number))
+          .or(scope.where(round_number: title_matching(NOMINATIONS.fetch(kind)).select(:round_number)))
       end
       scope
+    end
+
+    # `model`'s rows (winners or Nominations) whose game title matches `query`.
+    def title_matching(model)
+      pattern = "%#{ActiveRecord::Base.sanitize_sql_like(Gamedb::TitleArticle.strip(@query))}%"
+      model.joins(:game).where("gamedb_games.title ILIKE ?", pattern)
+    end
+
+    def nomination_counts(kind, round_numbers)
+      NOMINATIONS.fetch(kind).where(round_number: round_numbers).group(:round_number).count
+    end
+
+    # The page's title-matching games of `kind`: the winners as a Set of
+    # `[round_number, game_id]`, and the Nominations as
+    # `{ round_number => [[game_id, title], ...] }` in nomination order.
+    def title_matches(kind, round_numbers)
+      won = title_matching(KINDS.fetch(kind)).where(round_number: round_numbers)
+        .pluck(:round_number, :gamedb_game_id).to_set
+      nominated = title_matching(NOMINATIONS.fetch(kind)).where(round_number: round_numbers)
+        .order(:round_number, :nominated_at, :nomination_id)
+        .pluck(:round_number, "gamedb_games.game_id", "gamedb_games.title")
+        .group_by(&:first).transform_values { |rows| rows.map { |row| row.drop(1) } }
+      [ won, nominated ]
+    end
+
+    # Matching winners first (`game_index` order), then matching Nominations
+    # that did not win; one entry per game.
+    def serialize_matches(kind, number, entries, (won, nominated))
+      winners = entries.reject { |entry| entry.game.nil? || (kind == "nr_gotm" && placeholder?(entry)) }
+        .select { |entry| won.include?([ number, entry.gamedb_game_id ]) }
+        .map { |entry| { gamedb_game_id: entry.gamedb_game_id, title: entry.game.title, match: "won" } }
+      others = nominated.fetch(number, []).map { |id, title| { gamedb_game_id: id, title:, match: "nominated" } }
+      (winners + others).uniq { |match| match[:gamedb_game_id] }
     end
 
     def entries_by_round(kind, round_numbers, preload: { game: [ :images, :platforms ] })

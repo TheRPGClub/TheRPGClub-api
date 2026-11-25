@@ -125,6 +125,123 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
       expect(round_numbers).to eq([ 1 ])
     end
 
+    it "counts each block's Nominations in its own kind" do
+      create(:gotm_entry, round_number: 1)
+      create(:nr_gotm_entry, round_number: 1)
+      create_list(:gotm_nomination, 3, round_number: 1)
+      create(:nr_gotm_nomination, round_number: 1)
+      create(:gotm_nomination, round_number: 2)
+      create(:gotm_entry, round_number: 3)
+
+      get "/api/v1/gotm_rounds", headers: headers
+
+      by_round = json.fetch("data").index_by { |round| round.fetch("round_number") }
+      expect(by_round.dig(1, "gotm", "nominations_count")).to eq(3)
+      expect(by_round.dig(1, "nr_gotm", "nominations_count")).to eq(1)
+      expect(by_round.dig(3, "gotm", "nominations_count")).to eq(0)
+      expect(by_round.dig(1, "gotm", "matches")).to be_nil
+    end
+
+    it "finds a round where q only matches a Nomination, keeping its winners and marking the match" do
+      winner = create(:gotm_entry, round_number: 1, month_year: "May 2024")
+      nominee = create(:game, title: "Chrono Cross")
+      create(:gotm_nomination, round_number: 1, game: winner.game)
+      create(:gotm_nomination, round_number: 1, game: nominee)
+      create(:gotm_entry, round_number: 2)
+
+      get "/api/v1/gotm_rounds", params: { q: "chrono" }, headers: headers
+
+      expect(round_numbers).to eq([ 1 ])
+      expect(json.fetch("meta")).to include("count" => 1)
+      block = json.dig("data", 0, "gotm")
+      expect(block.fetch("games").map { |g| g.fetch("gamedb_game_id") }).to eq([ winner.gamedb_game_id ])
+      expect(block.fetch("nominations_count")).to eq(2)
+      expect(block.fetch("matches")).to eq([
+        { "gamedb_game_id" => nominee.game_id, "title" => "Chrono Cross", "match" => "nominated" }
+      ])
+    end
+
+    it "marks a matching winner as won once, even when it was also nominated" do
+      hit = create(:game, title: "Chrono Trigger")
+      create(:gotm_entry, round_number: 1, game: hit)
+      create(:gotm_nomination, round_number: 1, game: hit)
+      other = create(:game, title: "Chrono Cross")
+      create(:gotm_nomination, round_number: 1, game: other, nominated_at: 1.day.from_now)
+
+      get "/api/v1/gotm_rounds", params: { q: "chrono" }, headers: headers
+
+      expect(json.dig("data", 0, "gotm", "matches")).to eq([
+        { "gamedb_game_id" => hit.game_id, "title" => "Chrono Trigger", "match" => "won" },
+        { "gamedb_game_id" => other.game_id, "title" => "Chrono Cross", "match" => "nominated" }
+      ])
+    end
+
+    it "matches Nominations only within the requested kind" do
+      create(:gotm_entry, round_number: 1)
+      create(:nr_gotm_entry, round_number: 1)
+      create(:nr_gotm_nomination, round_number: 1, game: create(:game, title: "Tetris Effect"))
+
+      get "/api/v1/gotm_rounds", params: { q: "tetris", kind: "gotm" }, headers: headers
+      expect(round_numbers).to eq([])
+      expect(json.fetch("meta")).to include("count" => 0)
+
+      get "/api/v1/gotm_rounds", params: { q: "tetris" }, headers: headers
+      expect(round_numbers).to eq([ 1 ])
+      expect(json.dig("data", 0, "gotm")).to be_nil
+      expect(json.dig("data", 0, "nr_gotm", "matches", 0)).to include("match" => "nominated")
+    end
+
+    it "applies year and sort to Nomination matches and pages them as rounds" do
+      nominee = create(:game, title: "Final Fantasy IX")
+      [ [ 1, "May 2023" ], [ 2, "May 2024" ], [ 3, "June 2024" ], [ 4, "July 2024" ] ].each do |number, month|
+        create(:gotm_entry, round_number: number, month_year: month)
+        create(:gotm_nomination, round_number: number, game: nominee)
+      end
+      create(:gotm_entry, round_number: 5, month_year: "Aug 2024", game: create(:game, title: "Final Fantasy VI"))
+
+      get "/api/v1/gotm_rounds", params: { q: "final fantasy", year: 2024, sort: "asc", per: 2 }, headers: headers
+      expect(round_numbers).to eq([ 2, 3 ])
+      expect(json.fetch("meta")).to include("count" => 4, "pages" => 2)
+
+      get "/api/v1/gotm_rounds", params: { q: "final fantasy", year: 2024, sort: "asc", per: 2, page: 2 },
+        headers: headers
+      expect(round_numbers).to eq([ 4, 5 ])
+      expect(json.dig("data", 1, "gotm", "matches", 0)).to include("match" => "won")
+    end
+
+    it "loads a page in a fixed number of queries, however many rounds and Nominations it has" do
+      count_queries = lambda do
+        Features.forget_cached_states!
+        queries = 0
+        subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+          queries += 1 unless payload[:name] == "SCHEMA"
+        end
+        begin
+          get "/api/v1/gotm_rounds", params: { q: "zelda" }, headers: headers
+        ensure
+          ActiveSupport::Notifications.unsubscribe(subscriber)
+        end
+        expect(response).to have_http_status(:ok)
+        queries
+      end
+      seed_round = lambda do |number|
+        create(:gotm_entry, round_number: number, game: create(:game, title: "Zelda #{number}"))
+        create(:nr_gotm_entry, round_number: number)
+        create_list(:gotm_nomination, 2, round_number: number, game: create(:game, title: "Zelda Nominee #{number}"))
+        create(:nr_gotm_nomination, round_number: number, game: create(:game, title: "Zelda NR #{number}"))
+      end
+
+      headers # sign the viewer in before counting
+      seed_round.call(1)
+      small = count_queries.call
+
+      (2..5).each { |number| seed_round.call(number) }
+      large = count_queries.call
+
+      expect(json.fetch("data").size).to eq(5)
+      expect(large).to eq(small)
+    end
+
     it "sorts rounds descending by default and ascending with sort=asc" do
       [ 2, 9, 5 ].each { |number| create(:gotm_entry, round_number: number) }
 
