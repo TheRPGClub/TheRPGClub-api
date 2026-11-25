@@ -68,6 +68,8 @@ Rails.application.routes.draw do
           get "game_lists", to: "game_lists#game_index"
           # GOTY Vote (ticket api#472): Game of the Year eligibility for ?year=.
           get "goty_eligibility", to: "goty_votes#eligibility"
+          # Franchise suggestions (ticket api#489) for Game Edit's role lanes.
+          get "franchise_suggestions", to: "franchise_suggestions#index"
         end
       end
 
