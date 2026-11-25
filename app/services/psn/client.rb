@@ -137,6 +137,16 @@ module Psn
       end
     end
 
+    # The club account's NPSSO from credentials or PSN_NPSSO, if any.
+    def self.configured_npsso
+      Rails.application.credentials.psn_npsso.presence || ENV["PSN_NPSSO"].presence
+    end
+
+    # Whether an NPSSO is set at all (says nothing about Sony accepting it).
+    def self.npsso_configured?
+      configured_npsso.present?
+    end
+
     # Authenticates the club account (a cached token counts). Clears
     # `psn_auth_expired_at` on success; raises AuthExpired while the NPSSO is
     # still refused. The Sync Window's way out of the PSN pause.
@@ -397,15 +407,25 @@ module Psn
       URI.decode_www_form(query).to_h["code"]
     end
 
+    # The first failure of an expiry records it and queues the staff alert;
+    # repeats while it stays expired do neither.
     def auth_expired!(message)
       @cache.delete(ACCESS_TOKEN_CACHE_KEY)
       @cache.delete(REFRESH_TOKEN_CACHE_KEY)
-      hub_state.set(AUTH_EXPIRED_KEY, @clock.call.iso8601) if hub_state.get(AUTH_EXPIRED_KEY).blank?
+      if hub_state.get(AUTH_EXPIRED_KEY).blank?
+        expired_at = @clock.call.iso8601
+        hub_state.set(AUTH_EXPIRED_KEY, expired_at)
+        Achievements::PsnAuthAlerts.expired!(expired_at)
+      end
       raise Achievements::Providers::AuthExpired, message
     end
 
     def clear_auth_expired
-      hub_state.set(AUTH_EXPIRED_KEY, nil) if hub_state.get(AUTH_EXPIRED_KEY).present?
+      expired_at = hub_state.get(AUTH_EXPIRED_KEY)
+      return if expired_at.blank?
+
+      hub_state.set(AUTH_EXPIRED_KEY, nil)
+      Achievements::PsnAuthAlerts.restored!(expired_at: expired_at, restored_at: @clock.call.iso8601)
     end
 
     def hub_state
@@ -413,7 +433,7 @@ module Psn
     end
 
     def npsso
-      @npsso ||= Rails.application.credentials.psn_npsso.presence || ENV["PSN_NPSSO"].presence
+      @npsso ||= self.class.configured_npsso
       @npsso || auth_expired!("PSN NPSSO is not configured (credentials psn_npsso or PSN_NPSSO)")
     end
 

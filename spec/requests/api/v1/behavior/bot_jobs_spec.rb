@@ -87,6 +87,7 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     %w[
       voting_poll_wakeup gotm_cache_reload
       live_event_create say memberscan presence_set
+      psn_auth_expired psn_auth_restored
     ].each do |kind|
       it "gives a #{kind} job, which posts nothing publicly, no Feature key" do
         enqueue(kind: kind, payload: { round_number: 7 })

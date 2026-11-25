@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
-# Achievement Hub catch-up on boot (ADR 0003). The queue database is recreated
-# on every deploy, so a Sync Window or Backfill that a deploy interrupted has
-# lost its tick chains; its durable state in Postgres has not. Enqueueing the
-# three Provider ticks once resumes it: each tick does a single query and stops
-# when nothing is due. Server processes only (never console, rake or specs).
+# Achievement Hub catch-up on boot (ADR 0003): Achievements::BootCatchUpJob
+# restarts the Provider ticks a deploy interrupted, after one PSN login
+# attempt while the PSN pause is on. It runs as a job, so boot never waits on
+# Sony or fails on it. Server processes only (never console, rake or specs).
 Rails.application.config.after_initialize do
-  Achievements::ProviderTickJob.enqueue_all if defined?(Rails::Server)
+  Achievements::BootCatchUpJob.perform_later if defined?(Rails::Server)
 end

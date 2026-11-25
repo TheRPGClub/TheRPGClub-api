@@ -106,6 +106,14 @@ RSpec.describe Psn::Client do
       reply: json(token_body(access_token, refresh_token)))
   end
 
+  def with_env(values)
+    previous = values.keys.index_with { |key| ENV.fetch(key, nil) }
+    values.each { |key, value| ENV[key] = value }
+    yield
+  ensure
+    previous.each { |key, value| ENV[key] = value }
+  end
+
   def requests_to(url)
     requests.select { |request| request[:url].start_with?(url) }
   end
@@ -222,6 +230,14 @@ RSpec.describe Psn::Client do
       stub_authorize(location: "com.scee.psxandroid.scecompcall://redirect/?error=login_required")
 
       expect { client.authenticate! }.to raise_error(Achievements::Providers::AuthExpired)
+    end
+
+    it "says the NPSSO is configured only when PSN_NPSSO (or the credential) is set, without calling Sony" do
+      allow(Rails.application.credentials).to receive(:psn_npsso).and_return(nil)
+
+      with_env("PSN_NPSSO" => "  ") { expect(described_class.npsso_configured?).to be(false) }
+      with_env("PSN_NPSSO" => "fresh") { expect(described_class.npsso_configured?).to be(true) }
+      expect(requests).to be_empty
     end
 
     it "raises AuthExpired when Sony refuses the code exchange" do

@@ -3460,6 +3460,8 @@ components:
           - daily_fun_fact
           - birthday_post
           - franchise_conquest
+          - psn_auth_expired
+          - psn_auth_restored
         summary:
           type: string
           maxLength: 200
@@ -5538,6 +5540,41 @@ components:
         there with `today: true`, so a member who stopped sharing or left since it
         was queued isn''t pinged. Birthdays are not a Feature: no `feature_key`, and
         no Feature Flag routes it.'
+    PsnAuthExpiredJobPayload:
+      type: object
+      properties:
+        expired_at:
+          type: string
+          format: date-time
+          description: When the login first failed.
+        reminder:
+          type: boolean
+          description: False for the first alert, true for a daily reminder.
+      required:
+      - expired_at
+      - reminder
+      description: 'Kind `psn_auth_expired`. The club PSN login (PSN_NPSSO) stopped
+        working and every PSN sync is paused until it works again. Warn staff in the
+        staff channel and point them at the runbook (docs/runbooks/psn-npsso.md).
+        Queued once when the login first fails (`reminder: false`), then by the Sync
+        Window at most once per 24 hours while it stays expired (`reminder: true`).
+        Staff only: no `feature_key`.'
+    PsnAuthRestoredJobPayload:
+      type: object
+      properties:
+        expired_at:
+          type: string
+          format: date-time
+          description: When the login had first failed.
+        restored_at:
+          type: string
+          format: date-time
+          description: When a login worked again.
+      required:
+      - expired_at
+      - restored_at
+      description: 'Kind `psn_auth_restored`. A club PSN login worked again, so PSN
+        sync resumes. Tell staff in the staff channel. Staff only: no `feature_key`.'
     BotJobClaim:
       type: object
       properties:
@@ -5569,6 +5606,8 @@ components:
           - daily_fun_fact
           - birthday_post
           - franchise_conquest
+          - psn_auth_expired
+          - psn_auth_restored
         summary:
           type: string
           maxLength: 200
@@ -5582,7 +5621,7 @@ components:
             no Feature owns and carries none. Documented payloads: SayJobPayload,
             NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
             ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload,
-            FranchiseConquestJobPayload.'
+            FranchiseConquestJobPayload, PsnAuthExpiredJobPayload, PsnAuthRestoredJobPayload.'
         status:
           type: string
           enum:
