@@ -248,6 +248,35 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
     end
   end
 
+  path '/api/v1/games/goty_eligibility' do
+    parameter name: :year, in: :query, required: true, schema: { type: :integer }, description: 'The GOTY Vote year'
+    parameter name: :game_ids, in: :query, required: true, schema: { type: :string, example: '12,7,301' },
+              description: 'GameDB game ids separated by commas, at most 50'
+
+    get 'Check Game of the Year eligibility for many games' do
+      tags 'GOTY Vote'
+      description 'The batch form of `GET /games/{id}/goty_eligibility`, for greying out ineligible games in ' \
+                  'search with one call: each item is that endpoint\'s answer, in the order the ids were given. ' \
+                  'Unknown ids are left out, and a repeated id is answered once. Costs a fixed number of ' \
+                  'queries however many ids are sent. Behind the `goty_vote` Feature.'
+      produces 'application/json'
+
+      response '200', 'eligibility per known game' do
+        schema type: :object,
+               properties: { data: { type: :array, items: { '$ref' => '#/components/schemas/GotyEligibility' } } },
+               required: %w[data]
+      end
+
+      response '400', 'missing or invalid `year`, or missing `game_ids`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`invalid_game_ids` when an id is not a whole number, `too_many_game_ids` above 50' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/goty_votes/{year}/votes' do
     parameter name: :year, in: :path, type: :integer, description: 'The year the GOTY Vote decides, e.g. 2026'
 

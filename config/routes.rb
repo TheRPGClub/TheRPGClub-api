@@ -32,6 +32,12 @@ Rails.application.routes.draw do
       resources :games, only: %i[index show create update] do
         resources :images, only: %i[index create update destroy], controller: "game_images"
 
+        # GOTY Vote (ticket api#478): Game of the Year eligibility for many
+        # games at once (?year=&game_ids=1,2,3), before the `:id` routes.
+        collection do
+          get "goty_eligibility", to: "goty_votes#eligibilities"
+        end
+
         member do
           post "refresh-images", to: "games#refresh_images"
           post "refresh-releases", to: "games#refresh_releases"

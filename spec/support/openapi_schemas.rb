@@ -1163,7 +1163,7 @@ module OpenapiSchemas
         id: int, year: int, user_id: str, gamedb_game_id: int, nominated_at: ts,
         user: ref("UserSummary"), game: ref("GameWithPlatforms")
       ),
-      # Goty::Eligibility (GET /games/{id}/goty_eligibility).
+      # Goty::Eligibility (GET /games/{id}/goty_eligibility; one item of GET /games/goty_eligibility).
       GotyEligibility: obj(
         game_id: int, year: int, eligible: bool,
         reason: str(nullable: true, enum: [ *Goty::Eligibility::REASONS, nil ]).merge(
