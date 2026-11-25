@@ -4,6 +4,7 @@ module Api
   module V1
     class CollectionsController < ApplicationController
       include GameIdFilter
+      include ShelfPlaytime
 
       feature :collection
 
@@ -15,7 +16,8 @@ module Api
 
       def index
         scope = filtered_collections(UserGameCollection.where(user_id: params[:user_id]))
-        render_collection(scope.preload(:platform, game: :images), resource: CollectionEntryResource, default_order: { created_at: :desc })
+        render_shelf(scope.preload(:platform, game: :images), resource: CollectionEntryResource,
+          default_order: { created_at: :desc })
       end
 
       # GET /api/v1/games/:id/collections — every member's entry for one game

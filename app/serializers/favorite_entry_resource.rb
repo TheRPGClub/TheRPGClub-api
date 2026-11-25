@@ -9,6 +9,7 @@
 # and `updated_at` are dropped from output.
 class FavoriteEntryResource
   include BaseResource
+  include ShelfPlaytimeFields.with
 
   attributes :entry_id, :user_id, :gamedb_game_id, :note, :sort_order
   one :game, resource: GameSummaryResource

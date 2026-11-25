@@ -10,6 +10,7 @@
 # the journal and linked-thread fields are populated.
 class NowPlayingEntryResource
   include BaseResource
+  include ShelfPlaytimeFields.with(playthrough_minutes: true)
   include NowPlayingFields
   include NowPlayingEmbeds
 end

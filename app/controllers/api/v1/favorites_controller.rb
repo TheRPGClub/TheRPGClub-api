@@ -5,6 +5,7 @@ module Api
     class FavoritesController < ApplicationController
       include GameIdFilter
       include ShelfPositioning
+      include ShelfPlaytime
 
       before_action :require_owner!, only: %i[create update destroy]
 
@@ -17,7 +18,7 @@ module Api
       def index
         scope = UserGameFavorite.where(user_id: params[:user_id]).preload(:game)
         scope = by_game(scope)
-        render_collection(scope, resource: FavoriteEntryResource, default_order: UserGameFavorite::SHELF_ORDER)
+        render_shelf(scope, resource: FavoriteEntryResource, default_order: UserGameFavorite::SHELF_ORDER)
       end
 
       def show

@@ -52,7 +52,7 @@ RSpec.describe 'api/v1/users', type: :request do
 
     get 'Show user profile' do
       tags 'Users'
-      description 'Aggregated profile: user record + membership, socials, and preview lists/counts for now-playing, favorites, reviews, completions, and journal (recently journaled games).'
+      description 'Aggregated profile: user record + membership, socials, and preview lists/counts for now-playing, favorites, reviews, completions, and journal (recently journaled games), plus `playtime` (the member\'s total Playtime and each shelf\'s, a game counted once per shelf).'
       produces 'application/json'
       parameter name: :preview_limit, in: :query, schema: { type: :integer, default: 10, maximum: 50 }, required: false,
         description: 'Per-preview-list size cap (now_playing, favorites, reviews, completions, journal).'

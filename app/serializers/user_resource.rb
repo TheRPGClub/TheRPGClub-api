@@ -34,4 +34,9 @@ class UserResource
   attribute :counts do
     params[:counts] || {}
   end
+
+  # The member's Playtime (spec api#457): `total_minutes` and `shelves`.
+  attribute :playtime, if: proc { params.key?(:playtime) } do
+    params[:playtime]
+  end
 end

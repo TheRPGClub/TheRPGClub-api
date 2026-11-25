@@ -5,6 +5,7 @@
 # in CompletionFields (#36).
 class CompletionEntryResource
   include BaseResource
+  include ShelfPlaytimeFields.with
   include CompletionFields
 
   one :game, resource: GameSummaryResource
