@@ -19,7 +19,9 @@ module Api
       def create
         data = params.require(:data)
         award = data.require(:award)
-        game_id = data.require(:gamedb_game_id)
+        game_id = Integer(data.require(:gamedb_game_id).to_s, 10, exception: false)
+        return render_error("not_a_candidate", "gamedb_game_id must be a game id") if game_id.nil?
+
         user_id = acting_member_id(data[:user_id]) or return
 
         result = Goty::CastVote.call(year: params[:goty_vote_year], award: award, user_id: user_id,
@@ -42,8 +44,6 @@ module Api
         render_error("uncontested", error.message)
       rescue Voting::CastRules::GameNotInRunoffError => error
         render_error("not_in_runoff", error.message)
-      rescue ArgumentError, TypeError
-        render_error("not_a_candidate", "gamedb_game_id must be a game id")
       end
 
       private

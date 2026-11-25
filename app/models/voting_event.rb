@@ -71,14 +71,18 @@ class VotingEvent < ApplicationRecord
   # otherwise when the earliest pending one falls due or its lease runs out,
   # or once the sweep has queued the round's or the GOTY Vote's next event.
   # nil when nothing is pending or scheduled. The bot sleeps until then, so a quiet outbox lets
-  # Neon's compute suspend instead of a fixed poll keeping it awake.
+  # Neon's compute suspend instead of a fixed poll keeping it awake. As in
+  # Voting::AdvanceRoundsJob, a half whose Feature is Off is not swept, so
+  # its due work does not count: it would report now on every poll.
   def self.next_poll_at(now = Time.current)
     pending = where(delivered_at: nil)
       .where("expires_at IS NULL OR expires_at > ?", now)
       .pluck(:available_at, :claimed_until)
       .map { |available_at, claimed_until| [ available_at, claimed_until ].compact.max }
-    swept = [ Voting::AdvanceRounds.next_event_at(now: now), Goty::AdvanceVotes.next_event_at(now: now) ]
-      .compact.min&.+(SWEEP_LAG)
+    swept = [
+      (Voting::AdvanceRounds.next_event_at(now: now) unless Features.off?("voting_gotm")),
+      (Goty::AdvanceVotes.next_event_at(now: now) unless Features.off?("goty_vote"))
+    ].compact.min&.+(SWEEP_LAG)
     soonest = [ *pending, swept ].compact.min
     [ soonest, now ].max if soonest
   end

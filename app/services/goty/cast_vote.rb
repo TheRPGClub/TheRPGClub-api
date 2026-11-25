@@ -25,12 +25,13 @@ module Goty
 
       vote = GotyVote.find(year)
       FreezeCandidates.call(vote, now: now)
-      runoff_games = Voting::CastRules.open_ballot!(vote, award, label: label(vote), now: now)
-      runoff = !runoff_games.nil?
+      Voting::CastRules.open_ballot!(vote, award, label: label(vote), now: now)
       game_id = Integer(gamedb_game_id)
 
       GotyBallotVote.transaction do
         Voting::CastRules.lock!(GotyBallotVote, user_id, "#{vote.year}:#{award}")
+        runoff_games = Voting::CastRules.lock_ballot!(vote, award, label: label(vote), now: now)
+        runoff = !runoff_games.nil?
 
         candidates = GotyCandidate.ballot(vote.year, award).pluck(:gamedb_game_id)
         check_candidate!(vote, award, candidates, game_id, runoff_games)

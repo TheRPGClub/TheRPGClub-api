@@ -232,6 +232,18 @@ RSpec.describe Goty::AdvanceVotes do
         expect(described_class.next_event_at(now: reminder_1d)).to eq(voting_open)
       end
 
+      it "skips a reminder that falls before nominations open, instead of reporting it due" do
+        late_open = Time.utc(2027, 1, 12, 5)
+        create(:goty_vote, year: 2026, nominations_open_at: late_open)
+
+        expect(described_class.next_event_at(now: Time.utc(2027, 1, 11))).to eq(late_open)
+        described_class.call(now: late_open)
+        expect(kinds).to eq(%w[goty_nominations_opened])
+        expect(described_class.next_event_at(now: late_open)).to eq(reminder_1d)
+        described_class.call(now: reminder_1d)
+        expect(kinds).to eq(%w[goty_nominations_opened goty_nomination_reminder_1d])
+      end
+
       it "waits for the close once voting is open and queued" do
         create(:goty_vote, year: 2026)
         described_class.call(now: voting_open)

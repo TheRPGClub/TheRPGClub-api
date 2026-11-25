@@ -19,6 +19,10 @@ module Voting
   #   scoped advisory lock (#lock!): row locks cannot stop two concurrent
   #   INSERTs from overshooting the cap. The tables' unique indexes remain the
   #   backstop.
+  # - The window is checked under a share lock on the record's row
+  #   (#lock_ballot!), which the Voting::Decide steps update under FOR UPDATE:
+  #   a cast either commits before a close tallies or sees the close and is
+  #   refused, never lands uncounted after it.
   module CastRules
     class VotingClosedError < StandardError; end
     class GameNotInRunoffError < StandardError; end
@@ -37,11 +41,19 @@ module Voting
     # Raises unless `record` (a VoteWindows record) takes votes for `key`
     # now. Returns nil for the main vote, or the tied games a runoff cast must
     # pick from. `label` names the record in messages ("round 12", "GOTY Vote
-    # 2026").
+    # 2026"). A window already tallied (`closed_at`, `runoff_closed_at`) is
+    # closed whatever the clock says.
     def open_ballot!(record, key, label:, now: Time.current)
       case record.phase(now)
-      when "voting" then nil
+      when "voting"
+        raise VotingClosedError, "voting for #{label} closed at #{record.closed_at.iso8601}" if record.closed_at
+
+        nil
       when "runoff"
+        if record.runoff_closed_at
+          raise VotingClosedError, "the runoff for #{label} closed at #{record.runoff_closed_at.iso8601}"
+        end
+
         tied = Array(record.pending_ties[key.to_s])
         raise VotingClosedError, "#{label} has no #{key} runoff" if tied.empty?
 
@@ -52,6 +64,13 @@ module Voting
       else
         raise VotingClosedError, closed_message(record, label, now)
       end
+    end
+
+    # #open_ballot! on `record` reloaded under a share lock held until the
+    # transaction ends. Call inside the cast's transaction, before writing.
+    def lock_ballot!(record, key, label:, now: Time.current)
+      record.lock!("FOR SHARE")
+      open_ballot!(record, key, label: label, now: now)
     end
 
     # Held until commit or rollback; only blocks another cast by the same

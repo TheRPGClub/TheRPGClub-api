@@ -99,6 +99,16 @@ RSpec.describe "api/v1/goty_votes award voting behavior", type: :request do
       end
     end
 
+    it "refuses a game id that is not a number, but leaves other errors alone" do
+      cast("gotm", "abc")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("not_a_candidate")
+
+      allow(Goty::CastVote).to receive(:call).and_raise(ArgumentError, "a bug")
+      cast("gotm", games[0])
+      expect(response).to have_http_status(:internal_server_error)
+    end
+
     it "refuses a game outside the runoff" do
       ties = { "gotm" => games.first(2).sort }
       vote.update!(closed_at: vote.voting_closes_at, pending_ties: ties, runoff_ties: ties,
@@ -188,6 +198,42 @@ RSpec.describe "api/v1/goty_votes award voting behavior", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
+    it "keeps the close once the main vote was tallied, so it can't reopen" do
+      ties = { "gotm" => [ 1, 2 ] }
+      vote.update!(closed_at: vote.voting_closes_at, pending_ties: ties, runoff_ties: ties,
+        runoff_opens_at: vote.voting_closes_at, runoff_closes_at: vote.voting_closes_at + 1.day)
+
+      patch_vote({ voting_closes_at: (after_close + 1.day).iso8601 }, at: after_close)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("voting_closed")
+      expect(vote.reload.voting_closes_at).to be_within(1.second).of(Time.utc(2027, 1, 18, 4, 59, 59))
+    end
+
+    it "keeps the nominations open once nominations have opened" do
+      nominating = vote.nominations_open_at + 1.day
+
+      patch_vote({ nominations_open_at: (nominating + 1.day).iso8601 }, at: nominating)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("nominations_opened")
+
+      patch_vote({ voting_opens_at: "2027-01-22T17:00:00Z" }, at: nominating)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "refuses a date it can't read instead of resetting it" do
+      %w[not-a-date 2027-13-45].each do |value|
+        patch_vote({ voting_opens_at: value })
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(json["error"]).to eq("invalid_date")
+      end
+      patch_vote({ voting_opens_at: "2027-01-22T17:00:00Z", nominations_open_at: nil })
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("invalid_date")
+      expect(vote.reload.voting_opens_at).to eq(Time.utc(2027, 1, 15, 17))
+    end
+
     it "is for admins, and not once decided" do
       patch_vote({ voting_opens_at: "2027-01-22T17:00:00Z" }, as: member)
       expect(response).to have_http_status(:forbidden)
@@ -236,6 +282,16 @@ RSpec.describe "api/v1/goty_votes award voting behavior", type: :request do
       expect(event).to have_attributes(goty_year: 2026, round_number: nil, kind: "goty_decided")
       winner = event.payload.fetch("awards").find { |row| row["award"] == "game_of_the_year" }["winner"]
       expect(winner).to include("gamedb_game_id" => goty[1], "decided_by" => "admin")
+    end
+
+    it "refuses a pick that is not a game id, but leaves other errors alone" do
+      resolve("abc")
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("invalid_pick")
+
+      allow(Goty::Decide).to receive(:resolve_tie!).and_raise(TypeError, "a bug")
+      resolve(goty[0])
+      expect(response).to have_http_status(:internal_server_error)
     end
 
     it "refuses a game that is not tied, an Award with no tie, and members" do

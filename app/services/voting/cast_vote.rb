@@ -43,11 +43,13 @@ module Voting
     end
 
     def cast!(round_number:, user_id:, nomination_id:)
-      runoff_games = open_ballot!(round_number)
-      runoff = !runoff_games.nil?
+      round = find_round!(round_number)
+      CastRules.open_ballot!(round, @category, label: label(round))
 
       @vote_model.transaction do
         CastRules.lock!(@vote_model, user_id, round_number)
+        runoff_games = CastRules.lock_ballot!(round, @category, label: label(round))
+        runoff = !runoff_games.nil?
 
         nomination = find_nomination!(round_number, nomination_id)
         if runoff && !runoff_games.include?(nomination.gamedb_game_id)
@@ -69,12 +71,14 @@ module Voting
 
     private
 
-    def open_ballot!(round_number)
+    def find_round!(round_number)
       round = VotingRound.find_by(round_number: round_number)
       raise VotingClosedError, "voting is not scheduled for round #{round_number}" if round.nil?
 
-      CastRules.open_ballot!(round, @category, label: "round #{round_number}")
+      round
     end
+
+    def label(round) = "round #{round.round_number}"
 
     def find_nomination!(round_number, nomination_id)
       nomination = @nomination_model.find_by(nomination_id: nomination_id, round_number: round_number)

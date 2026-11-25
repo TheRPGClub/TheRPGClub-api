@@ -52,6 +52,19 @@ RSpec.describe Goty::Nominate do
       expect(nominate(games.first)).not_to be_created
     end
 
+    # The candidates freeze when voting opens; a nomination checked just
+    # before must not land after the freeze, left off the ballot.
+    it "refuses a nomination whose window closed while it was being checked" do
+      game = game_from(2026)
+      allow(Goty::Eligibility).to receive(:check).and_wrap_original do |original, *args|
+        GotyVote.where(year: 2026).update_all(candidates_frozen_at: nominating_at)
+        original.call(*args)
+      end
+
+      expect { nominate(game) }.to raise_error(described_class::NominationsClosedError)
+      expect(GotyNomination.count).to eq(0)
+    end
+
     it "counts the cap per member" do
       Array.new(3) { game_from(2026) }.each { |game| nominate(game) }
 

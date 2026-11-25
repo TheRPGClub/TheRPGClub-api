@@ -65,7 +65,8 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       description 'Admin: moves the nominations open, voting open and voting close. Dates must run nominations ' \
                   'open < voting opens < voting closes. Moving `voting_opens_at` alone keeps the default weekend ' \
                   'window; "close voting now" is `voting_closes_at` set to now. Once voting has opened only ' \
-                  '`voting_closes_at` moves. Behind the `goty_vote` Feature.'
+                  '`voting_closes_at` moves, and only until the main vote is tallied; `nominations_open_at` is ' \
+                  'fixed once nominations open. Behind the `goty_vote` Feature.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -87,8 +88,9 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVote' } }, required: %w[data]
       end
 
-      response '422', 'dates out of order, `voting_opened` (only the close moves once voting has opened) or ' \
-                      '`goty_vote_decided`' do
+      response '422', 'dates out of order, `invalid_date` (a date that is missing or unreadable), ' \
+                      '`nominations_opened`, `voting_opened` (only the close moves once voting has opened), ' \
+                      '`voting_closed` (the main vote was tallied) or `goty_vote_decided`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

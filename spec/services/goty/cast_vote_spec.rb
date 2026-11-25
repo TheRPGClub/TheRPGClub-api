@@ -42,6 +42,27 @@ RSpec.describe Goty::CastVote do
       expect { cast("gotm", games.first, at: vote.voting_closes_at + 1.minute) }
         .to raise_error(Voting::CastRules::VotingClosedError, /closed at/)
     end
+
+    # A cast checked just before the close must not land after the close
+    # tallied: the window is checked again under the GOTY Vote's row lock.
+    it "refuses a cast whose window closed while it was being checked" do
+      games
+      allow(Voting::CastRules).to receive(:lock!).and_wrap_original do |original, *args|
+        original.call(*args)
+        GotyVote.where(year: 2026).update_all(closed_at: vote.voting_closes_at)
+      end
+
+      expect { cast("gotm", games.first, at: vote.voting_closes_at - 1.second) }
+        .to raise_error(Voting::CastRules::VotingClosedError, /closed at/)
+      expect(GotyBallotVote.count).to eq(0)
+    end
+
+    it "is closed once the vote was tallied, even if the close was moved later" do
+      vote.update!(closed_at: vote.voting_closes_at, voting_closes_at: vote.voting_closes_at + 1.day)
+
+      expect { cast("gotm", games.first, at: vote.voting_closes_at - 1.hour) }
+        .to raise_error(Voting::CastRules::VotingClosedError, /closed at/)
+    end
   end
 
   describe "casting on an Award" do
@@ -148,6 +169,16 @@ RSpec.describe Goty::CastVote do
     it "refuses a game that is not tied" do
       expect { cast("game_of_the_year", games[2], at: runoff_at) }
         .to raise_error(Voting::CastRules::GameNotInRunoffError)
+    end
+
+    it "refuses a runoff cast once the runoff was tallied" do
+      allow(Voting::CastRules).to receive(:lock!).and_wrap_original do |original, *args|
+        original.call(*args)
+        GotyVote.where(year: 2026).update_all(runoff_closed_at: runoff_at)
+      end
+
+      expect { cast("game_of_the_year", games[0], at: runoff_at) }
+        .to raise_error(Voting::CastRules::VotingClosedError, /runoff .* closed at/)
     end
 
     it "refuses an Award with no runoff" do

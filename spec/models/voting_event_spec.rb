@@ -139,5 +139,25 @@ RSpec.describe VotingEvent do
 
       expect(described_class.next_poll_at(at)).to eq(vote.nominations_open_at + VotingEvent::SWEEP_LAG)
     end
+
+    it "leaves out the GOTY Vote's sweep while its Feature is Off, as the sweep does" do
+      allow(Voting).to receive(:automation_enabled?).and_return(true)
+      set_feature_flag("goty_vote", "off")
+      december = Time.utc(2026, 12, 2)
+      round = create(:voting_round, voting_opens_at: december + 10.days)
+
+      # December with no GOTY Vote yet: its creation would be due now.
+      expect(described_class.next_poll_at(december))
+        .to eq(Voting::Schedule.reminder_at(round.voting_opens_at, 5) + VotingEvent::SWEEP_LAG)
+    end
+
+    it "leaves out the round's sweep while Voting & GOTM is Off" do
+      allow(Voting).to receive(:automation_enabled?).and_return(true)
+      set_feature_flag("voting_gotm", "off")
+      set_feature_flag("goty_vote", "off")
+      create(:voting_round, voting_opens_at: now + 10.days)
+
+      expect(described_class.next_poll_at(now)).to be_nil
+    end
   end
 end

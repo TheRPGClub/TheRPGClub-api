@@ -15,7 +15,9 @@ module Goty
   # Concurrency: nominations by one member for one year are serialized with a
   # transaction-scoped advisory lock, as in Voting::CastVote, since row locks
   # cannot stop two concurrent INSERTs from passing the cap together. The
-  # unique (year, user, game) index backs up the once-per-game rule.
+  # unique (year, user, game) index backs up the once-per-game rule. The
+  # window is checked again under a share lock on the GotyVote row, so no
+  # nomination lands after the candidates froze.
   class Nominate
     class NominationsClosedError < StandardError; end
     class CapReachedError < StandardError; end
@@ -39,13 +41,18 @@ module Goty
 
     def call(year:, user_id:, gamedb_game_id:)
       vote = GotyVote.find(year)
-      raise NominationsClosedError, closed_message(vote) unless vote.nominations_open?
+      check_open!(vote)
 
       game = GamedbGame.find(gamedb_game_id)
       check_eligible!(game, vote.year)
 
       GotyNomination.transaction do
         acquire_lock!(vote.year, user_id)
+        # Again under a share lock on the GotyVote row, which
+        # Goty::FreezeCandidates updates under FOR UPDATE: a nomination
+        # commits before the freeze reads the field, or is refused.
+        vote.lock!("FOR SHARE")
+        check_open!(vote)
         nomination = GotyNomination.find_or_initialize_by(year: vote.year, user_id: user_id.to_s,
           gamedb_game_id: game.game_id)
         next Result.new(nomination: nomination, created: false) if nomination.persisted?
@@ -58,6 +65,12 @@ module Goty
     end
 
     private
+
+    def check_open!(vote)
+      return if vote.nominations_open? && vote.candidates_frozen_at.nil?
+
+      raise NominationsClosedError, closed_message(vote)
+    end
 
     def closed_message(vote)
       if Time.current < vote.nominations_open_at

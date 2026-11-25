@@ -77,9 +77,7 @@ module Goty
     # and "close_runoff" are steps rather than posts, so never queued.
     def scheduled_events(vote)
       events = [ [ "goty_nominations_opened", vote.nominations_open_at, vote.voting_opens_at ] ]
-      REMINDERS.each do |kind, days_before|
-        events << [ kind, Voting::Schedule.reminder_at(vote.voting_opens_at, days_before), vote.voting_opens_at ]
-      end
+      reminders(vote).each { |kind, at, _days_before| events << [ kind, at, vote.voting_opens_at ] }
       events << [ "goty_voting_opened", vote.voting_opens_at, vote.voting_closes_at ]
       events << [ "freeze", vote.voting_opens_at, nil ] if vote.candidates_frozen_at.nil?
       events << [ "close", vote.voting_closes_at, nil ] if vote.closed_at.nil?
@@ -102,11 +100,20 @@ module Goty
 
       emit(vote, "goty_nominations_opened", available_at: vote.nominations_open_at,
         expires_at: vote.voting_opens_at)
-      REMINDERS.each do |kind, days_before|
-        at = Voting::Schedule.reminder_at(vote.voting_opens_at, days_before)
+      reminders(vote).each do |kind, at, days_before|
         next if now < at
 
         emit(vote, kind, available_at: at, expires_at: vote.voting_opens_at, days_before: days_before)
+      end
+    end
+
+    # [kind, due at, days before voting] for each nomination reminder. One
+    # that would fall before nominations open (dates moved closer together)
+    # is never posted: it would remind of nominations not yet open.
+    def reminders(vote)
+      REMINDERS.filter_map do |kind, days_before|
+        at = Voting::Schedule.reminder_at(vote.voting_opens_at, days_before)
+        [ kind, at, days_before ] unless at < vote.nominations_open_at
       end
     end
 
