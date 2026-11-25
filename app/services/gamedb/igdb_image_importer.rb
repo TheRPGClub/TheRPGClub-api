@@ -46,6 +46,8 @@ module Gamedb
       # shared version so those caches invalidate instead of touching this
       # game (which relations_data wouldn't act on anyway).
       Gamedb::GameRelationsCacheVersion.bump!
+      # A cover shows on the /franchises tiles.
+      Franchises::BrowseVersion.bump!
 
       Result.new(
         game_id: game.game_id,

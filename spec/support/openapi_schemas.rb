@@ -140,6 +140,29 @@ module OpenapiSchemas
           can_edit: bool.merge(description: "Regulars and above: link, unlink, Mainline, create."),
           can_admin: bool.merge(description: "Admins and above.")
         )),
+      # A Franchise on the /franchises index (spec api#487, ticket api#488).
+      FranchiseTile: obj(
+        _required: %w[franchise_id name games_count mainline_count spin_off_count add_on_count club_plays covers],
+        franchise_id: int, name: str,
+        games_count: int.merge(description: "Every linked game."),
+        mainline_count: int.merge(description: "Mainline games that aren't Add-ons."),
+        spin_off_count: int.merge(description: "Games neither Mainline nor Add-ons."),
+        add_on_count: int.merge(description: "Games with a parent game, whatever their Mainline mark."),
+        first_year: int(nullable: true).merge(description: "The earliest release year of a linked game."),
+        latest_year: int(nullable: true).merge(description: "The latest release year of a linked game."),
+        club_plays: int.merge(description: "Now Playing entries plus Game Completions in the last 90 days, " \
+                                           "on linked games."),
+        covers: {
+          type: :array, maxItems: 3,
+          description: "Newest Mainline first, then Spin-offs, newest first; games with a cover only.",
+          items: obj(_required: %w[game_id title cover_url], game_id: int, title: str, cover_url: str)
+        },
+        progress: obj(
+          _description: "The viewer's Mainline games finished (any Game Completion) of the total. Present only " \
+                        "for a signed-in member the `franchise_progress` Feature is open to.",
+          _required: %w[done total], done: int, total: int
+        )
+      ),
       FranchiseLink: obj(
         franchise_id: int, game_id: int, source: str(enum: %w[igdb manual]), mainline: bool,
         created_at: ts(nullable: true).merge(description: "Null for links older than Franchise editing."),
@@ -150,6 +173,27 @@ module OpenapiSchemas
                                                                 "an Add-on."),
         parent_game_name: str(nullable: true),
         parent_locked: bool.merge(description: "The parent was set by hand, so IGDB re-imports keep it.")
+      ),
+      FranchiseSuggestion: obj(
+        _description: "A Franchise a game probably belongs to (ticket api#489).",
+        _required: %w[franchise reason reasons role series_games_linked],
+        franchise: ref("Franchise"),
+        reason: str(enum: Gamedb::FranchiseSuggestions::REASONS).merge(
+          description: "The strongest reason: `series_name` (the game's IGDB Series has the Franchise's name), " \
+                       "`series_links` (other games in its Series are linked to it) or `title_match` (its title " \
+                       "contains the Franchise's name as whole words)."
+        ),
+        reasons: { type: :array, items: str(enum: Gamedb::FranchiseSuggestions::REASONS),
+                   description: "Every reason that applies, strongest first." },
+        role: str(enum: %w[mainline other add_on]).merge(
+          description: "The likely role: `add_on` whenever the game has a parent game, else `mainline` or " \
+                       "`other` (a Spin-off)."
+        ),
+        parent_game_id: int(nullable: true).merge(description: "The parent game, set only for `add_on` when it " \
+                                                                 "is in GameDB."),
+        parent_title: str(nullable: true).merge(description: "The parent game's title, set only for `add_on` when it " \
+                                                             "is in GameDB."),
+        series_games_linked: int.merge(description: "Games in the game's Series linked to this Franchise.")
       ),
       FranchiseChange: obj(
         _description: "A row of a Franchise's history (spec api#442).",
@@ -2028,9 +2072,9 @@ module OpenapiSchemas
         pages: { type: :array, items: str(example: "voting"),
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
-                              "gotm_history, goty, challenges, games, reviews, releases, achievements, journals, members, " \
-                              "news, codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
-                              "public_reminders, suggestion_review." },
+                              "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
+                              "journals, members, news, codex, lists, giveaways, suggestions, staff_desk, " \
+                              "voting_console, synonyms, live_events, public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),
         _required: %w[user_id pages customised]

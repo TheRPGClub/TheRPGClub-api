@@ -85,6 +85,44 @@ RSpec.describe 'api/v1/franchises', type: :request do
     end
   end
 
+  path '/api/v1/franchises/browse' do
+    get 'Browse franchises (the /franchises index)' do
+      tags 'Franchises'
+      description 'The current Franchises as the /franchises index shows them (merged ones are left out): ' \
+                  'Mainline, Spin-off and Add-on counts, up to three covers, the release span and Club plays ' \
+                  '(Now Playing plus Game Completions in the last 90 days). Franchises with no games come last ' \
+                  'in every sort. Each tile has `progress` (the viewer\'s Mainline finished/total) only when the ' \
+                  '`franchise_progress` Feature is open to the signed-in member. Tiles are cached for up to ten ' \
+                  'minutes; a Franchise edit, an undo or an IGDB import shows at once, Club plays may lag. ' \
+                  '`letter` ignores accents (Okami with a macron is under O).'
+      produces 'application/json'
+      parameter name: :q, in: :query, schema: { type: :string }, required: false,
+        description: 'Case-insensitive search against `name`.'
+      parameter name: :letter, in: :query, schema: { type: :string, enum: [ *'A'..'Z', '#' ] }, required: false,
+        description: 'Names starting with this letter (any case, accents ignored), or `#` for names that ' \
+                     'don\'t start with one. Anything else, a list included, is 422 `invalid_letter`.'
+      parameter name: :sort, in: :query, schema: { type: :string, enum: %w[az games plays], default: 'az' },
+        required: false, description: '`az` by name, `games` most linked games first, `plays` most Club plays first.'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 48, maximum: 120 }, required: false
+
+      response '200', 'franchise tiles' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/FranchiseTile' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '422', 'an unknown `sort` (`invalid_sort`) or `letter` (`invalid_letter`)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/franchises/{id}' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbFranchise id.'
 

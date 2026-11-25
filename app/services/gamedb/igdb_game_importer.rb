@@ -87,6 +87,7 @@ module Gamedb
         # itself wouldn't otherwise happen here.
         game.touch
       end
+      Franchises::BrowseVersion.bump!
 
       game
     end
@@ -119,6 +120,9 @@ module Gamedb
       # from their perspective -- bump the shared version (after the
       # transaction commits) so those caches invalidate too.
       Gamedb::GameRelationsCacheVersion.bump!
+      # Links, the parent, release years, title and covers all show on the
+      # /franchises tiles.
+      Franchises::BrowseVersion.bump!
 
       result
     end

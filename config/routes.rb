@@ -68,6 +68,8 @@ Rails.application.routes.draw do
           get "game_lists", to: "game_lists#game_index"
           # GOTY Vote (ticket api#472): Game of the Year eligibility for ?year=.
           get "goty_eligibility", to: "goty_votes#eligibility"
+          # Franchise suggestions (ticket api#489) for Game Edit's role lanes.
+          get "franchise_suggestions", to: "franchise_suggestions#index"
         end
       end
 
@@ -86,6 +88,9 @@ Rails.application.routes.draw do
       # games, set Mainline and undo changes; Admins and above rename, merge
       # and delete.
       resources :franchises, only: %i[index show create update destroy] do
+        # The /franchises index (spec api#487): tiles with counts, covers
+        # and the viewer's Mainline progress.
+        get "browse", on: :collection
         member do
           put "games/:game_id", action: :link_game, as: :link_game
           delete "games/:game_id", action: :unlink_game, as: :unlink_game

@@ -244,6 +244,77 @@ components:
         required:
         - games
         - viewer
+    FranchiseTile:
+      type: object
+      properties:
+        franchise_id:
+          type: integer
+        name:
+          type: string
+        games_count:
+          type: integer
+          description: Every linked game.
+        mainline_count:
+          type: integer
+          description: Mainline games that aren't Add-ons.
+        spin_off_count:
+          type: integer
+          description: Games neither Mainline nor Add-ons.
+        add_on_count:
+          type: integer
+          description: Games with a parent game, whatever their Mainline mark.
+        first_year:
+          type: integer
+          nullable: true
+          description: The earliest release year of a linked game.
+        latest_year:
+          type: integer
+          nullable: true
+          description: The latest release year of a linked game.
+        club_plays:
+          type: integer
+          description: Now Playing entries plus Game Completions in the last 90 days,
+            on linked games.
+        covers:
+          type: array
+          maxItems: 3
+          description: Newest Mainline first, then Spin-offs, newest first; games
+            with a cover only.
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              cover_url:
+                type: string
+            required:
+            - game_id
+            - title
+            - cover_url
+        progress:
+          type: object
+          properties:
+            done:
+              type: integer
+            total:
+              type: integer
+          required:
+          - done
+          - total
+          description: The viewer's Mainline games finished (any Game Completion)
+            of the total. Present only for a signed-in member the `franchise_progress`
+            Feature is open to.
+      required:
+      - franchise_id
+      - name
+      - games_count
+      - mainline_count
+      - spin_off_count
+      - add_on_count
+      - club_plays
+      - covers
     FranchiseLink:
       type: object
       properties:
@@ -287,6 +358,57 @@ components:
       - source
       - mainline
       - parent_locked
+    FranchiseSuggestion:
+      type: object
+      properties:
+        franchise:
+          "$ref": "#/components/schemas/Franchise"
+        reason:
+          type: string
+          enum:
+          - series_name
+          - series_links
+          - title_match
+          description: 'The strongest reason: `series_name` (the game''s IGDB Series
+            has the Franchise''s name), `series_links` (other games in its Series
+            are linked to it) or `title_match` (its title contains the Franchise''s
+            name as whole words).'
+        reasons:
+          type: array
+          items:
+            type: string
+            enum:
+            - series_name
+            - series_links
+            - title_match
+          description: Every reason that applies, strongest first.
+        role:
+          type: string
+          enum:
+          - mainline
+          - other
+          - add_on
+          description: 'The likely role: `add_on` whenever the game has a parent game,
+            else `mainline` or `other` (a Spin-off).'
+        parent_game_id:
+          type: integer
+          nullable: true
+          description: The parent game, set only for `add_on` when it is in GameDB.
+        parent_title:
+          type: string
+          nullable: true
+          description: The parent game's title, set only for `add_on` when it is in
+            GameDB.
+        series_games_linked:
+          type: integer
+          description: Games in the game's Series linked to this Franchise.
+      required:
+      - franchise
+      - reason
+      - reasons
+      - role
+      - series_games_linked
+      description: A Franchise a game probably belongs to (ticket api#489).
     FranchiseChange:
       type: object
       properties:
@@ -6522,9 +6644,10 @@ components:
             example: voting
           description: 'Pinned Page keys the member can see right now, in their order:
             the club default (voting, games, members, news) until they save their
-            own list. Keys: voting, gotm_history, goty, challenges, games, reviews,
-            releases, achievements, journals, members, news, codex, giveaways, suggestions,
-            staff_desk, voting_console, synonyms, live_events, public_reminders, suggestion_review.'
+            own list. Keys: voting, gotm_history, goty, challenges, games, franchises,
+            reviews, releases, achievements, journals, members, news, codex, lists,
+            giveaways, suggestions, staff_desk, voting_console, synonyms, live_events,
+            public_reminders, suggestion_review.'
         customised:
           type: boolean
           description: Whether the member saved their own list. False while they follow
@@ -19126,6 +19249,75 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/games/{id}/franchise_suggestions":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    get:
+      summary: Franchise suggestions for a game
+      tags:
+      - Franchises
+      description: 'Up to three Franchises the game probably belongs to, for Game
+        Edit (ticket api#489). A Franchise is suggested when the game''s IGDB Series
+        has its name (`series_name`), other games in that Series are linked to it
+        (`series_links`), or the game''s title contains its name as whole words (`title_match`).
+        Franchises the game is linked to or was unlinked from by hand, and merged
+        ones, are left out. Ordered by the strongest reason (in that order), then
+        more reasons, more linked Series games and longer names. Each has a likely
+        `role`: `add_on` whenever the game has a parent (with the parent when it is
+        in GameDB), else `mainline` when most of its linked Series games are Mainline
+        there or, with none, when the title starts with the Franchise''s name, else
+        `other` (a Spin-off). Regulars and above (the acting member''s stored roles).'
+      parameters:
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member it acts for.'
+      responses:
+        '200':
+          description: suggestions, best first (at most three)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    maxItems: 3
+                    items:
+                      "$ref": "#/components/schemas/FranchiseSuggestion"
+        '400':
+          description: the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: a member below Regular'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/franchises":
     get:
       summary: List franchises
@@ -19277,6 +19469,114 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/franchises/browse":
+    get:
+      summary: Browse franchises (the /franchises index)
+      tags:
+      - Franchises
+      description: 'The current Franchises as the /franchises index shows them (merged
+        ones are left out): Mainline, Spin-off and Add-on counts, up to three covers,
+        the release span and Club plays (Now Playing plus Game Completions in the
+        last 90 days). Franchises with no games come last in every sort. Each tile
+        has `progress` (the viewer''s Mainline finished/total) only when the `franchise_progress`
+        Feature is open to the signed-in member. Tiles are cached for up to ten minutes;
+        a Franchise edit, an undo or an IGDB import shows at once, Club plays may
+        lag. `letter` ignores accents (Okami with a macron is under O).'
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Case-insensitive search against `name`.
+      - name: letter
+        in: query
+        schema:
+          type: string
+          enum:
+          - A
+          - B
+          - C
+          - D
+          - E
+          - F
+          - G
+          - H
+          - I
+          - J
+          - K
+          - L
+          - M
+          - "N"
+          - O
+          - P
+          - Q
+          - R
+          - S
+          - T
+          - U
+          - V
+          - W
+          - X
+          - "Y"
+          - Z
+          - "#"
+        required: false
+        description: Names starting with this letter (any case, accents ignored),
+          or `#` for names that don't start with one. Anything else, a list included,
+          is 422 `invalid_letter`.
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - az
+          - games
+          - plays
+          default: az
+        required: false
+        description: "`az` by name, `games` most linked games first, `plays` most
+          Club plays first."
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 48
+          maximum: 120
+        required: false
+      responses:
+        '200':
+          description: franchise tiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/FranchiseTile"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: an unknown `sort` (`invalid_sort`) or `letter` (`invalid_letter`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/franchises/{id}":
     parameters:
     - name: id

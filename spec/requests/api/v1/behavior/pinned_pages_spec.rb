@@ -229,6 +229,12 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
       expect(pinned_for(member)["pages"]).to eq(%w[members])
     end
 
+    it "lets a member pin the Franchises index, which needs no Feature" do
+      pin(member, %w[franchises members])
+      expect(response).to have_http_status(:ok)
+      expect(pinned_for(member)["pages"]).to eq(%w[franchises members])
+    end
+
     it "lets a member pin the GOTY Vote, behind its Feature" do
       set_feature_flag("goty_vote", "live")
       pin(member, %w[goty members])
