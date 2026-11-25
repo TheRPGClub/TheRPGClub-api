@@ -23,7 +23,9 @@ RSpec.describe 'api/v1/playtime', type: :request do
                   'with its resolved platform (a label that doesn\'t resolve stays raw, with a null ' \
                   '`platform_id`) and each Manual entry. A Provider figure on a platform whose Manual entry ' \
                   'keeps over it is shown with `counted: false`. `mismatches` lists each platform where a ' \
-                  'Manual entry and a Provider both report time with no keep chosen. Open to any signed-in ' \
+                  'Manual entry and a Provider both report time with no keep chosen. `playthrough` is the ' \
+                  'member\'s open Playthrough of the game (null when none is open) and `playthroughs` the ' \
+                  'earlier ones, newest first. Open to any signed-in ' \
                   'caller; ungated. 404 for an unknown member or game.'
       produces 'application/json'
 

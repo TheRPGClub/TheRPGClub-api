@@ -412,6 +412,20 @@ RSpec.describe "api/v1/completionator import workflow", type: :request do
       expect(completion.completed_at.to_date).to eq(Date.new(2024, 2, 3))
     end
 
+    it "closes the member's open Playthrough, its time filling an empty final playtime (spec api#457)" do
+      game = game_on("Played #{tag}", windows)
+      create(:manual_playtime, user: owner, game: game, platform: windows, minutes: 30)
+      playthrough = create(:playthrough, user: owner, game: game, baseline_minutes: 0)
+      row = item(game_title: "Played #{tag}", gamedb_game_id: game.game_id, playtime_hrs: nil)
+
+      item_post(row, "add_completion", completion_type: "Main Story", platform_id: windows.platform_id)
+
+      completion = UserGameCompletion.find(row.reload.completion_id)
+      expect(completion.final_playtime_hrs).to eq(0.5)
+      expect(playthrough.reload).to have_attributes(end_reason: "completed",
+        completion_id: completion.completion_id, final_minutes: 30)
+    end
+
     it "creates the missing release for the item's mapped platform" do
       create(:region, region_code: "WW", region_name: "Worldwide") unless GamedbRegion.exists?(region_code: "WW")
       game = game_on("Release #{tag}", windows)

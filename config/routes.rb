@@ -177,6 +177,8 @@ Rails.application.routes.draw do
           get "games/:game_id/playtime", to: "playtime#show"
           post "games/:game_id/playtime/mismatches", to: "playtime#settle_mismatch"
           post "games/:game_id/manual_playtimes", to: "manual_playtimes#create"
+          # Playthroughs (ticket api#459): start one.
+          post "games/:game_id/playthroughs", to: "playthroughs#create"
           get "news_category_preferences", to: "news_category_preferences#show"
           patch "news_category_preferences", to: "news_category_preferences#update"
           get "game_keys", to: "game_keys#user_index"
@@ -286,6 +288,9 @@ Rails.application.routes.draw do
         end
       end
       resources :manual_playtimes, only: %i[update destroy]
+      resources :playthroughs, only: :update do
+        member { post :abandon }
+      end
       resources :favorites, only: %i[show update destroy]
       # The club-wide feed behind the `reviews` Dashboard Panel.
       get "reviews", to: "reviews#recent"

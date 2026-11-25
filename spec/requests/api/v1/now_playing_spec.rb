@@ -60,7 +60,9 @@ RSpec.describe 'api/v1/now_playing', type: :request do
                   'In the same transaction, every backlog row the user has for the game is removed, ' \
                   'and when `note` is absent or blank the backlog note carries over. If the entry ' \
                   'can\'t be created, the backlog is left unchanged. A game already on the list is 409 ' \
-                  '`already_playing` and the backlog is left unchanged.'
+                  '`already_playing` and the backlog is left unchanged. It also opens a Playthrough of the ' \
+                  'game when none is open (see `POST /users/{user_id}/games/{game_id}/playthroughs`); ' \
+                  'removing the entry later leaves the Playthrough open.'
       consumes 'application/json'
       produces 'application/json'
 

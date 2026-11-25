@@ -95,7 +95,27 @@ RSpec.describe Playtime::Ledger do
 
       expect(by_game).to eq(game.game_id => 100, other_game.game_id => 42)
       expect(by_member).to eq(member.user_id => 100, friend.user_id => 7)
-      expect(queries).to be <= 2 # the rows, and the platforms the labels resolve against
+      expect(queries).to be <= 3 # the rows, the open Playthroughs, and the platforms the labels resolve against
+    end
+
+    it "carries each member's open Playthrough and its time, even on a game with no Playtime" do
+      other_game = create(:game)
+      create(:manual_playtime, user: member, game: game, minutes: 500)
+      create(:playthrough, user: member, game: game, baseline_minutes: 420)
+      create(:playthrough, user: member, game: game, baseline_minutes: 0, ended_at: 1.day.ago,
+        end_reason: "abandoned", final_minutes: 10)
+      fresh = create(:playthrough, user: member, game: other_game)
+
+      ledger = described_class.new(user_ids: [ member.user_id ], game_ids: [ game.game_id, other_game.game_id ])
+
+      expect(ledger.for(member.user_id, game.game_id).playthrough_minutes).to eq(80)
+      expect(ledger.for(member.user_id, other_game.game_id)).to have_attributes(open_playthrough: fresh,
+        playthrough_minutes: 0, total_minutes: 0)
+      expect(ledger.minutes_by_game(member.user_id)).to eq(game.game_id => 500)
+    end
+
+    it "has no Playthrough time when none is open" do
+      expect(described_class.for_game(user_id: member.user_id, game_id: game.game_id).playthrough_minutes).to be_nil
     end
   end
 

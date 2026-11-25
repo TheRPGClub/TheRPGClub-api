@@ -126,7 +126,8 @@ module Api
       # boolean) takes the game off the member's Now Playing in the same
       # transaction; when a Superadmin logs one for another member that always
       # happens, as the bot does. `meta.left_now_playing` says whether an entry
-      # was removed.
+      # was removed. The member's open Playthrough of the game closes with
+      # it, and an empty `final_playtime_hrs` takes its time (spec api#457).
       def create
         announce = request_data["announce"]
         leave_now_playing = request_data["leave_now_playing"]
@@ -140,6 +141,7 @@ module Api
 
         record, announce_job, left = UserGameCompletion.transaction do
           completion = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
+          Playtime::Playthroughs.close_for_completion!(completion)
           removed =
             if leave_now_playing || logged_for_another_member?
               # Skips callbacks; the completion's own commit refreshes the

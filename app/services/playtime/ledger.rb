@@ -26,6 +26,9 @@ module Playtime
   #   ledger = Playtime::Ledger.new(user_ids: [id], game_ids: shelf_ids)
   #   ledger.minutes_by_game(id)                              # { game_id => minutes }
   #   Playtime::Ledger.new(game_ids: franchise_ids).minutes_by_user(game_id)
+  #
+  # Each GamePlaytime carries the member's open Playthrough of the game, read
+  # for the whole batch in one more query, and its time (`playthrough_minutes`).
   class Ledger
     ProviderSet = Struct.new(:achievement_set_id, :provider, :title, :platform_label, :platform_id, :minutes,
       :counted, keyword_init: true)
@@ -34,15 +37,15 @@ module Playtime
     Mismatch = Struct.new(:platform_id, :provider, :provider_minutes, :manual_playtime_id, :manual_minutes,
       keyword_init: true)
 
-    # One member's Playtime for one game. `open_playthrough` is the hook for
-    # Playthroughs (ticket api#459); nil until that is built.
+    # One member's Playtime for one game, with their open Playthrough of it
+    # (a UserGamePlaythrough, or nil).
     class GamePlaytime
-      attr_reader :user_id, :game_id, :provider_sets, :manual_entries, :mismatches
-      attr_accessor :open_playthrough
+      attr_reader :user_id, :game_id, :provider_sets, :manual_entries, :mismatches, :open_playthrough
 
-      def initialize(user_id:, game_id:, provider_sets: [], manual_entries: [])
+      def initialize(user_id:, game_id:, provider_sets: [], manual_entries: [], open_playthrough: nil)
         @user_id = user_id
         @game_id = game_id
+        @open_playthrough = open_playthrough
         @manual_entries = manual_entries.sort_by { |entry| [ entry.platform_id ? 0 : 1, entry.platform_id.to_i ] }
         @provider_sets = provider_sets.sort_by { |set| [ set.provider, set.title.to_s, set.achievement_set_id ] }
         @mismatches = []
@@ -54,6 +57,10 @@ module Playtime
       end
 
       def empty? = provider_sets.empty? && manual_entries.empty?
+
+      # The open Playthrough's time (its manual total, or the Playtime gained
+      # since it started); nil when none is open.
+      def playthrough_minutes = open_playthrough&.minutes_at(total_minutes)
 
       # The Manual entry on `platform_id` (nil is Other), if any.
       def manual_entry_for(platform_id) = manual_entries.find { |entry| entry.platform_id == platform_id }
@@ -109,8 +116,10 @@ module Playtime
     end
 
     # The member's Playtime for the game; empty (0 minutes) when there is none.
+    # Its open Playthrough comes along even then.
     def for(user_id, game_id)
-      by_pair.fetch([ user_id.to_s, game_id.to_i ]) { GamePlaytime.new(user_id: user_id.to_s, game_id: game_id.to_i) }
+      key = [ user_id.to_s, game_id.to_i ]
+      by_pair.fetch(key) { GamePlaytime.new(user_id: key[0], game_id: key[1], open_playthrough: open_playthroughs[key]) }
     end
 
     def total_minutes(user_id, game_id) = self.for(user_id, game_id).total_minutes
@@ -143,8 +152,18 @@ module Playtime
         end
         (providers.keys | manuals.keys).to_h do |key|
           [ key, GamePlaytime.new(user_id: key[0], game_id: key[1], provider_sets: providers[key],
-            manual_entries: manuals[key]) ]
+            manual_entries: manuals[key], open_playthrough: open_playthroughs[key]) ]
         end
+      end
+    end
+
+    # { [user_id, game_id] => UserGamePlaythrough } for the batch's open ones.
+    def open_playthroughs
+      @open_playthroughs ||= begin
+        scope = UserGamePlaythrough.currently_open
+        scope = scope.where(user_id: @user_ids) if @user_ids
+        scope = scope.where(gamedb_game_id: @game_ids) if @game_ids
+        @user_ids&.empty? || @game_ids&.empty? ? {} : scope.index_by { |row| [ row.user_id, row.gamedb_game_id ] }
       end
     end
 
