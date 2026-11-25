@@ -24,25 +24,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "achievement_hub_states", force: :cascade do |t|
-    t.string "key", limit: 100, null: false
-    t.jsonb "value"
     t.datetime "created_at", null: false
+    t.string "key", limit: 100, null: false
     t.datetime "updated_at", null: false
+    t.jsonb "value"
     t.index ["key"], name: "ux_achievement_hub_states_key", unique: true
   end
 
   create_table "achievement_sets", force: :cascade do |t|
-    t.string "provider", limit: 32, null: false
-    t.string "external_id", limit: 64, null: false
-    t.string "np_service_name", limit: 32
-    t.string "title", limit: 512
-    t.string "platform_label", limit: 100
-    t.string "icon_url", limit: 1024
-    t.bigint "game_id"
     t.integer "achievements_count", default: 0, null: false
-    t.integer "points_total", default: 0, null: false
-    t.datetime "definitions_synced_at"
     t.datetime "created_at", null: false
+    t.datetime "definitions_synced_at"
+    t.string "external_id", limit: 64, null: false
+    t.bigint "game_id"
+    t.string "icon_url", limit: 1024
+    t.string "np_service_name", limit: 32
+    t.string "platform_label", limit: 100
+    t.integer "points_total", default: 0, null: false
+    t.string "provider", limit: 32, null: false
+    t.string "title", limit: 512
     t.datetime "updated_at", null: false
     t.index ["game_id"], name: "ix_achievement_sets_game"
     t.index ["provider", "external_id"], name: "ux_achievement_sets_provider_external", unique: true
@@ -50,19 +50,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
 
   create_table "achievements", force: :cascade do |t|
     t.bigint "achievement_set_id", null: false
-    t.string "external_id", limit: 64, null: false
-    t.string "name", limit: 512
+    t.datetime "created_at", null: false
     t.text "description"
-    t.string "icon_url", limit: 1024
-    t.string "icon_locked_url", limit: 1024
-    t.boolean "hidden", default: false, null: false
-    t.integer "points"
-    t.string "tier", limit: 16
     t.integer "display_order"
+    t.string "external_id", limit: 64, null: false
+    t.boolean "hidden", default: false, null: false
+    t.string "icon_locked_url", limit: 1024
+    t.string "icon_url", limit: 1024
+    t.string "name", limit: 512
+    t.integer "points"
     t.decimal "rarity", precision: 5, scale: 2
     t.decimal "rarity_hardcore", precision: 5, scale: 2
     t.datetime "removed_at"
-    t.datetime "created_at", null: false
+    t.string "tier", limit: 16
     t.datetime "updated_at", null: false
     t.index ["achievement_set_id", "external_id"], name: "ux_achievements_set_external", unique: true
   end
@@ -76,19 +76,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "bot_jobs", force: :cascade do |t|
-    t.string "kind", limit: 64, null: false
-    t.jsonb "payload", default: {}, null: false
-    t.string "status", limit: 16, default: "queued", null: false
-    t.string "requested_by_user_id", limit: 30
-    t.datetime "claimed_at"
     t.integer "attempts", default: 0, null: false
+    t.datetime "claimed_at"
+    t.datetime "created_at", null: false
     t.text "error_message"
     t.datetime "finished_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.string "summary", limit: 200, null: false
-    t.text "result_text"
+    t.string "kind", limit: 64, null: false
     t.datetime "lease_expires_at"
+    t.jsonb "payload", default: {}, null: false
+    t.string "requested_by_user_id", limit: 30
+    t.text "result_text"
+    t.string "status", limit: 16, default: "queued", null: false
+    t.string "summary", limit: 200, default: "", null: false
+    t.datetime "updated_at", null: false
     t.index "((payload ->> 'message_id'::text))", name: "ux_bot_jobs_one_open_news_images_renew", unique: true, where: "(((kind)::text = 'news_images_renew'::text) AND ((status)::text = ANY ((ARRAY['queued'::character varying, 'claimed'::character varying])::text[])))"
     t.index "((payload ->> 'message_id'::text)), finished_at", name: "ix_bot_jobs_finished_news_images_renew", where: "(((kind)::text = 'news_images_renew'::text) AND ((status)::text = ANY ((ARRAY['done'::character varying, 'failed'::character varying])::text[])))"
     t.index ["id"], name: "ix_bot_jobs_queued", where: "((status)::text = 'queued'::text)"
@@ -149,9 +149,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.string "signup_post_message_id", limit: 30
     t.index ["challenge_id", "year"], name: "ux_challenge_editions_year", unique: true
     t.index ["phase", "signup_cutoff_on"], name: "ix_challenge_editions_phase"
-    t.check_constraint "(signup_post_channel_id IS NULL) = (signup_post_message_id IS NULL)", name: "ck_challenge_editions_signup_post"
     t.check_constraint "phase::text = ANY (ARRAY['signup'::character varying, 'picking'::character varying, 'revealed'::character varying, 'ended'::character varying, 'cancelled'::character varying]::text[])", name: "ck_challenge_editions_phase"
     t.check_constraint "signup_opens_on < signup_cutoff_on AND signup_cutoff_on < pick_deadline_on AND pick_deadline_on < reveal_on AND reveal_on < ends_on", name: "ck_challenge_editions_dates"
+    t.check_constraint "(signup_post_channel_id IS NULL) = (signup_post_message_id IS NULL)", name: "ck_challenge_editions_signup_post"
   end
 
   create_table "challenge_finish_announcements", primary_key: ["challenge_id", "user_id", "season_starts_on"], force: :cascade do |t|
@@ -287,8 +287,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.index ["host_user_id"], name: "ix_challenges_host"
     t.index ["pool_game_list_id"], name: "ix_challenges_pool_game_list", where: "(pool_game_list_id IS NOT NULL)"
     t.check_constraint "(schedule::text = 'seasonal'::text) = (season_start_month IS NOT NULL AND season_start_day IS NOT NULL AND season_end_month IS NOT NULL AND season_end_day IS NOT NULL)", name: "ck_challenges_season"
-    t.check_constraint "NOT counts_past_play OR schedule::text = 'always_open'::text", name: "ck_challenges_past_play_always_open"
     t.check_constraint "challenge_format::text <> 'assignment'::text OR schedule::text = 'always_open'::text AND ends_on IS NULL", name: "ck_challenges_assignment_schedule"
+    t.check_constraint "NOT counts_past_play OR schedule::text = 'always_open'::text", name: "ck_challenges_past_play_always_open"
     t.check_constraint "challenge_format::text = ANY (ARRAY['slots'::character varying, 'pool'::character varying, 'assignment'::character varying]::text[])", name: "ck_challenges_format"
     t.check_constraint "pool_optional_target >= 0", name: "ck_challenges_pool_optional_target"
     t.check_constraint "schedule::text = 'always_open'::text OR ends_on IS NULL", name: "ck_challenges_ends_on"
@@ -696,19 +696,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.bigint "gamedb_game_id", null: false
     t.bigint "nomination_id", null: false
     t.bigint "round_number", null: false
+    t.boolean "runoff", default: false, null: false
     t.string "user_id", limit: 64, null: false
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
-    t.boolean "runoff", default: false, null: false
     t.index ["round_number", "nomination_id"], name: "ix_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_runoff_user_game", unique: true
   end
 
   create_table "guild_channels", primary_key: "channel_id", id: :string, force: :cascade do |t|
-    t.string "name", null: false
     t.integer "channel_type", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
     t.string "parent_id"
     t.integer "position", default: 0, null: false
-    t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["channel_type", "parent_id", "position"], name: "ix_guild_channels_type_parent_position"
   end
@@ -720,16 +720,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "image_backfill_runs", force: :cascade do |t|
-    t.string "status", limit: 16, default: "queued", null: false
-    t.integer "total", default: 0, null: false
+    t.datetime "created_at", null: false
     t.integer "done", default: 0, null: false
-    t.integer "skipped", default: 0, null: false
     t.integer "failed", default: 0, null: false
-    t.string "started_by_user_id", limit: 30
-    t.datetime "started_at"
     t.datetime "finished_at"
     t.text "last_error"
-    t.datetime "created_at", null: false
+    t.integer "skipped", default: 0, null: false
+    t.datetime "started_at"
+    t.string "started_by_user_id", limit: 30
+    t.string "status", limit: 16, default: "queued", null: false
+    t.integer "total", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index ["status"], name: "ix_image_backfill_runs_one_in_progress", unique: true, where: "((status)::text = ANY ((ARRAY['queued'::character varying, 'running'::character varying])::text[]))"
     t.check_constraint "status::text = ANY (ARRAY['queued'::character varying, 'running'::character varying, 'completed'::character varying, 'failed'::character varying]::text[])", name: "ck_image_backfill_runs_status"
@@ -744,17 +744,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "live_events", force: :cascade do |t|
-    t.string "topic", limit: 100, null: false
-    t.datetime "starts_at", null: false
+    t.bigint "bot_job_id"
+    t.datetime "created_at", null: false
+    t.string "created_by_user_id", limit: 30
+    t.string "discord_event_id", limit: 30
+    t.string "discord_thread_id", limit: 30
     t.datetime "ends_at", null: false
     t.text "image_url"
+    t.datetime "starts_at", null: false
     t.string "status", limit: 16, default: "queued", null: false
-    t.string "discord_thread_id", limit: 30
-    t.string "discord_event_id", limit: 30
-    t.string "created_by_user_id", limit: 30
-    t.datetime "created_at", null: false
+    t.string "topic", limit: 100, null: false
     t.datetime "updated_at", null: false
-    t.bigint "bot_job_id"
     t.index ["bot_job_id"], name: "index_live_events_on_bot_job_id"
     t.index ["created_at"], name: "index_live_events_on_created_at"
     t.check_constraint "ends_at > starts_at", name: "ck_live_events_ends_after_start"
@@ -797,9 +797,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "member_news_category_preferences", force: :cascade do |t|
-    t.string "user_id", limit: 30, null: false
     t.string "category_key", limit: 64, null: false
     t.datetime "created_at", null: false
+    t.string "user_id", limit: 30, null: false
     t.index ["user_id", "category_key"], name: "index_member_news_category_preferences_on_user_and_category", unique: true
   end
 
@@ -812,35 +812,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "news_import_removals", force: :cascade do |t|
+    t.datetime "created_at", null: false
     t.string "message_id", limit: 30, null: false
     t.string "removed_by", limit: 30
-    t.datetime "created_at", null: false
     t.index ["message_id"], name: "index_news_import_removals_on_message_id", unique: true
   end
 
   create_table "news_items", force: :cascade do |t|
-    t.string "message_id", limit: 30, null: false
-    t.string "channel_id", limit: 30, null: false
     t.string "author_id", limit: 30, null: false
     t.string "author_name", limit: 100, null: false
+    t.datetime "category_changed_at"
+    t.string "category_changed_by", limit: 30
     t.string "category_key", limit: 64
-    t.string "origin", limit: 16, default: "live", null: false
+    t.string "channel_id", limit: 30, null: false
     t.text "comment"
-    t.text "link_url"
-    t.text "link_title"
-    t.text "link_site_name"
+    t.datetime "created_at", null: false
+    t.datetime "edited_at"
+    t.jsonb "images", default: [], null: false
     t.text "link_description"
     t.text "link_image_url"
-    t.jsonb "images", default: [], null: false
-    t.datetime "posted_at", null: false
-    t.datetime "edited_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
+    t.text "link_site_name"
+    t.text "link_title"
+    t.text "link_url"
+    t.string "message_id", limit: 30, null: false
     t.string "news_copy_message_id", limit: 30
     t.string "news_copy_thread_id", limit: 30
+    t.string "origin", limit: 16, default: "live", null: false
     t.string "picked_category_key", limit: 64
-    t.string "category_changed_by", limit: 30
-    t.datetime "category_changed_at"
+    t.datetime "posted_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["category_key", "posted_at"], name: "ix_news_items_category_feed", order: { posted_at: :desc }, where: "(category_key IS NOT NULL)"
     t.index ["message_id"], name: "index_news_items_on_message_id", unique: true
     t.index ["posted_at", "id"], name: "ix_news_items_feed", order: :desc, where: "(category_key IS NOT NULL)"
@@ -875,9 +875,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.bigint "gamedb_game_id", null: false
     t.bigint "nomination_id", null: false
     t.bigint "round_number", null: false
+    t.boolean "runoff", default: false, null: false
     t.string "user_id", limit: 64, null: false
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
-    t.boolean "runoff", default: false, null: false
     t.index ["round_number", "nomination_id"], name: "ix_nr_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_nr_gotm_votes_round_runoff_user_game", unique: true
   end
@@ -977,12 +977,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.bigint "gamedb_game_id"
     t.string "key_value", limit: 200, null: false
     t.string "platform", limit: 50, null: false
-    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "region", limit: 20, default: "Global", null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["claimed_by_user_id", "game_title"], name: "ix_game_keys_available"
     t.index ["game_title"], name: "ix_game_keys_title"
     t.index ["gamedb_game_id"], name: "ix_game_keys_game"
-    t.check_constraint "region::text = ANY (ARRAY['Global'::character varying, 'NA'::character varying, 'EU'::character varying, 'UK'::character varying, 'RU/CIS'::character varying, 'Asia'::character varying, 'Unknown'::character varying]::text[])", name: "ck_rpg_club_game_keys_region"
+    t.check_constraint "region::text = ANY (ARRAY['Global'::character varying::text, 'NA'::character varying::text, 'EU'::character varying::text, 'UK'::character varying::text, 'RU/CIS'::character varying::text, 'Asia'::character varying::text, 'Unknown'::character varying::text])", name: "ck_rpg_club_game_keys_region"
   end
 
   create_table "rpg_club_gamedb_import_items", primary_key: "item_id", force: :cascade do |t|
@@ -1060,11 +1060,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.string "main", limit: 50
     t.string "main_sides", limit: 50
     t.datetime "scraped_at", default: -> { "CURRENT_TIMESTAMP" }
+    t.datetime "searched_at"
     t.string "single_player", limit: 50
     t.string "source_query", limit: 255
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }
     t.string "vs", limit: 50
-    t.datetime "searched_at"
     t.index ["gamedb_game_id"], name: "uq_hltb_game_id", unique: true
   end
 
@@ -1210,29 +1210,29 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "rpg_club_suggestion_upvotes", force: :cascade do |t|
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "suggestion_id", null: false
     t.string "user_id", limit: 30, null: false
-    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["suggestion_id", "user_id"], name: "ux_rpg_club_suggestion_upvotes_suggestion_user", unique: true
     t.index ["user_id"], name: "ix_rpg_club_suggestion_upvotes_user"
   end
 
   create_table "rpg_club_suggestions", primary_key: "suggestion_id", force: :cascade do |t|
+    t.timestamptz "approval_started_at"
     t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.string "created_by", limit: 30
     t.string "created_by_name", limit: 100
     t.string "details", limit: 2000
-    t.string "labels", limit: 200
-    t.string "title", limit: 200, null: false
-    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
-    t.string "status", limit: 16, default: "pending", null: false
-    t.string "reviewed_by", limit: 30
-    t.timestamptz "reviewed_at"
-    t.string "rejection_reason", limit: 2000
-    t.string "target_repo", limit: 200
     t.integer "github_issue_number"
     t.string "github_issue_url", limit: 500
-    t.timestamptz "approval_started_at"
+    t.string "labels", limit: 200
+    t.string "rejection_reason", limit: 2000
+    t.timestamptz "reviewed_at"
+    t.string "reviewed_by", limit: 30
+    t.string "status", limit: 16, default: "pending", null: false
+    t.string "target_repo", limit: 200
+    t.string "title", limit: 200, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.index ["created_at"], name: "ix_rpg_club_suggestions_created"
     t.index ["status"], name: "ix_rpg_club_suggestions_status"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying]::text[])", name: "ck_rpg_club_suggestions_status"
@@ -1287,8 +1287,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
     t.boolean "pinned_pages_customised", default: false, null: false, comment: "Whether the member saved their own Pinned Pages; false follows the club default."
     t.boolean "dashboard_panels_customised", default: false, null: false, comment: "Whether the member saved their own Dashboard Panels; false follows the club default."
     t.string "dashboard_panels_seen_keys", comment: "Dashboard Panel keys the member has seen in edit mode; NULL until they first open it.", array: true
-    t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
+    t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end
 
   create_table "rpg_club_users_hist", primary_key: "history_id", force: :cascade do |t|
@@ -1411,22 +1411,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "user_achievement_set_progress", force: :cascade do |t|
-    t.string "user_id", limit: 30, null: false
     t.bigint "achievement_set_id", null: false
-    t.bigint "user_linked_account_id", null: false
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
     t.integer "earned_count", default: 0, null: false
     t.integer "hardcore_earned_count", default: 0, null: false
-    t.integer "total_count", default: 0, null: false
-    t.integer "points_earned", default: 0, null: false
-    t.datetime "completed_at"
+    t.datetime "last_unlocked_at"
     t.datetime "mastered_at"
     t.datetime "platinum_at"
-    t.datetime "last_unlocked_at"
     t.integer "playtime_minutes"
+    t.integer "points_earned", default: 0, null: false
     t.datetime "sync_pending_at"
     t.datetime "synced_at"
-    t.datetime "created_at", null: false
+    t.integer "total_count", default: 0, null: false
     t.datetime "updated_at", null: false
+    t.string "user_id", limit: 30, null: false
+    t.bigint "user_linked_account_id", null: false
     t.index ["achievement_set_id"], name: "ix_user_achievement_set_progress_set"
     t.index ["sync_pending_at"], name: "ix_user_achievement_set_progress_sync_pending", where: "(sync_pending_at IS NOT NULL)"
     t.index ["user_id", "achievement_set_id"], name: "ux_user_achievement_set_progress_user_set", unique: true
@@ -1435,17 +1435,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "user_achievement_unlocks", force: :cascade do |t|
-    t.string "user_id", limit: 30, null: false
     t.bigint "achievement_id", null: false
-    t.bigint "user_linked_account_id", null: false
-    t.datetime "unlocked_at", null: false
-    t.boolean "hardcore", default: false, null: false
-    t.string "highlight", limit: 16
     t.boolean "announceable", default: false, null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.datetime "hardcore_unlocked_at"
     t.datetime "announced_at"
+    t.datetime "created_at", null: false
+    t.boolean "hardcore", default: false, null: false
+    t.datetime "hardcore_unlocked_at"
+    t.string "highlight", limit: 16
+    t.datetime "unlocked_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 30, null: false
+    t.bigint "user_linked_account_id", null: false
     t.index ["achievement_id"], name: "ix_user_achievement_unlocks_achievement"
     t.index ["id"], name: "ix_user_achievement_unlocks_unannounced", where: "(announceable AND (announced_at IS NULL))"
     t.index ["unlocked_at"], name: "ix_user_achievement_unlocks_unlocked_at"
@@ -1542,12 +1542,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   create_table "user_game_reviews", primary_key: "review_id", force: :cascade do |t|
     t.jsonb "body"
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.jsonb "facets"
     t.bigint "gamedb_game_id", null: false
     t.integer "rating"
+    t.string "title", limit: 120
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.string "user_id", limit: 50, null: false
-    t.jsonb "facets"
-    t.string "title", limit: 120
     t.datetime "published_at"
     t.datetime "edited_at"
     t.index ["gamedb_game_id"], name: "ix_user_game_reviews_game"
@@ -1558,19 +1558,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "user_linked_accounts", force: :cascade do |t|
-    t.string "user_id", limit: 30, null: false
-    t.string "provider", limit: 32, null: false
-    t.string "external_id", limit: 64, null: false
-    t.string "display_name", limit: 255
-    t.string "sync_status", limit: 32, default: "pending", null: false
-    t.text "sync_error"
-    t.datetime "sync_due_at"
-    t.string "sync_mode", limit: 32, default: "backfill", null: false
     t.datetime "backfilled_at"
-    t.datetime "last_synced_at"
-    t.datetime "sync_requested_at"
     t.datetime "created_at", null: false
+    t.string "display_name", limit: 255
+    t.string "external_id", limit: 64, null: false
+    t.datetime "last_synced_at"
+    t.string "provider", limit: 32, null: false
+    t.datetime "sync_due_at"
+    t.text "sync_error"
+    t.string "sync_mode", limit: 32, default: "backfill", null: false
+    t.datetime "sync_requested_at"
+    t.string "sync_status", limit: 32, default: "pending", null: false
     t.datetime "updated_at", null: false
+    t.string "user_id", limit: 30, null: false
     t.index ["provider", "external_id"], name: "ux_user_linked_accounts_provider_external", unique: true
     t.index ["provider", "sync_due_at"], name: "ix_user_linked_accounts_sync_due", where: "(sync_due_at IS NOT NULL)"
     t.index ["user_id", "provider"], name: "ux_user_linked_accounts_user_provider", unique: true
@@ -1615,33 +1615,33 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_160000) do
   end
 
   create_table "voting_events", force: :cascade do |t|
-    t.bigint "round_number", null: false
+    t.integer "attempts", default: 0, null: false
+    t.datetime "available_at", null: false
+    t.datetime "claimed_until"
+    t.datetime "created_at", null: false
+    t.datetime "delivered_at"
+    t.datetime "expires_at"
     t.string "kind", limit: 64, null: false
     t.jsonb "payload", default: {}, null: false
-    t.datetime "available_at", null: false
-    t.datetime "expires_at"
-    t.datetime "claimed_until"
-    t.datetime "delivered_at"
-    t.integer "attempts", default: 0, null: false
-    t.datetime "created_at", null: false
+    t.bigint "round_number", null: false
     t.datetime "updated_at", null: false
     t.index ["available_at"], name: "ix_voting_events_pending", where: "(delivered_at IS NULL)"
     t.index ["round_number", "kind"], name: "ux_voting_events_round_kind", unique: true
   end
 
   create_table "voting_rounds", primary_key: "round_number", id: :bigint, default: nil, force: :cascade do |t|
-    t.datetime "voting_opens_at", null: false
-    t.datetime "voting_closes_at", null: false
     t.datetime "closed_at"
+    t.datetime "created_at", null: false
     t.datetime "decided_at"
     t.string "month_year", limit: 200, null: false
     t.jsonb "pending_ties", default: {}, null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.datetime "runoff_opens_at"
-    t.datetime "runoff_closes_at"
     t.datetime "runoff_closed_at"
+    t.datetime "runoff_closes_at"
+    t.datetime "runoff_opens_at"
     t.jsonb "runoff_ties", default: {}, null: false
+    t.datetime "updated_at", null: false
+    t.datetime "voting_closes_at", null: false
+    t.datetime "voting_opens_at", null: false
     t.index ["round_number"], name: "ix_voting_rounds_undecided", where: "(decided_at IS NULL)"
   end
 
