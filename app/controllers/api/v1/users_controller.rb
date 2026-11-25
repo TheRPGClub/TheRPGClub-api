@@ -60,6 +60,13 @@ module Api
         backlog: "backlog", collections: "collection", journal: "journals"
       }.freeze
 
+      # Each profile Playtime shelf (Playtime::ProfileTotals) and the section
+      # whose Feature it follows.
+      PLAYTIME_SHELF_SECTIONS = {
+        completed: :completions, backlog: :backlog, favorites: :favorites, collection: :collections,
+        now_playing: :now_playing
+      }.freeze
+
       def show
         user = RpgClubUser.without_images.includes(socials: :social_platform).find(params[:user_id])
         limit = preview_limit
@@ -83,7 +90,8 @@ module Api
         }.select { |key, _| profile_section?(key) }.transform_values(&:call).transform_values(&:value)
 
         render json: {
-          data: UserResource.new(user, params: previews.merge(counts: counts)).serializable_hash
+          data: UserResource.new(user, params: previews.merge(counts: counts, playtime: profile_playtime(user)))
+            .serializable_hash
         }
       end
 
@@ -227,6 +235,13 @@ module Api
       def profile_section?(key)
         feature = PROFILE_FEATURES[key]
         feature.nil? || can_use_feature?(feature)
+      end
+
+      # The profile's Playtime: the total, and the total of each shelf the
+      # viewer gets (a Feature-owned shelf follows its section, as `counts`).
+      def profile_playtime(user)
+        shelves = PLAYTIME_SHELF_SECTIONS.select { |_shelf, section| profile_section?(section) }.keys
+        Playtime::ProfileTotals.new(user.user_id, shelves: shelves).to_h
       end
 
       def preview_limit

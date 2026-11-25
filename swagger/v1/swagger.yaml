@@ -977,6 +977,36 @@ components:
         collections: Collection, journal: Journals) and is left out when the viewer
         cannot use that Feature (Preview: staff only; Off: nobody). The service token
         gets every count.'
+    UserPlaytimeShelves:
+      type: object
+      properties:
+        completed:
+          type: integer
+        backlog:
+          type: integer
+        favorites:
+          type: integer
+        collection:
+          type: integer
+        now_playing:
+          type: integer
+      required:
+      - favorites
+      description: Minutes of Playtime over the distinct games on each shelf. Each
+        shelf but `favorites` belongs to a Feature and is left out, as in `counts`,
+        when the viewer cannot use it.
+    UserPlaytime:
+      type: object
+      properties:
+        total_minutes:
+          type: integer
+        shelves:
+          "$ref": "#/components/schemas/UserPlaytimeShelves"
+      required:
+      - total_minutes
+      - shelves
+      description: 'The member''s Playtime in minutes: `total_minutes` over every
+        game they have Playtime on (on a shelf or not), and each shelf''s total.'
     User:
       allOf:
       - "$ref": "#/components/schemas/UserSummary"
@@ -1010,6 +1040,8 @@ components:
               "$ref": "#/components/schemas/JournaledGame"
           counts:
             "$ref": "#/components/schemas/UserCounts"
+          playtime:
+            "$ref": "#/components/schemas/UserPlaytime"
           birthday:
             allOf:
             - "$ref": "#/components/schemas/Birthday"
@@ -1227,6 +1259,12 @@ components:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - entry_id
       - user_id
@@ -1341,6 +1379,12 @@ components:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - entry_id
       - user_id
@@ -1486,6 +1530,12 @@ components:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - completion_id
       - user_id
@@ -1610,6 +1660,12 @@ components:
           nullable: true
         game:
           "$ref": "#/components/schemas/GameSummary"
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - entry_id
       - user_id
@@ -1664,6 +1720,17 @@ components:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
+        playthrough_minutes:
+          type: integer
+          nullable: true
+          description: The open Playthrough's time in minutes; null when none is open.
+            Only on GET /users/{user_id}/now_playing.
       required:
       - entry_id
       - user_id
@@ -8931,6 +8998,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: backlog list
@@ -8945,6 +9023,12 @@ paths:
                       "$ref": "#/components/schemas/BacklogEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -15233,6 +15317,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: collections list
@@ -15247,6 +15342,12 @@ paths:
                       "$ref": "#/components/schemas/CollectionEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -16620,6 +16721,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: completions list
@@ -16634,6 +16746,12 @@ paths:
                       "$ref": "#/components/schemas/CompletionEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -17738,6 +17856,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: favorites list
@@ -17752,6 +17881,12 @@ paths:
                       "$ref": "#/components/schemas/FavoriteEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -26615,6 +26750,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: now-playing list
@@ -26629,6 +26775,12 @@ paths:
                       "$ref": "#/components/schemas/NowPlayingEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -36202,7 +36354,8 @@ paths:
       - Users
       description: 'Aggregated profile: user record + membership, socials, and preview
         lists/counts for now-playing, favorites, reviews, completions, and journal
-        (recently journaled games).'
+        (recently journaled games), plus `playtime` (the member''s total Playtime
+        and each shelf''s, a game counted once per shelf).'
       parameters:
       - name: preview_limit
         in: query

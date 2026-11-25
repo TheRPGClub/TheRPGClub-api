@@ -8,6 +8,7 @@
 # bot reads them.
 class CollectionEntryResource
   include BaseResource
+  include ShelfPlaytimeFields.with
   include CollectionFields
 
   one :game, resource: GameSummaryResource

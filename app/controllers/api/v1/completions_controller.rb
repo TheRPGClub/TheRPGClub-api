@@ -5,6 +5,7 @@ module Api
     class CompletionsController < ApplicationController
       include GameIdFilter
       include CodedRefusals
+      include ShelfPlaytime
 
       feature :game_completions
 
@@ -23,7 +24,8 @@ module Api
 
       def index
         scope = filtered_completions(UserGameCompletion.where(user_id: params[:user_id]))
-        render_collection(scope.preload(:game, :platform), resource: CompletionEntryResource, default_order: { completed_at: :desc, created_at: :desc })
+        render_shelf(scope.preload(:game, :platform), resource: CompletionEntryResource,
+          default_order: { completed_at: :desc, created_at: :desc })
       end
 
       # Games both members completed (`:user_id` on the left, `other_user_id`

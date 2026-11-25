@@ -8,6 +8,7 @@
 # reorder, spec api#451) are read; `created_at` and `updated_at` are dropped.
 class BacklogEntryResource
   include BaseResource
+  include ShelfPlaytimeFields.with
 
   attributes :entry_id, :user_id, :gamedb_game_id, :platform_id, :note, :sort_order
   one :game, resource: GameSummaryResource

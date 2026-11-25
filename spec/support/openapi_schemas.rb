@@ -41,6 +41,14 @@ module OpenapiSchemas
   def ref(name, nullable: false) = nullable ? { allOf: [ { "$ref" => "#/components/schemas/#{name}" } ], nullable: true } : { "$ref" => "#/components/schemas/#{name}" }
   def array_of(name) = { type: :array, items: { "$ref" => "#/components/schemas/#{name}" } }
 
+  # A shelf list item's Playtime (ShelfPlaytimeFields, ticket api#460): only
+  # on the member's list endpoints, so never required.
+  def shelf_playtime_minutes
+    { type: :integer, nullable: true,
+      description: "The member's Playtime for the game in minutes (0 when none; null for an entry with no game). " \
+                   "Only on the member's list endpoint (GET /users/{user_id}/<list>)." }
+  end
+
   # Build an object schema from keyword properties, auto-deriving `required` as
   # the always-present, non-null scalar columns (nullable columns, embedded
   # `$ref`s and arrays are excluded). The `_required` / `_description` sentinel
@@ -324,6 +332,20 @@ module OpenapiSchemas
                       "and is left out when the viewer cannot use that Feature (Preview: staff only; Off: nobody). " \
                       "The service token gets every count."
       ),
+      # The member's Playtime on the profile (Playtime::ProfileTotals, ticket
+      # api#460). A shelf total counts each game on the shelf once.
+      UserPlaytimeShelves: obj(
+        completed: int, backlog: int, favorites: int, collection: int, now_playing: int,
+        _required: %w[favorites],
+        _description: "Minutes of Playtime over the distinct games on each shelf. Each shelf but `favorites` " \
+                      "belongs to a Feature and is left out, as in `counts`, when the viewer cannot use it."
+      ),
+      UserPlaytime: obj(
+        total_minutes: int, shelves: ref("UserPlaytimeShelves"),
+        _required: %w[total_minutes shelves],
+        _description: "The member's Playtime in minutes: `total_minutes` over every game they have Playtime on " \
+                      "(on a shelf or not), and each shelf's total."
+      ),
       # The full users#show profile payload (UserResource): UserSummary plus
       # `membership`, the embedded socials, the four preview lists, the journal
       # grid and the counts summary.
@@ -339,6 +361,7 @@ module OpenapiSchemas
         completions: array_of("CompletionEntry"),
         journal: array_of("JournaledGame"),
         counts: ref("UserCounts"),
+        playtime: ref("UserPlaytime"),
         birthday: ref("Birthday", nullable: true).merge(
           description: "The member's Birthday when they share it (api#399); null otherwise. Never the year."
         )
@@ -424,7 +447,8 @@ module OpenapiSchemas
       BacklogEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), sort_order: int(nullable: true),
-        game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes
       ),
       # backlog#pick (BacklogPickResource): the suggested entry, from the backlog
       # or the collection, with its game, platform and HLTB times. `hours` is the
@@ -454,6 +478,7 @@ module OpenapiSchemas
         ownership_type: str, note: str(nullable: true),
         platform_name: str(nullable: true), platform_abbreviation: str(nullable: true),
         game: ref("GameSummary"), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes,
         _required: %w[entry_id user_id gamedb_game_id platform_id ownership_type note
                       platform_name platform_abbreviation game platform]
       ),
@@ -491,7 +516,8 @@ module OpenapiSchemas
         started_at: date(nullable: true, description: "The day the member started the game (optional)."),
         completed_at: ts(nullable: true),
         final_playtime_hrs: num(nullable: true), created_at: ts,
-        game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes
       ),
       # CompletionMemberEntryResource (CompletionEntry + user), the club-wide
       # feed (CompletionsController#recent).
@@ -525,7 +551,8 @@ module OpenapiSchemas
       # FavoriteEntryResource (no platform association).
       FavoriteEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, note: str(nullable: true),
-        sort_order: int(nullable: true), game: ref("GameSummary")
+        sort_order: int(nullable: true), game: ref("GameSummary"),
+        playtime_minutes: shelf_playtime_minutes
       ),
       # The now-playing embedded game (NowPlayingEmbeds): the GameSummary shape
       # plus the game's linked Discord thread, derived per-entry (#104).
@@ -538,7 +565,13 @@ module OpenapiSchemas
         platform_id: int(nullable: true), note: str(nullable: true),
         sort_order: int(nullable: true), added_at: ts, note_updated_at: ts(nullable: true),
         has_journal_entry: bool, journal_count: int, last_journal_at: ts(nullable: true),
-        game: ref("NowPlayingGame", nullable: true), platform: ref("Platform", nullable: true)
+        game: ref("NowPlayingGame", nullable: true), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes,
+        playthrough_minutes: {
+          type: :integer, nullable: true,
+          description: "The open Playthrough's time in minutes; null when none is open. Only on " \
+                       "GET /users/{user_id}/now_playing."
+        }
       ),
       # NowPlayingUserEntryResource (NowPlayingFields + user), for game-scoped lists.
       NowPlayingUserEntry: obj(

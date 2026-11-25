@@ -14,6 +14,7 @@ module Api
     class NowPlayingController < ApplicationController
       include CodedRefusals
       include ShelfPositioning
+      include ShelfPlaytime
 
       feature :now_playing
 
@@ -59,8 +60,7 @@ module Api
       # `sort_order` (nulls last), then newest first.
       def user_index
         scope = UserNowPlaying.with_now_playing_details.where(user_id: params[:user_id]).preload(:game, :platform)
-        render_collection(scope, resource: NowPlayingEntryResource,
-          default_order: UserNowPlaying::SHELF_ORDER)
+        render_shelf(scope, resource: NowPlayingEntryResource, default_order: UserNowPlaying::SHELF_ORDER)
       end
 
       # GET /api/v1/now_playing/:id
