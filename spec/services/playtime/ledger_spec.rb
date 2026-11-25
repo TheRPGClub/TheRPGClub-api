@@ -80,6 +80,41 @@ RSpec.describe Playtime::Ledger do
     end
   end
 
+  # PSN Playtime (ticket api#463): the set's trophyTitlePlatform is the label.
+  describe "PSN figures" do
+    let!(:ps5) { create(:platform, platform_name: "PlayStation 5") }
+    let!(:ps4) { create(:platform, platform_name: "PlayStation 4") }
+
+    it "resolve PS4 and PS5 labels, and meet a Manual entry on the same platform as a mismatch" do
+      provider_set(member, provider: "psn", minutes: 7080, label: "PS5")
+      provider_set(member, provider: "psn", minutes: 200, label: "PS4")
+      entry = create(:manual_playtime, user: member, game: game, platform: ps5, minutes: 7200)
+
+      playtime = described_class.for_game(user_id: member.user_id, game_id: game.game_id)
+
+      expect(playtime.provider_sets.map { |set| [ set.provider, set.platform_id, set.minutes ] })
+        .to contain_exactly([ "psn", ps5.platform_id, 7080 ], [ "psn", ps4.platform_id, 200 ])
+      expect(playtime.total_minutes).to eq(14_480)
+      expect(playtime.mismatches.map(&:to_h)).to eq([ {
+        platform_id: ps5.platform_id, provider: "psn", provider_minutes: 7080,
+        manual_playtime_id: entry.id, manual_minutes: 7200
+      } ])
+    end
+
+    it "stop counting on the platform the member kept their own entry for" do
+      provider_set(member, provider: "psn", minutes: 7080, label: "PS5")
+      provider_set(member, provider: "psn", minutes: 200, label: "PS4")
+      create(:manual_playtime, user: member, game: game, platform: ps5, minutes: 7200, keeps_over_provider: "psn")
+
+      playtime = described_class.for_game(user_id: member.user_id, game_id: game.game_id)
+
+      expect(playtime.total_minutes).to eq(7400)
+      expect(playtime.provider_sets.to_h { |set| [ set.platform_id, set.counted ] })
+        .to eq(ps5.platform_id => false, ps4.platform_id => true)
+      expect(playtime.mismatches).to be_empty
+    end
+  end
+
   describe "batches" do
     it "works out many games for one member, and one game for many members, in one query" do
       other_game = create(:game)

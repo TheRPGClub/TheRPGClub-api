@@ -39,7 +39,8 @@ RSpec.describe Psn::Client do
   # A tiny router over Faraday's test adapter. Every request goes through
   # `dispatch`, which logs it in `requests` and hands it to the first matching
   # route; a route replies with each queued response in turn (repeating the
-  # last). An unrouted request fails the example, so nothing reaches Sony.
+  # last; a Proc reply is called with the request). An unrouted request fails
+  # the example, so nothing reaches Sony.
   let(:routes) { Hash.new { |hash, key| hash[key] = [] } }
   let(:requests) { [] }
   let(:stubs) { Faraday::Adapter::Test::Stubs.new }
@@ -47,10 +48,12 @@ RSpec.describe Psn::Client do
 
   let(:route_class) do
     Struct.new(:match, :replies, :calls) do
-      def reply!
+      def reply!(request)
         self.calls += 1
         reply = replies.length > 1 ? replies.shift : replies.first
-        reply.is_a?(Exception) ? raise(reply) : reply
+        raise reply if reply.is_a?(Exception)
+
+        reply.respond_to?(:call) ? reply.call(request) : reply
       end
     end
   end
@@ -73,7 +76,7 @@ RSpec.describe Psn::Client do
     route = routes[key].find { |candidate| candidate.match.call(request) }
     raise "Unstubbed PSN request: #{key.inspect} #{request.inspect}" unless route
 
-    route.reply!
+    route.reply!(request)
   end
 
   def json(body = {}, status: 200, headers: {})
@@ -441,6 +444,136 @@ RSpec.describe Psn::Client do
 
       expect { client.set_with_progress(account_id, np_comm_id, "trophy2") }
         .to raise_error(Achievements::Providers::Private)
+    end
+  end
+
+  # Play history (spec api#457 "PSN Playtime", spike api#462). The fixtures
+  # are the spike's real responses for a non-friend member, trimmed and with
+  # every ID replaced.
+  describe "#played_games" do
+    let(:gamelist) { JSON.parse(file_fixture("psn/gamelist_titles.json").read) }
+    let(:bridge) { JSON.parse(file_fixture("psn/trophy_titles_bridge.json").read) }
+
+    before do
+      stub_authorize
+      stub_code_exchange
+    end
+
+    def played_url = format(described_class::PLAYED_URL, account_id)
+    def bridge_url = format(described_class::TITLE_TROPHY_TITLES_URL, account_id)
+
+    def stub_gamelist_page(titles, offset:, total:)
+      stub_http(:get, played_url,
+        match: ->(request) {
+          request[:params] == { "categories" => "ps4_game,ps5_native_game",
+                                "limit" => described_class::PLAYED_PAGE.to_s, "offset" => offset.to_s }
+        },
+        reply: json({ titles: titles, nextOffset: offset + titles.size, previousOffset: offset, totalItemCount: total }))
+    end
+
+    # Answers each bridge call with the fixture's entries for the ids asked.
+    def stub_bridge(entries = bridge["titles"])
+      by_id = entries.index_by { |entry| entry["npTitleId"] }
+      stub_http(:get, bridge_url,
+        reply: ->(request) { json({ titles: request[:params]["npTitleIds"].split(",").filter_map { |id| by_id[id] } }) })
+    end
+
+    def bridge_calls = requests_to(bridge_url).map { |request| request[:params]["npTitleIds"].split(",") }
+
+    it "pages the play history by 200, bridges titleIds to trophy lists and keeps only the bridged titles" do
+      titles = gamelist["titles"]
+      stub_gamelist_page(titles.first(3), offset: 0, total: 5)
+      stub_gamelist_page(titles.drop(3), offset: 3, total: 5)
+      stub_bridge
+
+      games = client.played_games(account_id)
+
+      expect(games.map { |game| [ game.title_id, game.external_id, game.minutes ] }).to eq([
+        [ "PPSA90001_00", "NPWR90001_00", 10_014 ],
+        [ "PPSA90002_00", "NPWR90002_00", 764 ],
+        [ "CUSA90002_00", "NPWR90002_00", 200 ]
+      ])
+      expect(games.first).to have_attributes(class: described_class::PlayedGame, title: "Crimson Desert Enhanced")
+      expect(requests_to(played_url).map { |request| request[:params]["offset"] }).to eq(%w[0 3])
+      expect(requests_to(played_url).map { |request| request[:headers]["Authorization"] }.uniq).to eq([ "Bearer access-1" ])
+    end
+
+    it "asks the bridge for at most 5 titleIds per call" do
+      template = gamelist["titles"].first
+      titles = (1..12).map { |n| template.merge("titleId" => format("PPSA8%04d_00", n)) }
+      stub_gamelist_page(titles, offset: 0, total: 12)
+      stub_bridge(titles.map do |title|
+        { "npTitleId" => title["titleId"],
+          "trophyTitles" => [ { "npServiceName" => "trophy2", "npCommunicationId" => title["titleId"].sub("PPSA", "NPWR") } ] }
+      end)
+
+      games = client.played_games(account_id)
+
+      expect(bridge_calls.map(&:size)).to eq([ 5, 5, 2 ])
+      expect(games.map(&:external_id)).to eq(titles.map { |title| title["titleId"].sub("PPSA", "NPWR") })
+    end
+
+    it "remembers the bridge, so a later read asks only about new titles" do
+      stub_gamelist_page(gamelist["titles"], offset: 0, total: 5)
+      stub_bridge
+
+      client.played_games(account_id)
+      client.played_games(account_id)
+
+      expect(bridge_calls).to eq([ %w[PPSA90001_00 PPSA90002_00 CUSA90002_00 PPSA90003_00 CUSA90009_00] ])
+    end
+
+    it "keeps the rest of the history when one bridge batch fails" do
+      template = gamelist["titles"].first
+      titles = (1..6).map { |n| template.merge("titleId" => format("PPSA8%04d_00", n)) }
+      stub_gamelist_page(titles, offset: 0, total: 6)
+      stub_http(:get, bridge_url, match: ->(request) { request[:params]["npTitleIds"].include?("PPSA80001_00") },
+        reply: [ 500, {}, "" ])
+      stub_http(:get, bridge_url, match: ->(request) { request[:params]["npTitleIds"] == "PPSA80006_00" },
+        reply: json({ titles: [ { npTitleId: "PPSA80006_00",
+                                  trophyTitles: [ { npServiceName: "trophy2", npCommunicationId: "NPWR80006_00" } ] } ] }))
+
+      expect(client.played_games(account_id).map(&:external_id)).to eq(%w[NPWR80006_00])
+    end
+
+    it "parses ISO 8601 play durations to whole minutes, counting a missing or odd one as 0" do
+      durations = [ "PT166H54M39S", "PT45M", "PT59S", "P1DT2H", "", "soon" ]
+      template = gamelist["titles"].first
+      titles = durations.each_with_index.map do |duration, n|
+        template.merge("titleId" => format("PPSA8%04d_00", n), "playDuration" => duration)
+      end
+      stub_gamelist_page(titles, offset: 0, total: titles.size)
+      stub_bridge(titles.map do |title|
+        { "npTitleId" => title["titleId"],
+          "trophyTitles" => [ { "npServiceName" => "trophy2", "npCommunicationId" => title["titleId"].sub("PPSA", "NPWR") } ] }
+      end)
+
+      expect(client.played_games(account_id).map(&:minutes)).to eq([ 10_014, 45, 0, 1560, 0, 0 ])
+    end
+
+    it "reads a hidden play history (403 or Sony's access-control error) as no history" do
+      stub_http(:get, played_url, replies: [
+        json({ error: { code: 2_240_526, message: "Not permitted by access control" } }, status: 403),
+        json({ error: { code: 2_240_526, message: "Not permitted by access control" } })
+      ])
+
+      expect(client.played_games(account_id)).to eq([])
+      expect(client.played_games(account_id)).to eq([])
+      expect(requests_to(bridge_url)).to be_empty
+    end
+
+    it "reads an empty history without calling the bridge" do
+      stub_gamelist_page([], offset: 0, total: 0)
+
+      expect(client.played_games(account_id)).to eq([])
+      expect(requests_to(bridge_url)).to be_empty
+    end
+
+    it "passes a rate limit on to the tick" do
+      stub_gamelist_page(gamelist["titles"], offset: 0, total: 5)
+      stub_http(:get, bridge_url, reply: [ 429, { "Retry-After" => "60" }, "" ])
+
+      expect { client.played_games(account_id) }.to raise_error(Achievements::Providers::RateLimited)
     end
   end
 end

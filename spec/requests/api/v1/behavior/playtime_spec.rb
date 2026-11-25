@@ -212,6 +212,25 @@ RSpec.describe "api/v1 playtime behavior", type: :request do
       expect(entry.reload.keeps_over_provider).to eq("steam")
     end
 
+    it "settles a PSN mismatch the same way, on its resolved platform" do
+      ps5 = create(:platform, platform_name: "PlayStation 5")
+      account = create(:user_linked_account, user: member, provider: "psn")
+      set = create(:achievement_set, provider: "psn", game: game, platform_label: "PS5", title: "PSN set")
+      create(:user_achievement_set_progress, linked_account: account, achievement_set: set, playtime_minutes: 7080)
+      psn_entry = create(:manual_playtime, user: member, game: game, platform: ps5, minutes: 7200)
+
+      get playtime_path, headers: auth_headers_for(member)
+      expect(json.dig("data", "mismatches").map { |mismatch| mismatch.values_at("provider", "platform_id") })
+        .to contain_exactly([ "steam", windows.platform_id ], [ "psn", ps5.platform_id ])
+
+      settle("manual", platform: ps5)
+
+      expect(response).to have_http_status(:ok)
+      expect(psn_entry.reload.keeps_over_provider).to eq("psn")
+      expect(json.dig("data", "mismatches").map { |mismatch| mismatch["provider"] }).to eq([ "steam" ])
+      expect(json.dig("data", "total_minutes")).to eq(600 + 500 + 7200)
+    end
+
     it "keep the Provider's deletes the Manual entry" do
       settle("provider")
 

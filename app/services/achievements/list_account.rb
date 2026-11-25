@@ -12,6 +12,12 @@ module Achievements
   # set with `sync_pending_at`; a new set gets a placeholder row (`synced_at`
   # nil). Listed playtime (Steam) is stored on the progress row. Clears
   # `sync_due_at`.
+  #
+  # PSN's Playtime comes from the member's play history (spec api#457, spike
+  # api#462), read here, so once per account per Sync Window with no job of
+  # its own. Both reads happen before any write: a RateLimited or
+  # AuthExpired leaves the listing due for the tick to retry whole. Any other
+  # play-history failure is logged and the listing goes on without it.
   class ListAccount
     include SyncUnit
 
@@ -27,11 +33,15 @@ module Achievements
     def call
       with_sync_errors(@account) do
         since = @account.incremental? ? @account.last_synced_at : nil
-        played_sets = Providers.client_for(@account.provider).played_sets(@account.external_id, since: since)
+        client = Providers.client_for(@account.provider)
+        played_sets = client.played_sets(@account.external_id, since: since)
+        played_minutes = psn_playtime(client)
 
         new_set_ids = UserLinkedAccount.transaction do
           @account.update!(sync_due_at: nil)
-          queue_sets(played_sets.uniq(&:external_id))
+          new_ids = queue_sets(played_sets.uniq(&:external_id))
+          write_playtime(played_minutes)
+          new_ids
         end
         link_new_sets(new_set_ids)
         finish_if_drained(@account, cursor: @now, now: @now)
@@ -93,6 +103,35 @@ module Achievements
       update_only = %i[user_linked_account_id sync_pending_at]
       update_only << :playtime_minutes if playtime
       UserAchievementSetProgress.upsert_all(rows, unique_by: %i[user_id achievement_set_id], update_only: update_only)
+    end
+
+    # npCommunicationId => minutes, adding up the titles (PS4 and PS5
+    # editions) that share a trophy list. Empty for other Providers, a hidden
+    # or empty history, or a failed read.
+    def psn_playtime(client)
+      return {} unless @account.provider == "psn"
+
+      client.played_games(@account.external_id).each_with_object(Hash.new(0)) do |game, minutes|
+        minutes[game.external_id] += game.minutes
+      end
+    rescue *PASSED_THROUGH
+      raise
+    rescue Providers::Error => error
+      Rails.logger.warn("[ListAccount] PSN play history skipped for account #{@account.id}: #{error.message}")
+      {}
+    end
+
+    # Onto this account's progress rows only; a set the history doesn't list
+    # keeps what it had.
+    def write_playtime(minutes_by_set)
+      return if minutes_by_set.empty?
+
+      set_ids = AchievementSet.where(provider: @account.provider, external_id: minutes_by_set.keys).pluck(:external_id, :id)
+      set_ids.group_by { |external_id, _id| minutes_by_set.fetch(external_id) }.each do |minutes, sets|
+        @account.set_progress.where(achievement_set_id: sets.map(&:last))
+          .where("playtime_minutes IS DISTINCT FROM ?", minutes)
+          .update_all(playtime_minutes: minutes, updated_at: @now)
+      end
     end
 
     def clear_unit_marker
