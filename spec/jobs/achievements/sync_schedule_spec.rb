@@ -40,14 +40,12 @@ RSpec.describe "Achievement sync scheduling" do # rubocop:disable RSpec/Describe
 
     before { allow(Rails.application.config).to receive(:after_initialize).and_yield }
 
-    it "enqueues the three Provider ticks once in a server process" do
+    it "enqueues the catch-up job once in a server process" do
       stub_const("Rails::Server", Class.new)
 
       load initializer
 
-      UserLinkedAccount::PROVIDERS.each do |provider|
-        expect(Achievements::ProviderTickJob).to have_been_enqueued.with(provider).exactly(:once)
-      end
+      expect(Achievements::BootCatchUpJob).to have_been_enqueued.exactly(:once)
     end
 
     it "enqueues nothing outside a server process (console, rake, specs)" do
@@ -55,7 +53,7 @@ RSpec.describe "Achievement sync scheduling" do # rubocop:disable RSpec/Describe
 
       load initializer
 
-      expect(Achievements::ProviderTickJob).not_to have_been_enqueued
+      expect(Achievements::BootCatchUpJob).not_to have_been_enqueued
     end
   end
 end

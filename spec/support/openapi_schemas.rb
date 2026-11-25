@@ -1723,6 +1723,24 @@ module OpenapiSchemas
         channel_id: str(example: "191941851757019136",
           description: "The Discord channel to post in: general chat (the API's DiscordChannels::GENERAL).")
       ),
+      # The PSN auth alert payloads (#468), as BotJobClaim.payload carries them.
+      PsnAuthExpiredJobPayload: obj(
+        _description: "Kind `psn_auth_expired`. The club PSN login (PSN_NPSSO) stopped working and every PSN " \
+                      "sync is paused until it works again. Warn staff in the staff channel and point them at " \
+                      "the runbook (docs/runbooks/psn-npsso.md). Queued once when the login first fails " \
+                      "(`reminder: false`), then by the Sync Window at most once per 24 hours while it stays " \
+                      "expired (`reminder: true`). Staff only: no `feature_key`.",
+        _required: %w[expired_at reminder],
+        expired_at: ts.merge(description: "When the login first failed."),
+        reminder: bool.merge(description: "False for the first alert, true for a daily reminder.")
+      ),
+      PsnAuthRestoredJobPayload: obj(
+        _description: "Kind `psn_auth_restored`. A club PSN login worked again, so PSN sync resumes. Tell " \
+                      "staff in the staff channel. Staff only: no `feature_key`.",
+        _required: %w[expired_at restored_at],
+        expired_at: ts.merge(description: "When the login had first failed."),
+        restored_at: ts.merge(description: "When a login worked again.")
+      ),
       # BotJobClaimResource: a claimed bot job as the bot receives it.
       BotJobClaim: obj(
         id: int, kind: str(enum: BotJob::KINDS), summary: str(maxLength: BotJob::SUMMARY_MAX),
@@ -1734,7 +1752,8 @@ module OpenapiSchemas
                        "birthday_post is a public post no Feature owns and carries none. " \
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
                        "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload, " \
-                       "BirthdayPostJobPayload, FranchiseConquestJobPayload."
+                       "BirthdayPostJobPayload, FranchiseConquestJobPayload, PsnAuthExpiredJobPayload, " \
+                       "PsnAuthRestoredJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),

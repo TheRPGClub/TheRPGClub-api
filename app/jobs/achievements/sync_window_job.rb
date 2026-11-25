@@ -16,6 +16,10 @@ module Achievements
   # accounts due, so its work stays due, but starts no tick and makes no PSN
   # auth attempt: the restart when the Hub leaves Off (Features::ChangeFlag)
   # drains the marks.
+  #
+  # While PSN auth stays expired, the window also queues the daily staff
+  # reminder (PsnAuthAlerts.remind!, at most once per 24 hours), after its
+  # own auth attempt so a login that just worked sends none.
   class SyncWindowJob < ApplicationJob
     include CpuLogging
 
@@ -30,6 +34,7 @@ module Achievements
       scope.where.not(backfilled_at: nil).update_all(sync_due_at: now, sync_mode: "incremental", updated_at: now)
       scope.where(backfilled_at: nil, sync_status: "error").update_all(sync_due_at: now, updated_at: now)
       ProviderTickJob.enqueue_all unless hub_off
+      PsnAuthAlerts.remind!(now:)
     end
 
     private

@@ -45,6 +45,8 @@ class BotJob < ApplicationRecord
     daily_fun_fact
     birthday_post
     franchise_conquest
+    psn_auth_expired
+    psn_auth_restored
   ].freeze
   # The kinds that post, and the Feature each post belongs to (the posts in
   # Features::REGISTRY's coverage): the claim notice's claim log and the
