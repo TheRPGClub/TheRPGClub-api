@@ -93,12 +93,14 @@ RSpec.describe 'api/v1/franchises', type: :request do
                   '(Now Playing plus Game Completions in the last 90 days). Franchises with no games come last ' \
                   'in every sort. Each tile has `progress` (the viewer\'s Mainline finished/total) only when the ' \
                   '`franchise_progress` Feature is open to the signed-in member. Tiles are cached for up to ten ' \
-                  'minutes; a Franchise edit or a new link shows at once.'
+                  'minutes; a Franchise edit, an undo or an IGDB import shows at once, Club plays may lag. ' \
+                  '`letter` ignores accents (Okami with a macron is under O).'
       produces 'application/json'
       parameter name: :q, in: :query, schema: { type: :string }, required: false,
         description: 'Case-insensitive search against `name`.'
       parameter name: :letter, in: :query, schema: { type: :string, enum: [ *'A'..'Z', '#' ] }, required: false,
-        description: 'Names starting with this letter (any case), or `#` for names that don\'t start with one.'
+        description: 'Names starting with this letter (any case, accents ignored), or `#` for names that ' \
+                     'don\'t start with one. Anything else, a list included, is 422 `invalid_letter`.'
       parameter name: :sort, in: :query, schema: { type: :string, enum: %w[az games plays], default: 'az' },
         required: false, description: '`az` by name, `games` most linked games first, `plays` most Club plays first.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false

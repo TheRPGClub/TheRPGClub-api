@@ -128,6 +128,25 @@ RSpec.describe "GET /api/v1/franchises/browse", type: :request do
       expect(json).to include("error" => "invalid_letter")
     end
 
+    it "refuses a letter that isn't a string" do
+      get "/api/v1/franchises/browse", params: { letter: [ "a" ] }, headers: auth_headers_for(member)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "invalid_letter")
+
+      get "/api/v1/franchises/browse", params: { letter: { "a" => "b" } }, headers: auth_headers_for(member)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json).to include("error" => "invalid_letter")
+    end
+
+    it "files a name under its letter without the accent, for the letter and for #" do
+      create(:franchise, name: "\u014Ckami")
+      create(:franchise, name: "\u00C9tude")
+
+      expect(names(browse(letter: "o"))).to eq([ "\u014Ckami" ])
+      expect(names(browse(letter: "E"))).to eq([ "\u00C9tude" ])
+      expect(names(browse(letter: "#"))).to eq([ "8-Bit Saga" ])
+    end
+
     it "reads a page in a bounded number of queries, however many Franchises it holds" do
       count_queries = lambda do
         queries = []
@@ -150,6 +169,64 @@ RSpec.describe "GET /api/v1/franchises/browse", type: :request do
       get "/api/v1/franchises/browse"
 
       expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "the cache" do
+    let(:regular) { create(:user, role_member: true, role_regular: true) }
+    let(:franchise) { create(:franchise, name: "Breath of Fire") }
+    let!(:bof) { link(franchise, game("Breath of Fire", year: 1993)).game }
+
+    around do |example|
+      original_cache = Rails.cache
+      Rails.cache = ActiveSupport::Cache::MemoryStore.new
+      example.run
+    ensure
+      Rails.cache = original_cache
+    end
+
+    def mainline_count = browse.fetch("data").sole.fetch("mainline_count")
+
+    it "shows an undo at once" do
+      Gamedb::FranchiseEditor.new(user_id: regular.user_id).link!(franchise, bof, mainline: true)
+      expect(mainline_count).to eq(1)
+
+      post "/api/v1/franchise_changes/#{GamedbFranchiseChange.last.id}/undo", headers: auth_headers_for(regular),
+        as: :json
+      expect(response).to have_http_status(:ok)
+
+      expect(mainline_count).to eq(0)
+    end
+
+    it "shows an IGDB re-import at once" do
+      expect(mainline_count).to eq(0)
+      bof.update!(igdb_id: 9_001, parent_igdb_id: nil)
+      parent = create(:game, title: "Breath of Fire Base", igdb_id: 9_002)
+      link(franchise, parent)
+      client = instance_double(Igdb::Client, game: {
+        igdb_id: 9_001, name: "Breath of Fire", slug: "bof", summary: nil, url: nil, total_rating: nil,
+        first_release_date: nil, parent_igdb_id: parent.igdb_id, parent_game_name: parent.title, collection: nil,
+        genres: [], themes: [], perspectives: [], game_modes: [], engines: [], franchises: [], platforms: [],
+        companies: [], release_dates: []
+      })
+      expect(browse.fetch("data").sole.fetch("add_on_count")).to eq(0)
+
+      Gamedb::IgdbGameImporter.new(client: client, image_importer: instance_double(Gamedb::IgdbImageImporter,
+        import!: [])).import!(9_001)
+
+      expect(browse.fetch("data").sole.fetch("add_on_count")).to eq(1)
+    end
+
+    it "reads no Franchise or link tables on a cache hit (the viewer's progress aside)" do
+      read = -> { get "/api/v1/franchises/browse", headers: service_headers }
+      read.call
+      queries = []
+      callback = ->(*, payload) { queries << payload[:sql] unless payload[:name] == "SCHEMA" }
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { read.call }
+
+      expect(response).to have_http_status(:ok)
+
+      expect(queries.grep(/gamedb_(game_)?franchise/)).to be_empty
     end
   end
 

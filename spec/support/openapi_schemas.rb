@@ -186,11 +186,13 @@ module OpenapiSchemas
         reasons: { type: :array, items: str(enum: Gamedb::FranchiseSuggestions::REASONS),
                    description: "Every reason that applies, strongest first." },
         role: str(enum: %w[mainline other add_on]).merge(
-          description: "The likely role: `add_on` when the game's parent game is in this Franchise, else " \
-                       "`mainline` or `other` (a Spin-off)."
+          description: "The likely role: `add_on` whenever the game has a parent game, else `mainline` or " \
+                       "`other` (a Spin-off)."
         ),
-        parent_game_id: int(nullable: true).merge(description: "The parent game, set only for `add_on`."),
-        parent_title: str(nullable: true).merge(description: "The parent game's title, set only for `add_on`."),
+        parent_game_id: int(nullable: true).merge(description: "The parent game, set only for `add_on` when it " \
+                                                                 "is in GameDB."),
+        parent_title: str(nullable: true).merge(description: "The parent game's title, set only for `add_on` when it " \
+                                                             "is in GameDB."),
         series_games_linked: int.merge(description: "Games in the game's Series linked to this Franchise.")
       ),
       FranchiseChange: obj(
@@ -2070,9 +2072,9 @@ module OpenapiSchemas
         pages: { type: :array, items: str(example: "voting"),
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
-                              "gotm_history, goty, challenges, games, reviews, releases, achievements, journals, members, " \
-                              "news, codex, giveaways, suggestions, staff_desk, voting_console, synonyms, live_events, " \
-                              "public_reminders, suggestion_review." },
+                              "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
+                              "journals, members, news, codex, lists, giveaways, suggestions, staff_desk, " \
+                              "voting_console, synonyms, live_events, public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),
         _required: %w[user_id pages customised]

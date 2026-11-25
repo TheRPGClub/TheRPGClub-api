@@ -388,16 +388,17 @@ components:
           - mainline
           - other
           - add_on
-          description: 'The likely role: `add_on` when the game''s parent game is
-            in this Franchise, else `mainline` or `other` (a Spin-off).'
+          description: 'The likely role: `add_on` whenever the game has a parent game,
+            else `mainline` or `other` (a Spin-off).'
         parent_game_id:
           type: integer
           nullable: true
-          description: The parent game, set only for `add_on`.
+          description: The parent game, set only for `add_on` when it is in GameDB.
         parent_title:
           type: string
           nullable: true
-          description: The parent game's title, set only for `add_on`.
+          description: The parent game's title, set only for `add_on` when it is in
+            GameDB.
         series_games_linked:
           type: integer
           description: Games in the game's Series linked to this Franchise.
@@ -6643,9 +6644,10 @@ components:
             example: voting
           description: 'Pinned Page keys the member can see right now, in their order:
             the club default (voting, games, members, news) until they save their
-            own list. Keys: voting, gotm_history, goty, challenges, games, reviews,
-            releases, achievements, journals, members, news, codex, giveaways, suggestions,
-            staff_desk, voting_console, synonyms, live_events, public_reminders, suggestion_review.'
+            own list. Keys: voting, gotm_history, goty, challenges, games, franchises,
+            reviews, releases, achievements, journals, members, news, codex, lists,
+            giveaways, suggestions, staff_desk, voting_console, synonyms, live_events,
+            public_reminders, suggestion_review.'
         customised:
           type: boolean
           description: Whether the member saved their own list. False while they follow
@@ -19266,8 +19268,8 @@ paths:
         Franchises the game is linked to or was unlinked from by hand, and merged
         ones, are left out. Ordered by the strongest reason (in that order), then
         more reasons, more linked Series games and longer names. Each has a likely
-        `role`: `add_on` (with the parent) when the game''s parent game is in that
-        Franchise, else `mainline` when most of its linked Series games are Mainline
+        `role`: `add_on` whenever the game has a parent (with the parent when it is
+        in GameDB), else `mainline` when most of its linked Series games are Mainline
         there or, with none, when the title starts with the Franchise''s name, else
         `other` (a Spin-off). Regulars and above (the acting member''s stored roles).'
       parameters:
@@ -19478,7 +19480,8 @@ paths:
         last 90 days). Franchises with no games come last in every sort. Each tile
         has `progress` (the viewer''s Mainline finished/total) only when the `franchise_progress`
         Feature is open to the signed-in member. Tiles are cached for up to ten minutes;
-        a Franchise edit or a new link shows at once.'
+        a Franchise edit, an undo or an IGDB import shows at once, Club plays may
+        lag. `letter` ignores accents (Okami with a macron is under O).'
       parameters:
       - name: q
         in: query
@@ -19519,8 +19522,9 @@ paths:
           - Z
           - "#"
         required: false
-        description: Names starting with this letter (any case), or `#` for names
-          that don't start with one.
+        description: Names starting with this letter (any case, accents ignored),
+          or `#` for names that don't start with one. Anything else, a list included,
+          is 422 `invalid_letter`.
       - name: sort
         in: query
         schema:

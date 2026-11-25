@@ -38,8 +38,9 @@ module Api
       #
       # The /franchises index (Franchises::Browse): current Franchises as
       # tiles, `sort` `az` (default), `games` or `plays`, `letter` A to Z or
-      # `#`. The tiles are cached for a few minutes, keyed on the Franchise
-      # list and history so a change shows at once; each tile then gets
+      # `#`. The tiles are cached for a few minutes under
+      # Franchises::BrowseVersion, which every change to a tile bumps, so it
+      # shows at once; each tile then gets
       # `progress` (the viewer's Mainline `{ done, total }`) when the
       # `franchise_progress` Feature is open to a signed-in member.
       def browse
@@ -163,7 +164,8 @@ module Api
             status: :unprocessable_content)
         end
 
-        letter = params[:letter].presence&.upcase
+        letter = params[:letter].presence
+        letter = letter.upcase if letter.is_a?(String)
         if letter && !Franchises::Browse::LETTERS.include?(letter)
           return render(json: { error: "invalid_letter", message: "letter must be A to Z or #" },
             status: :unprocessable_content)
@@ -172,11 +174,11 @@ module Api
         [ sort, letter ]
       end
 
-      # Every hand edit lands in the history and every IGDB import changes
-      # the link count, so both stand in for an updated_at.
+      # Two cached numbers, so a hit reads no table: Franchises::BrowseVersion
+      # (edits, undos, imports) and the taxonomy version (the bot's upsert).
       def browse_cache_key(sort, letter)
-        [ "franchise_browse", taxonomy_version(GamedbFranchise), GamedbFranchiseChange.maximum(:id),
-          GamedbGameFranchise.count, params[:q].to_s.strip.downcase, letter, sort,
+        [ "franchise_browse", Franchises::BrowseVersion.current, taxonomy_version(GamedbFranchise),
+          params[:q].to_s.strip.downcase, letter, sort,
           pagy_options(default_per: BROWSE_PER, max_per: BROWSE_MAX_PER) ]
       end
 

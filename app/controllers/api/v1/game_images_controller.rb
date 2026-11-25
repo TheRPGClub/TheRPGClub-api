@@ -74,8 +74,10 @@ module Api
       # relations_data never renders this game's own images, only another
       # game's cached `alternates` slice does (via GameResource) -- bump the
       # shared version so those caches invalidate (GamesController#relations_data).
+      # A cover also shows on the /franchises tiles (Franchises::BrowseVersion).
       def bump_relations_cache_version!
         Gamedb::GameRelationsCacheVersion.bump!
+        Franchises::BrowseVersion.bump!
       end
 
       def image_params

@@ -21,7 +21,7 @@ module Franchises
   #
   # Sorts: `az` (name), `games` (most linked games), `plays` (most Club
   # plays). Franchises with no games always come last. `letter` is A to Z,
-  # or `#` for names that don't start with a letter.
+  # or `#` for names that don't start with a letter, accents ignored.
   class Browse
     SORTS = %w[az games plays].freeze
     LETTERS = [ *"A".."Z", "#" ].freeze
@@ -54,6 +54,10 @@ module Franchises
         GROUP BY gf.franchise_id
       ) plays ON plays.franchise_id = gamedb_franchises.franchise_id
     SQL
+
+    # A name is filed under its first letter without accents ("Ōkami" under
+    # O): the first character, decomposed (NFD), keeps its base letter first.
+    INITIAL = "upper(left(normalize(left(gamedb_franchises.name, 1), NFD), 1))"
 
     EMPTY_LAST = "COALESCE(stats.games_count, 0) = 0"
     BY_NAME = "LOWER(gamedb_franchises.name) ASC, gamedb_franchises.franchise_id ASC"
@@ -135,9 +139,9 @@ module Franchises
 
     def by_letter(relation)
       return relation if @letter.nil?
-      return relation.where("gamedb_franchises.name !~* '^[a-z]'") if @letter == "#"
+      return relation.where("#{INITIAL} !~ '^[A-Z]'") if @letter == "#"
 
-      relation.where("gamedb_franchises.name ILIKE ?", "#{@letter}%")
+      relation.where("#{INITIAL} = ?", @letter)
     end
 
     def covers_for(ids)

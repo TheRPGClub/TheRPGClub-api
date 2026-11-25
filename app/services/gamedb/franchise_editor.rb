@@ -31,8 +31,9 @@ module Gamedb
   #
   # Each change is one Change, applied in a transaction by #apply!, which is
   # the single place that records it in the history (GamedbFranchiseChange)
-  # and invalidates the cached game relations it shows in. An undo writes no
-  # new row: it marks the change undone.
+  # and invalidates what shows it (the cached game relations and the
+  # /franchises tiles, Franchises::BrowseVersion). An undo writes no new row:
+  # it marks the change undone.
   class FranchiseEditor
     # A refused merge: `reason` is :invalid_merge (into itself) or
     # :franchise_merged (either side was already merged).
@@ -220,6 +221,7 @@ module Gamedb
         change.update!(undone_at: Time.current, undone_by: @user_id)
         change.action == "parent" ? check_game_conquests!(change.game_id) : check_conquests!(franchise)
         change.game_change? ? GamedbGame.where(game_id: change.game_id).touch_all : touch_games!(franchise.franchise_id)
+        Franchises::BrowseVersion.bump!
         change
       end
     end
@@ -416,6 +418,7 @@ module Gamedb
       # A game's relations (GamesController#relations_data) are cached on
       # its updated_at and list its Franchises.
       game&.touch
+      Franchises::BrowseVersion.bump!
     end
 
     # Writes `change` to the Franchise's history.
