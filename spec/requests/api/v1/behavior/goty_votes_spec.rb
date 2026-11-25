@@ -210,6 +210,20 @@ RSpec.describe "api/v1/goty_votes behavior", type: :request do
       expect(data["club_releases"].first["game"]).to include("game_id" => everything.game_id)
     end
 
+    it "counts only current members, not bots or members who left" do
+      bot = create(:user, is_bot: true)
+      gone = create(:user, server_left_at: Time.utc(2026, 5, 1))
+      shared = game_of_2026("Shared")
+      only_gone = game_of_2026("Only Gone")
+      create(:completion, user: member, game: shared)
+      create(:now_playing_entry, user: bot, game: shared)
+      create(:review, user: gone, game: shared)
+      create(:completion, user: gone, game: only_gone)
+      create(:now_playing_entry, user: bot, game: only_gone)
+
+      expect(played(show)).to eq([ [ "Shared", 1 ] ])
+    end
+
     it "leaves out games not eligible for the year" do
       remake = create(:game, title: "Remade")
       create(:release, game: remake, release_date: Date.new(2026, 2, 1), date_precision: "day", source: "igdb")
