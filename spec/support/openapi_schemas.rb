@@ -1937,6 +1937,47 @@ module OpenapiSchemas
         position: int.merge(example: 2, description: "1-based place in the list; the list is served in this order."),
         _required: %w[key name position]
       ),
+      # GamePlaytimeResource (spec api#457, ticket api#458; ADR 0015): a
+      # member's Playtime for one game, as Playtime::Ledger works it out.
+      PlaytimeProviderSet: obj(
+        _description: "A Provider's figure for one Achievement Set mapped to the game.",
+        achievement_set_id: int, provider: str(enum: UserLinkedAccount::PROVIDERS),
+        title: str(nullable: true, description: "The set's title as the Provider names it."),
+        platform_label: str(nullable: true, example: "PC", description: "The Provider's own platform label, raw."),
+        platform_id: int(nullable: true).merge(description: "The GameDB platform the label resolves to; null " \
+                                                            "when it doesn't resolve (shown raw, never a mismatch)."),
+        platform_name: str(nullable: true),
+        minutes: int,
+        counted: bool.merge(description: "False when the member kept their Manual entry on this platform over " \
+                                         "this Provider (\"keep mine\"): shown, not counted.")
+      ),
+      ManualPlaytimeEntry: obj(
+        _description: "A Manual Playtime entry: one per member, game and platform.",
+        id: int, platform_id: int(nullable: true).merge(description: "Null is \"Other\"."),
+        platform_name: str(nullable: true), minutes: int, note: str(nullable: true, maxLength: 280),
+        origin: str(enum: UserGameManualPlaytime::ORIGINS,
+          description: "`completion_seed`: made or raised by the launch seed from Game Completions."),
+        keeps_over_provider: str(nullable: true, enum: [ *UserLinkedAccount::PROVIDERS, nil ],
+          description: "The Provider whose figure on this platform doesn't count (\"keep mine\")."),
+        created_at: ts, updated_at: ts
+      ),
+      PlaytimeMismatch: obj(
+        _description: "A Manual entry and a Provider on the same resolved platform, with no keep chosen.",
+        platform_id: int, platform_name: str(nullable: true), provider: str(enum: UserLinkedAccount::PROVIDERS),
+        provider_minutes: int.merge(description: "The Provider's figure on this platform (all its sets)."),
+        manual_playtime_id: int, manual_minutes: int
+      ),
+      GamePlaytime: obj(
+        user_id: str, game_id: int,
+        total_minutes: int.merge(description: "Every counted Provider figure plus every Manual entry."),
+        breakdown: obj(provider_sets: array_of("PlaytimeProviderSet"), manual_entries: array_of("ManualPlaytimeEntry"),
+          _required: %w[provider_sets manual_entries]),
+        mismatches: array_of("PlaytimeMismatch"),
+        open_playthrough: { type: :object, nullable: true,
+                            description: "The member's open Playthrough of the game. Always null until " \
+                                         "Playthroughs (api#459) ship." },
+        _required: %w[user_id game_id total_minutes breakdown mismatches open_playthrough]
+      ),
       # HiddenPlatformsController (spec api#421, ticket api#427). A member's
       # Hidden Platforms: the platforms they leave out of their own Release
       # Calendar and Upcoming Releases panel.

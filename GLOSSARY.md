@@ -179,6 +179,10 @@ _Avoid_: Franchise Completion, cleared, finished, mastered
 A GameDB game that extends another game, such as DLC or an expansion. Add-ons are shown under their parent game and never join a Pool unless picked by hand.
 _Avoid_: DLC (as the general term), expansion (as the general term)
 
+**Spin-off**:
+A game in a Franchise that is neither Mainline nor an Add-on. The API keeps the key `other` for it; clients label it Spin-offs.
+_Avoid_: Other, side game, non-mainline
+
 ## Community
 
 **Suggestion**:

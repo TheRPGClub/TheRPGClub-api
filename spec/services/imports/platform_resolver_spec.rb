@@ -82,10 +82,11 @@ RSpec.describe Imports::PlatformResolver do
   end
 
   describe "the platform map" do
-    it "carries every entry of the bot's GAMEDB_CSV_PLATFORM_MAP" do
-      expect(described_class::PLATFORM_MAP.size).to eq(68)
+    it "carries every entry of the bot's GAMEDB_CSV_PLATFORM_MAP, and the Provider platform labels" do
+      expect(described_class::PLATFORM_MAP.size).to eq(99) # 68 from the bot, the rest for Playtime (api#458)
       expect(described_class::PLATFORM_MAP["xbox series x|s"]).to eq([ "Xbox Series X|S" ])
       expect(described_class::PLATFORM_MAP["nintendo switch 2"]).to eq([ "Switch 2" ])
+      expect(described_class::PLATFORM_MAP["snes/super famicom"]).to eq([ "Super Nintendo Entertainment System", "SNES" ])
     end
   end
 end
