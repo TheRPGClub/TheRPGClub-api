@@ -174,6 +174,25 @@ module OpenapiSchemas
         parent_game_name: str(nullable: true),
         parent_locked: bool.merge(description: "The parent was set by hand, so IGDB re-imports keep it.")
       ),
+      FranchiseSuggestion: obj(
+        _description: "A Franchise a game probably belongs to (ticket api#489).",
+        _required: %w[franchise reason reasons role series_games_linked],
+        franchise: ref("Franchise"),
+        reason: str(enum: Gamedb::FranchiseSuggestions::REASONS).merge(
+          description: "The strongest reason: `series_name` (the game's IGDB Series has the Franchise's name), " \
+                       "`series_links` (other games in its Series are linked to it) or `title_match` (its title " \
+                       "contains the Franchise's name as whole words)."
+        ),
+        reasons: { type: :array, items: str(enum: Gamedb::FranchiseSuggestions::REASONS),
+                   description: "Every reason that applies, strongest first." },
+        role: str(enum: %w[mainline other add_on]).merge(
+          description: "The likely role: `add_on` when the game's parent game is in this Franchise, else " \
+                       "`mainline` or `other` (a Spin-off)."
+        ),
+        parent_game_id: int(nullable: true).merge(description: "The parent game, set only for `add_on`."),
+        parent_title: str(nullable: true).merge(description: "The parent game's title, set only for `add_on`."),
+        series_games_linked: int.merge(description: "Games in the game's Series linked to this Franchise.")
+      ),
       FranchiseChange: obj(
         _description: "A row of a Franchise's history (spec api#442).",
         _required: %w[change_id franchise_id action user_id created_at can_undo],

@@ -358,6 +358,56 @@ components:
       - source
       - mainline
       - parent_locked
+    FranchiseSuggestion:
+      type: object
+      properties:
+        franchise:
+          "$ref": "#/components/schemas/Franchise"
+        reason:
+          type: string
+          enum:
+          - series_name
+          - series_links
+          - title_match
+          description: 'The strongest reason: `series_name` (the game''s IGDB Series
+            has the Franchise''s name), `series_links` (other games in its Series
+            are linked to it) or `title_match` (its title contains the Franchise''s
+            name as whole words).'
+        reasons:
+          type: array
+          items:
+            type: string
+            enum:
+            - series_name
+            - series_links
+            - title_match
+          description: Every reason that applies, strongest first.
+        role:
+          type: string
+          enum:
+          - mainline
+          - other
+          - add_on
+          description: 'The likely role: `add_on` when the game''s parent game is
+            in this Franchise, else `mainline` or `other` (a Spin-off).'
+        parent_game_id:
+          type: integer
+          nullable: true
+          description: The parent game, set only for `add_on`.
+        parent_title:
+          type: string
+          nullable: true
+          description: The parent game's title, set only for `add_on`.
+        series_games_linked:
+          type: integer
+          description: Games in the game's Series linked to this Franchise.
+      required:
+      - franchise
+      - reason
+      - reasons
+      - role
+      - series_games_linked
+      description: A Franchise a game probably belongs to (ticket api#489).
     FranchiseChange:
       type: object
       properties:
@@ -19197,6 +19247,75 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/games/{id}/franchise_suggestions":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbGame id.
+    get:
+      summary: Franchise suggestions for a game
+      tags:
+      - Franchises
+      description: 'Up to three Franchises the game probably belongs to, for Game
+        Edit (ticket api#489). A Franchise is suggested when the game''s IGDB Series
+        has its name (`series_name`), other games in that Series are linked to it
+        (`series_links`), or the game''s title contains its name as whole words (`title_match`).
+        Franchises the game is linked to or was unlinked from by hand, and merged
+        ones, are left out. Ordered by the strongest reason (in that order), then
+        more reasons, more linked Series games and longer names. Each has a likely
+        `role`: `add_on` (with the parent) when the game''s parent game is in that
+        Franchise, else `mainline` when most of its linked Series games are Mainline
+        there or, with none, when the title starts with the Franchise''s name, else
+        `other` (a Spin-off). Regulars and above (the acting member''s stored roles).'
+      parameters:
+      - name: acting_user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Bot only: the member it acts for.'
+      responses:
+        '200':
+          description: suggestions, best first (at most three)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    maxItems: 3
+                    items:
+                      "$ref": "#/components/schemas/FranchiseSuggestion"
+        '400':
+          description: the bot names no acting member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: a member below Regular'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: game not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/franchises":
     get:
       summary: List franchises

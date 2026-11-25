@@ -321,6 +321,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/modes" => nil,
     "api/v1/franchises" => nil,
     "api/v1/franchise_changes" => nil,
+    "api/v1/franchise_suggestions" => nil,
     "api/v1/companies" => nil,
     "api/v1/engines" => nil,
     "api/v1/threads" => nil,
