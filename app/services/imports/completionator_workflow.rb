@@ -159,6 +159,8 @@ module Imports
           Playtime::Playthroughs.close_for_completion!(created)
         end
       end
+      # An import's Conquests are written but never announced (spec api#457).
+      Franchises::ConquestCheck.new(announce: false).after_completion(completion)
       item.update!(status: "added", completion_id: completion.completion_id, error_text: nil)
       item
     end

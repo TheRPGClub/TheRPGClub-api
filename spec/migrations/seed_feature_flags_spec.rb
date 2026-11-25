@@ -26,8 +26,8 @@ RSpec.describe SeedFeatureFlagsLive do
   it "leaves a Feature registered later with no stored state, so it reads as Preview" do
     migrate_up
 
-    expect(Features.keys - seeded).to eq(%w[news_hub challenges release_calendar club_codex game_lists])
-    expect(FeatureFlag.where(key: %w[news_hub challenges release_calendar club_codex game_lists])).to be_empty
+    expect(Features.keys - seeded).to eq(%w[news_hub challenges release_calendar club_codex game_lists franchise_progress])
+    expect(FeatureFlag.where(key: %w[news_hub challenges release_calendar club_codex game_lists franchise_progress])).to be_empty
     expect(Features.state("news_hub")).to eq("preview")
     expect(Features.state("release_calendar")).to eq("preview")
     expect(Features.state("club_codex")).to eq("preview")

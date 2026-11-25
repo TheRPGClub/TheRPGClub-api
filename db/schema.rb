@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_120500) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1453,6 +1453,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_120500) do
     t.index ["user_linked_account_id"], name: "ix_user_achievement_unlocks_linked_account"
   end
 
+  create_table "user_franchise_conquests", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.bigint "franchise_id", null: false
+    t.datetime "conquered_at", null: false
+    t.bigint "completion_id"
+    t.boolean "announce", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["franchise_id"], name: "index_user_franchise_conquests_on_franchise_id"
+    t.index ["user_id", "franchise_id"], name: "ux_user_franchise_conquests_member", unique: true
+  end
+
   create_table "user_game_backlog", primary_key: "entry_id", force: :cascade do |t|
     t.datetime "created_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.bigint "gamedb_game_id", null: false
@@ -1778,6 +1790,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_120500) do
   add_foreign_key "user_achievement_unlocks", "achievements", name: "fk_user_achievement_unlocks_achievement", on_delete: :cascade
   add_foreign_key "user_achievement_unlocks", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_achievement_unlocks_user", on_delete: :cascade
   add_foreign_key "user_achievement_unlocks", "user_linked_accounts", name: "fk_user_achievement_unlocks_linked_account", on_delete: :cascade
+  add_foreign_key "user_franchise_conquests", "gamedb_franchises", column: "franchise_id", primary_key: "franchise_id", on_delete: :cascade
+  add_foreign_key "user_franchise_conquests", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "user_franchise_conquests", "user_game_completions", column: "completion_id", primary_key: "completion_id", on_delete: :nullify
   add_foreign_key "user_game_backlog", "gamedb_games", primary_key: "game_id", name: "fk_user_game_backlog_gamedb"
   add_foreign_key "user_game_backlog", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", name: "fk_user_game_backlog_platform"
   add_foreign_key "user_game_backlog", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_backlog_user"
