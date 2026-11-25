@@ -29,11 +29,20 @@ module Api
       # it. Returns the created release (platform/region labels flattened in).
       def create
         game = GamedbGame.find(params[:id])
-        release = GamedbRelease.source_manual.create!(release_data.merge(game_id: game.game_id))
-        # Bump the game's updated_at so GamesController#relations_data's cache
-        # (keyed on it) picks up the new release -- the release lives on a
-        # child table, so nothing else here saves the game record.
-        game.touch
+        release = GamedbRelease.transaction do
+          # Locked as an edit and Gamedb::ReleaseSync lock it, so the schedule
+          # is rebuilt from a settled set of Releases.
+          game.lock!
+          created = GamedbRelease.source_manual.create!(release_data.merge(game_id: game.game_id))
+          # Schedule its announcement now, as an edit or IGDB refresh does,
+          # rather than waiting for a sweep.
+          Gamedb::ReleaseAnnouncementSchedule.call(game.game_id)
+          # Bump the game's updated_at so GamesController#relations_data's cache
+          # (keyed on it) picks up the new release -- the release lives on a
+          # child table, so nothing else here saves the game record.
+          game.touch
+          created
+        end
 
         render json: { data: release_json(release) }, status: :created
       end
