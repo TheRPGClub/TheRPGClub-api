@@ -37,10 +37,11 @@ module Api
         total = request_data["total_minutes"]
         return refuse_total unless request_data.key?("total_minutes") &&
           (total.nil? || (total.is_a?(Integer) && total >= 0))
-        return refuse_closed unless playthrough.open?
 
-        playthrough.update!(manual_total_minutes: total)
+        Playtime::Playthroughs.set_total!(playthrough, total)
         render_playtime(playthrough.user_id, playthrough.gamedb_game_id)
+      rescue Playtime::Playthroughs::Closed
+        refuse_closed
       end
 
       # POST /api/v1/playthroughs/:id/abandon
