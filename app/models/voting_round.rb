@@ -16,6 +16,8 @@
 # reports is right even when the Voting::AdvanceRounds sweep runs late; the
 # sweep only performs the side effects (see Voting.automation_enabled?).
 class VotingRound < ApplicationRecord
+  include VoteWindows
+
   self.primary_key = "round_number"
 
   PHASES = %w[nominating voting closed runoff tie decided].freeze
@@ -54,47 +56,8 @@ class VotingRound < ApplicationRecord
     current.present? && round_number.to_i < current.round_number
   end
 
-  def phase(now = Time.current)
-    return "decided" if decided_at.present?
-    return "nominating" if now < voting_opens_at
-    return "voting" if now < voting_closes_at
-    if runoff_closes_at.present?
-      return "runoff" if now < runoff_closes_at
-      # The window has run out but the runoff's tally is not in yet.
-      return "closed" if runoff_closed_at.nil?
-    end
-    return "tie" if pending_ties.present?
-
-    "closed"
-  end
-
   def nominations_open?(now = Time.current)
     phase(now) == "nominating"
-  end
-
-  def voting_open?(now = Time.current)
-    phase(now) == "voting"
-  end
-
-  def voting_ended?(now = Time.current)
-    %w[closed runoff tie decided].include?(phase(now))
-  end
-
-  def runoff_open?(now = Time.current)
-    phase(now) == "runoff"
-  end
-
-  # Whether the round had a runoff and it is over (its window ran out, or an
-  # admin settled every tied category first).
-  def runoff_ended?(now = Time.current)
-    runoff_closes_at.present? && voting_ended?(now) && !runoff_open?(now)
-  end
-
-  # Puts the tied categories to a runoff opening now. The caller holds the row
-  # lock.
-  def open_runoff!(ties, now = Time.current)
-    update!(closed_at: now, pending_ties: ties, runoff_ties: ties,
-      runoff_opens_at: now, runoff_closes_at: now + Voting.runoff_duration)
   end
 
   # Records the round as decided and schedules the next one. Idempotent; the
@@ -102,13 +65,19 @@ class VotingRound < ApplicationRecord
   def decide!(now = Time.current)
     return if decided_at.present?
 
-    update!(closed_at: closed_at || now, decided_at: now, pending_ties: {})
+    super
     self.class.create_or_find_by!(round_number: round_number + 1) do |following|
       following.voting_opens_at = Voting::Schedule.next_opens_at(voting_opens_at)
     end
   end
 
   private
+
+  # Phases and runoff windows come from VoteWindows; a round collects
+  # nominations until its vote opens.
+  def phase_before_voting(now)
+    "nominating" if now < voting_opens_at
+  end
 
   # Moving the open without an explicit close keeps the default weekend
   # window rather than leaving the old close behind (or before) it.

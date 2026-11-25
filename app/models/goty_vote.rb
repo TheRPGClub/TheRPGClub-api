@@ -11,6 +11,8 @@
 # the lifecycle sweep only performs the side effects. Between a window
 # closing and the sweep's tally the phase reads `closed`.
 class GotyVote < ApplicationRecord
+  include VoteWindows
+
   self.primary_key = "year"
 
   PHASES = %w[upcoming nominating voting closed runoff tie decided].freeze
@@ -30,27 +32,17 @@ class GotyVote < ApplicationRecord
     create_or_find_by!(year: year)
   end
 
-  def phase(now = Time.current)
-    return "decided" if decided_at.present?
-    return "upcoming" if now < nominations_open_at
-    return "nominating" if now < voting_opens_at
-    return "voting" if now < voting_closes_at
-    if runoff_closes_at.present?
-      return "runoff" if now < runoff_closes_at
-      return "closed" if runoff_closed_at.nil?
-    end
-    return "tie" if pending_ties.present?
-
-    "closed"
-  end
-
   def nominations_open?(now = Time.current) = phase(now) == "nominating"
 
-  def voting_open?(now = Time.current) = phase(now) == "voting"
-
-  def runoff_open?(now = Time.current) = phase(now) == "runoff"
-
   private
+
+  # Phases and runoff windows come from VoteWindows; before voting a GOTY
+  # Vote is upcoming, then nominating.
+  def phase_before_voting(now)
+    return "upcoming" if now < nominations_open_at
+
+    "nominating" if now < voting_opens_at
+  end
 
   # Missing dates take the default schedule. Moving the voting open without
   # an explicit close keeps the default weekend window, as for VotingRound.
