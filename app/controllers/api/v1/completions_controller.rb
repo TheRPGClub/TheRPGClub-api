@@ -62,7 +62,7 @@ module Api
         pagy, page = pagy(query.relation, count: query.count, **pagy_options)
         render json: {
           data: CommonCompletionEntryResource.new(query.rows(page)).serializable_hash,
-          meta: pagy_meta(pagy).merge(left_user_id: left.user_id, right_user_id: right.user_id)
+          meta: pagy_meta(pagy).merge(left_user_id: left.user_id, right_user_id: right.user_id, overlap: query.overlap)
         }
       rescue Completions::Common::InvalidSort => e
         render json: { error: e.message }, status: :unprocessable_content

@@ -56,6 +56,22 @@ module Completions
         .order(Arel.sql(order_sql))
     end
 
+    # Distinct games only the left member, both, and only the right member
+    # completed, over both whole histories (the filters don't apply): the
+    # compare page's overlap diagram. One grouped query.
+    def overlap
+      per_game = both_users.group(:gamedb_game_id).select(
+        UserGameCompletion.sanitize_sql_array([ "BOOL_OR(user_id = ?) AS by_left, BOOL_OR(user_id = ?) AS by_right",
+          left_user_id, right_user_id ])
+      )
+      counts = UserGameCompletion.from(per_game, :per_game).pick(
+        Arel.sql("COUNT(*) FILTER (WHERE by_left AND NOT by_right)"),
+        Arel.sql("COUNT(*) FILTER (WHERE by_left AND by_right)"),
+        Arel.sql("COUNT(*) FILTER (WHERE by_right AND NOT by_left)")
+      )
+      %i[only_left both only_right].zip(counts.map(&:to_i)).to_h
+    end
+
     # The number of common games after filtering, for pagy.
     def count
       UserGameCompletion.from(grouped.select(:gamedb_game_id), :common_games).count

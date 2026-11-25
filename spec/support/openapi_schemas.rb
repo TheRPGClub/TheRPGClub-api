@@ -507,7 +507,9 @@ module OpenapiSchemas
         _required: %w[gamedb_game_id latest_shared_date game left right]
       ),
       CommonCompletionMeta: extends(
-        "PaginationMeta", left_user_id: str, right_user_id: str
+        "PaginationMeta", left_user_id: str, right_user_id: str,
+        # Distinct games across both whole histories (filters don't apply).
+        overlap: obj(only_left: int, both: int, only_right: int)
       ),
       # CompletionUserEntryResource (CompletionFields + user), for game-scoped lists.
       CompletionUserEntry: obj(
