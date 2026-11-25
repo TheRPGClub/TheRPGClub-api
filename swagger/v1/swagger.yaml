@@ -162,11 +162,16 @@ components:
           type: string
           nullable: true
           description: An Add-on's parent game, as IGDB names it.
+        parent_locked:
+          type: boolean
+          description: The parent (or having none) was set by hand on the Franchise
+            editor, so IGDB re-imports keep it.
       required:
       - game_id
       - title
       - mainline
       - source
+      - parent_locked
       description: A game on a Franchise's page.
     FranchiseAddOnGroup:
       type: object
@@ -261,11 +266,27 @@ components:
         created_by:
           type: string
           nullable: true
+        parent_game_id:
+          type: integer
+          nullable: true
+          description: The game's Add-on parent, when it is in GameDB. Null when the
+            game isn't an Add-on.
+        parent_igdb_id:
+          type: integer
+          nullable: true
+          description: The parent's IGDB id; null when the game isn't an Add-on.
+        parent_game_name:
+          type: string
+          nullable: true
+        parent_locked:
+          type: boolean
+          description: The parent was set by hand, so IGDB re-imports keep it.
       required:
       - franchise_id
       - game_id
       - source
       - mainline
+      - parent_locked
     FranchiseChange:
       type: object
       properties:
@@ -287,6 +308,7 @@ components:
           - unlink
           - mainline_on
           - mainline_off
+          - parent
           - create
           - rename
           - merge
@@ -295,10 +317,11 @@ components:
           type: object
           description: 'The values it changed, before: `{ source, mainline, created_at,
             created_by }` for unlink (null for link, or `{ unlinked_by, unlinked_at
-            }` when the link replaced a removal), `{ mainline }`, `{ name, name_locked
-            }` for rename, `{ franchise_id, name, igdb_franchise_id, games }` for
-            merge (the Franchise merged in) and `{ name, igdb_franchise_id, games
-            }` for delete.'
+            }` when the link replaced a removal), `{ mainline }`, `{ parent_game_id,
+            parent_igdb_id, parent_game_name, parent_locked }` for parent (before
+            and after), `{ name, name_locked }` for rename, `{ franchise_id, name,
+            igdb_franchise_id, games }` for merge (the Franchise merged in) and `{
+            name, igdb_franchise_id, games }` for delete.'
           nullable: true
         after:
           type: object
@@ -328,8 +351,8 @@ components:
         can_undo:
           type: boolean
           description: 'The viewer may undo it now: an undoable action (link, unlink,
-            Mainline, rename), not undone, and nothing later touched the same game
-            or name.'
+            Mainline, parent, rename), not undone, and nothing later touched the same
+            game, parent or name.'
       required:
       - change_id
       - franchise_id
@@ -19094,10 +19117,10 @@ paths:
       summary: Undo a franchise change
       tags:
       - Franchises
-      description: Regulars and above. Undoes a link, unlink, Mainline or rename change
-        and marks it undone (`undone_at`, `undone_by`); no new history row is written.
-        Refused when the change was already undone, or a later change (or a merge,
-        or a change outside the history) touched the same game or name.
+      description: Regulars and above. Undoes a link, unlink, Mainline, parent or
+        rename change and marks it undone (`undone_at`, `undone_by`); no new history
+        row is written. Refused when the change was already undone, or a later change
+        (or a merge, or a change outside the history) touched the same game or name.
       parameters: []
       responses:
         '200':
@@ -19175,11 +19198,14 @@ paths:
       summary: Link a game to a franchise
       tags:
       - Franchises
-      description: Regulars and above (the acting member's stored roles). Links the
-        game as `manual` if it isn't linked (forgetting an earlier unlink of the pair),
-        and sets Mainline when `mainline` is given. An existing link keeps its source.
-        Hand links survive IGDB re-imports. Members who now hold every Mainline game
-        Conquer the Franchise (announced).
+      description: 'Regulars and above (the acting member''s stored roles). Links
+        the game as `manual` if it isn''t linked (forgetting an earlier unlink of
+        the pair), and sets Mainline when `mainline` is given. An existing link keeps
+        its source. Hand links survive IGDB re-imports. With `parent_game_id`, the
+        game becomes an Add-on of that GameDB game (null: not an Add-on); the parent
+        is locked (`parent_locked`) so IGDB re-imports keep it, and the change goes
+        in the history as `parent`, undoable. Nothing changes when the parent is refused.
+        Members who now hold every Mainline game Conquer the Franchise (announced).'
       parameters: []
       responses:
         '200':
@@ -19210,7 +19236,10 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`mainline` is not a boolean (`invalid_mainline`)"
+          description: "`mainline` is not a boolean (`invalid_mainline`), or the parent
+            is refused: `invalid_parent` (not an id or null), `parent_not_found`,
+            `parent_is_self`, `parent_not_igdb` (the parent has no IGDB id), `parent_is_add_on`,
+            `game_has_add_ons` (the game has Add-ons of its own)"
           content:
             application/json:
               schema:
@@ -19234,6 +19263,13 @@ paths:
                       type: boolean
                       description: Mark (true) or unmark (false) the game as Mainline;
                         leave out to keep it.
+                    parent_game_id:
+                      type: integer
+                      nullable: true
+                      description: Make the game an Add-on of this GameDB game, which
+                        must have an IGDB id and not be an Add-on itself; null to
+                        stop it being an Add-on; leave out to keep its parent. A numeric
+                        string is accepted.
                     acting_user_id:
                       type: string
                       description: 'Bot only: the member it acts for.'

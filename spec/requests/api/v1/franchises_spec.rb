@@ -285,7 +285,7 @@ RSpec.describe 'api/v1/franchises', type: :request do
 
     post 'Undo a franchise change' do
       tags 'Franchises'
-      description 'Regulars and above. Undoes a link, unlink, Mainline or rename change and marks it undone ' \
+      description 'Regulars and above. Undoes a link, unlink, Mainline, parent or rename change and marks it undone ' \
                   '(`undone_at`, `undone_by`); no new history row is written. Refused when the change was ' \
                   'already undone, or a later change (or a merge, or a change outside the history) touched ' \
                   'the same game or name.'
@@ -339,8 +339,11 @@ RSpec.describe 'api/v1/franchises', type: :request do
       tags 'Franchises'
       description 'Regulars and above (the acting member\'s stored roles). Links the game as `manual` if it ' \
                   'isn\'t linked (forgetting an earlier unlink of the pair), and sets Mainline when `mainline` ' \
-                  'is given. An existing link keeps its source. Hand links survive IGDB re-imports. Members ' \
-                  'who now hold every Mainline game Conquer the Franchise (announced).'
+                  'is given. An existing link keeps its source. Hand links survive IGDB re-imports. With ' \
+                  '`parent_game_id`, the game becomes an Add-on of that GameDB game (null: not an Add-on); the ' \
+                  'parent is locked (`parent_locked`) so IGDB re-imports keep it, and the change goes in the ' \
+                  'history as `parent`, undoable. Nothing changes when the parent is refused. Members who now ' \
+                  'hold every Mainline game Conquer the Franchise (announced).'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: false, schema: {
@@ -351,6 +354,10 @@ RSpec.describe 'api/v1/franchises', type: :request do
             properties: {
               mainline: { type: :boolean, description: 'Mark (true) or unmark (false) the game as Mainline; ' \
                                                         'leave out to keep it.' },
+              parent_game_id: { type: :integer, nullable: true,
+                                description: 'Make the game an Add-on of this GameDB game, which must have an ' \
+                                             'IGDB id and not be an Add-on itself; null to stop it being an ' \
+                                             'Add-on; leave out to keep its parent. A numeric string is accepted.' },
               acting_user_id: { type: :string, description: 'Bot only: the member it acts for.' }
             }
           }
@@ -373,7 +380,10 @@ RSpec.describe 'api/v1/franchises', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', '`mainline` is not a boolean (`invalid_mainline`)' do
+      response '422', '`mainline` is not a boolean (`invalid_mainline`), or the parent is refused: ' \
+                      '`invalid_parent` (not an id or null), `parent_not_found`, `parent_is_self`, ' \
+                      '`parent_not_igdb` (the parent has no IGDB id), `parent_is_add_on`, `game_has_add_ons` ' \
+                      '(the game has Add-ons of its own)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

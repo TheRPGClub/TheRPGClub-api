@@ -176,7 +176,7 @@ A member has Conquered a Franchise once they hold a Game Completion for every Ma
 _Avoid_: Franchise Completion, cleared, finished, mastered
 
 **Add-on**:
-A GameDB game that extends another game, such as DLC or an expansion. Add-ons are shown under their parent game and never join a Pool unless picked by hand.
+A GameDB game that extends another game, such as DLC or an expansion. Its parent comes from IGDB, or is set by hand on the Franchise editor by Regulars and above, which IGDB re-imports then keep. A parent must have an IGDB id and can't be an Add-on itself. Add-ons are shown under their parent game and never join a Pool unless picked by hand.
 _Avoid_: DLC (as the general term), expansion (as the general term)
 
 **Spin-off**:

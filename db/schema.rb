@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_170000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -453,7 +453,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_170000) do
     t.string "undone_by", limit: 30
     t.index ["franchise_id", "game_id", "id"], name: "ix_gamedb_franchise_changes_game"
     t.index ["franchise_id", "id"], name: "ix_gamedb_franchise_changes_franchise"
-    t.check_constraint "action::text = ANY (ARRAY['link'::character varying, 'unlink'::character varying, 'mainline_on'::character varying, 'mainline_off'::character varying, 'create'::character varying, 'rename'::character varying, 'merge'::character varying, 'delete'::character varying]::text[])", name: "ck_gamedb_franchise_changes_action"
+    t.check_constraint "action::text = ANY (ARRAY['link'::character varying, 'unlink'::character varying, 'mainline_on'::character varying, 'mainline_off'::character varying, 'parent'::character varying, 'create'::character varying, 'rename'::character varying, 'merge'::character varying, 'delete'::character varying]::text[])", name: "ck_gamedb_franchise_changes_action"
   end
 
   create_table "gamedb_franchise_unlinks", primary_key: ["game_id", "franchise_id"], force: :cascade do |t|
@@ -572,6 +572,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_170000) do
     t.decimal "total_rating"
     t.datetime "updated_at", default: -> { "CURRENT_TIMESTAMP" }
     t.datetime "release_announced_at"
+    t.boolean "parent_locked", default: false, null: false
 
     t.unique_constraint ["igdb_id"], name: "gamedb_games_igdb_id_key"
   end

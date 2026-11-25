@@ -98,7 +98,7 @@ module Gamedb
         collection = resolve_collection(payload[:collection])
         game = GamedbGame.find_or_initialize_by(igdb_id: payload[:igdb_id])
         created = game.new_record?
-        game.assign_attributes(game_attributes(payload, collection))
+        game.assign_attributes(game_attributes(payload, collection, keep_parent: game.parent_locked))
         game.save!
 
         sync_taxonomy!(game, payload)
@@ -123,8 +123,10 @@ module Gamedb
       result
     end
 
-    def game_attributes(payload, collection)
-      {
+    # A parent set by hand on the Franchise editor (`parent_locked`,
+    # Gamedb::FranchiseEditor) is kept: IGDB's parent is left out.
+    def game_attributes(payload, collection, keep_parent: false)
+      attributes = {
         title: payload[:name],
         slug: payload[:slug],
         description: payload[:summary],
@@ -135,6 +137,7 @@ module Gamedb
         parent_game_name: payload[:parent_game_name],
         collection_id: collection&.collection_id
       }
+      keep_parent ? attributes.except(:parent_igdb_id, :parent_game_name) : attributes
     end
 
     def sync_taxonomy!(game, payload)

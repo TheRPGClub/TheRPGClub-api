@@ -4,8 +4,8 @@ module Api
   module V1
     # A Franchise's change history and undo (spec api#442, ticket api#444).
     # Gamedb::FranchiseEditor records every change; Regulars and above read
-    # the history and undo link, unlink, Mainline and rename changes. Rights:
-    # FranchiseRights.
+    # the history and undo link, unlink, Mainline, parent and rename changes.
+    # Rights: FranchiseRights.
     class FranchiseChangesController < ApplicationController
       include FranchiseRights
       include TaxonomyEndpoints
