@@ -86,11 +86,52 @@ RSpec.describe GotyVote do
       expect(described_class.current(Time.utc(2027, 1, 25))).to eq(last_year)
     end
 
-    it "is this year's upcoming one once last year's is decided" do
-      last_year.update!(decided_at: Time.utc(2027, 1, 18, 5))
+    it "follows the January sequence: last year's nominating, voting, decided for 30 days, then this year's" do
+      last_year
       this_year
 
-      expect(described_class.current(Time.utc(2027, 1, 18, 6))).to eq(this_year)
+      expect(described_class.current(Time.utc(2027, 1, 3))).to eq(last_year)
+      expect(described_class.current(Time.utc(2027, 1, 16))).to eq(last_year)
+
+      last_year.update!(closed_at: Time.utc(2027, 1, 18, 5), decided_at: Time.utc(2027, 1, 18, 5))
+      expect(described_class.current(Time.utc(2027, 1, 18, 6))).to eq(last_year)
+      expect(described_class.current(Time.utc(2027, 2, 17, 4))).to eq(last_year)
+      expect(described_class.current(Time.utc(2027, 2, 17, 6))).to eq(this_year)
+    end
+
+    it "prefers a GOTY Vote taking nominations or votes over an older one stuck in a tie" do
+      stuck = described_class.create!(year: 2025, closed_at: Time.utc(2026, 1, 19, 5),
+        runoff_opens_at: Time.utc(2026, 1, 19, 5), runoff_closes_at: Time.utc(2026, 1, 20, 5),
+        runoff_closed_at: Time.utc(2026, 1, 20, 5), pending_ties: { "gotm" => [ 1, 2 ] })
+      last_year
+
+      expect(described_class.current(Time.utc(2026, 6, 1))).to eq(stuck)
+      expect(described_class.current(Time.utc(2027, 1, 3))).to eq(last_year)
+      expect(described_class.current(Time.utc(2027, 1, 16))).to eq(last_year)
+      expect(described_class.current(Time.utc(2027, 1, 18, 6))).to eq(stuck)
+    end
+
+    it "prefers one waiting on a tie over one decided within 30 days" do
+      described_class.create!(year: 2025, decided_at: Time.utc(2027, 1, 10))
+      last_year.update!(closed_at: Time.utc(2027, 1, 18, 5), runoff_opens_at: Time.utc(2027, 1, 18, 5),
+        runoff_closes_at: Time.utc(2027, 1, 19, 5), runoff_closed_at: Time.utc(2027, 1, 19, 5),
+        pending_ties: { "gotm" => [ 1, 2 ] })
+
+      expect(described_class.current(Time.utc(2027, 1, 20))).to eq(last_year)
+    end
+
+    it "is the latest decided when several were decided within 30 days" do
+      described_class.create!(year: 2025, decided_at: Time.utc(2027, 1, 10))
+      last_year.update!(closed_at: Time.utc(2027, 1, 18, 5), decided_at: Time.utc(2027, 1, 18, 5))
+
+      expect(described_class.current(Time.utc(2027, 1, 20))).to eq(last_year)
+    end
+
+    it "is nil once the only GOTY Vote was decided more than 30 days ago" do
+      last_year.update!(closed_at: Time.utc(2027, 1, 18, 5), decided_at: Time.utc(2027, 1, 18, 5))
+
+      expect(described_class.current(Time.utc(2027, 1, 20))).to eq(last_year)
+      expect(described_class.current(Time.utc(2027, 3, 1))).to be_nil
     end
   end
 

@@ -149,7 +149,19 @@ RSpec.describe "api/v1/goty_votes behavior", type: :request do
       expect(json.fetch("data")).to have_key("club_releases")
     end
 
-    it "is not found when no GOTY Vote is undecided" do
+    it "is last year's decided GOTY Vote with its results for 30 days after it is decided" do
+      create(:goty_vote, year: 2026, closed_at: Time.utc(2027, 1, 18, 5), decided_at: Time.utc(2027, 1, 18, 5))
+      create(:goty_vote, year: 2027)
+
+      travel_to(Time.utc(2027, 2, 1)) { get "/api/v1/goty_votes/current", headers: auth_headers_for(member) }
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("year" => 2026, "phase" => "decided")
+      expect(json.fetch("data")).not_to have_key("club_releases")
+      expect(json.dig("data", "awards").map { |award| award.key?("result") }).to all(be(true))
+    end
+
+    it "is not found when no GOTY Vote is undecided or recently decided" do
       create(:goty_vote, year: 2026, decided_at: Time.utc(2027, 1, 18, 5))
 
       travel_to(Time.utc(2027, 3, 1)) { get "/api/v1/goty_votes/current", headers: auth_headers_for(member) }

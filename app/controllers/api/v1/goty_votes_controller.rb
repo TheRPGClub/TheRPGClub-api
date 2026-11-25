@@ -29,7 +29,8 @@ module Api
       end
 
       # GET /api/v1/goty_votes/current[?user_id=]: the Current GOTY Vote
-      # (GotyVote.current), as #show renders it; 404 when none is undecided.
+      # (GotyVote.current), as #show renders it; 404 when none is open,
+      # waiting, decided within the last 30 days or upcoming.
       def current
         vote = GotyVote.current or raise ActiveRecord::RecordNotFound, "no current GOTY Vote"
         render_vote(vote)

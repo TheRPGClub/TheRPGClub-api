@@ -33,11 +33,13 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
     get 'Show the Current GOTY Vote' do
       tags 'GOTY Vote'
       description 'The Current GOTY Vote, the one members are shown by default, in the same shape as ' \
-                  '`GET /goty_votes/{year}`: the undecided GOTY Vote taking nominations or votes, or waiting on ' \
-                  'its tally, a runoff or a tie; otherwise the upcoming one. In January last year\'s GOTY Vote ' \
-                  'is current until it is decided, while this year\'s waits upcoming. Each year\'s GOTY Vote ' \
-                  'exists from 1 January of that year. Behind the `goty_vote` Feature. 404 when no GOTY Vote is ' \
-                  'undecided.'
+                  '`GET /goty_votes/{year}`. The first of, in order: (1) a GOTY Vote taking nominations or votes ' \
+                  'or in its runoff (`nominating`, `voting`, `runoff`; earliest year); (2) one waiting on its ' \
+                  'tally or a tie (`closed`, `tie`; earliest year); (3) one decided within the last 30 days ' \
+                  '(`decided`, with its results; the latest decided); (4) the upcoming one (earliest year). So in ' \
+                  'January last year\'s GOTY Vote is current while it runs and for 30 days after it is decided, ' \
+                  'while this year\'s waits upcoming. Each year\'s GOTY Vote exists from 1 January of that year. ' \
+                  'Behind the `goty_vote` Feature. 404 when none applies.'
       produces 'application/json'
       parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
                 description: 'Admins and the service: show this member\'s own votes (the bot\'s vote panels). ' \
@@ -47,7 +49,7 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVote' } }, required: %w[data]
       end
 
-      response '404', 'no undecided GOTY Vote' do
+      response '404', 'no Current GOTY Vote' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

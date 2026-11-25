@@ -41,15 +41,32 @@ class GotyVote < ApplicationRecord
     create_or_find_by!(year: year)
   end
 
+  # Phases of an undecided GOTY Vote that is taking nominations or votes.
+  OPEN_PHASES = %w[nominating voting runoff].freeze
+  # Phases of one whose windows have run out, waiting on a tally or a tie.
+  WAITING_PHASES = %w[closed tie].freeze
+  # How long a decided GOTY Vote stays current, so its results stay up.
+  DECIDED_CURRENT_FOR = 30.days
+
   # The Current GOTY Vote (GLOSSARY; spec api#481), the one members are
-  # shown by default: the undecided GOTY Vote taking nominations or votes,
-  # or waiting on its tally, a runoff or a tie; otherwise the upcoming one.
-  # In January last year's is current until it is decided, while this
-  # year's waits upcoming. nil when no GOTY Vote is undecided. The one place
-  # this rule lives: the website and the bot ask GET /goty_votes/current.
+  # shown by default. The first of, in order:
+  #   1. a GOTY Vote taking nominations or votes or in its runoff (the
+  #      earliest year if several);
+  #   2. one waiting on its tally or a tie (closed / tie; earliest year);
+  #   3. one decided within the last 30 days (the latest decided_at);
+  #   4. the upcoming one (earliest year).
+  # So in January last year's is current while it runs, then for 30 days
+  # after it is decided, while this year's waits upcoming; an old vote stuck
+  # in a tie never hides a newer one that is open. nil when none applies.
+  # The one place this rule lives: the website and the bot ask
+  # GET /goty_votes/current.
   def self.current(now = Time.current)
     undecided = where(decided_at: nil).order(:year).to_a
-    undecided.find { |vote| vote.phase(now) != "upcoming" } || undecided.first
+    phases = undecided.index_with { |vote| vote.phase(now) }
+    undecided.find { |vote| OPEN_PHASES.include?(phases[vote]) } ||
+      undecided.find { |vote| WAITING_PHASES.include?(phases[vote]) } ||
+      where(decided_at: (now - DECIDED_CURRENT_FOR)..now).order(decided_at: :desc, year: :desc).first ||
+      undecided.find { |vote| phases[vote] == "upcoming" }
   end
 
   def nominations_open?(now = Time.current) = phase(now) == "nominating"
