@@ -111,7 +111,13 @@ module Features
     # stored state and starts in Preview.
     define("game_lists", "Game Lists", core: false,
       website: [ "Lists", "Profile Lists", "Game page Lists" ],
-      bot: [ "/list", "Add to list" ])
+      bot: [ "/list", "Add to list" ]),
+    # Spec api#457. Registered after Feature Flags shipped, so it has no
+    # stored state and starts in Preview. Its Conquest posts
+    # (`franchise_conquest`) follow its Flag.
+    define("franchise_progress", "Franchise Progress", core: false,
+      website: [ "Franchise Progress tab" ],
+      posts: [ "Conquest announcements" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

@@ -157,6 +157,8 @@ module Imports
           created.update_columns(completed_at: nil) if completed_at.nil? && created.reload.completed_at
         end
       end
+      # An import's Conquests are written but never announced (spec api#457).
+      Franchises::ConquestCheck.new(announce: false).after_completion(completion)
       item.update!(status: "added", completion_id: completion.completion_id, error_text: nil)
       item
     end
