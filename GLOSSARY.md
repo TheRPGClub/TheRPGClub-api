@@ -378,8 +378,16 @@ _Avoid_: Gift, pick (when meaning the format)
 ## GOTY Vote
 
 **GOTY Vote**:
-The club's yearly vote on its best games of a year, held once per year and named for it, such as GOTY Vote 2026. It has three Awards.
+The club's yearly vote on its best games of a year, held once per year and named for it, such as GOTY Vote 2026. It has three Awards. A GOTY Vote exists from 1 January of its own year and is upcoming until its nominations open the following January; meanwhile it shows the Year So Far. In January two GOTY Votes overlap, and the one taking nominations or votes is the Current GOTY Vote.
 _Avoid_: GOTY nominations, GOTY round, Year GOTY
+
+**Current GOTY Vote**:
+The GOTY Vote members are shown by default: the one taking nominations or votes, or waiting on a runoff or a tie, if there is one; otherwise the upcoming one.
+_Avoid_: Latest GOTY Vote, active year
+
+**Year So Far**:
+What an upcoming GOTY Vote shows before nominations open: the year's GOTM and NR-GOTM winners to date, and the games first released that year that members have completed, are playing or have reviewed. These are not nominations, and nothing about them carries into the vote except the GOTM and NR-GOTM winners, which become their Awards' ballots.
+_Avoid_: Preview, contenders, shortlist
 
 **Award**:
 One of the three titles a GOTY Vote decides: GOTM of the Year, NR-GOTM of the Year and Game of the Year. Each Award has its own ballot and is voted on like a GOTM round, runoff included. An Award with one candidate goes to it without a vote, and an Award with no candidates is not given that year.
