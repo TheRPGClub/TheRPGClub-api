@@ -175,6 +175,15 @@ RSpec.describe "Franchise Progress", type: :request do
       expect(rows.third.fetch("meters")).to include("all" => { "done" => 1, "total" => 3, "playtime_minutes" => 900 })
     end
 
+    it "gives each member's avatar: the Discord hash and the stored avatar's path" do
+      link(ff1, mainline: true)
+      face = create(:user, discord_avatar: "a1b2c3")
+      create(:completion, user: face, game: ff1)
+
+      expect(members_table.first.fetch("user")).to include("user_id" => face.user_id, "discord_avatar" => "a1b2c3",
+        "avatar_url" => "/api/v1/users/#{face.user_id}/avatar")
+    end
+
     it "ranks by the whole Franchise when it has no Mainline games" do
       link(ff1)
       link(tactics)

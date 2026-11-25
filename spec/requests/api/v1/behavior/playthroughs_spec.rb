@@ -49,6 +49,14 @@ RSpec.describe "api/v1 playthroughs behavior", type: :request do
       expect(playtime.dig("playthrough", "minutes")).to eq(90)
     end
 
+    it "shows the Playtime it is counted from as baseline_minutes" do
+      add_time(600)
+      start
+      add_time(90)
+
+      expect(playtime.fetch("playthrough")).to include("baseline_minutes" => 600, "minutes" => 90)
+    end
+
     it "never goes below zero when Playtime drops under the baseline" do
       add_time(600)
       start

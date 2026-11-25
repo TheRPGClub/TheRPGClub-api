@@ -451,7 +451,8 @@ RSpec.describe 'api/v1/franchises', type: :request do
       description 'Behind the `franchise_progress` Feature. Every current member with Playtime, a Game ' \
                   'Completion (Add-ons aside) or a Conquest in the Franchise, with their meters. Conquered ' \
                   'members first, earliest Conquest first; then by Mainline games done (by all games when the ' \
-                  'Franchise has no Mainline games), then by Playtime. Not paginated.'
+                  'Franchise has no Mainline games), then by Playtime. Each `user` carries their avatar ' \
+                  '(`discord_avatar` hash and the stored `avatar_url` path). Not paginated.'
       produces 'application/json'
 
       response '200', 'members' do

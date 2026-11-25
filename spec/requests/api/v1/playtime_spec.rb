@@ -53,6 +53,9 @@ RSpec.describe 'api/v1/playtime', type: :request do
       description 'Settles the mismatch on `platform_id`. `keep: manual` ("keep mine") sets the Manual ' \
                   'entry\'s `keeps_over_provider` to the Provider reporting that platform, so that Provider\'s ' \
                   'figure there is shown but no longer counted. `keep: provider` deletes the Manual entry. ' \
+                  '`keep: both` sets the Manual entry\'s `mismatch_acknowledged_provider` to that Provider: both ' \
+                  'figures keep counting (ADR 0015) and the pair is no longer reported as a mismatch; another ' \
+                  'Provider on the platform still is, and moving the entry to another platform clears it. ' \
                   '422 `no_mismatch` when the platform has none, `invalid_keep` for another `keep`. ' + write_rule
       consumes 'application/json'
       produces 'application/json'
@@ -64,7 +67,7 @@ RSpec.describe 'api/v1/playtime', type: :request do
             type: :object,
             properties: {
               platform_id: { type: :integer, description: 'The mismatch\'s GameDB platform.' },
-              keep: { type: :string, enum: %w[manual provider] }
+              keep: { type: :string, enum: %w[manual provider both] }
             },
             required: %w[platform_id keep]
           }
@@ -158,7 +161,8 @@ RSpec.describe 'api/v1/playtime', type: :request do
     patch 'Change a Manual Playtime entry' do
       tags 'Playtime'
       description 'Changes the entry\'s `minutes` (the new total), `note` or `platform_id` (null is "Other"), ' \
-                  'each optional. Moving it to another platform clears its `keeps_over_provider`; a platform ' \
+                  'each optional. Moving it to another platform clears its `keeps_over_provider` and ' \
+                  '`mismatch_acknowledged_provider`; a platform ' \
                   'that already has an entry is 422. ' + write_rule
       consumes 'application/json'
       produces 'application/json'

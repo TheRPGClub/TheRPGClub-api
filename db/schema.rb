@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_160500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1546,6 +1546,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_140000) do
     t.string "keeps_over_provider", limit: 32
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "mismatch_acknowledged_provider", limit: 32
     t.index ["gamedb_game_id"], name: "index_user_game_manual_playtimes_on_gamedb_game_id"
     t.index ["user_id", "gamedb_game_id", "platform_id"], name: "ux_user_game_manual_playtimes_platform", unique: true, nulls_not_distinct: true
     t.check_constraint "minutes >= 0", name: "ck_user_game_manual_playtimes_minutes"

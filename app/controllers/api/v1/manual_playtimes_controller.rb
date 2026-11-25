@@ -38,7 +38,8 @@ module Api
       # PATCH /api/v1/manual_playtimes/:id
       # Body: { "data": { "minutes": <n>, "note": <text>, "platform_id": <id|null> } }, each optional.
       # `minutes` sets the total. Moving the entry to another platform clears
-      # its "keep mine" choice, which was about the old platform.
+      # its "keep mine" and "keep both" choices, which were about the old
+      # platform.
       def update
         entry = UserGameManualPlaytime.find(params[:id])
         return refuse("invalid_minutes", "minutes must be a whole number of 0 or more") if
@@ -46,7 +47,10 @@ module Api
         return if request_data.key?("platform_id") && platform_unknown?
 
         entry.assign_attributes(request_data.slice("minutes", "note", "platform_id"))
-        entry.keeps_over_provider = nil if entry.platform_id_changed?
+        if entry.platform_id_changed?
+          entry.keeps_over_provider = nil
+          entry.mismatch_acknowledged_provider = nil
+        end
         entry.save!
         render_playtime(entry.user_id, entry.gamedb_game_id)
       end

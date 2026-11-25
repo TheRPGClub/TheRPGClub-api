@@ -8,7 +8,9 @@
 # `origin` says who wrote it: the member, or the launch seed from Game
 # Completions (`playtime:seed_from_completions`). `keeps_over_provider` is the
 # Provider whose figure on this platform the member chose not to count
-# ("keep mine" on a mismatch).
+# ("keep mine" on a mismatch). `mismatch_acknowledged_provider` is the
+# Provider whose figure on this platform the member chose to count as well
+# ("keep both"): both count, and the pair is no longer a mismatch.
 class UserGameManualPlaytime < ApplicationRecord
   ORIGINS = %w[member completion_seed].freeze
   NOTE_MAX = 280
@@ -34,5 +36,6 @@ class UserGameManualPlaytime < ApplicationRecord
 
   validates :minutes, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :note, length: { maximum: NOTE_MAX }
-  validates :keeps_over_provider, inclusion: { in: UserLinkedAccount::PROVIDERS }, allow_nil: true
+  validates :keeps_over_provider, :mismatch_acknowledged_provider,
+    inclusion: { in: UserLinkedAccount::PROVIDERS }, allow_nil: true
 end

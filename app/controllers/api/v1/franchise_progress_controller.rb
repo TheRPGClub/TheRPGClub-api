@@ -22,9 +22,14 @@ module Api
       end
 
       # GET /api/v1/franchises/:id/progress/members
+      #
+      # Each member is their UserSummary plus their avatar (Members.summary's
+      # `discord_avatar` and `avatar_url`), so the table can show faces.
       def members
         rows = progress.members.map do |row|
-          { user: UserSummaryResource.new(row[:user]).serializable_hash, meters: row[:meters],
+          user = row[:user]
+          avatar = Members.summary(user).slice(:discord_avatar, :avatar_url)
+          { user: UserSummaryResource.new(user).serializable_hash.merge(avatar), meters: row[:meters],
             conquered_at: row[:conquered_at] }
         end
         render json: { data: rows.as_json }
