@@ -15,6 +15,15 @@ RSpec.describe "game image preloading on list endpoints", type: :request do
   let(:other) { create(:user) }
   let(:rows) { 3 }
 
+  # Image URLs render only with a public base URL configured.
+  around do |example|
+    original = ENV.fetch("BACKBLAZE_PUBLIC_BASE_URL", nil)
+    ENV["BACKBLAZE_PUBLIC_BASE_URL"] = "https://cdn.example.test/club"
+    example.run
+  ensure
+    original.nil? ? ENV.delete("BACKBLAZE_PUBLIC_BASE_URL") : ENV["BACKBLAZE_PUBLIC_BASE_URL"] = original
+  end
+
   def covered_game
     create(:game).tap { |game| create(:game_image, :primary, game: game) }
   end
