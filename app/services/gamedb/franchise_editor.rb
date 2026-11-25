@@ -3,12 +3,13 @@
 module Gamedb
   # Every hand change to a Franchise goes through here (spec api#442,
   # "Franchises (API)"): linking and unlinking games, setting Mainline,
-  # creating, renaming, merging and deleting Franchises, and undoing a
-  # change. Permission checks stay with the caller; this only applies a
+  # setting or clearing a game's Add-on parent, creating, renaming, merging
+  # and deleting Franchises, and undoing a change. Permission checks stay with the caller; this only applies a
   # change for the member who made it.
   #
   #   editor = Gamedb::FranchiseEditor.new(user_id: "123")
   #   editor.link!(franchise, game, mainline: true)
+  #   editor.link!(franchise, game, parent: other_game)  # or parent: nil
   #   editor.unlink!(franchise, game)
   #   editor.create!(name: "Soulslike")
   #   editor.rename!(franchise, name: "FF")
@@ -19,9 +20,12 @@ module Gamedb
   # Edits survive IGDB re-imports (IgdbGameImporter#sync_franchises!): a link
   # added here is `manual`, which a re-import never removes; an unlink is
   # remembered in `gamedb_franchise_unlinks`, which a re-import never links
-  # again; and a re-import never touches `mainline`.
+  # again; a re-import never touches `mainline`; and a parent set or cleared
+  # here locks it (`gamedb_games.parent_locked`), which a re-import keeps.
   #
-  # Links, unlinks, Mainline changes and undos run Franchises::ConquestCheck;
+  # Links, unlinks, Mainline changes and undos run Franchises::ConquestCheck
+  # (a parent change in every Franchise of the game, as Add-ons leave the
+  # Mainline set);
   # a merge moves the source's Conquests to the target, and a delete removes
   # them.
   #
@@ -40,6 +44,21 @@ module Gamedb
         super(reason.to_s)
       end
     end
+
+    # A refused Add-on parent: `reason` is one of PARENT_REFUSALS.
+    class ParentRefused < StandardError
+      attr_reader :reason
+
+      def initialize(reason)
+        @reason = reason
+        super(reason.to_s)
+      end
+    end
+
+    # :parent_is_self, :parent_not_igdb (the parent has no IGDB id, which is
+    # how Add-ons point at it), :parent_is_add_on and :game_has_add_ons (no
+    # Add-ons of Add-ons).
+    PARENT_REFUSALS = %i[parent_is_self parent_not_igdb parent_is_add_on game_has_add_ons].freeze
 
     # A refused undo: `reason` is :not_undoable (create, merge, delete),
     # :already_undone, or :superseded (a later change, a merge or a change
@@ -67,13 +86,17 @@ module Gamedb
     # Link `game` to `franchise` (as `manual`) if it isn't already, and set
     # Mainline when `mainline` is true or false (nil leaves it as it is).
     # Linking forgets a past unlink of the pair. An IGDB link keeps its
-    # source. Returns the link.
-    def link!(franchise, game, mainline: nil)
+    # source. `parent` makes the game an Add-on of that GamedbGame, nil stops
+    # it being one, and :keep (the default) leaves it; either way the parent
+    # is then locked against IGDB re-imports. Raises ParentRefused (nothing
+    # changes). Returns the link.
+    def link!(franchise, game, mainline: nil, parent: :keep)
       GamedbGameFranchise.transaction do
         link = GamedbGameFranchise.lock.find_by(franchise_id: franchise.franchise_id, game_id: game.game_id)
         link ||= add_link!(franchise, game)
+        parent_changed = parent != :keep && set_parent!(franchise, game, parent)
         set_mainline!(link, franchise, game, mainline) unless mainline.nil? || link.mainline == mainline
-        check_conquests!(franchise)
+        parent_changed ? check_game_conquests!(game.game_id) : check_conquests!(franchise)
         link
       end
     end
@@ -195,7 +218,7 @@ module Gamedb
         raise UndoRefused, :superseded unless revert!(change, franchise)
 
         change.update!(undone_at: Time.current, undone_by: @user_id)
-        check_conquests!(franchise)
+        change.action == "parent" ? check_game_conquests!(change.game_id) : check_conquests!(franchise)
         change.game_change? ? GamedbGame.where(game_id: change.game_id).touch_all : touch_games!(franchise.franchise_id)
         change
       end
@@ -226,6 +249,7 @@ module Gamedb
     # `after`; false (nothing done) when something else changed it since.
     def revert!(change, franchise)
       return revert_rename!(change, franchise) if change.action == "rename"
+      return revert_parent!(change) if change.action == "parent"
 
       link = GamedbGameFranchise.lock.find_by(franchise_id: franchise.franchise_id, game_id: change.game_id)
       case change.action
@@ -239,6 +263,15 @@ module Gamedb
       return false unless franchise.name == change.after["name"]
 
       franchise.update!(change.before.slice("name", "name_locked"))
+    end
+
+    # Puts back the parent and its lock, when the game still has the parent
+    # the change gave it.
+    def revert_parent!(change)
+      game = GamedbGame.lock.find_by(game_id: change.game_id)
+      return false if game.nil? || parent_values(game).slice(*PARENT_KEYS) != change.after.slice(*PARENT_KEYS)
+
+      game.update!(change.before.slice(*PARENT_KEYS))
     end
 
     def revert_link!(change, link)
@@ -316,6 +349,13 @@ module Gamedb
       )
     end
 
+    # A parent change can move a game into or out of the Mainline set of
+    # every Franchise that links it.
+    def check_game_conquests!(game_id)
+      GamedbFranchise.current.where(franchise_id: GamedbGameFranchise.where(game_id: game_id).select(:franchise_id))
+        .find_each { |franchise| check_conquests!(franchise) }
+    end
+
     # A rename shows in every game's relations.
     def touch_games!(franchise_id)
       GamedbGame.where(game_id: GamedbGameFranchise.where(franchise_id: franchise_id).select(:game_id)).touch_all
@@ -330,6 +370,42 @@ module Gamedb
     end
 
     def link_values(link) = { "source" => link.source, "mainline" => link.mainline }
+
+    # What a `parent` change puts back; `parent_game_id` is recorded too, for
+    # the history to link the parent.
+    PARENT_KEYS = %w[parent_igdb_id parent_game_name parent_locked].freeze
+
+    # Gives `game` the parent `parent` (a GamedbGame, or nil for none) and
+    # locks it. Records nothing when the game already has that parent,
+    # locked. Returns whether anything changed. Raises ParentRefused.
+    def set_parent!(franchise, game, parent)
+      record = GamedbGame.lock.find(game.game_id)
+      refuse_parent!(record, parent) if parent
+
+      before = parent_values(record)
+      record.assign_attributes(parent_igdb_id: parent&.igdb_id, parent_game_name: parent&.title, parent_locked: true)
+      return false unless record.changed?
+
+      apply!(:parent, franchise, game, before: before, after: parent_values(record, parent_game_id: parent&.game_id)) do
+        record.save!
+      end
+      true
+    end
+
+    def refuse_parent!(game, parent)
+      raise ParentRefused, :parent_is_self if parent.game_id == game.game_id
+      raise ParentRefused, :parent_not_igdb if parent.igdb_id.nil?
+      raise ParentRefused, :parent_is_add_on if parent.parent_igdb_id.present?
+      raise ParentRefused, :game_has_add_ons if game.igdb_id && GamedbGame.exists?(parent_igdb_id: game.igdb_id)
+    end
+
+    def parent_values(game, parent_game_id: :lookup)
+      if parent_game_id == :lookup
+        parent_game_id = game.parent_igdb_id && GamedbGame.where(igdb_id: game.parent_igdb_id).pick(:game_id)
+      end
+      { "parent_game_id" => parent_game_id, "parent_igdb_id" => game.parent_igdb_id,
+        "parent_game_name" => game.parent_game_name, "parent_locked" => game.parent_locked }
+    end
 
     # The one path every change takes: apply it, record it, and invalidate
     # what shows it. Runs inside the caller's transaction.

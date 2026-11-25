@@ -115,7 +115,9 @@ module OpenapiSchemas
         _description: "A game on a Franchise's page.",
         game_id: int, title: str, cover_url: str(nullable: true), release_year: int(nullable: true),
         mainline: bool, source: str(enum: %w[igdb manual]).merge(description: "Where the link came from."),
-        parent_game_name: str(nullable: true).merge(description: "An Add-on's parent game, as IGDB names it.")
+        parent_game_name: str(nullable: true).merge(description: "An Add-on's parent game, as IGDB names it."),
+        parent_locked: bool.merge(description: "The parent (or having none) was set by hand on the Franchise " \
+                                               "editor, so IGDB re-imports keep it.")
       ),
       FranchiseAddOnGroup: obj(
         _description: "Add-ons under their parent game. The last group has a null parent and holds the " \
@@ -141,7 +143,13 @@ module OpenapiSchemas
       FranchiseLink: obj(
         franchise_id: int, game_id: int, source: str(enum: %w[igdb manual]), mainline: bool,
         created_at: ts(nullable: true).merge(description: "Null for links older than Franchise editing."),
-        created_by: str(nullable: true)
+        created_by: str(nullable: true),
+        parent_game_id: int(nullable: true).merge(description: "The game's Add-on parent, when it is in GameDB. " \
+                                                                "Null when the game isn't an Add-on."),
+        parent_igdb_id: int(nullable: true).merge(description: "The parent's IGDB id; null when the game isn't " \
+                                                                "an Add-on."),
+        parent_game_name: str(nullable: true),
+        parent_locked: bool.merge(description: "The parent was set by hand, so IGDB re-imports keep it.")
       ),
       FranchiseChange: obj(
         _description: "A row of a Franchise's history (spec api#442).",
@@ -153,7 +161,8 @@ module OpenapiSchemas
         before: json.merge(description: "The values it changed, before: `{ source, mainline, created_at, " \
                                         "created_by }` for unlink (null for link, or `{ unlinked_by, " \
                                         "unlinked_at }` when the link replaced a removal), `{ mainline }`, " \
-                                        "`{ name, name_locked }` for rename, `{ franchise_id, name, " \
+                                        "`{ parent_game_id, parent_igdb_id, parent_game_name, parent_locked }` " \
+                                        "for parent (before and after), `{ name, name_locked }` for rename, `{ franchise_id, name, " \
                                         "igdb_franchise_id, games }` for merge (the Franchise merged in) and " \
                                         "`{ name, igdb_franchise_id, games }` for delete."),
         after: json.merge(description: "The values after (null for unlink and delete)."),
@@ -164,8 +173,8 @@ module OpenapiSchemas
         undone_by: str(nullable: true).merge(description: "Who undid it."),
         undone_by_username: str(nullable: true),
         can_undo: bool.merge(description: "The viewer may undo it now: an undoable action (link, unlink, " \
-                                          "Mainline, rename), not undone, and nothing later touched the same " \
-                                          "game or name.")
+                                          "Mainline, parent, rename), not undone, and nothing later touched " \
+                                          "the same game, parent or name.")
       ),
       Genre: obj(genre_id: int, name: str, igdb_genre_id: int(nullable: true)),
       Engine: obj(engine_id: int, name: str, igdb_engine_id: int(nullable: true)),

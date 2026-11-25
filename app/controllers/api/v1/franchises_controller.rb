@@ -6,7 +6,8 @@ module Api
     # endpoints (TaxonomyEndpoints). A Franchise's page groups its games as
     # Mainline, Other and Add-ons, with what the viewer may change
     # (Gamedb::FranchiseGames). Regulars and above link and unlink games, set
-    # Mainline and create Franchises with no IGDB id; Admins and above
+    # Mainline, set a game's Add-on parent and create Franchises with no IGDB
+    # id; Admins and above
     # rename, merge and delete them (spec api#442), all through
     # Gamedb::FranchiseEditor, which records each change in the history
     # (FranchiseChangesController). The bot keeps its admin/service upsert
@@ -49,18 +50,28 @@ module Api
       end
 
       # PUT /api/v1/franchises/:id/games/:game_id
-      # Body: { "data": { "mainline": true|false } } (data optional)
+      # Body: { "data": { "mainline": true|false, "parent_game_id": id|null } }
+      # (data and both keys optional)
       #
-      # Links the game (as `manual`) if it isn't linked, and sets Mainline
-      # when `mainline` is given. Answers with the link.
+      # Links the game (as `manual`) if it isn't linked, sets Mainline when
+      # `mainline` is given, and when `parent_game_id` is given makes the
+      # game an Add-on of that GameDB game (null: not an Add-on), locked
+      # against IGDB re-imports. Answers with the link and the game's parent.
+      # 422 for a parent refused (Gamedb::FranchiseEditor::PARENT_REFUSALS,
+      # `parent_not_found`, `invalid_parent`); nothing changes then.
       def link_game
         return unless require_editor! && require_unmerged!
 
         mainline = link_mainline
         return if performed?
 
-        link = editor.link!(franchise, game, mainline: mainline)
-        render json: { data: link_json(link) }
+        parent = link_parent
+        return if performed?
+
+        link = editor.link!(franchise, game, mainline: mainline, parent: parent)
+        render json: { data: link_json(link).merge(parent_json) }
+      rescue Gamedb::FranchiseEditor::ParentRefused => e
+        refuse_parent(e.reason)
       end
 
       # DELETE /api/v1/franchises/:id/games/:game_id
@@ -168,6 +179,46 @@ module Api
 
         render json: { error: "invalid_mainline", message: "mainline must be true or false" },
           status: :unprocessable_content
+      end
+
+      # `data.parent_game_id`: :keep when not given, nil for null, else the
+      # GamedbGame; 422 `invalid_parent` for a value that isn't an id and
+      # `parent_not_found` for an unknown game.
+      def link_parent
+        data = params[:data]
+        return :keep unless data.respond_to?(:key?) && data.key?(:parent_game_id)
+
+        value = data[:parent_game_id]
+        return nil if value.nil?
+
+        id = value.is_a?(Integer) || value.to_s.match?(/\A\d+\z/) ? value.to_i : nil
+        return refuse_parent(:invalid_parent) unless id
+
+        GamedbGame.select(:game_id, :igdb_id, :title, :parent_igdb_id).find_by(game_id: id) ||
+          refuse_parent(:parent_not_found)
+      end
+
+      PARENT_REFUSALS = {
+        invalid_parent: "parent_game_id must be a game id or null.",
+        parent_not_found: "That parent game isn't in GameDB.",
+        parent_is_self: "A game can't be its own parent.",
+        parent_not_igdb: "The parent game has no IGDB id, so it can't be a parent.",
+        parent_is_add_on: "That game is an Add-on itself, so it can't be a parent.",
+        game_has_add_ons: "This game has Add-ons of its own, so it can't become an Add-on."
+      }.freeze
+
+      def refuse_parent(reason)
+        render json: { error: reason.to_s, message: PARENT_REFUSALS.fetch(reason) }, status: :unprocessable_content
+        nil
+      end
+
+      # The game's parent after the change: `parent_game_id` is null when the
+      # game isn't an Add-on or its parent isn't in GameDB.
+      def parent_json
+        igdb_id, name, locked = GamedbGame.where(game_id: game.game_id)
+          .pick(:parent_igdb_id, :parent_game_name, :parent_locked)
+        { parent_game_id: igdb_id && GamedbGame.where(igdb_id: igdb_id).pick(:game_id),
+          parent_igdb_id: igdb_id, parent_game_name: name, parent_locked: locked }
       end
 
       def link_json(link)

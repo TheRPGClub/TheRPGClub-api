@@ -6,12 +6,14 @@ module Gamedb
   # game (`parent_igdb_id`), and it goes in `add_ons` whatever its Mainline
   # mark. Add-ons are grouped under their parent when the parent is in
   # GameDB, whether or not the parent is in this Franchise; the rest share a
-  # last group with a null `parent`.
+  # last group with a null `parent`. A parent set by hand on the Franchise
+  # editor (Gamedb::FranchiseEditor) counts the same as IGDB's.
   #
   # Each game: `{ game_id, title, cover_url, release_year, mainline, source,
-  # parent_game_name }`, oldest release first (undated last), then by title.
+  # parent_game_name, parent_locked }`, oldest release first (undated last),
+  # then by title.
   module FranchiseGames
-    GAME_COLUMNS = %i[game_id igdb_id title initial_release_date parent_igdb_id parent_game_name].freeze
+    GAME_COLUMNS = %i[game_id igdb_id title initial_release_date parent_igdb_id parent_game_name parent_locked].freeze
 
     def self.of(franchise)
       links = GamedbGameFranchise.where(franchise_id: franchise.franchise_id).index_by(&:game_id)
@@ -41,7 +43,8 @@ module Gamedb
     end
 
     def self.entry(game, link)
-      game_fields(game).merge(mainline: link.mainline, source: link.source, parent_game_name: game.parent_game_name)
+      game_fields(game).merge(mainline: link.mainline, source: link.source, parent_game_name: game.parent_game_name,
+        parent_locked: game.parent_locked)
     end
 
     def self.game_fields(game)
