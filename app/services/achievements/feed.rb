@@ -15,7 +15,9 @@ module Achievements
   # queries.
   class Feed
     VIEWS = %w[latest highlights].freeze
-    CARD_UNLOCKS = 8
+    # High enough that a day's run shows whole on the hub; a backfill day of
+    # hundreds still stops here (the card's count says how many more).
+    CARD_UNLOCKS = 60
 
     # `unlocked_at` is stored as UTC without a zone, so its date is the UTC day.
     DAY = "(user_achievement_unlocks.unlocked_at)::date"

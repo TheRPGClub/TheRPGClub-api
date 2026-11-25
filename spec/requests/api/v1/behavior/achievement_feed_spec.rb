@@ -3,7 +3,7 @@
 require "rails_helper"
 
 # Behavior specs for the community feed (api-09). `latest` groups Unlocks into
-# cards per member + Achievement Set + UTC day of `unlocked_at` (up to 8
+# cards per member + Achievement Set + UTC day of `unlocked_at` (up to 60
 # Unlocks each), newest first; `highlights` is one card per Highlight Unlock.
 # Departed members and removed Achievements never appear.
 RSpec.describe "api/v1 achievement feed behavior", type: :request do
@@ -61,14 +61,15 @@ RSpec.describe "api/v1 achievement feed behavior", type: :request do
       expect(cards.last).to include("day" => "1970-01-01", "latest_unlocked_at" => "1970-01-01T00:00:00.000Z")
     end
 
-    it "caps a card at 8 Unlocks but counts them all" do
+    it "caps a card at CARD_UNLOCKS Unlocks but counts them all" do
+      stub_const("Achievements::Feed::CARD_UNLOCKS", 3)
       day = Time.utc(2026, 10, 1)
-      10.times { |i| unlock(alice_steam, steam_set, day + i.minutes) }
+      5.times { |i| unlock(alice_steam, steam_set, day + i.minutes) }
 
       card = feed.fetch("data").sole
 
-      expect(card.fetch("count")).to eq(10)
-      expect(card.fetch("unlocks").size).to eq(8)
+      expect(card.fetch("count")).to eq(5)
+      expect(card.fetch("unlocks").size).to eq(3)
     end
 
     it "paginates groups with an explicit group count" do

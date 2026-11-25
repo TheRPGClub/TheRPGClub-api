@@ -7669,7 +7669,7 @@ components:
       - count
       - latest_unlocked_at
       - unlocks
-      description: "`count` is every Unlock of the card; `unlocks` holds at most 8,
+      description: "`count` is every Unlock of the card; `unlocks` holds at most 60,
         newest first."
     AchievementFeedHighlight:
       allOf:
@@ -8347,7 +8347,7 @@ paths:
       - Achievements
       description: "`view=latest` (default): cards grouping Unlocks per member + Achievement
         Set + UTC day of `unlocked_at`, newest first, each with its count and up to
-        8 Unlocks (`AchievementFeedGroup`). `meta.count` counts cards. `view=highlights`:
+        60 Unlocks (`AchievementFeedGroup`). `meta.count` counts cards. `view=highlights`:
         one card per Highlight Unlock, newest first (`AchievementFeedHighlight`).
         Cards carry `kind` to tell them apart."
       parameters:

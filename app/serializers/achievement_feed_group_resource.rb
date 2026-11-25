@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # A `latest` feed card (Achievements::Feed::Group): one member's Unlocks in one
-# Achievement Set on one UTC day, with the day's count and up to 8 of the
+# Achievement Set on one UTC day, with the day's count and up to 60 of the
 # newest Unlocks. Pass `viewer_unlocked_ids` for the Unlocks' spoiler blur.
 class AchievementFeedGroupResource
   include BaseResource

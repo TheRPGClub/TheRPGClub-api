@@ -2436,7 +2436,7 @@ module OpenapiSchemas
         day: str(format: "date", example: "2026-10-31"), count: int, latest_unlocked_at: ts,
         unlocks: array_of("AchievementUnlock"),
         _required: %w[kind user achievement_set day count latest_unlocked_at unlocks],
-        _description: "`count` is every Unlock of the card; `unlocks` holds at most 8, newest first."
+        _description: "`count` is every Unlock of the card; `unlocks` holds at most 60, newest first."
       ),
       # A `highlights` feed card: one Highlight Unlock and its member.
       AchievementFeedHighlight: extends(
