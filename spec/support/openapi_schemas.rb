@@ -2584,20 +2584,10 @@ module OpenapiSchemas
         thread_id: str(nullable: true, description: "The game's newest linked Discord thread."),
         game: ref("GameWithPlatforms", nullable: true)
       ),
-      GotmRoundMatch: obj(
-        gamedb_game_id: int, title: str,
-        match: str(enum: %w[won nominated], description: "`won` for a winner of the block, `nominated` for a " \
-                                                         "Nomination of this kind that did not win.")
-      ),
       GotmRoundBlock: obj(
         month_year: str, voting_results_message_id: str(nullable: true), games: array_of("GotmRoundGame"),
         nominations_count: int.merge(description: "Nominations of this kind in the round (0 before they were recorded)."),
-        matches: array_of("GotmRoundMatch").merge(
-          nullable: true,
-          description: "Only with `q`: the block's games whose title matches, winners first (`game_index` order), " \
-                       "then Nominations that did not win (nomination order), one per game. Null without `q`."
-        ),
-        _required: %w[month_year games nominations_count matches]
+        _required: %w[month_year games nominations_count]
       ),
       GotmRound: obj(
         round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),

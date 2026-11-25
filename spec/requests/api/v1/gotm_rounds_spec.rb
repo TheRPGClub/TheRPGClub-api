@@ -8,9 +8,8 @@ RSpec.describe 'api/v1/gotm_rounds', type: :request do
       tags 'GOTM'
       description 'GOTM and NR-GOTM history grouped by round. Pages are rounds, not entries. Filters apply to ' \
                   'each kind\'s block within a round: `year` matches the trailing year of `month_year`, and `q` ' \
-                  'keeps a block (with all its winners) when any of its winners or that kind\'s Nominations ' \
-                  'match by title; the block\'s `matches` then lists those games as `won` or `nominated`. ' \
-                  'Each block carries its `nominations_count`. NR-GOTM "N/A" ' \
+                  'keeps a block (with all its games) when any of its game titles match. Each block carries ' \
+                  'its `nominations_count`. NR-GOTM "N/A" ' \
                   'placeholder games are omitted. `meta.years` lists every year for the selected kind(s), ' \
                   'newest first, regardless of the `year` and `q` filters.'
       produces 'application/json'
@@ -19,7 +18,7 @@ RSpec.describe 'api/v1/gotm_rounds', type: :request do
       parameter name: :year, in: :query, required: false, schema: { type: :integer, example: 2024 },
         description: 'Only rounds whose `month_year` ends in this year.'
       parameter name: :q, in: :query, required: false, schema: { type: :string },
-        description: 'Case-insensitive title search over each round block\'s winners and Nominations.'
+        description: 'Case-insensitive title search over each round block\'s games.'
       parameter name: :sort, in: :query, required: false,
         schema: { type: :string, enum: Gotm::RoundHistory::SORTS, default: 'desc' },
         description: 'Round number order.'

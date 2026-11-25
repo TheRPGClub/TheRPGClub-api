@@ -139,74 +139,17 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
       expect(by_round.dig(1, "gotm", "nominations_count")).to eq(3)
       expect(by_round.dig(1, "nr_gotm", "nominations_count")).to eq(1)
       expect(by_round.dig(3, "gotm", "nominations_count")).to eq(0)
-      expect(by_round.dig(1, "gotm", "matches")).to be_nil
+      expect(by_round.dig(1, "gotm")).not_to have_key("matches")
     end
 
-    it "finds a round where q only matches a Nomination, keeping its winners and marking the match" do
-      winner = create(:gotm_entry, round_number: 1, month_year: "May 2024")
-      nominee = create(:game, title: "Chrono Cross")
-      create(:gotm_nomination, round_number: 1, game: winner.game)
-      create(:gotm_nomination, round_number: 1, game: nominee)
-      create(:gotm_entry, round_number: 2)
-
-      get "/api/v1/gotm_rounds", params: { q: "chrono" }, headers: headers
-
-      expect(round_numbers).to eq([ 1 ])
-      expect(json.fetch("meta")).to include("count" => 1)
-      block = json.dig("data", 0, "gotm")
-      expect(block.fetch("games").map { |g| g.fetch("gamedb_game_id") }).to eq([ winner.gamedb_game_id ])
-      expect(block.fetch("nominations_count")).to eq(2)
-      expect(block.fetch("matches")).to eq([
-        { "gamedb_game_id" => nominee.game_id, "title" => "Chrono Cross", "match" => "nominated" }
-      ])
-    end
-
-    it "marks a matching winner as won once, even when it was also nominated" do
-      hit = create(:game, title: "Chrono Trigger")
-      create(:gotm_entry, round_number: 1, game: hit)
-      create(:gotm_nomination, round_number: 1, game: hit)
-      other = create(:game, title: "Chrono Cross")
-      create(:gotm_nomination, round_number: 1, game: other, nominated_at: 1.day.from_now)
-
-      get "/api/v1/gotm_rounds", params: { q: "chrono" }, headers: headers
-
-      expect(json.dig("data", 0, "gotm", "matches")).to eq([
-        { "gamedb_game_id" => hit.game_id, "title" => "Chrono Trigger", "match" => "won" },
-        { "gamedb_game_id" => other.game_id, "title" => "Chrono Cross", "match" => "nominated" }
-      ])
-    end
-
-    it "matches Nominations only within the requested kind" do
+    it "matches q against winners only, never Nominations" do
       create(:gotm_entry, round_number: 1)
-      create(:nr_gotm_entry, round_number: 1)
-      create(:nr_gotm_nomination, round_number: 1, game: create(:game, title: "Tetris Effect"))
+      create(:gotm_nomination, round_number: 1, game: create(:game, title: "Chrono Cross"))
 
-      get "/api/v1/gotm_rounds", params: { q: "tetris", kind: "gotm" }, headers: headers
+      get "/api/v1/gotm_rounds", params: { q: "chrono" }, headers: headers
+
       expect(round_numbers).to eq([])
       expect(json.fetch("meta")).to include("count" => 0)
-
-      get "/api/v1/gotm_rounds", params: { q: "tetris" }, headers: headers
-      expect(round_numbers).to eq([ 1 ])
-      expect(json.dig("data", 0, "gotm")).to be_nil
-      expect(json.dig("data", 0, "nr_gotm", "matches", 0)).to include("match" => "nominated")
-    end
-
-    it "applies year and sort to Nomination matches and pages them as rounds" do
-      nominee = create(:game, title: "Final Fantasy IX")
-      [ [ 1, "May 2023" ], [ 2, "May 2024" ], [ 3, "June 2024" ], [ 4, "July 2024" ] ].each do |number, month|
-        create(:gotm_entry, round_number: number, month_year: month)
-        create(:gotm_nomination, round_number: number, game: nominee)
-      end
-      create(:gotm_entry, round_number: 5, month_year: "Aug 2024", game: create(:game, title: "Final Fantasy VI"))
-
-      get "/api/v1/gotm_rounds", params: { q: "final fantasy", year: 2024, sort: "asc", per: 2 }, headers: headers
-      expect(round_numbers).to eq([ 2, 3 ])
-      expect(json.fetch("meta")).to include("count" => 4, "pages" => 2)
-
-      get "/api/v1/gotm_rounds", params: { q: "final fantasy", year: 2024, sort: "asc", per: 2, page: 2 },
-        headers: headers
-      expect(round_numbers).to eq([ 4, 5 ])
-      expect(json.dig("data", 1, "gotm", "matches", 0)).to include("match" => "won")
     end
 
     it "loads a page in a fixed number of queries, however many rounds and Nominations it has" do
