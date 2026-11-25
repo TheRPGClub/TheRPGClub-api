@@ -15,6 +15,9 @@ class GotyVote < ApplicationRecord
 
   PHASES = %w[upcoming nominating voting closed runoff tie decided].freeze
 
+  has_many :nominations, class_name: "GotyNomination", foreign_key: :year, primary_key: :year,
+    dependent: nil, inverse_of: :goty_vote
+
   validates :year, presence: true, numericality: { only_integer: true, greater_than: 1900 }
   validates :nominations_open_at, :voting_opens_at, :voting_closes_at, presence: true
   validate :dates_in_order

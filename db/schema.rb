@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -702,6 +702,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_100000) do
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_gotm_votes_round_runoff_user_game", unique: true
+  end
+
+  create_table "goty_nominations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "gamedb_game_id", null: false
+    t.datetime "nominated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
+    t.string "reason", limit: 1500
+    t.datetime "updated_at", null: false
+    t.string "user_id", limit: 64, null: false
+    t.integer "year", null: false
+    t.index ["year", "gamedb_game_id"], name: "ix_goty_nominations_year_game"
+    t.index ["year", "user_id", "gamedb_game_id"], name: "ux_goty_nominations_year_user_game", unique: true
   end
 
   create_table "goty_votes", primary_key: "year", id: :integer, default: nil, force: :cascade do |t|
@@ -1783,6 +1795,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_100000) do
   add_foreign_key "gamedb_releases", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", name: "fk_gamedb_releases_platform"
   add_foreign_key "gamedb_releases", "gamedb_regions", column: "region_id", primary_key: "region_id", name: "fk_gamedb_releases_region"
   add_foreign_key "gamedb_search_synonyms", "gamedb_search_synonym_groups", column: "group_id", primary_key: "group_id", name: "fk_gamedb_search_synonyms_group", on_delete: :cascade
+  add_foreign_key "goty_nominations", "gamedb_games", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "goty_nominations", "goty_votes", column: "year", primary_key: "year", on_delete: :cascade
+  add_foreign_key "goty_nominations", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "image_backfill_runs", "rpg_club_users", column: "started_by_user_id", primary_key: "user_id", on_delete: :nullify
   add_foreign_key "live_events", "bot_jobs", on_delete: :nullify
   add_foreign_key "live_events", "rpg_club_users", column: "created_by_user_id", primary_key: "user_id", on_delete: :nullify

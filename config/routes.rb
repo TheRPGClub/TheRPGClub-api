@@ -439,7 +439,10 @@ Rails.application.routes.draw do
         end
       end
       # The yearly GOTY Vote (spec api#471), keyed by the year it decides.
-      resources :goty_votes, param: :year, only: %i[index show]
+      resources :goty_votes, param: :year, only: %i[index show] do
+        # Game of the Year nominations (api#473).
+        resources :nominations, controller: "goty_nominations", only: %i[index create destroy]
+      end
       post "voting_events/claim",   to: "voting_events#claim"
       post "voting_events/:id/ack", to: "voting_events#ack"
       # The bot job queue (web parity 2): the bot polls, claims and acks

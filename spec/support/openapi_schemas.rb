@@ -1090,9 +1090,15 @@ module OpenapiSchemas
         award: str(enum: Goty::AWARDS.keys), name: str,
         ballot: array_of("GameSummary").merge(
           description: "The Award's games. GOTM and NR-GOTM of the Year: every winner of a round labelled with " \
-                       "a month of the year, in round order, each game once. Game of the Year: empty until " \
-                       "nominations land."
+                       "a month of the year, in round order, each game once. Game of the Year: every game members " \
+                       "nominated, each once, in the order first nominated."
         )
+      ),
+      # GotyNominationResource: a member's Game of the Year nomination.
+      GotyNomination: obj(
+        id: int, year: int, user_id: str, gamedb_game_id: int,
+        reason: str(nullable: true).merge(maxLength: GotyNomination::REASON_MAX), nominated_at: ts,
+        user: ref("UserSummary"), game: ref("GameWithPlatforms")
       ),
       # Goty::Eligibility (GET /games/{id}/goty_eligibility).
       GotyEligibility: obj(

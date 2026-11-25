@@ -7,9 +7,9 @@ module Goty
   # in round order, each game once. A round with several winners puts them
   # all on. NR-GOTM "N/A" placeholder games are left out, as in round history.
   #
-  # Game of the Year is empty here until nominations land (api#473). These are
-  # the ballots while nominating; at voting open they are frozen into
-  # candidates, which the vote then reads.
+  # Game of the Year is every game members nominated for the year, each once,
+  # in the order first nominated. These are the ballots while nominating; at
+  # voting open they are frozen into candidates, which the vote then reads.
   module Ballots
     ENTRY_MODELS = { "gotm" => GotmEntry, "nr_gotm" => NrGotmEntry }.freeze
     # A four-digit year standing on its own, so "Round 12345" has none.
@@ -24,6 +24,8 @@ module Goty
     end
 
     def game_ids(year, award)
+      return nominated_game_ids(year) if award.to_s == "game_of_the_year"
+
       model = ENTRY_MODELS[award.to_s]
       return [] if model.nil?
 
@@ -36,6 +38,11 @@ module Goty
         .pluck(:month_year, :gamedb_game_id)
         .select { |label, _| round_year(label) == year }
         .map(&:last).uniq
+    end
+
+    def nominated_game_ids(year)
+      GotyNomination.where(year: year).group(:gamedb_game_id)
+        .order(Arel.sql("MIN(nominated_at)"), :gamedb_game_id).pluck(:gamedb_game_id)
     end
 
     # The year a round counts toward, from its `month_year` label ("March

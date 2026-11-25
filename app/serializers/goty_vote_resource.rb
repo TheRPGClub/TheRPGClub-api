@@ -2,8 +2,8 @@
 
 # One GOTY Vote with its three Awards, in Goty::AWARDS order. Each Award's
 # `ballot` is its games (the GameSummaryResource shape): for now the live
-# ballots from Goty::Ballots, so Game of the Year stays empty until
-# nominations land.
+# ballots from Goty::Ballots, so Game of the Year shows each nominated game
+# once.
 class GotyVoteResource < GotyVoteSummaryResource
   attribute :awards do |vote|
     ballots = Goty::Ballots.for(vote.year)

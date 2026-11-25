@@ -344,7 +344,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/manual_playtimes" => nil,
     "api/v1/playthroughs" => nil,
     "api/v1/franchise_progress" => "franchise_progress",
-    "api/v1/goty_votes" => "goty_vote"
+    "api/v1/goty_votes" => "goty_vote",
+    "api/v1/goty_nominations" => "goty_vote"
   }
 
   it "has every routed controller declare the Feature it belongs to, or none" do

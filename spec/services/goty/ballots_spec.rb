@@ -60,7 +60,7 @@ RSpec.describe Goty::Ballots do
       expect(described_class.for(2026).fetch("nr_gotm")).to eq([])
     end
 
-    it "keeps the Awards apart and leaves Game of the Year empty until nominations land" do
+    it "keeps the Awards apart, with no Game of the Year games before anyone nominates" do
       gotm, nr = create_list(:game, 2)
       create(:gotm_entry, round_number: base, month_year: "May 2026", game: gotm)
       create(:nr_gotm_entry, round_number: base, month_year: "May 2026", game: nr)
@@ -68,6 +68,18 @@ RSpec.describe Goty::Ballots do
       expect(described_class.for(2026)).to eq(
         "gotm" => [ gotm.game_id ], "nr_gotm" => [ nr.game_id ], "game_of_the_year" => []
       )
+    end
+
+    it "puts each nominated game on the Game of the Year ballot once, in the order first nominated" do
+      create(:goty_vote, year: 2026)
+      create(:goty_vote, year: 2025)
+      shared, solo, other_year = create_list(:game, 3)
+      create(:goty_nomination, year: 2026, game: solo, nominated_at: Time.utc(2027, 1, 3))
+      create(:goty_nomination, year: 2026, game: shared, nominated_at: Time.utc(2027, 1, 2))
+      create(:goty_nomination, year: 2026, game: shared, nominated_at: Time.utc(2027, 1, 4))
+      create(:goty_nomination, year: 2025, game: other_year)
+
+      expect(described_class.for(2026).fetch("game_of_the_year")).to eq([ shared.game_id, solo.game_id ])
     end
   end
 end

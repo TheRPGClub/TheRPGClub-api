@@ -148,6 +148,11 @@ class GamedbGame < ApplicationRecord
     foreign_key: :gamedb_game_id,
     dependent: nil,
     inverse_of: :game
+  has_many :goty_nominations,
+    class_name: "GotyNomination",
+    foreign_key: :gamedb_game_id,
+    dependent: nil,
+    inverse_of: :game
   has_many :gotm_nominations,
     class_name: "GotmNomination",
     foreign_key: :gamedb_game_id,

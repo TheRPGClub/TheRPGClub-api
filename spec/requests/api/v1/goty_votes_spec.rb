@@ -35,7 +35,8 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       description 'The year\'s GOTY Vote: its `phase` (derived at read time), dates and the three Awards with ' \
                   'their ballots. GOTM and NR-GOTM of the Year list every winner of the rounds whose `month_year` ' \
                   'falls in the year (a round with several winners puts them all on; a game that won twice ' \
-                  'appears once). Game of the Year is empty until nominations land. Behind the `goty_vote` ' \
+                  'appears once). Game of the Year lists every nominated game once, in the order first ' \
+                  'nominated. Behind the `goty_vote` ' \
                   'Feature. 404 for a year with no GOTY Vote.'
       produces 'application/json'
 
@@ -48,6 +49,116 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       end
 
       response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/goty_votes/{year}/nominations' do
+    parameter name: :year, in: :path, type: :integer, description: 'The year the GOTY Vote decides, e.g. 2026'
+
+    get 'List Game of the Year nominations' do
+      tags 'GOTY Vote'
+      description 'Every Game of the Year nomination for the year, oldest first, each with its nominator, game ' \
+                  'and reason. `user_id` narrows it to one member\'s (at most three). Behind the `goty_vote` ' \
+                  'Feature. 404 for a year with no GOTY Vote.'
+      produces 'application/json'
+      parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
+                description: 'Only this member\'s nominations'
+      parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
+      parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
+
+      response '200', 'nominations' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/GotyNomination' } },
+          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+        }
+      end
+
+      response '404', 'no GOTY Vote for the year' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    post 'Nominate a game for Game of the Year' do
+      tags 'GOTY Vote'
+      description 'Nominates a game for the year\'s Game of the Year while the GOTY Vote is `nominating` (from ' \
+                  '`nominations_open_at` until `voting_opens_at`). A member nominates for themselves; the ' \
+                  'service names the member in `user_id`. Each member nominates up to three games a year, each ' \
+                  'once: posting a game the member already nominated only updates its reason (200). The game ' \
+                  'must be eligible (see `GET /games/{id}/goty_eligibility`); playing it is not required. ' \
+                  'Behind the `goty_vote` Feature.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              gamedb_game_id: { type: :integer },
+              reason: { type: :string, nullable: true, maxLength: 1500 },
+              user_id: { type: :string, description: 'The member, from the service only. A member may send ' \
+                                                       'their own id or leave it out.' }
+            },
+            required: %w[gamedb_game_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'nomination created' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyNomination' } }
+      end
+
+      response '200', 'the member\'s nomination of the game, reason updated' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyNomination' } }
+      end
+
+      response '422', '`nominations_closed` outside the nomination window, `nomination_cap_reached` at three, ' \
+                      '`not_released_in_year` or `release_unknown` (ask staff to record its release) for an ' \
+                      'ineligible game, `user_id_required` from the service, or a reason over 1500 characters' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'a member nominating for someone else' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no GOTY Vote for the year, no such game, or (service) no such member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing `data` or `gamedb_game_id`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/goty_votes/{year}/nominations/{id}' do
+    parameter name: :year, in: :path, type: :integer, description: 'The year the GOTY Vote decides, e.g. 2026'
+    parameter name: :id, in: :path, type: :integer, description: 'The nomination id'
+
+    delete 'Withdraw or remove a Game of the Year nomination' do
+      tags 'GOTY Vote'
+      description 'The owner withdraws their nomination while the GOTY Vote is `nominating`; an Admin (or the ' \
+                  'service) removes any nomination at any time before voting opens. Behind the `goty_vote` ' \
+                  'Feature.'
+      produces 'application/json'
+
+      response '200', 'deleted' do
+        schema type: :object, properties: { deleted: { type: :boolean } }, required: %w[deleted]
+      end
+
+      response '403', 'not the owner, and not an Admin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', '`nominations_closed`: voting has opened, or (for the owner) nominations are not open' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no such nomination for the year' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

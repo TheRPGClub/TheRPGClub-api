@@ -3502,10 +3502,39 @@ components:
             "$ref": "#/components/schemas/GameSummary"
           description: 'The Award''s games. GOTM and NR-GOTM of the Year: every winner
             of a round labelled with a month of the year, in round order, each game
-            once. Game of the Year: empty until nominations land.'
+            once. Game of the Year: every game members nominated, each once, in the
+            order first nominated.'
       required:
       - award
       - name
+    GotyNomination:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+        user_id:
+          type: string
+        gamedb_game_id:
+          type: integer
+        reason:
+          type: string
+          nullable: true
+          maxLength: 1500
+        nominated_at:
+          type: string
+          format: date-time
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+        game:
+          "$ref": "#/components/schemas/GameWithPlatforms"
+      required:
+      - id
+      - year
+      - user_id
+      - gamedb_game_id
+      - nominated_at
     GotyEligibility:
       type: object
       properties:
@@ -23482,8 +23511,8 @@ paths:
         and the three Awards with their ballots. GOTM and NR-GOTM of the Year list
         every winner of the rounds whose `month_year` falls in the year (a round with
         several winners puts them all on; a game that won twice appears once). Game
-        of the Year is empty until nominations land. Behind the `goty_vote` Feature.
-        404 for a year with no GOTY Vote.'
+        of the Year lists every nominated game once, in the order first nominated.
+        Behind the `goty_vote` Feature. 404 for a year with no GOTY Vote.'
       responses:
         '200':
           description: GOTY Vote
@@ -23504,6 +23533,198 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/goty_votes/{year}/nominations":
+    parameters:
+    - name: year
+      in: path
+      description: The year the GOTY Vote decides, e.g. 2026
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: List Game of the Year nominations
+      tags:
+      - GOTY Vote
+      description: Every Game of the Year nomination for the year, oldest first, each
+        with its nominator, game and reason. `user_id` narrows it to one member's
+        (at most three). Behind the `goty_vote` Feature. 404 for a year with no GOTY
+        Vote.
+      parameters:
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Only this member's nominations
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: nominations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/GotyNomination"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '404':
+          description: no GOTY Vote for the year
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Nominate a game for Game of the Year
+      tags:
+      - GOTY Vote
+      description: 'Nominates a game for the year''s Game of the Year while the GOTY
+        Vote is `nominating` (from `nominations_open_at` until `voting_opens_at`).
+        A member nominates for themselves; the service names the member in `user_id`.
+        Each member nominates up to three games a year, each once: posting a game
+        the member already nominated only updates its reason (200). The game must
+        be eligible (see `GET /games/{id}/goty_eligibility`); playing it is not required.
+        Behind the `goty_vote` Feature.'
+      parameters: []
+      responses:
+        '201':
+          description: nomination created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyNomination"
+        '200':
+          description: the member's nomination of the game, reason updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyNomination"
+        '422':
+          description: "`nominations_closed` outside the nomination window, `nomination_cap_reached`
+            at three, `not_released_in_year` or `release_unknown` (ask staff to record
+            its release) for an ineligible game, `user_id_required` from the service,
+            or a reason over 1500 characters"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: a member nominating for someone else
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no GOTY Vote for the year, no such game, or (service) no such
+            member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` or `gamedb_game_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    gamedb_game_id:
+                      type: integer
+                    reason:
+                      type: string
+                      nullable: true
+                      maxLength: 1500
+                    user_id:
+                      type: string
+                      description: The member, from the service only. A member may
+                        send their own id or leave it out.
+                  required:
+                  - gamedb_game_id
+              required:
+              - data
+        required: true
+  "/api/v1/goty_votes/{year}/nominations/{id}":
+    parameters:
+    - name: year
+      in: path
+      description: The year the GOTY Vote decides, e.g. 2026
+      required: true
+      schema:
+        type: integer
+    - name: id
+      in: path
+      description: The nomination id
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: Withdraw or remove a Game of the Year nomination
+      tags:
+      - GOTY Vote
+      description: The owner withdraws their nomination while the GOTY Vote is `nominating`;
+        an Admin (or the service) removes any nomination at any time before voting
+        opens. Behind the `goty_vote` Feature.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                required:
+                - deleted
+        '403':
+          description: not the owner, and not an Admin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`nominations_closed`: voting has opened, or (for the owner)
+            nominations are not open"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such nomination for the year
           content:
             application/json:
               schema:
