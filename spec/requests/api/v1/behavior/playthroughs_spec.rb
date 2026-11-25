@@ -125,7 +125,7 @@ RSpec.describe "api/v1 playthroughs behavior", type: :request do
     end
 
     it "refuses a total that isn't a whole number of 0 or more, or is missing" do
-      [ -1, 1.5, "x" ].each do |total|
+      [ -1, 1.5, "x", 6_000_001, 10**12 ].each do |total|
         set_total(total)
         expect(response).to have_http_status(:unprocessable_content), total.inspect
         expect(json["error"]).to eq("invalid_total_minutes")
@@ -134,6 +134,12 @@ RSpec.describe "api/v1 playthroughs behavior", type: :request do
       patch "/api/v1/playthroughs/#{playthrough.id}", params: { data: { minutes: 10 } },
         headers: auth_headers_for(member), as: :json
       expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "takes up to 100,000 hours" do
+      set_total(6_000_000)
+
+      expect(response).to have_http_status(:ok)
     end
 
     it "refuses an ended one" do

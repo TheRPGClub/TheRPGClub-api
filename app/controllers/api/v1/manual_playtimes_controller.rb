@@ -15,6 +15,11 @@ module Api
       include PlaytimeDocument
 
       MODES = %w[add set].freeze
+      MINUTES_MESSAGE = "minutes must be a whole number from 0 to #{UserGameManualPlaytime::MAX_MINUTES}, " \
+                        "and an add may not take the entry past it".freeze
+
+      # An add that would take the entry past UserGameManualPlaytime::MAX_MINUTES.
+      class TooManyMinutes < StandardError; end
 
       before_action :require_owner_or_superadmin!
 
@@ -22,27 +27,30 @@ module Api
       # Body: { "data": { "platform_id": <id|null>, "minutes": <n>, "mode": "add" | "set", "note": <text> } }
       # Creates the entry for that platform or changes it: `add` (the default)
       # raises its minutes, `set` replaces them. A `note` replaces the note;
-      # leaving it out keeps it.
+      # leaving it out keeps it. 422 `invalid_minutes` past 100,000 hours,
+      # after an add too.
       def create
         mode = request_data.fetch("mode", "add")
         return refuse("invalid_mode", "mode must be add or set") unless MODES.include?(mode)
-        return refuse("invalid_minutes", "minutes must be a whole number of 0 or more") unless minutes_valid?
+        return refuse("invalid_minutes", MINUTES_MESSAGE) unless minutes_valid?
         return if platform_unknown?
 
         user_id = RpgClubUser.find(params[:user_id]).user_id
         game_id = GamedbGame.find(params[:game_id]).game_id
         write_entry(user_id, game_id, mode)
         render_playtime(user_id, game_id)
+      rescue TooManyMinutes
+        refuse("invalid_minutes", MINUTES_MESSAGE)
       end
 
       # PATCH /api/v1/manual_playtimes/:id
       # Body: { "data": { "minutes": <n>, "note": <text>, "platform_id": <id|null> } }, each optional.
-      # `minutes` sets the total. Moving the entry to another platform clears
-      # its "keep mine" and "keep both" choices, which were about the old
-      # platform.
+      # `minutes` sets the total (422 `invalid_minutes` past 100,000 hours).
+      # Moving the entry to another platform clears its "keep mine" and "keep
+      # both" choices, which were about the old platform.
       def update
         entry = UserGameManualPlaytime.find(params[:id])
-        return refuse("invalid_minutes", "minutes must be a whole number of 0 or more") if
+        return refuse("invalid_minutes", MINUTES_MESSAGE) if
           request_data.key?("minutes") && !minutes_valid?
         return if request_data.key?("platform_id") && platform_unknown?
 
@@ -72,6 +80,8 @@ module Api
             .find_or_initialize_by(user_id: user_id, gamedb_game_id: game_id, platform_id: request_data["platform_id"])
           minutes = request_data["minutes"]
           entry.minutes = mode == "add" ? entry.minutes + minutes : minutes
+          raise TooManyMinutes if entry.minutes > UserGameManualPlaytime::MAX_MINUTES
+
           entry.note = request_data["note"] if request_data.key?("note")
           entry.save!
         end
@@ -83,7 +93,7 @@ module Api
 
       def minutes_valid?
         minutes = request_data["minutes"]
-        minutes.is_a?(Integer) && minutes >= 0
+        minutes.is_a?(Integer) && minutes.between?(0, UserGameManualPlaytime::MAX_MINUTES)
       end
 
       # Renders 422 for a platform id that isn't in GameDB; null is "Other".

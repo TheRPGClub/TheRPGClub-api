@@ -54,8 +54,8 @@ RSpec.describe 'api/v1/playthroughs', type: :request do
       tags 'Playtime'
       description 'Sets the open Playthrough\'s time by hand ("this one took 45 h"), replacing the measured ' \
                   'time; `total_minutes: null` goes back to the measured time. 422 `invalid_total_minutes` ' \
-                  'when it is missing or not a whole number of 0 or more; 409 `playthrough_closed` once it ' \
-                  'has ended. ' + write_rule
+                  'when it is missing or not a whole number from 0 to 6,000,000 (100,000 hours); 409 ' \
+                  '`playthrough_closed` once it has ended. ' + write_rule
       consumes 'application/json'
       produces 'application/json'
 
@@ -65,8 +65,8 @@ RSpec.describe 'api/v1/playthroughs', type: :request do
           data: {
             type: :object,
             properties: {
-              total_minutes: { type: :integer, minimum: 0, nullable: true,
-                               description: 'The Playthrough\'s time; null for the measured time.' }
+              total_minutes: { type: :integer, minimum: 0, maximum: UserGameManualPlaytime::MAX_MINUTES,
+                               nullable: true, description: 'The Playthrough\'s time; null for the measured time.' }
             },
             required: %w[total_minutes]
           }

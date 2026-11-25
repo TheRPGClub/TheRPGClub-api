@@ -57,7 +57,7 @@ module Playtime
         next :kept if UserGameManualPlaytime.exists?(user_id: user_id, gamedb_game_id: game_id, platform_id: platform_id)
 
         UserGameManualPlaytime.create!(user_id: user_id, gamedb_game_id: game_id, platform_id: platform_id,
-          minutes: minutes, origin: "completion_seed", note: NOTE)
+          minutes: [ minutes, UserGameManualPlaytime::MAX_MINUTES ].min, origin: "completion_seed", note: NOTE)
         :created
       end
     rescue ActiveRecord::RecordNotUnique

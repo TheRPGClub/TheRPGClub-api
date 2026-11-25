@@ -107,7 +107,8 @@ RSpec.describe 'api/v1/playtime', type: :request do
       description 'Creates or changes the member\'s Manual Playtime entry for the game on `platform_id` (null ' \
                   'is "Other"; one entry per platform). `mode: add` (the default) raises its minutes, ' \
                   '`mode: set` replaces them. `note` replaces the note; leaving it out keeps it. 422 ' \
-                  '`invalid_mode`, `invalid_minutes` (not a whole number of 0 or more) or `unknown_platform`, ' \
+                  '`invalid_mode`, `invalid_minutes` (not a whole number from 0 to 6,000,000, 100,000 hours, ' \
+                  'or an add that would take the entry past it) or `unknown_platform`, ' \
                   'and 422 for a note over 280 characters. ' + write_rule
       consumes 'application/json'
       produces 'application/json'
@@ -119,7 +120,8 @@ RSpec.describe 'api/v1/playtime', type: :request do
             type: :object,
             properties: {
               platform_id: { type: :integer, nullable: true, description: 'GameDB platform; null is "Other".' },
-              minutes: { type: :integer, minimum: 0, description: 'Minutes to add, or the new total.' },
+              minutes: { type: :integer, minimum: 0, maximum: UserGameManualPlaytime::MAX_MINUTES,
+                         description: 'Minutes to add, or the new total.' },
               mode: { type: :string, enum: %w[add set], default: 'add' },
               note: { type: :string, nullable: true, maxLength: 280 }
             },
@@ -163,7 +165,8 @@ RSpec.describe 'api/v1/playtime', type: :request do
       description 'Changes the entry\'s `minutes` (the new total), `note` or `platform_id` (null is "Other"), ' \
                   'each optional. Moving it to another platform clears its `keeps_over_provider` and ' \
                   '`mismatch_acknowledged_provider`; a platform ' \
-                  'that already has an entry is 422. ' + write_rule
+                  'that already has an entry is 422. 422 `invalid_minutes` past 6,000,000 (100,000 hours). ' +
+                  write_rule
       consumes 'application/json'
       produces 'application/json'
 
@@ -173,7 +176,7 @@ RSpec.describe 'api/v1/playtime', type: :request do
           data: {
             type: :object,
             properties: {
-              minutes: { type: :integer, minimum: 0 },
+              minutes: { type: :integer, minimum: 0, maximum: UserGameManualPlaytime::MAX_MINUTES },
               note: { type: :string, nullable: true, maxLength: 280 },
               platform_id: { type: :integer, nullable: true }
             }

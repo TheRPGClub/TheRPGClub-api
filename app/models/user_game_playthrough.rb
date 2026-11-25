@@ -34,6 +34,8 @@ class UserGamePlaythrough < ApplicationRecord
   validates :baseline_minutes, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :manual_total_minutes, :final_minutes,
     numericality: { only_integer: true, greater_than_or_equal_to: 0 }, allow_nil: true
+  validates :manual_total_minutes,
+    numericality: { less_than_or_equal_to: UserGameManualPlaytime::MAX_MINUTES }, allow_nil: true
 
   scope :currently_open, -> { where(ended_at: nil) }
   scope :ended, -> { where.not(ended_at: nil) }
