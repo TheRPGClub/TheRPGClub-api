@@ -1599,9 +1599,23 @@ components:
             type: string
           right_user_id:
             type: string
+          overlap:
+            type: object
+            properties:
+              only_left:
+                type: integer
+              both:
+                type: integer
+              only_right:
+                type: integer
+            required:
+            - only_left
+            - both
+            - only_right
         required:
         - left_user_id
         - right_user_id
+        - overlap
     CompletionUserEntry:
       type: object
       properties:

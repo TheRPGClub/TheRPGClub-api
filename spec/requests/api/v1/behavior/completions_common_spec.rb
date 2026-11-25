@@ -211,4 +211,20 @@ RSpec.describe "api/v1/completions common behavior", type: :request do
 
     expect(response).to have_http_status(:unauthorized)
   end
+
+  describe "meta.overlap" do
+    it "counts distinct games only left / both / only right across both whole histories, whatever the filters" do
+      shared = create(:game)
+      2.times { complete(left, shared, completed_at: Time.utc(2020, 5, 1)) } # twice: still one game
+      complete(right, shared, completed_at: Time.utc(2021, 5, 1))
+      2.times { complete(left, create(:game)) }
+      complete(right, create(:game))
+      complete(viewer, shared) # a third member doesn't count
+
+      body = common(year: "1999")
+
+      expect(body.fetch("data")).to be_empty
+      expect(body.dig("meta", "overlap")).to eq("only_left" => 2, "both" => 1, "only_right" => 1)
+    end
+  end
 end
