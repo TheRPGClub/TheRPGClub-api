@@ -3478,6 +3478,18 @@ components:
       - "$ref": "#/components/schemas/GotyVoteSummary"
       - type: object
         properties:
+          candidates_frozen_at:
+            type: string
+            format: date-time
+            nullable: true
+            description: When voting opened and each Award's candidates were frozen;
+              until then the ballots are live.
+          pending_ties:
+            type: object
+            description: 'Awards still tied: { award => [gamedb_game_id] }.'
+          runoff_ties:
+            type: object
+            description: 'The runoff''s ballot: { award => [gamedb_game_id] }.'
           awards:
             type: array
             items:
@@ -3485,6 +3497,8 @@ components:
             description: 'The three Awards in order: gotm, nr_gotm, game_of_the_year.'
         required:
         - awards
+        - pending_ties
+        - runoff_ties
     GotyAward:
       type: object
       properties:
@@ -3500,13 +3514,189 @@ components:
           type: array
           items:
             "$ref": "#/components/schemas/GameSummary"
-          description: 'The Award''s games. GOTM and NR-GOTM of the Year: every winner
+          description: 'The Award''s candidates, frozen when voting opens. Before
+            then, the live ballot: GOTM and NR-GOTM of the Year list every winner
             of a round labelled with a month of the year, in round order, each game
-            once. Game of the Year: every game members nominated, each once, in the
+            once; Game of the Year every game members nominated, each once, in the
             order first nominated.'
+        cap:
+          type: integer
+          description: 'The viewer''s vote cap on the ballot open now: 1 in the Award''s
+            runoff, else half its candidates, at least 1.'
+        runoff_ballot:
+          type: array
+          items:
+            type: integer
+          description: The Award's runoff games; empty when it had none.
+        pending_tie:
+          type: array
+          items:
+            type: integer
+          description: Tied games still awaiting the runoff or an admin.
+        own_votes:
+          type: array
+          items:
+            type: integer
+          description: The viewer's votes on the main ballot (game ids).
+        own_runoff_votes:
+          type: array
+          items:
+            type: integer
+          description: The viewer's runoff vote.
+        tally:
+          "$ref": "#/components/schemas/GotyAwardTally"
+        result:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GotyAwardResult"
+          nullable: true
+          description: Every candidate's votes and voters, once the GOTY Vote is decided;
+            else null.
+        winner:
+          allOf:
+          - "$ref": "#/components/schemas/GotyAwardWinner"
+          nullable: true
       required:
       - award
       - name
+      - ballot
+      - cap
+      - runoff_ballot
+      - pending_tie
+      - own_votes
+      - own_runoff_votes
+      - tally
+    GotyAwardTally:
+      type: object
+      properties:
+        counts_hidden:
+          type: boolean
+        runoff_counts_hidden:
+          type: boolean
+        games:
+          type: array
+          description: Each candidate in ballot order; empty while counts_hidden.
+          items:
+            type: object
+            properties:
+              gamedb_game_id:
+                type: integer
+              votes:
+                type: integer
+              runoff_votes:
+                type: integer
+                description: 0 while runoff_counts_hidden.
+            required:
+            - gamedb_game_id
+            - votes
+            - runoff_votes
+      required:
+      - counts_hidden
+      - runoff_counts_hidden
+    GotyAwardResult:
+      type: object
+      properties:
+        gamedb_game_id:
+          type: integer
+        votes:
+          type: integer
+        runoff_votes:
+          type: integer
+        voters:
+          type: array
+          items:
+            "$ref": "#/components/schemas/UserSummary"
+        runoff_voters:
+          type: array
+          items:
+            "$ref": "#/components/schemas/UserSummary"
+      required:
+      - gamedb_game_id
+      - votes
+      - runoff_votes
+    GotyAwardWinner:
+      type: object
+      properties:
+        gamedb_game_id:
+          type: integer
+        decided_by:
+          type: string
+          enum:
+          - vote
+          - runoff
+          - admin
+          - uncontested
+          description: vote (the tally), runoff, admin (after a runoff tied again)
+            or uncontested (the only candidate).
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameSummary"
+          nullable: true
+      required:
+      - gamedb_game_id
+      - decided_by
+    GotyBallotVote:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+        award:
+          type: string
+          enum:
+          - gotm
+          - nr_gotm
+          - game_of_the_year
+        user_id:
+          type: string
+        gamedb_game_id:
+          type: integer
+        runoff:
+          type: boolean
+        voted_at:
+          type: string
+          format: date-time
+        game:
+          allOf:
+          - "$ref": "#/components/schemas/GameSummary"
+          nullable: true
+      required:
+      - id
+      - year
+      - award
+      - user_id
+      - gamedb_game_id
+      - runoff
+      - voted_at
+    GotyVoteCastResult:
+      type: object
+      properties:
+        action:
+          type: string
+          enum:
+          - voted
+          - unvoted
+        vote:
+          allOf:
+          - "$ref": "#/components/schemas/GotyBallotVote"
+          nullable: true
+        removed_votes:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GotyBallotVote"
+        cap:
+          type: integer
+        runoff:
+          type: boolean
+        warning:
+          type: string
+          nullable: true
+      required:
+      - action
+      - removed_votes
+      - cap
+      - runoff
     GotyNomination:
       type: object
       properties:
@@ -23507,11 +23697,23 @@ paths:
       tags:
       - GOTY Vote
       description: 'The year''s GOTY Vote: its `phase` (derived at read time), dates
-        and the three Awards with their ballots. GOTM and NR-GOTM of the Year list
-        every winner of the rounds whose `month_year` falls in the year (a round with
-        several winners puts them all on; a game that won twice appears once). Game
-        of the Year lists every nominated game once, in the order first nominated.
-        Behind the `goty_vote` Feature. 404 for a year with no GOTY Vote.'
+        and the three Awards. Each Award lists its ballot (the candidates frozen when
+        voting opens; before then the live ballot: GOTM and NR-GOTM of the Year list
+        every winner of the rounds whose `month_year` falls in the year, each game
+        once, and Game of the Year every nominated game once, in the order first nominated),
+        the viewer''s own votes and cap, any runoff or pending tie, and the winner
+        with how it was decided. As for GOTM votes, the tally''s counts are hidden
+        from members while that ballot is open (Admins and the service see them),
+        and once the GOTY Vote is decided the `result` names every voter. Behind the
+        `goty_vote` Feature. 404 for a year with no GOTY Vote.'
+      parameters:
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Admins and the service: show this member''s own votes (the bot''s
+          vote panels). Members always see their own.'
       responses:
         '200':
           description: GOTY Vote
@@ -23536,6 +23738,68 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Move a GOTY Vote's dates
+      tags:
+      - GOTY Vote
+      description: 'Admin: moves the nominations open, voting open and voting close.
+        Dates must run nominations open < voting opens < voting closes. Moving `voting_opens_at`
+        alone keeps the default weekend window; "close voting now" is `voting_closes_at`
+        set to now. Once voting has opened only `voting_closes_at` moves. Behind the
+        `goty_vote` Feature.'
+      parameters: []
+      responses:
+        '200':
+          description: GOTY Vote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyVote"
+                required:
+                - data
+        '422':
+          description: dates out of order, `voting_opened` (only the close moves once
+            voting has opened) or `goty_vote_decided`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no GOTY Vote for the year
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    nominations_open_at:
+                      type: string
+                      format: date-time
+                    voting_opens_at:
+                      type: string
+                      format: date-time
+                    voting_closes_at:
+                      type: string
+                      format: date-time
+              required:
+              - data
+        required: true
   "/api/v1/goty_votes/{year}/nominations":
     parameters:
     - name: year
@@ -23781,6 +24045,166 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/goty_votes/{year}/votes":
+    parameters:
+    - name: year
+      in: path
+      description: The year the GOTY Vote decides, e.g. 2026
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Vote in a GOTY Vote Award
+      tags:
+      - GOTY Vote
+      description: Casts or toggles a vote in one Award, by the GOTM round rules.
+        While voting is open a member holds up to half the Award's candidates in votes
+        (at least 1, computed at cast time); voting for a game already voted for takes
+        the vote back (200), and voting at the cap removes the oldest vote, which
+        `removed_votes` and `warning` report. During the runoff only a tied Award
+        takes votes, one each, for one of its tied games. An Award with a single candidate
+        wins without a vote. A member votes for themselves; the service names the
+        member in `user_id`. Behind the `goty_vote` Feature.
+      parameters: []
+      responses:
+        '201':
+          description: vote placed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyVoteCastResult"
+        '200':
+          description: the vote was taken back
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyVoteCastResult"
+        '422':
+          description: "`voting_closed` (no ballot open for the Award), `not_a_candidate`,
+            `uncontested` (a single candidate), `not_in_runoff`, `unknown_award`,
+            or `user_id_required` from the service"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: a member voting for someone else
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no GOTY Vote for the year, or (service) no such member
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    award:
+                      type: string
+                      enum:
+                      - gotm
+                      - nr_gotm
+                      - game_of_the_year
+                    gamedb_game_id:
+                      type: integer
+                    user_id:
+                      type: string
+                      description: The member, from the service only. A member may
+                        send their own id or leave it out.
+                  required:
+                  - award
+                  - gamedb_game_id
+              required:
+              - data
+        required: true
+  "/api/v1/goty_votes/{year}/awards/{award}/resolve_tie":
+    parameters:
+    - name: year
+      in: path
+      description: The year the GOTY Vote decides, e.g. 2026
+      required: true
+      schema:
+        type: integer
+    - name: award
+      in: path
+      schema:
+        type: string
+        enum:
+        - gotm
+        - nr_gotm
+        - game_of_the_year
+      required: true
+    post:
+      summary: Settle a GOTY Vote Award tie
+      tags:
+      - GOTY Vote
+      description: 'Admin: picks the Award''s winner from its tied games, decided
+        by `admin`. The last resort once a runoff tied again; also allowed while the
+        runoff is open. Once no Award is pending the GOTY Vote is decided. Behind
+        the `goty_vote` Feature.'
+      parameters: []
+      responses:
+        '200':
+          description: GOTY Vote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotyVote"
+                required:
+                - data
+        '422':
+          description: "`no_tie` (the Award is not tied) or `invalid_pick` (not one
+            of its tied games)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no GOTY Vote for the year
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    gamedb_game_id:
+                      type: integer
+                  required:
+                  - gamedb_game_id
+              required:
+              - data
+        required: true
   "/api/v1/guild_channels":
     get:
       summary: List the guild text channels

@@ -1083,16 +1083,67 @@ module OpenapiSchemas
         ),
         nominations_open: bool, voting_open: bool, runoff_open: bool
       ),
-      # GotyVoteResource: the summary plus each Award's ballot.
-      GotyVote: extends("GotyVoteSummary", required: %w[awards],
+      # GotyVoteResource: the summary plus each Award's ballot and standings.
+      GotyVote: extends("GotyVoteSummary", required: %w[awards pending_ties runoff_ties],
+        candidates_frozen_at: ts(nullable: true).merge(
+          description: "When voting opened and each Award's candidates were frozen; until then the ballots are live."
+        ),
+        pending_ties: json(nullable: false).merge(description: "Awards still tied: { award => [gamedb_game_id] }."),
+        runoff_ties: json(nullable: false).merge(description: "The runoff's ballot: { award => [gamedb_game_id] }."),
         awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year.")),
       GotyAward: obj(
         award: str(enum: Goty::AWARDS.keys), name: str,
         ballot: array_of("GameSummary").merge(
-          description: "The Award's games. GOTM and NR-GOTM of the Year: every winner of a round labelled with " \
-                       "a month of the year, in round order, each game once. Game of the Year: every game members " \
-                       "nominated, each once, in the order first nominated."
-        )
+          description: "The Award's candidates, frozen when voting opens. Before then, the live ballot: GOTM and " \
+                       "NR-GOTM of the Year list every winner of a round labelled with a month of the year, in " \
+                       "round order, each game once; Game of the Year every game members nominated, each once, in " \
+                       "the order first nominated."
+        ),
+        cap: int.merge(description: "The viewer's vote cap on the ballot open now: 1 in the Award's runoff, else " \
+                                    "half its candidates, at least 1."),
+        runoff_ballot: { type: :array, items: int, description: "The Award's runoff games; empty when it had none." },
+        pending_tie: { type: :array, items: int, description: "Tied games still awaiting the runoff or an admin." },
+        own_votes: { type: :array, items: int, description: "The viewer's votes on the main ballot (game ids)." },
+        own_runoff_votes: { type: :array, items: int, description: "The viewer's runoff vote." },
+        tally: ref("GotyAwardTally"),
+        result: { type: :array, items: ref("GotyAwardResult"), nullable: true,
+                  description: "Every candidate's votes and voters, once the GOTY Vote is decided; else null." },
+        winner: ref("GotyAwardWinner", nullable: true),
+        _required: %w[award name ballot cap runoff_ballot pending_tie own_votes own_runoff_votes tally]
+      ),
+      # The anonymous tally: hidden from members while the ballot is open, as
+      # for GOTM votes; staff and the service always see it.
+      GotyAwardTally: obj(
+        counts_hidden: bool, runoff_counts_hidden: bool,
+        games: { type: :array, description: "Each candidate in ballot order; empty while counts_hidden.",
+                 items: obj(gamedb_game_id: int, votes: int,
+                            runoff_votes: int.merge(description: "0 while runoff_counts_hidden.")) }
+      ),
+      GotyAwardResult: obj(
+        gamedb_game_id: int, votes: int, runoff_votes: int,
+        voters: array_of("UserSummary"), runoff_voters: array_of("UserSummary")
+      ),
+      GotyAwardWinner: obj(
+        gamedb_game_id: int, decided_by: str(enum: Voting::Decide::DECIDED_BY).merge(
+          description: "vote (the tally), runoff, admin (after a runoff tied again) or uncontested (the only " \
+                       "candidate)."
+        ),
+        game: ref("GameSummary", nullable: true)
+      ),
+      # GotyBallotVoteResource: a member's vote in one Award.
+      GotyBallotVote: obj(
+        id: int, year: int, award: str(enum: Goty::AWARDS.keys), user_id: str, gamedb_game_id: int, runoff: bool,
+        voted_at: ts, game: ref("GameSummary", nullable: true)
+      ),
+      # The GOTY cast response, shaped as VoteCastResult.
+      GotyVoteCastResult: obj(
+        action: str(enum: %w[voted unvoted]),
+        vote: ref("GotyBallotVote", nullable: true),
+        removed_votes: array_of("GotyBallotVote"),
+        cap: int,
+        runoff: bool,
+        warning: str(nullable: true),
+        _required: %w[action removed_votes cap runoff]
       ),
       # GotyNominationResource: a member's Game of the Year nomination.
       GotyNomination: obj(

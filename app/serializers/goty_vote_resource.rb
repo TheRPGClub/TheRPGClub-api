@@ -1,17 +1,13 @@
 # frozen_string_literal: true
 
-# One GOTY Vote with its three Awards, in Goty::AWARDS order. Each Award's
-# `ballot` is its games (the GameSummaryResource shape): for now the live
-# ballots from Goty::Ballots, so Game of the Year shows each nominated game
-# once.
+# One GOTY Vote with its three Awards, in Goty::AWARDS order, each with its
+# ballot and standings (Goty::Standings): the cap, the viewer's own votes,
+# the tally as far as the viewer may see it, the full result once decided,
+# and the winner. Pass `params: { viewer_id:, staff: }`.
 class GotyVoteResource < GotyVoteSummaryResource
+  attributes :candidates_frozen_at, :pending_ties, :runoff_ties
+
   attribute :awards do |vote|
-    ballots = Goty::Ballots.for(vote.year)
-    ids = ballots.values.flatten.uniq
-    games = ids.empty? ? {} : GamedbGame.where(game_id: ids).preload(:images).index_by(&:game_id)
-    ballots.map do |award, game_ids|
-      { award: award, name: Goty.award_name(award),
-        ballot: game_ids.filter_map { |id| games[id] }.map { |game| GameSummaryResource.new(game).serializable_hash } }
-    end
+    Goty::Standings.awards(vote, viewer_id: params[:viewer_id], staff: params[:staff] || false)
   end
 end

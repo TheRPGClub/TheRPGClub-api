@@ -13,6 +13,8 @@ module Api
     # nominating. An Admin removing someone else's nomination gives a reason
     # and the bot announces it, as for GOTM nominations (#332).
     class GotyNominationsController < ApplicationController
+      include ActsForMember
+
       feature :goty_vote
 
       # The bot's own limit on the deletion reason modal, as for GOTM.
@@ -32,7 +34,7 @@ module Api
       def create
         data = params.require(:data)
         game_id = data.require(:gamedb_game_id)
-        user_id = nominator_id(data[:user_id]) or return
+        user_id = acting_member_id(data[:user_id]) or return
 
         result = Goty::Nominate.call(year: params[:goty_vote_year], user_id: user_id, gamedb_game_id: game_id)
         render json: { data: GotyNominationResource.new(preloaded(result.nomination)).serializable_hash },
@@ -78,22 +80,6 @@ module Api
 
       private
 
-      # The member a nomination is for: the signed-in member themselves, or
-      # the member the service names. Renders and returns nil otherwise.
-      def nominator_id(requested)
-        requested = requested.to_s.presence
-        if current_principal&.service?
-          return render_error("user_id_required", "the service must name the member in user_id") if requested.nil?
-          return requested if RpgClubUser.exists?(user_id: requested)
-
-          return render json: { error: "not_found", message: "no member #{requested}" }, status: :not_found
-        end
-        return current_principal.id.to_s if current_principal&.discord_user? && (requested.nil? || own?(requested))
-
-        render json: { error: "forbidden" }, status: :forbidden
-        nil
-      end
-
       # A signed-in member (necessarily Admin and up, past the owner gate)
       # removing a nomination that is not theirs.
       def staff_removal?(nomination)
@@ -125,10 +111,6 @@ module Api
           },
           requested_by: current_principal.id
         )
-      end
-
-      def own?(user_id)
-        current_principal&.discord_user? && current_principal.id.to_s == user_id.to_s
       end
 
       def preloaded(nomination)

@@ -81,6 +81,12 @@ class RpgClubUser < ApplicationRecord
     primary_key: :user_id,
     dependent: nil,
     inverse_of: :user
+  has_many :goty_ballot_votes,
+    class_name: "GotyBallotVote",
+    foreign_key: :user_id,
+    primary_key: :user_id,
+    dependent: nil,
+    inverse_of: :user
   has_many :gotm_nominations,
     class_name: "GotmNomination",
     foreign_key: :user_id,

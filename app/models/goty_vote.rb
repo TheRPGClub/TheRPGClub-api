@@ -19,6 +19,12 @@ class GotyVote < ApplicationRecord
 
   has_many :nominations, class_name: "GotyNomination", foreign_key: :year, primary_key: :year,
     dependent: nil, inverse_of: :goty_vote
+  has_many :candidates, class_name: "GotyCandidate", foreign_key: :year, primary_key: :year,
+    dependent: nil, inverse_of: :goty_vote
+  has_many :ballot_votes, class_name: "GotyBallotVote", foreign_key: :year, primary_key: :year,
+    dependent: nil, inverse_of: :goty_vote
+  has_many :winners, class_name: "GotyWinner", foreign_key: :year, primary_key: :year,
+    dependent: nil, inverse_of: :goty_vote
 
   validates :year, presence: true, numericality: { only_integer: true, greater_than: 1900 }
   validates :nominations_open_at, :voting_opens_at, :voting_closes_at, presence: true

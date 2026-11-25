@@ -32,13 +32,19 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
 
     get 'Show a GOTY Vote' do
       tags 'GOTY Vote'
-      description 'The year\'s GOTY Vote: its `phase` (derived at read time), dates and the three Awards with ' \
-                  'their ballots. GOTM and NR-GOTM of the Year list every winner of the rounds whose `month_year` ' \
-                  'falls in the year (a round with several winners puts them all on; a game that won twice ' \
-                  'appears once). Game of the Year lists every nominated game once, in the order first ' \
-                  'nominated. Behind the `goty_vote` ' \
-                  'Feature. 404 for a year with no GOTY Vote.'
+      description 'The year\'s GOTY Vote: its `phase` (derived at read time), dates and the three Awards. Each ' \
+                  'Award lists its ballot (the candidates frozen when voting opens; before then the live ' \
+                  'ballot: GOTM and NR-GOTM of the Year list every winner of the rounds whose `month_year` falls ' \
+                  'in the year, each game once, and Game of the Year every nominated game once, in the order ' \
+                  'first nominated), the viewer\'s own votes and cap, any runoff or pending tie, and the ' \
+                  'winner with how it was decided. As for GOTM votes, the tally\'s counts are hidden from ' \
+                  'members while that ballot is open (Admins and the service see them), and once the GOTY Vote ' \
+                  'is decided the `result` names every voter. Behind the `goty_vote` Feature. 404 for a year ' \
+                  'with no GOTY Vote.'
       produces 'application/json'
+      parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
+                description: 'Admins and the service: show this member\'s own votes (the bot\'s vote panels). ' \
+                             'Members always see their own.'
 
       response '200', 'GOTY Vote' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVote' } }, required: %w[data]
@@ -49,6 +55,47 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       end
 
       response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    patch 'Move a GOTY Vote\'s dates' do
+      tags 'GOTY Vote'
+      description 'Admin: moves the nominations open, voting open and voting close. Dates must run nominations ' \
+                  'open < voting opens < voting closes. Moving `voting_opens_at` alone keeps the default weekend ' \
+                  'window; "close voting now" is `voting_closes_at` set to now. Once voting has opened only ' \
+                  '`voting_closes_at` moves. Behind the `goty_vote` Feature.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              nominations_open_at: { type: :string, format: 'date-time' },
+              voting_opens_at: { type: :string, format: 'date-time' },
+              voting_closes_at: { type: :string, format: 'date-time' }
+            }
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'GOTY Vote' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVote' } }, required: %w[data]
+      end
+
+      response '422', 'dates out of order, `voting_opened` (only the close moves once voting has opened) or ' \
+                      '`goty_vote_decided`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not an Admin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no GOTY Vote for the year' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
@@ -193,6 +240,96 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       end
 
       response '404', 'no such game' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/goty_votes/{year}/votes' do
+    parameter name: :year, in: :path, type: :integer, description: 'The year the GOTY Vote decides, e.g. 2026'
+
+    post 'Vote in a GOTY Vote Award' do
+      tags 'GOTY Vote'
+      description 'Casts or toggles a vote in one Award, by the GOTM round rules. While voting is open a member ' \
+                  'holds up to half the Award\'s candidates in votes (at least 1, computed at cast time); voting ' \
+                  'for a game already voted for takes the vote back (200), and voting at the cap removes the ' \
+                  'oldest vote, which `removed_votes` and `warning` report. During the runoff only a tied Award ' \
+                  'takes votes, one each, for one of its tied games. An Award with a single candidate wins ' \
+                  'without a vote. A member votes for themselves; the service names the member in `user_id`. ' \
+                  'Behind the `goty_vote` Feature.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              award: { type: :string, enum: Goty::AWARDS.keys },
+              gamedb_game_id: { type: :integer },
+              user_id: { type: :string, description: 'The member, from the service only. A member may send ' \
+                                                       'their own id or leave it out.' }
+            },
+            required: %w[award gamedb_game_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '201', 'vote placed' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVoteCastResult' } }
+      end
+
+      response '200', 'the vote was taken back' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVoteCastResult' } }
+      end
+
+      response '422', '`voting_closed` (no ballot open for the Award), `not_a_candidate`, `uncontested` (a single ' \
+                      'candidate), `not_in_runoff`, `unknown_award`, or `user_id_required` from the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'a member voting for someone else' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no GOTY Vote for the year, or (service) no such member' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/goty_votes/{year}/awards/{award}/resolve_tie' do
+    parameter name: :year, in: :path, type: :integer, description: 'The year the GOTY Vote decides, e.g. 2026'
+    parameter name: :award, in: :path, schema: { type: :string, enum: Goty::AWARDS.keys }
+
+    post 'Settle a GOTY Vote Award tie' do
+      tags 'GOTY Vote'
+      description 'Admin: picks the Award\'s winner from its tied games, decided by `admin`. The last resort once ' \
+                  'a runoff tied again; also allowed while the runoff is open. Once no Award is pending the ' \
+                  'GOTY Vote is decided. Behind the `goty_vote` Feature.'
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: { data: { type: :object, properties: { gamedb_game_id: { type: :integer } },
+                              required: %w[gamedb_game_id] } },
+        required: %w[data]
+      }
+
+      response '200', 'GOTY Vote' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVote' } }, required: %w[data]
+      end
+
+      response '422', '`no_tie` (the Award is not tied) or `invalid_pick` (not one of its tied games)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not an Admin' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no GOTY Vote for the year' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
