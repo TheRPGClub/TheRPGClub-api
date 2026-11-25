@@ -133,7 +133,8 @@ RSpec.describe 'api/v1/completionator_import_items', type: :request do
       description 'Owner-only (#291); the import must be active and the item pending (else 409) and matched to a game. Creates the completion; ' \
                   'omitted fields take the review form defaults and `platform_id: null` records no platform. When ' \
                   '`platform_id` is the item\'s mapped platform and the game lacks it, a WW release is created ' \
-                  'first. Sets the item to `added`. Rolled back if the import is in test_mode.'
+                  'first. Sets the item to `added`. The member\'s open Playthrough of the game closes with the ' \
+                  'completion, whose empty final playtime takes its time. Rolled back if the import is in test_mode.'
       produces 'application/json'
       consumes 'application/json'
 

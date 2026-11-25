@@ -8,3 +8,12 @@ FactoryBot.define do
     minutes { 60 }
   end
 end
+
+FactoryBot.define do
+  factory :playthrough, class: "UserGamePlaythrough" do
+    user
+    game
+    started_at { Time.current }
+    baseline_minutes { 0 }
+  end
+end

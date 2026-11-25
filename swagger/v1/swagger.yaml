@@ -6251,18 +6251,77 @@ components:
           type: array
           items:
             "$ref": "#/components/schemas/PlaytimeMismatch"
-        open_playthrough:
-          type: object
+        playthrough:
+          allOf:
+          - "$ref": "#/components/schemas/OpenPlaythrough"
           nullable: true
-          description: The member's open Playthrough of the game. Always null until
-            Playthroughs (api#459) ship.
+        playthroughs:
+          type: array
+          items:
+            "$ref": "#/components/schemas/EndedPlaythrough"
       required:
       - user_id
       - game_id
       - total_minutes
       - breakdown
       - mismatches
-      - open_playthrough
+      - playthrough
+      - playthroughs
+    OpenPlaythrough:
+      type: object
+      properties:
+        id:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        minutes:
+          type: integer
+          description: The total set by hand when `manual`, else the Playtime gained
+            since it started, floored at 0.
+        manual:
+          type: boolean
+          description: True when the member set its total by hand.
+      required:
+      - id
+      - started_at
+      - minutes
+      - manual
+      description: The member's open Playthrough of the game (at most one).
+    EndedPlaythrough:
+      type: object
+      properties:
+        id:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        end_reason:
+          type: string
+          enum:
+          - completed
+          - abandoned
+        minutes:
+          type: integer
+          description: Its time when it ended.
+        manual:
+          type: boolean
+          description: True when its total was set by hand.
+        completion_id:
+          type: integer
+          nullable: true
+          description: The Game Completion that closed it (`completed`).
+      required:
+      - id
+      - started_at
+      - ended_at
+      - end_reason
+      - minutes
+      - manual
+      description: An earlier Playthrough of the game, newest first.
     HiddenPlatform:
       type: object
       properties:
@@ -15599,8 +15658,9 @@ paths:
         (else 409) and matched to a game. Creates the completion; omitted fields take
         the review form defaults and `platform_id: null` records no platform. When
         `platform_id` is the item''s mapped platform and the game lacks it, a WW release
-        is created first. Sets the item to `added`. Rolled back if the import is in
-        test_mode.'
+        is created first. Sets the item to `added`. The member''s open Playthrough
+        of the game closes with the completion, whose empty final playtime takes its
+        time. Rolled back if the import is in test_mode.'
       parameters: []
       responses:
         '200':
@@ -16391,7 +16451,10 @@ paths:
         Now Playing. `started_at` may not be after the finished day (422 `started_after_finished`),
         nor after today without one (422 `started_in_future`), and `completed_at`
         may not be after today in club time (422 `finished_in_future`). A coded 422
-        is used only when the date check is the only problem.'
+        is used only when the date check is the only problem. The member''s open Playthrough
+        of the game closes as `completed` with this Completion; when `final_playtime_hrs`
+        is absent or null it takes the Playthrough''s time in hours (2 decimals).
+        A `final_playtime_hrs` sent wins.'
       parameters: []
       responses:
         '201':
@@ -26277,7 +26340,9 @@ paths:
         In the same transaction, every backlog row the user has for the game is removed,
         and when `note` is absent or blank the backlog note carries over. If the entry
         can't be created, the backlog is left unchanged. A game already on the list
-        is 409 `already_playing` and the backlog is left unchanged.
+        is 409 `already_playing` and the backlog is left unchanged. It also opens
+        a Playthrough of the game when none is open (see `POST /users/{user_id}/games/{game_id}/playthroughs`);
+        removing the entry later leaves the Playthrough open.
       parameters: []
       responses:
         '201':
@@ -27567,6 +27632,211 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/games/{game_id}/playthroughs":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GameDB game id.
+    post:
+      summary: Start a Playthrough
+      tags:
+      - Playtime
+      description: 'Starts a Playthrough of the game: one run, measured as the Playtime
+        gained from now on (the member''s Playtime now is its baseline), Manual Playtime
+        added while it is open included, floored at 0. At most one is open per member
+        and game: 409 `playthrough_open` while one is. Adding the game to Now Playing
+        also opens one; a Game Completion of the game closes it. Writes are the member''s
+        own; a Superadmin and the bot''s service token may write for anyone (403 otherwise).
+        Answers with the game''s Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
+        does, with the Playthrough in `playthrough` (open) or `playthroughs` (ended).
+        Ungated.'
+      responses:
+        '201':
+          description: started; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '409':
+          description: "`playthrough_open`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown member or game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/playthroughs/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Playthrough id.
+    patch:
+      summary: Set a Playthrough's total
+      tags:
+      - Playtime
+      description: 'Sets the open Playthrough''s time by hand ("this one took 45 h"),
+        replacing the measured time; `total_minutes: null` goes back to the measured
+        time. 422 `invalid_total_minutes` when it is missing or not a whole number
+        of 0 or more; 409 `playthrough_closed` once it has ended. Writes are the member''s
+        own; a Superadmin and the bot''s service token may write for anyone (403 otherwise).
+        Answers with the game''s Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
+        does, with the Playthrough in `playthrough` (open) or `playthroughs` (ended).
+        Ungated.'
+      parameters: []
+      responses:
+        '200':
+          description: saved; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '422':
+          description: "`invalid_total_minutes`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`playthrough_closed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    total_minutes:
+                      type: integer
+                      minimum: 0
+                      nullable: true
+                      description: The Playthrough's time; null for the measured time.
+                  required:
+                  - total_minutes
+              required:
+              - data
+        required: true
+  "/api/v1/playthroughs/{id}/abandon":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Playthrough id.
+    post:
+      summary: Abandon a Playthrough
+      tags:
+      - Playtime
+      description: Ends the open Playthrough as `abandoned`, keeping the time it had.
+        409 `playthrough_closed` once it has ended. Writes are the member's own; a
+        Superadmin and the bot's service token may write for anyone (403 otherwise).
+        Answers with the game's Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
+        does, with the Playthrough in `playthrough` (open) or `playthroughs` (ended).
+        Ungated.
+      responses:
+        '200':
+          description: abandoned; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '409':
+          description: "`playthrough_closed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/users/{user_id}/games/{game_id}/playtime":
     parameters:
     - name: user_id
@@ -27592,8 +27862,10 @@ paths:
         that doesn''t resolve stays raw, with a null `platform_id`) and each Manual
         entry. A Provider figure on a platform whose Manual entry keeps over it is
         shown with `counted: false`. `mismatches` lists each platform where a Manual
-        entry and a Provider both report time with no keep chosen. Open to any signed-in
-        caller; ungated. 404 for an unknown member or game.'
+        entry and a Provider both report time with no keep chosen. `playthrough` is
+        the member''s open Playthrough of the game (null when none is open) and `playthroughs`
+        the earlier ones, newest first. Open to any signed-in caller; ungated. 404
+        for an unknown member or game.'
       responses:
         '200':
           description: the member's Playtime for the game
