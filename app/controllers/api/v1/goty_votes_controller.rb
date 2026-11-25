@@ -40,9 +40,11 @@ module Api
       end
 
       # POST /api/v1/goty_votes/:year/awards/:award/resolve_tie { data: { gamedb_game_id } }
+      # Queues the goty_decided post once the pick decides the vote.
       def resolve_tie
         vote = GotyVote.find(params[:year])
-        Goty::Decide.resolve_tie!(vote, award: params[:award], gamedb_game_id: params.require(:data)[:gamedb_game_id])
+        Goty::Decide.resolve_tie!(vote, award: params[:award],
+          gamedb_game_id: params.require(:data)[:gamedb_game_id]) { |record| Goty::AdvanceVotes.queue_decided(record) }
         render_vote(vote.reload)
       rescue Voting::Decide::NoTieError => error
         render_error("no_tie", error.message)

@@ -24,6 +24,39 @@ RSpec.describe VotingEvent do
 
       expect(described_class.where(round_number: round_number).count).to eq(1)
     end
+
+    it "queues a GOTY kind once per GOTY Vote, alongside a round's events" do
+      allow(Voting).to receive(:automation_enabled?).and_return(true)
+      create(:goty_vote, year: 2026)
+      event(kind: "voting_opened")
+
+      2.times { described_class.emit!(goty_year: 2026, kind: "goty_voting_opened", payload: { a: 1 }) }
+
+      expect(described_class.where(goty_year: 2026).pluck(:kind, :round_number)).to eq([ [ "goty_voting_opened", nil ] ])
+      expect(described_class.where(round_number: round_number).count).to eq(1)
+    end
+  end
+
+  describe "validation" do
+    before { create(:goty_vote, year: 2026) }
+
+    it "belongs to a round or a GOTY Vote, not both or neither" do
+      expect(described_class.new(kind: "voting_opened", available_at: now)).not_to be_valid
+      expect(described_class.new(round_number: 1, goty_year: 2026, kind: "goty_decided", available_at: now))
+        .not_to be_valid
+    end
+
+    it "keeps GOTY kinds on a GOTY Vote and round kinds on a round" do
+      expect(described_class.new(goty_year: 2026, kind: "voting_opened", available_at: now)).not_to be_valid
+      expect(described_class.new(round_number: 1, kind: "goty_decided", available_at: now)).not_to be_valid
+      expect(described_class.new(goty_year: 2026, kind: "goty_decided", available_at: now)).to be_valid
+    end
+
+    it "is enforced by the database too" do
+      expect do
+        described_class.insert_all!([ { kind: "voting_opened", available_at: now, payload: {} } ])
+      end.to raise_error(ActiveRecord::StatementInvalid, /ck_voting_events_round_or_goty_year/)
+    end
   end
 
   describe ".claim!" do
@@ -96,6 +129,15 @@ RSpec.describe VotingEvent do
 
       expect(described_class.next_poll_at(now))
         .to eq(Voting::Schedule.reminder_at(round.voting_opens_at, 5) + VotingEvent::SWEEP_LAG)
+    end
+
+    it "allows the sweep time to queue the GOTY Vote's next event when it comes first" do
+      allow(Voting).to receive(:automation_enabled?).and_return(true)
+      create(:voting_round, voting_opens_at: Time.utc(2027, 1, 29, 17))
+      vote = create(:goty_vote, year: 2026)
+      at = Time.utc(2026, 12, 20)
+
+      expect(described_class.next_poll_at(at)).to eq(vote.nominations_open_at + VotingEvent::SWEEP_LAG)
     end
   end
 end

@@ -1162,10 +1162,13 @@ module OpenapiSchemas
         date_precision: str(nullable: true, enum: [ *GamedbRelease::DATE_PRECISIONS, nil ]),
         source: str(nullable: true, enum: [ "release", "initial_release_date", nil ])
       ),
-      # VotingEventResource: a queued Discord post for the bot. `payload` holds
-      # the ids the post needs (e.g. `winners` / `ties` per category).
+      # VotingEventResource: a queued Discord post for the bot, for a GOTM round
+      # (`round_number`) or a GOTY Vote (`goty_year`), exactly one of the two.
+      # A round's `payload` holds the ids the post needs (e.g. `winners` /
+      # `ties` per category); a GOTY Vote's is Goty::EventPayload's shape.
       VotingEvent: obj(
-        id: int, round_number: int, kind: str(enum: VotingEvent::KINDS), payload: json(nullable: false),
+        id: int, round_number: int(nullable: true), goty_year: int(nullable: true),
+        kind: str(enum: VotingEvent::KINDS), payload: json(nullable: false),
         available_at: ts, expires_at: ts(nullable: true), claimed_until: ts(nullable: true),
         delivered_at: ts(nullable: true), attempts: int
       ),

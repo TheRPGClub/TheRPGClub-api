@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_135000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1737,12 +1737,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_120000) do
     t.datetime "created_at", null: false
     t.datetime "delivered_at"
     t.datetime "expires_at"
+    t.integer "goty_year"
     t.string "kind", limit: 64, null: false
     t.jsonb "payload", default: {}, null: false
-    t.bigint "round_number", null: false
+    t.bigint "round_number"
     t.datetime "updated_at", null: false
     t.index ["available_at"], name: "ix_voting_events_pending", where: "(delivered_at IS NULL)"
+    t.index ["goty_year", "kind"], name: "ux_voting_events_goty_year_kind", unique: true
     t.index ["round_number", "kind"], name: "ux_voting_events_round_kind", unique: true
+    t.check_constraint "(round_number IS NULL) <> (goty_year IS NULL)", name: "ck_voting_events_round_or_goty_year"
   end
 
   create_table "voting_rounds", primary_key: "round_number", id: :bigint, default: nil, force: :cascade do |t|
@@ -1893,4 +1896,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_120000) do
   add_foreign_key "user_linked_accounts", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_linked_accounts_user", on_delete: :cascade
   add_foreign_key "user_now_playing", "gamedb_games", primary_key: "game_id", name: "fk_user_now_playing_gamedb"
   add_foreign_key "user_now_playing", "gamedb_platforms", column: "platform_id", primary_key: "platform_id", name: "fk_user_now_playing_platform"
+  add_foreign_key "voting_events", "goty_votes", column: "goty_year", primary_key: "year", on_delete: :cascade
 end

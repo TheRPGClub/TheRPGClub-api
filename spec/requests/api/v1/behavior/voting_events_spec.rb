@@ -40,6 +40,23 @@ RSpec.describe "api/v1/voting_events behavior", type: :request do
       end
     end
 
+    it "hands out GOTY Vote events alongside round events, oldest first, and acks them" do
+      create(:goty_vote, year: 2026)
+      round_event = event(available_at: 2.minutes.ago)
+      goty = VotingEvent.create!(goty_year: 2026, kind: "goty_voting_opened", available_at: 1.minute.ago,
+        payload: { "year" => 2026 })
+
+      post "/api/v1/voting_events/claim", headers: service_headers
+
+      expect(json.fetch("data").map { |row| row.values_at("id", "round_number", "goty_year", "kind") }).to eq([
+        [ round_event.id, round_number, nil, "voting_opened" ], [ goty.id, nil, 2026, "goty_voting_opened" ]
+      ])
+
+      post "/api/v1/voting_events/#{goty.id}/ack", headers: service_headers
+      expect(json.dig("data", "goty_year")).to eq(2026)
+      expect(goty.reload.delivered_at).to be_present
+    end
+
     it "honors ?limit" do
       event
       event(kind: "voting_closed")

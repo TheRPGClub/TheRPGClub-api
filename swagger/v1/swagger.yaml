@@ -3774,6 +3774,10 @@ components:
           type: integer
         round_number:
           type: integer
+          nullable: true
+        goty_year:
+          type: integer
+          nullable: true
         kind:
           type: string
           enum:
@@ -3785,6 +3789,14 @@ components:
           - runoff_closed
           - tie_pending
           - round_decided
+          - goty_nominations_opened
+          - goty_nomination_reminder_5d
+          - goty_nomination_reminder_1d
+          - goty_voting_opened
+          - goty_runoff_opened
+          - goty_runoff_closed
+          - goty_tie_pending
+          - goty_decided
         payload:
           type: object
           description: Free-form JSON.
@@ -3807,7 +3819,6 @@ components:
           type: integer
       required:
       - id
-      - round_number
       - kind
       - payload
       - available_at
@@ -38657,11 +38668,13 @@ paths:
       tags:
       - Voting Events
       description: 'Service only. Leases up to `limit` due, unexpired, undelivered
-        events (oldest first) for five minutes: post each to Discord, then ack it.
-        An unacked event is handed out again once its lease runs out, so delivery
-        is at-least-once. `meta.next_poll_at` is when to claim again: now while events
-        are claimable, else when the next pending event falls due, a lease runs out,
-        or the round lifecycle queues its next event; null when nothing is scheduled.'
+        events (oldest first) for five minutes, GOTM round events (`round_number`)
+        and GOTY Vote events (`goty_year`, the `goty_*` kinds, with a self-contained
+        payload) alike: post each to Discord, then ack it. An unacked event is handed
+        out again once its lease runs out, so delivery is at-least-once. `meta.next_poll_at`
+        is when to claim again: now while events are claimable, else when the next
+        pending event falls due, a lease runs out, or the round or GOTY Vote lifecycle
+        queues its next event; null when nothing is scheduled.'
       parameters:
       - name: limit
         in: query

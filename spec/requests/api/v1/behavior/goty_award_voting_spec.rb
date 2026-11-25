@@ -226,6 +226,18 @@ RSpec.describe "api/v1/goty_votes award voting behavior", type: :request do
         "decided_by" => "admin")
     end
 
+    it "queues the decision post once, with the winners, when the pick decides the vote" do
+      allow(Voting).to receive(:automation_enabled?).and_return(true)
+
+      resolve(goty[1])
+      resolve(goty[1])
+
+      event = VotingEvent.sole
+      expect(event).to have_attributes(goty_year: 2026, round_number: nil, kind: "goty_decided")
+      winner = event.payload.fetch("awards").find { |row| row["award"] == "game_of_the_year" }["winner"]
+      expect(winner).to include("gamedb_game_id" => goty[1], "decided_by" => "admin")
+    end
+
     it "refuses a game that is not tied, an Award with no tie, and members" do
       resolve(goty[2])
       expect(response).to have_http_status(:unprocessable_content)

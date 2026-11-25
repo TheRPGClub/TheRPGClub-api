@@ -31,6 +31,9 @@ class GotyVote < ApplicationRecord
   validate :dates_in_order
 
   before_validation :apply_schedule_defaults
+  # The voting sweep (Goty::AdvanceVotes) schedules itself from the dates, so
+  # a moved date or a step taken looks again on the next minute.
+  after_commit { Voting::SweepSchedule.clear }
 
   # Year Y's GOTY Vote, created with the default schedule if it has none yet.
   # The lifecycle sweep calls it; safe to call twice.
