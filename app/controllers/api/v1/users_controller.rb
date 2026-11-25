@@ -200,11 +200,14 @@ module Api
         }.select { |key, _| profile_section?(key) }
         return {} if relations.empty?
 
+        # Built with Arel, not interpolated SQL: each count is its relation's
+        # own (bound) query, aliased by its fixed key.
         columns = relations.map do |key, relation|
-          relation = relation.select("COUNT(*)") unless key == :journal
-          "(#{relation.unscope(:order).to_sql}) AS #{key}"
+          relation = relation.select(Arel.star.count) unless key == :journal
+          Arel::Nodes::As.new(Arel::Nodes::Grouping.new(relation.unscope(:order).arel), Arel::Nodes::SqlLiteral.new(key.to_s))
         end
-        RpgClubUser.connection.select_one("SELECT #{columns.join(", ")}").to_h.symbolize_keys.transform_values(&:to_i)
+        RpgClubUser.connection.select_one(Arel::SelectManager.new.project(*columns))
+          .to_h.symbolize_keys.transform_values(&:to_i)
       end
 
 
