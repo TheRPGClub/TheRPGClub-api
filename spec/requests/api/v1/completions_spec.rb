@@ -51,11 +51,20 @@ RSpec.describe 'api/v1/completions', type: :request do
       parameter name: :offset, in: :query, schema: { type: :integer, minimum: 0 }, required: false,
         description: 'Deprecated; converted to a page number (transitional, for the unaudited Discord bot).'
 
+      parameter name: :sort, in: :query, schema: { type: :string, enum: %w[most_played] }, required: false,
+        description: '`most_played` orders by the member\'s Playtime for the game (most first, none as 0), then ' \
+                     'title, then the entry id. Absent keeps the list\'s own order; any other value is 422 ' \
+                     '`invalid_sort`. Each item carries `playtime_minutes` either way.'
+
       response '200', 'completions list' do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/CompletionEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
+      end
+
+      response '422', 'invalid_sort' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '401', 'unauthenticated' do
@@ -77,7 +86,10 @@ RSpec.describe 'api/v1/completions', type: :request do
                   "member's Now Playing. `started_at` may not be after the finished day " \
                   '(422 `started_after_finished`), nor after today without one (422 `started_in_future`), ' \
                   'and `completed_at` may not be after today in club time (422 `finished_in_future`). ' \
-                  'A coded 422 is used only when the date check is the only problem.'
+                  'A coded 422 is used only when the date check is the only problem. ' \
+                  'The member\'s open Playthrough of the game closes as `completed` with this Completion; ' \
+                  'when `final_playtime_hrs` is absent or null it takes the Playthrough\'s time in hours ' \
+                  '(2 decimals). A `final_playtime_hrs` sent wins.'
       consumes 'application/json'
       produces 'application/json'
 

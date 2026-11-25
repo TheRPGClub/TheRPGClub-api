@@ -29,6 +29,10 @@ module Psn
     TOKEN_URL = "https://ca.account.sony.com/api/authz/v3/oauth/token"
     API_BASE_URL = "https://m.np.playstation.com/api"
     SEARCH_URL = "#{API_BASE_URL}/search/v1/universalSearch"
+    # The member's play history (spike api#462: readable for non-friends).
+    PLAYED_URL = "#{API_BASE_URL}/gamelist/v2/users/%s/titles"
+    # titleId (CUSA/PPSA) -> trophy list, at most BRIDGE_BATCH ids per call.
+    TITLE_TROPHY_TITLES_URL = "#{API_BASE_URL}/trophy/v1/users/%s/titles/trophyTitles"
     # UNVERIFIED: legacy profile host, may be retired (research §4 (b)).
     PROFILE_URL = "https://us-prof.np.community.playstation.net/userProfile/v1/users/%s/profile2"
     PROFILE_FIELDS = "npId,onlineId,accountId,avatarUrls"
@@ -46,6 +50,22 @@ module Psn
     AUTH_EXPIRED_KEY = "psn_auth_expired_at"
 
     TITLES_PAGE = 800 # the trophy-titles endpoint's max `limit`
+    PLAYED_PAGE = 200 # the gamelist endpoint's page
+    # The spike's query. `unknown` titles (apps, some games) come back anyway.
+    PLAYED_CATEGORIES = "ps4_game,ps5_native_game"
+    BRIDGE_BATCH = 5 # the bridge 400s on more ids
+    # A title's trophy list never changes, so a bridged id is kept a long
+    # time. A title with none is kept per member and for less: the bridge
+    # answers for the member, who may not have started its trophies yet.
+    BRIDGE_CACHE_KEY = "psn:np_communication_id:%s"
+    BRIDGE_MISS_CACHE_KEY = "psn:np_communication_id:none:%s:%s"
+    BRIDGE_TTL = 90.days
+    BRIDGE_MISS_TTL = 7.days
+
+    # One title of a member's play history, bridged to its trophy list
+    # (external_id, the npCommunicationId). PSN times each edition (PS4, PS5)
+    # separately, so several titles can share one trophy list.
+    PlayedGame = Data.define(:title_id, :external_id, :title, :minutes)
 
     # Sony's access-control error, returned for private trophies (research §4).
     # UNVERIFIED: the code and message have not been confirmed against a real
@@ -96,6 +116,25 @@ module Psn
       end
 
       collected
+    end
+
+    # The member's play history as PlayedGames (spec api#457 "PSN Playtime").
+    # Pages the gamelist and bridges each titleId to its npCommunicationId;
+    # titles with no trophy list (apps, most `unknown` titles) are left out.
+    # A hidden history (403, access control) or an unknown account reads as
+    # none. A bridge batch that fails leaves its titles out for this read;
+    # RateLimited and AuthExpired go to the tick as everywhere else.
+    def played_games(account_id)
+      titles = played_titles(account_id)
+      np_ids = bridge(account_id, titles.map { |title| title["titleId"] })
+
+      titles.filter_map do |title|
+        external_id = np_ids[title["titleId"]]
+        next unless external_id
+
+        PlayedGame.new(title_id: title["titleId"], external_id: external_id, title: title["name"],
+          minutes: duration_minutes(title["playDuration"]))
+      end
     end
 
     # Authenticates the club account (a cached token counts). Clears
@@ -198,6 +237,83 @@ module Psn
       { external_id: profile["accountId"].to_s, display_name: profile["onlineId"], avatar_url: avatar&.dig("avatarUrl") }
     rescue Achievements::Providers::NotFound
       nil
+    end
+
+    def played_titles(account_id)
+      collected = []
+      offset = 0
+
+      loop do
+        data = api_call(:get, format(PLAYED_URL, escape(account_id)),
+          params: { categories: PLAYED_CATEGORIES, limit: PLAYED_PAGE, offset: offset })
+        page = Array(data["titles"])
+        collected.concat(page)
+
+        offset += page.size
+        break if page.empty? || offset >= data["totalItemCount"].to_i
+      end
+
+      collected
+    rescue Achievements::Providers::Private, Achievements::Providers::NotFound
+      []
+    end
+
+    # titleId -> npCommunicationId for the titles that have a trophy list,
+    # from the cache first, then the bridge for the rest.
+    def bridge(account_id, title_ids)
+      title_ids = title_ids.compact.uniq
+      known = cached_bridge(account_id, title_ids)
+      missing = title_ids.reject { |id| known.key?(id) }
+
+      missing.each_slice(BRIDGE_BATCH) do |batch|
+        found = bridge_batch(account_id, batch)
+        next if found.nil?
+
+        found.each { |title_id, np_id| @cache.write(format(BRIDGE_CACHE_KEY, title_id), np_id, expires_in: BRIDGE_TTL) }
+        (batch - found.keys).each do |title_id|
+          @cache.write(format(BRIDGE_MISS_CACHE_KEY, account_id, title_id), true, expires_in: BRIDGE_MISS_TTL)
+        end
+        known.merge!(found)
+      end
+
+      known.compact
+    end
+
+    # titleId -> npCommunicationId, or nil (a cached miss) for each id the
+    # cache knows.
+    def cached_bridge(account_id, title_ids)
+      hits = @cache.read_multi(*title_ids.map { |id| format(BRIDGE_CACHE_KEY, id) })
+      misses = @cache.read_multi(*title_ids.map { |id| format(BRIDGE_MISS_CACHE_KEY, account_id, id) })
+      title_ids.each_with_object({}) do |id, map|
+        np_id = hits[format(BRIDGE_CACHE_KEY, id)]
+        if np_id
+          map[id] = np_id
+        elsif misses[format(BRIDGE_MISS_CACHE_KEY, account_id, id)]
+          map[id] = nil
+        end
+      end
+    end
+
+    # Nil when the batch failed (logged); the next read asks again.
+    def bridge_batch(account_id, batch)
+      data = api_call(:get, format(TITLE_TROPHY_TITLES_URL, escape(account_id)), params: { npTitleIds: batch.join(",") })
+      Array(data["titles"]).each_with_object({}) do |entry, map|
+        np_id = Array(entry["trophyTitles"]).first&.dig("npCommunicationId")
+        map[entry["npTitleId"]] = np_id if np_id.present? && batch.include?(entry["npTitleId"])
+      end
+    rescue Error, Achievements::Providers::Private, Achievements::Providers::NotFound => error
+      Rails.logger.warn("[PSN] could not bridge #{batch.size} titles to trophy lists: #{error.message}")
+      nil
+    end
+
+    # ISO 8601 duration ("PT166H54M39S") -> whole minutes; 0 when blank or
+    # unreadable.
+    def duration_minutes(value)
+      return 0 if value.blank?
+
+      ActiveSupport::Duration.parse(value).to_i / 60
+    rescue ActiveSupport::Duration::ISO8601Parser::ParsingError, ArgumentError
+      0
     end
 
     def played_set(row)

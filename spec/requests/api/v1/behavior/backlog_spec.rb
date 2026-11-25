@@ -25,6 +25,14 @@ RSpec.describe "api/v1/backlog behavior", type: :request do
       expect(json.dig("data", 0, "game")).to include("game_id" => entry.gamedb_game_id)
     end
 
+    it "gives each entry the date it was added as added_at" do
+      create(:backlog_entry, user: owner, created_at: Time.utc(2026, 9, 26, 15))
+
+      get "/api/v1/users/#{owner.user_id}/backlog", headers: service_headers
+
+      expect(json.dig("data", 0, "added_at")).to eq("2026-09-26T15:00:00.000Z")
+    end
+
     it "filters by game_id with an exact meta.count" do
       keeper = create(:backlog_entry, user: owner)
       create(:backlog_entry, user: owner)

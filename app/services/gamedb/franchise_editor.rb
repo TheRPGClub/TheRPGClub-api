@@ -21,6 +21,10 @@ module Gamedb
   # remembered in `gamedb_franchise_unlinks`, which a re-import never links
   # again; and a re-import never touches `mainline`.
   #
+  # Links, unlinks, Mainline changes and undos run Franchises::ConquestCheck;
+  # a merge moves the source's Conquests to the target, and a delete removes
+  # them.
+  #
   # Each change is one Change, applied in a transaction by #apply!, which is
   # the single place that records it in the history (GamedbFranchiseChange)
   # and invalidates the cached game relations it shows in. An undo writes no
@@ -69,6 +73,7 @@ module Gamedb
         link = GamedbGameFranchise.lock.find_by(franchise_id: franchise.franchise_id, game_id: game.game_id)
         link ||= add_link!(franchise, game)
         set_mainline!(link, franchise, game, mainline) unless mainline.nil? || link.mainline == mainline
+        check_conquests!(franchise)
         link
       end
     end
@@ -89,6 +94,7 @@ module Gamedb
             unique_by: %i[game_id franchise_id]
           )
         end
+        check_conquests!(franchise)
       end
     end
 
@@ -141,6 +147,7 @@ module Gamedb
         apply!(:merge, into, nil, before: before, after: { "franchise_id" => into.franchise_id, "name" => into.name }) do
           move_links!(source.franchise_id, into.franchise_id)
           move_pool_sources!(source.franchise_id, into.franchise_id)
+          move_conquests!(source.franchise_id, into.franchise_id)
           GamedbFranchise.where(merged_into_id: source.franchise_id).update_all(merged_into_id: into.franchise_id)
           source.update!(merged_into_id: into.franchise_id)
         end
@@ -164,6 +171,7 @@ module Gamedb
         apply!(:delete, franchise, nil, before: before, after: nil) do
           [ franchise, *merged ].each { |gone| remember_deleted!(gone) }
           ChallengePoolFranchise.where(franchise_id: ids).delete_all
+          UserFranchiseConquest.where(franchise_id: ids).delete_all
           GamedbGameFranchise.where(franchise_id: ids).delete_all
           GamedbFranchiseUnlink.where(franchise_id: ids).delete_all
           GamedbFranchise.where(franchise_id: merged.map(&:franchise_id)).delete_all
@@ -187,6 +195,7 @@ module Gamedb
         raise UndoRefused, :superseded unless revert!(change, franchise)
 
         change.update!(undone_at: Time.current, undone_by: @user_id)
+        check_conquests!(franchise)
         change.game_change? ? GamedbGame.where(game_id: change.game_id).touch_all : touch_games!(franchise.franchise_id)
         change
       end
@@ -277,6 +286,24 @@ module Gamedb
       sources = ChallengePoolFranchise.where(franchise_id: from)
       sources.where(challenge_id: ChallengePoolFranchise.where(franchise_id: to).select(:challenge_id)).delete_all
       sources.update_all(franchise_id: to)
+    end
+
+    # Moves `from`'s Conquests to `to`. A member with a Conquest in both
+    # keeps the earlier one.
+    def move_conquests!(from, to)
+      kept = UserFranchiseConquest.where(franchise_id: to).pluck(:user_id, :id, :conquered_at).to_h { |user_id, *rest| [ user_id, rest ] }
+      UserFranchiseConquest.where(franchise_id: from).pluck(:id, :user_id, :conquered_at).each do |id, user_id, conquered_at|
+        target_id, target_at = kept[user_id]
+        gone = target_id && target_at <= conquered_at ? id : target_id
+        UserFranchiseConquest.where(id: gone).delete_all if gone
+        UserFranchiseConquest.where(id: id).update_all(franchise_id: to) unless gone == id
+      end
+    end
+
+    # Linking, unlinking and Mainline changes can finish a member's
+    # Mainline set (spec api#457). Those Conquests are announced.
+    def check_conquests!(franchise)
+      Franchises::ConquestCheck.new(requested_by: @user_id).for_franchise(franchise)
     end
 
     def remember_deleted!(franchise)

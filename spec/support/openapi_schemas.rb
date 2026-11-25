@@ -41,6 +41,14 @@ module OpenapiSchemas
   def ref(name, nullable: false) = nullable ? { allOf: [ { "$ref" => "#/components/schemas/#{name}" } ], nullable: true } : { "$ref" => "#/components/schemas/#{name}" }
   def array_of(name) = { type: :array, items: { "$ref" => "#/components/schemas/#{name}" } }
 
+  # A shelf list item's Playtime (ShelfPlaytimeFields, ticket api#460): only
+  # on the member's list endpoints, so never required.
+  def shelf_playtime_minutes
+    { type: :integer, nullable: true,
+      description: "The member's Playtime for the game in minutes (0 when none; null for an entry with no game). " \
+                   "Only on the member's list endpoint (GET /users/{user_id}/<list>)." }
+  end
+
   # Build an object schema from keyword properties, auto-deriving `required` as
   # the always-present, non-null scalar columns (nullable columns, embedded
   # `$ref`s and arrays are excluded). The `_required` / `_description` sentinel
@@ -324,6 +332,20 @@ module OpenapiSchemas
                       "and is left out when the viewer cannot use that Feature (Preview: staff only; Off: nobody). " \
                       "The service token gets every count."
       ),
+      # The member's Playtime on the profile (Playtime::ProfileTotals, ticket
+      # api#460). A shelf total counts each game on the shelf once.
+      UserPlaytimeShelves: obj(
+        completed: int, backlog: int, favorites: int, collection: int, now_playing: int,
+        _required: %w[favorites],
+        _description: "Minutes of Playtime over the distinct games on each shelf. Each shelf but `favorites` " \
+                      "belongs to a Feature and is left out, as in `counts`, when the viewer cannot use it."
+      ),
+      UserPlaytime: obj(
+        total_minutes: int, shelves: ref("UserPlaytimeShelves"),
+        _required: %w[total_minutes shelves],
+        _description: "The member's Playtime in minutes: `total_minutes` over every game they have Playtime on " \
+                      "(on a shelf or not), and each shelf's total."
+      ),
       # The full users#show profile payload (UserResource): UserSummary plus
       # `membership`, the embedded socials, the four preview lists, the journal
       # grid and the counts summary.
@@ -339,6 +361,7 @@ module OpenapiSchemas
         completions: array_of("CompletionEntry"),
         journal: array_of("JournaledGame"),
         counts: ref("UserCounts"),
+        playtime: ref("UserPlaytime"),
         birthday: ref("Birthday", nullable: true).merge(
           description: "The member's Birthday when they share it (api#399); null otherwise. Never the year."
         )
@@ -424,7 +447,9 @@ module OpenapiSchemas
       BacklogEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), sort_order: int(nullable: true),
-        game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+        added_at: ts.merge(description: "When the entry was added (its created_at)."),
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes
       ),
       # backlog#pick (BacklogPickResource): the suggested entry, from the backlog
       # or the collection, with its game, platform and HLTB times. `hours` is the
@@ -453,9 +478,11 @@ module OpenapiSchemas
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         ownership_type: str, note: str(nullable: true),
         platform_name: str(nullable: true), platform_abbreviation: str(nullable: true),
+        added_at: ts.merge(description: "When the entry was added (its created_at)."),
         game: ref("GameSummary"), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes,
         _required: %w[entry_id user_id gamedb_game_id platform_id ownership_type note
-                      platform_name platform_abbreviation game platform]
+                      platform_name platform_abbreviation added_at game platform]
       ),
       # collections#game_index (CollectionUserEntryResource): the CollectionEntry
       # fields + the owning user, for the community-ownership view (#101).
@@ -491,7 +518,8 @@ module OpenapiSchemas
         started_at: date(nullable: true, description: "The day the member started the game (optional)."),
         completed_at: ts(nullable: true),
         final_playtime_hrs: num(nullable: true), created_at: ts,
-        game: ref("GameSummary"), platform: ref("Platform", nullable: true)
+        game: ref("GameSummary"), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes
       ),
       # CompletionMemberEntryResource (CompletionEntry + user), the club-wide
       # feed (CompletionsController#recent).
@@ -525,7 +553,9 @@ module OpenapiSchemas
       # FavoriteEntryResource (no platform association).
       FavoriteEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, note: str(nullable: true),
-        sort_order: int(nullable: true), game: ref("GameSummary")
+        sort_order: int(nullable: true), added_at: ts.merge(description: "When the entry was added (its created_at)."),
+        game: ref("GameSummary"),
+        playtime_minutes: shelf_playtime_minutes
       ),
       # The now-playing embedded game (NowPlayingEmbeds): the GameSummary shape
       # plus the game's linked Discord thread, derived per-entry (#104).
@@ -538,7 +568,13 @@ module OpenapiSchemas
         platform_id: int(nullable: true), note: str(nullable: true),
         sort_order: int(nullable: true), added_at: ts, note_updated_at: ts(nullable: true),
         has_journal_entry: bool, journal_count: int, last_journal_at: ts(nullable: true),
-        game: ref("NowPlayingGame", nullable: true), platform: ref("Platform", nullable: true)
+        game: ref("NowPlayingGame", nullable: true), platform: ref("Platform", nullable: true),
+        playtime_minutes: shelf_playtime_minutes,
+        playthrough_minutes: {
+          type: :integer, nullable: true,
+          description: "The open Playthrough's time in minutes; null when none is open. Only on " \
+                       "GET /users/{user_id}/now_playing."
+        }
       ),
       # NowPlayingUserEntryResource (NowPlayingFields + user), for game-scoped lists.
       NowPlayingUserEntry: obj(
@@ -1698,7 +1734,7 @@ module OpenapiSchemas
                        "birthday_post is a public post no Feature owns and carries none. " \
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
                        "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload, " \
-                       "BirthdayPostJobPayload."
+                       "BirthdayPostJobPayload, FranchiseConquestJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
@@ -1939,6 +1975,136 @@ module OpenapiSchemas
         name: str(example: "Releases & Updates", description: "Display name."),
         position: int.merge(example: 2, description: "1-based place in the list; the list is served in this order."),
         _required: %w[key name position]
+      ),
+      # GamePlaytimeResource (spec api#457, ticket api#458; ADR 0015): a
+      # member's Playtime for one game, as Playtime::Ledger works it out.
+      PlaytimeProviderSet: obj(
+        _description: "A Provider's figure for one Achievement Set mapped to the game.",
+        achievement_set_id: int, provider: str(enum: UserLinkedAccount::PROVIDERS),
+        title: str(nullable: true, description: "The set's title as the Provider names it."),
+        platform_label: str(nullable: true, example: "PC", description: "The Provider's own platform label, raw."),
+        platform_id: int(nullable: true).merge(description: "The GameDB platform the label resolves to; null " \
+                                                            "when it doesn't resolve (shown raw, never a mismatch)."),
+        platform_name: str(nullable: true),
+        minutes: int,
+        counted: bool.merge(description: "False when the member kept their Manual entry on this platform over " \
+                                         "this Provider (\"keep mine\"): shown, not counted.")
+      ),
+      ManualPlaytimeEntry: obj(
+        _description: "A Manual Playtime entry: one per member, game and platform.",
+        id: int, platform_id: int(nullable: true).merge(description: "Null is \"Other\"."),
+        platform_name: str(nullable: true), minutes: int, note: str(nullable: true, maxLength: 280),
+        origin: str(enum: UserGameManualPlaytime::ORIGINS,
+          description: "`completion_seed`: made or raised by the launch seed from Game Completions."),
+        keeps_over_provider: str(nullable: true, enum: [ *UserLinkedAccount::PROVIDERS, nil ],
+          description: "The Provider whose figure on this platform doesn't count (\"keep mine\")."),
+        mismatch_acknowledged_provider: str(nullable: true, enum: [ *UserLinkedAccount::PROVIDERS, nil ],
+          description: "The Provider whose figure on this platform counts alongside this entry with no " \
+                       "mismatch reported (\"keep both\")."),
+        created_at: ts, updated_at: ts
+      ),
+      PlaytimeMismatch: obj(
+        _description: "A Manual entry and a Provider on the same resolved platform, with no keep chosen " \
+                      "(keep mine, the Provider's, or both).",
+        platform_id: int, platform_name: str(nullable: true), provider: str(enum: UserLinkedAccount::PROVIDERS),
+        provider_minutes: int.merge(description: "The Provider's figure on this platform (all its sets)."),
+        manual_playtime_id: int, manual_minutes: int
+      ),
+      GamePlaytime: obj(
+        user_id: str, game_id: int,
+        total_minutes: int.merge(description: "Every counted Provider figure plus every Manual entry."),
+        breakdown: obj(provider_sets: array_of("PlaytimeProviderSet"), manual_entries: array_of("ManualPlaytimeEntry"),
+          _required: %w[provider_sets manual_entries]),
+        mismatches: array_of("PlaytimeMismatch"),
+        playthrough: ref("OpenPlaythrough", nullable: true),
+        playthroughs: array_of("EndedPlaythrough"),
+        _required: %w[user_id game_id total_minutes breakdown mismatches playthrough playthroughs]
+      ),
+      # Playthroughs (spec api#457, ticket api#459): one run of a game.
+      OpenPlaythrough: obj(
+        _description: "The member's open Playthrough of the game (at most one).",
+        id: int, started_at: ts,
+        minutes: int.merge(description: "The total set by hand when `manual`, else the Playtime gained since " \
+                                        "it started, floored at 0."),
+        baseline_minutes: int.merge(description: "The member's Playtime for the game when it started: the " \
+                                                 "measured time is Playtime now minus this, floored at 0."),
+        manual: bool.merge(description: "True when the member set its total by hand.")
+      ),
+      EndedPlaythrough: obj(
+        _description: "An earlier Playthrough of the game, newest first.",
+        id: int, started_at: ts, ended_at: ts, end_reason: str(enum: UserGamePlaythrough::END_REASONS),
+        minutes: int.merge(description: "Its time when it ended."),
+        manual: bool.merge(description: "True when its total was set by hand."),
+        completion_id: int(nullable: true).merge(description: "The Game Completion that closed it " \
+                                                              "(`completed`).")
+      ),
+      # Franchise Progress (spec api#457, ticket api#461; Franchises::Progress).
+      FranchiseProgressMeter: obj(
+        _description: "One meter: games done (any Game Completion, a game counted once) of `total`, and the " \
+                      "member's Playtime on those games. `total` 0 is an empty meter.",
+        done: int, total: int, playtime_minutes: int
+      ),
+      FranchiseProgressMeters: obj(
+        _description: "Add-ons are left out of every meter.",
+        mainline: ref("FranchiseProgressMeter"),
+        all: ref("FranchiseProgressMeter").merge(description: "Mainline and spin-offs together."),
+        spin_offs: ref("FranchiseProgressMeter"),
+        _required: %w[mainline all spin_offs]
+      ),
+      FranchiseProgressGame: obj(
+        game_id: int, title: str, cover_url: str(nullable: true), release_year: int(nullable: true),
+        done: bool.merge(description: "The member holds a Game Completion for this game (an Alternate " \
+                                      "Version's doesn't count)."),
+        completion_type: str(nullable: true, enum: [ *Franchises::Progress::COMPLETION_TYPES, nil ],
+          description: "The most thorough of the member's Completions of it; null when not done."),
+        playtime_minutes: int,
+        _required: %w[game_id title cover_url release_year done completion_type playtime_minutes]
+      ),
+      FranchiseProgress: obj(
+        user_id: str, franchise_id: int,
+        conquered_at: ts(nullable: true).merge(description: "When the member Conquered the Franchise; null if " \
+                                                            "they haven't."),
+        meters: ref("FranchiseProgressMeters"),
+        games: obj(
+          _description: "Oldest release first, as the Franchise page orders them.",
+          mainline: array_of("FranchiseProgressGame"), spin_offs: array_of("FranchiseProgressGame"),
+          _required: %w[mainline spin_offs]
+        ),
+        _required: %w[user_id franchise_id conquered_at meters games]
+      ),
+      FranchiseProgressMemberUser: extends("UserSummary",
+        discord_avatar: str(nullable: true).merge(
+          description: "The member's Discord avatar hash from their last website login; null if unknown. " \
+                       "https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png"
+        ),
+        avatar_url: str(example: "/api/v1/users/123/avatar").merge(
+          description: "The API path of the avatar image the bot stores (404 when it has none)."
+        )),
+      FranchiseProgressMember: obj(
+        user: ref("FranchiseProgressMemberUser"), meters: ref("FranchiseProgressMeters"), conquered_at: ts(nullable: true),
+        _required: %w[user meters conquered_at]
+      ),
+      # The Conquest post bot job payload (ticket api#461), as BotJobClaim.payload carries it.
+      FranchiseConquestJobPayload: obj(
+        _description: "Kind `franchise_conquest`. Post the 4B Conquest card for `user_id` and `franchise_id` " \
+                      "in the completions channel, with no pings, even when the Completion wasn't announced. " \
+                      "Follows the `franchise_progress` Feature Flag. Everything the card shows is here, as it " \
+                      "was when the Conquest was written.",
+        _required: %w[user_id franchise_id completion_id franchise_name conquered_at playtime_minutes
+                      mainline_playtime_minutes mainline_total covers also_conquered also_conquered_count feature_key],
+        user_id: str, franchise_id: int,
+        completion_id: int(nullable: true).merge(description: "The Completion that finished the Mainline set."),
+        franchise_name: str, conquered_at: ts,
+        playtime_minutes: int.merge(description: "The member's Franchise Playtime: Mainline and spin-offs."),
+        mainline_playtime_minutes: int, mainline_total: int,
+        covers: { type: :array, maxItems: Franchises::ConquestAnnouncement::COVERS,
+                  description: "Mainline games with a cover, latest release first.",
+                  items: obj(game_id: int, title: str, release_year: int(nullable: true), cover_url: str) },
+        also_conquered: { type: :array, maxItems: Franchises::ConquestAnnouncement::OTHERS,
+                          description: "Other current members who Conquered it, earliest first.",
+                          items: obj(user_id: str, name: str, conquered_at: ts) },
+        also_conquered_count: int,
+        feature_key: str(enum: %w[franchise_progress])
       ),
       # HiddenPlatformsController (spec api#421, ticket api#427). A member's
       # Hidden Platforms: the platforms they leave out of their own Release

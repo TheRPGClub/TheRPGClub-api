@@ -15,7 +15,7 @@ RSpec.describe Achievements::ProviderTickJob do
     UserLinkedAccount::PROVIDERS.each do |provider|
       allow(Achievements::Providers).to receive(:client_for).with(provider).and_return(client)
     end
-    allow(client).to receive_messages(set_with_progress: nil, played_sets: [])
+    allow(client).to receive_messages(set_with_progress: nil, played_sets: [], played_games: [])
   end
 
   def due_account(provider = "steam", due_at: now - 1.minute, **attributes)

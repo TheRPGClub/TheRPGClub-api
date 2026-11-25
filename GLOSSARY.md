@@ -79,6 +79,18 @@ _Avoid_: Refresh, poll
 A member's record that they finished a game, with how thoroughly (main story, main story plus side content, or completionist), when they started (optional) and finished. Distinct from an Achievement Hub Completion.
 _Avoid_: Completion (unqualified), beat, finish
 
+**Playtime**:
+How long a member has played one GameDB game, added up across every source: each Provider that reports it and the time the member enters themselves. A Game Completion's final playtime is a separate figure, fixed when the member finished.
+_Avoid_: Hours, time played (as a stored figure), duration
+
+**Manual Playtime**:
+Time a member records for a game themselves, against one platform, for play no Provider reports, such as a Switch save file or an old note. The member can set its total or add time to it, and it adds to the Provider figures.
+_Avoid_: Override, correction, logged hours
+
+**Playthrough**:
+One run of a game by a member, measured as the Playtime gained since it started, unless the member sets its total by hand. A member has at most one open Playthrough per game; logging a Game Completion closes it, and its time becomes that Completion's final playtime.
+_Avoid_: Run (that is a Challenge term), session, attempt
+
 **Release**:
 A GameDB game coming out on one platform in one region. Its date is known to a Date Precision.
 _Avoid_: Launch, release date (when meaning the whole record)
@@ -159,9 +171,17 @@ _Avoid_: Collection (a member's owned games), franchise
 A mark on a game within a Franchise saying it is one of the Franchise's main entries rather than a spin-off. A game can be Mainline in one Franchise and not in another.
 _Avoid_: Main series, canon, numbered entry
 
+**Conquered**:
+A member has Conquered a Franchise once they hold a Game Completion for every Mainline game in it. It needs no Challenge or Game List, and a Franchise stays Conquered when Mainline games are added later.
+_Avoid_: Franchise Completion, cleared, finished, mastered
+
 **Add-on**:
 A GameDB game that extends another game, such as DLC or an expansion. Add-ons are shown under their parent game and never join a Pool unless picked by hand.
 _Avoid_: DLC (as the general term), expansion (as the general term)
+
+**Spin-off**:
+A game in a Franchise that is neither Mainline nor an Add-on. The API keeps the key `other` for it; clients label it Spin-offs.
+_Avoid_: Other, side game, non-mainline
 
 ## Community
 

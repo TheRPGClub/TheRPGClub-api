@@ -576,6 +576,7 @@ RSpec.describe "api/v1/users behavior", type: :request do
         create(:now_playing_entry, user: profile, game: game, platform: platform)
         create(:journal_entry, user: profile, game: game)
         create(:backlog_entry, user: profile, game: game)
+        UserGameManualPlaytime.create!(user_id: profile.user_id, gamedb_game_id: game.game_id, minutes: 90)
       end
     end
 
@@ -593,7 +594,9 @@ RSpec.describe "api/v1/users behavior", type: :request do
     end
 
     # auth 1, member 1, socials 2, the five previews 5 (+ latest revisions 1),
-    # their games, images and platforms batched 3, every count at once 1.
+    # their games, images and platforms batched 3, every count at once 1,
+    # Playtime (spec api#457) 3: the Ledger rows, its open Playthroughs and
+    # the shelves' games.
     it "reads a full profile in a fixed number of queries" do
       create(:user_social, user: profile)
       fill_profile(2)
@@ -603,7 +606,7 @@ RSpec.describe "api/v1/users behavior", type: :request do
       more = queries_for_profile
 
       expect(more).to eq(few)
-      expect(few).to be <= 14
+      expect(few).to be <= 17
       expect(json.dig("data", "counts")).to include("completions" => 5, "backlog" => 5, "journal" => 5)
     end
   end

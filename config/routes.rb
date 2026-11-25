@@ -83,6 +83,10 @@ Rails.application.routes.draw do
           delete "games/:game_id", action: :unlink_game, as: :unlink_game
           post "merge"
           get "changes", to: "franchise_changes#index"
+          # Franchise Progress (spec api#457): a member's meters and the
+          # members table, behind the `franchise_progress` Feature.
+          get "progress", to: "franchise_progress#show"
+          get "progress/members", to: "franchise_progress#members"
         end
       end
       post "franchise_changes/:id/undo", to: "franchise_changes#undo", as: :undo_franchise_change
@@ -169,6 +173,13 @@ Rails.application.routes.draw do
           get "challenge_runs", to: "challenge_runs#user_index"
           # Game Lists (ticket api#446): the member's lists, for their profile.
           get "game_lists", to: "game_lists#user_index"
+          # Playtime (spec api#457, ticket api#458): one member's Playtime for a
+          # game, their Manual Playtime, and settling a mismatch.
+          get "games/:game_id/playtime", to: "playtime#show"
+          post "games/:game_id/playtime/mismatches", to: "playtime#settle_mismatch"
+          post "games/:game_id/manual_playtimes", to: "manual_playtimes#create"
+          # Playthroughs (ticket api#459): start one.
+          post "games/:game_id/playthroughs", to: "playthroughs#create"
           get "news_category_preferences", to: "news_category_preferences#show"
           patch "news_category_preferences", to: "news_category_preferences#update"
           get "game_keys", to: "game_keys#user_index"
@@ -276,6 +287,10 @@ Rails.application.routes.draw do
           # The club-wide feed behind the `completions_club` Dashboard Panel.
           get "recent"
         end
+      end
+      resources :manual_playtimes, only: %i[update destroy]
+      resources :playthroughs, only: :update do
+        member { post :abandon }
       end
       resources :favorites, only: %i[show update destroy]
       # The club-wide feed behind the `reviews` Dashboard Panel.

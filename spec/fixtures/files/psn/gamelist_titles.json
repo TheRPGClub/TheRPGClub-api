@@ -1,0 +1,278 @@
+{
+  "titles": [
+    {
+      "titleId": "PPSA90001_00",
+      "name": "Crimson Desert Enhanced",
+      "localizedName": "Crimson Desert Enhanced",
+      "imageUrl": "https://image.api.playstation.com/example/PPSA90001_00.png",
+      "localizedImageUrl": "https://image.api.playstation.com/example/PPSA90001_00.png",
+      "category": "ps5_native_game",
+      "service": "other",
+      "sortableName": "crimson desert enhanced",
+      "playCount": 177,
+      "concept": {
+        "id": 90001,
+        "titleIds": [
+          "PPSA90001_00"
+        ],
+        "name": "Crimson Desert Enhanced",
+        "media": {
+          "audios": [],
+          "videos": [],
+          "images": [
+            {
+              "url": "https://image.api.playstation.com/example/PPSA90001_00-banner.jpg",
+              "format": "UNKNOWN",
+              "type": "FOUR_BY_THREE_BANNER"
+            }
+          ]
+        },
+        "genres": [
+          "ADVENTURE",
+          "ACTION"
+        ],
+        "localizedName": {
+          "defaultLanguage": "en-US",
+          "metadata": {
+            "en-US": "Crimson Desert Enhanced"
+          }
+        },
+        "country": "US",
+        "language": "en"
+      },
+      "media": {
+        "audios": [],
+        "videos": [],
+        "images": [
+          {
+            "url": "https://image.api.playstation.com/example/PPSA90001_00-banner.jpg",
+            "format": "UNKNOWN",
+            "type": "FOUR_BY_THREE_BANNER"
+          }
+        ]
+      },
+      "firstPlayedDateTime": "2026-03-18T16:53:03.190000Z",
+      "lastPlayedDateTime": "2026-11-25T02:26:54.280000Z",
+      "playDuration": "PT166H54M39S"
+    },
+    {
+      "titleId": "PPSA90002_00",
+      "name": "Saints Row®: The Third™ Remastered",
+      "localizedName": "Saints Row®: The Third™ Remastered",
+      "imageUrl": "https://image.api.playstation.com/example/PPSA90002_00.png",
+      "localizedImageUrl": "https://image.api.playstation.com/example/PPSA90002_00.png",
+      "category": "ps5_native_game",
+      "service": "none(purchased)",
+      "sortableName": "saints row®: the third™ remastered",
+      "playCount": 17,
+      "concept": {
+        "id": 90002,
+        "titleIds": [
+          "PPSA90002_00"
+        ],
+        "name": "Saints Row®: The Third™ Remastered",
+        "media": {
+          "audios": [],
+          "videos": [],
+          "images": [
+            {
+              "url": "https://image.api.playstation.com/example/PPSA90002_00-banner.jpg",
+              "format": "UNKNOWN",
+              "type": "FOUR_BY_THREE_BANNER"
+            }
+          ]
+        },
+        "genres": [
+          "ACTION"
+        ],
+        "localizedName": {
+          "defaultLanguage": "en-US",
+          "metadata": {
+            "en-US": "Saints Row®: The Third™ Remastered"
+          }
+        },
+        "country": "US",
+        "language": "en"
+      },
+      "media": {
+        "audios": [],
+        "videos": [],
+        "images": [
+          {
+            "url": "https://image.api.playstation.com/example/PPSA90002_00-banner.jpg",
+            "format": "UNKNOWN",
+            "type": "FOUR_BY_THREE_BANNER"
+          }
+        ]
+      },
+      "firstPlayedDateTime": "2026-09-09T20:24:52.510000Z",
+      "lastPlayedDateTime": "2026-11-10T23:39:43.170000Z",
+      "playDuration": "PT12H44M7S"
+    },
+    {
+      "titleId": "CUSA90002_00",
+      "name": "Saints Row®: The Third™ Remastered",
+      "localizedName": "Saints Row®: The Third™ Remastered",
+      "imageUrl": "https://image.api.playstation.com/example/PPSA90002_00.png",
+      "localizedImageUrl": "https://image.api.playstation.com/example/PPSA90002_00.png",
+      "category": "ps4_game",
+      "service": "none(purchased)",
+      "sortableName": "saints row®: the third™ remastered",
+      "playCount": 4,
+      "concept": {
+        "id": 90002,
+        "titleIds": [
+          "CUSA90002_00"
+        ],
+        "name": "Saints Row®: The Third™ Remastered",
+        "media": {
+          "audios": [],
+          "videos": [],
+          "images": [
+            {
+              "url": "https://image.api.playstation.com/example/PPSA90002_00-banner.jpg",
+              "format": "UNKNOWN",
+              "type": "FOUR_BY_THREE_BANNER"
+            }
+          ]
+        },
+        "genres": [
+          "ACTION"
+        ],
+        "localizedName": {
+          "defaultLanguage": "en-US",
+          "metadata": {
+            "en-US": "Saints Row®: The Third™ Remastered"
+          }
+        },
+        "country": "US",
+        "language": "en"
+      },
+      "media": {
+        "audios": [],
+        "videos": [],
+        "images": [
+          {
+            "url": "https://image.api.playstation.com/example/PPSA90002_00-banner.jpg",
+            "format": "UNKNOWN",
+            "type": "FOUR_BY_THREE_BANNER"
+          }
+        ]
+      },
+      "firstPlayedDateTime": "2026-09-09T20:24:52.510000Z",
+      "lastPlayedDateTime": "2026-11-10T23:39:43.170000Z",
+      "playDuration": "PT3H20M5S"
+    },
+    {
+      "titleId": "PPSA90003_00",
+      "name": "Clive Barker's Hellraiser: Revival",
+      "localizedName": "Clive Barker's Hellraiser: Revival",
+      "imageUrl": "https://image.api.playstation.com/example/PPSA90003_00.png",
+      "localizedImageUrl": "https://image.api.playstation.com/example/PPSA90003_00.png",
+      "category": "ps5_native_game",
+      "service": "other",
+      "sortableName": "clive barker's hellraiser: revival",
+      "playCount": 12,
+      "concept": {
+        "id": 90003,
+        "titleIds": [
+          "PPSA90003_00"
+        ],
+        "name": "Clive Barker's Hellraiser: Revival",
+        "media": {
+          "audios": [],
+          "videos": [],
+          "images": [
+            {
+              "url": "https://image.api.playstation.com/example/PPSA90003_00-banner.jpg",
+              "format": "UNKNOWN",
+              "type": "BACKGROUND_LAYER_ART"
+            }
+          ]
+        },
+        "genres": [
+          "HORROR"
+        ],
+        "localizedName": {
+          "defaultLanguage": "en-US",
+          "metadata": {
+            "en-US": "Clive Barker's Hellraiser: Revival"
+          }
+        },
+        "country": "US",
+        "language": "en"
+      },
+      "media": {
+        "audios": [],
+        "videos": [],
+        "images": [
+          {
+            "url": "https://image.api.playstation.com/example/PPSA90003_00-banner.jpg",
+            "format": "UNKNOWN",
+            "type": "BACKGROUND_LAYER_ART"
+          }
+        ]
+      },
+      "firstPlayedDateTime": "2026-10-28T14:21:52.230000Z",
+      "lastPlayedDateTime": "2026-11-02T20:48:36.930000Z",
+      "playDuration": "PT14H12M53S"
+    },
+    {
+      "titleId": "CUSA90009_00",
+      "name": "Example Media App",
+      "localizedName": "Example Media App",
+      "imageUrl": "https://image.api.playstation.com/example/PPSA90003_00.png",
+      "localizedImageUrl": "https://image.api.playstation.com/example/PPSA90003_00.png",
+      "category": "unknown",
+      "service": "none",
+      "sortableName": "Example Media App",
+      "playCount": 12,
+      "concept": {
+        "id": 90003,
+        "titleIds": [
+          "CUSA90009_00"
+        ],
+        "name": "Example Media App",
+        "media": {
+          "audios": [],
+          "videos": [],
+          "images": [
+            {
+              "url": "https://image.api.playstation.com/example/PPSA90003_00-banner.jpg",
+              "format": "UNKNOWN",
+              "type": "BACKGROUND_LAYER_ART"
+            }
+          ]
+        },
+        "genres": [
+          "HORROR"
+        ],
+        "localizedName": {
+          "defaultLanguage": "en-US",
+          "metadata": {
+            "en-US": "Clive Barker's Hellraiser: Revival"
+          }
+        },
+        "country": "US",
+        "language": "en"
+      },
+      "media": {
+        "audios": [],
+        "videos": [],
+        "images": [
+          {
+            "url": "https://image.api.playstation.com/example/PPSA90003_00-banner.jpg",
+            "format": "UNKNOWN",
+            "type": "BACKGROUND_LAYER_ART"
+          }
+        ]
+      },
+      "firstPlayedDateTime": "2026-10-28T14:21:52.230000Z",
+      "lastPlayedDateTime": "2026-11-02T20:48:36.930000Z",
+      "playDuration": "PT45M"
+    }
+  ],
+  "nextOffset": 5,
+  "previousOffset": 0,
+  "totalItemCount": 5
+}

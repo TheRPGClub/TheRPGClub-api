@@ -977,6 +977,36 @@ components:
         collections: Collection, journal: Journals) and is left out when the viewer
         cannot use that Feature (Preview: staff only; Off: nobody). The service token
         gets every count.'
+    UserPlaytimeShelves:
+      type: object
+      properties:
+        completed:
+          type: integer
+        backlog:
+          type: integer
+        favorites:
+          type: integer
+        collection:
+          type: integer
+        now_playing:
+          type: integer
+      required:
+      - favorites
+      description: Minutes of Playtime over the distinct games on each shelf. Each
+        shelf but `favorites` belongs to a Feature and is left out, as in `counts`,
+        when the viewer cannot use it.
+    UserPlaytime:
+      type: object
+      properties:
+        total_minutes:
+          type: integer
+        shelves:
+          "$ref": "#/components/schemas/UserPlaytimeShelves"
+      required:
+      - total_minutes
+      - shelves
+      description: 'The member''s Playtime in minutes: `total_minutes` over every
+        game they have Playtime on (on a shelf or not), and each shelf''s total.'
     User:
       allOf:
       - "$ref": "#/components/schemas/UserSummary"
@@ -1010,6 +1040,8 @@ components:
               "$ref": "#/components/schemas/JournaledGame"
           counts:
             "$ref": "#/components/schemas/UserCounts"
+          playtime:
+            "$ref": "#/components/schemas/UserPlaytime"
           birthday:
             allOf:
             - "$ref": "#/components/schemas/Birthday"
@@ -1221,16 +1253,27 @@ components:
         sort_order:
           type: integer
           nullable: true
+        added_at:
+          type: string
+          format: date-time
+          description: When the entry was added (its created_at).
         game:
           "$ref": "#/components/schemas/GameSummary"
         platform:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - entry_id
       - user_id
       - gamedb_game_id
+      - added_at
     BacklogPick:
       type: object
       properties:
@@ -1335,12 +1378,22 @@ components:
         platform_abbreviation:
           type: string
           nullable: true
+        added_at:
+          type: string
+          format: date-time
+          description: When the entry was added (its created_at).
         game:
           "$ref": "#/components/schemas/GameSummary"
         platform:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - entry_id
       - user_id
@@ -1350,6 +1403,7 @@ components:
       - note
       - platform_name
       - platform_abbreviation
+      - added_at
       - game
       - platform
     CollectionUserEntry:
@@ -1486,6 +1540,12 @@ components:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - completion_id
       - user_id
@@ -1608,12 +1668,23 @@ components:
         sort_order:
           type: integer
           nullable: true
+        added_at:
+          type: string
+          format: date-time
+          description: When the entry was added (its created_at).
         game:
           "$ref": "#/components/schemas/GameSummary"
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
       required:
       - entry_id
       - user_id
       - gamedb_game_id
+      - added_at
     NowPlayingGame:
       allOf:
       - "$ref": "#/components/schemas/GameSummary"
@@ -1664,6 +1735,17 @@ components:
           allOf:
           - "$ref": "#/components/schemas/Platform"
           nullable: true
+        playtime_minutes:
+          type: integer
+          nullable: true
+          description: The member's Playtime for the game in minutes (0 when none;
+            null for an entry with no game). Only on the member's list endpoint (GET
+            /users/{user_id}/<list>).
+        playthrough_minutes:
+          type: integer
+          nullable: true
+          description: The open Playthrough's time in minutes; null when none is open.
+            Only on GET /users/{user_id}/now_playing.
       required:
       - entry_id
       - user_id
@@ -3363,6 +3445,7 @@ components:
           - challenge_dm
           - daily_fun_fact
           - birthday_post
+          - franchise_conquest
         summary:
           type: string
           maxLength: 200
@@ -5471,6 +5554,7 @@ components:
           - challenge_dm
           - daily_fun_fact
           - birthday_post
+          - franchise_conquest
         summary:
           type: string
           maxLength: 200
@@ -5483,7 +5567,8 @@ components:
             carries it too (BotJob::FEATURE_WORK). birthday_post is a public post
             no Feature owns and carries none. Documented payloads: SayJobPayload,
             NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
-            ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload.'
+            ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload,
+            FranchiseConquestJobPayload.'
         status:
           type: string
           enum:
@@ -6121,6 +6206,456 @@ components:
       - key
       - name
       - position
+    PlaytimeProviderSet:
+      type: object
+      properties:
+        achievement_set_id:
+          type: integer
+        provider:
+          type: string
+          enum:
+          - retroachievements
+          - steam
+          - psn
+        title:
+          type: string
+          nullable: true
+          description: The set's title as the Provider names it.
+        platform_label:
+          type: string
+          nullable: true
+          example: PC
+          description: The Provider's own platform label, raw.
+        platform_id:
+          type: integer
+          nullable: true
+          description: The GameDB platform the label resolves to; null when it doesn't
+            resolve (shown raw, never a mismatch).
+        platform_name:
+          type: string
+          nullable: true
+        minutes:
+          type: integer
+        counted:
+          type: boolean
+          description: 'False when the member kept their Manual entry on this platform
+            over this Provider ("keep mine"): shown, not counted.'
+      required:
+      - achievement_set_id
+      - provider
+      - minutes
+      - counted
+      description: A Provider's figure for one Achievement Set mapped to the game.
+    ManualPlaytimeEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        platform_id:
+          type: integer
+          nullable: true
+          description: Null is "Other".
+        platform_name:
+          type: string
+          nullable: true
+        minutes:
+          type: integer
+        note:
+          type: string
+          nullable: true
+          maxLength: 280
+        origin:
+          type: string
+          enum:
+          - member
+          - completion_seed
+          description: "`completion_seed`: made or raised by the launch seed from
+            Game Completions."
+        keeps_over_provider:
+          type: string
+          nullable: true
+          enum:
+          - retroachievements
+          - steam
+          - psn
+          -
+          description: The Provider whose figure on this platform doesn't count ("keep
+            mine").
+        mismatch_acknowledged_provider:
+          type: string
+          nullable: true
+          enum:
+          - retroachievements
+          - steam
+          - psn
+          -
+          description: The Provider whose figure on this platform counts alongside
+            this entry with no mismatch reported ("keep both").
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - minutes
+      - origin
+      - created_at
+      - updated_at
+      description: 'A Manual Playtime entry: one per member, game and platform.'
+    PlaytimeMismatch:
+      type: object
+      properties:
+        platform_id:
+          type: integer
+        platform_name:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          enum:
+          - retroachievements
+          - steam
+          - psn
+        provider_minutes:
+          type: integer
+          description: The Provider's figure on this platform (all its sets).
+        manual_playtime_id:
+          type: integer
+        manual_minutes:
+          type: integer
+      required:
+      - platform_id
+      - provider
+      - provider_minutes
+      - manual_playtime_id
+      - manual_minutes
+      description: A Manual entry and a Provider on the same resolved platform, with
+        no keep chosen (keep mine, the Provider's, or both).
+    GamePlaytime:
+      type: object
+      properties:
+        user_id:
+          type: string
+        game_id:
+          type: integer
+        total_minutes:
+          type: integer
+          description: Every counted Provider figure plus every Manual entry.
+        breakdown:
+          type: object
+          properties:
+            provider_sets:
+              type: array
+              items:
+                "$ref": "#/components/schemas/PlaytimeProviderSet"
+            manual_entries:
+              type: array
+              items:
+                "$ref": "#/components/schemas/ManualPlaytimeEntry"
+          required:
+          - provider_sets
+          - manual_entries
+        mismatches:
+          type: array
+          items:
+            "$ref": "#/components/schemas/PlaytimeMismatch"
+        playthrough:
+          allOf:
+          - "$ref": "#/components/schemas/OpenPlaythrough"
+          nullable: true
+        playthroughs:
+          type: array
+          items:
+            "$ref": "#/components/schemas/EndedPlaythrough"
+      required:
+      - user_id
+      - game_id
+      - total_minutes
+      - breakdown
+      - mismatches
+      - playthrough
+      - playthroughs
+    OpenPlaythrough:
+      type: object
+      properties:
+        id:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        minutes:
+          type: integer
+          description: The total set by hand when `manual`, else the Playtime gained
+            since it started, floored at 0.
+        baseline_minutes:
+          type: integer
+          description: 'The member''s Playtime for the game when it started: the measured
+            time is Playtime now minus this, floored at 0.'
+        manual:
+          type: boolean
+          description: True when the member set its total by hand.
+      required:
+      - id
+      - started_at
+      - minutes
+      - baseline_minutes
+      - manual
+      description: The member's open Playthrough of the game (at most one).
+    EndedPlaythrough:
+      type: object
+      properties:
+        id:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        end_reason:
+          type: string
+          enum:
+          - completed
+          - abandoned
+        minutes:
+          type: integer
+          description: Its time when it ended.
+        manual:
+          type: boolean
+          description: True when its total was set by hand.
+        completion_id:
+          type: integer
+          nullable: true
+          description: The Game Completion that closed it (`completed`).
+      required:
+      - id
+      - started_at
+      - ended_at
+      - end_reason
+      - minutes
+      - manual
+      description: An earlier Playthrough of the game, newest first.
+    FranchiseProgressMeter:
+      type: object
+      properties:
+        done:
+          type: integer
+        total:
+          type: integer
+        playtime_minutes:
+          type: integer
+      required:
+      - done
+      - total
+      - playtime_minutes
+      description: 'One meter: games done (any Game Completion, a game counted once)
+        of `total`, and the member''s Playtime on those games. `total` 0 is an empty
+        meter.'
+    FranchiseProgressMeters:
+      type: object
+      properties:
+        mainline:
+          "$ref": "#/components/schemas/FranchiseProgressMeter"
+        all:
+          "$ref": "#/components/schemas/FranchiseProgressMeter"
+          description: Mainline and spin-offs together.
+        spin_offs:
+          "$ref": "#/components/schemas/FranchiseProgressMeter"
+      required:
+      - mainline
+      - all
+      - spin_offs
+      description: Add-ons are left out of every meter.
+    FranchiseProgressGame:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+        release_year:
+          type: integer
+          nullable: true
+        done:
+          type: boolean
+          description: The member holds a Game Completion for this game (an Alternate
+            Version's doesn't count).
+        completion_type:
+          type: string
+          nullable: true
+          enum:
+          - Completionist
+          - Main Story + Side Content
+          - Main Story
+          -
+          description: The most thorough of the member's Completions of it; null when
+            not done.
+        playtime_minutes:
+          type: integer
+      required:
+      - game_id
+      - title
+      - cover_url
+      - release_year
+      - done
+      - completion_type
+      - playtime_minutes
+    FranchiseProgress:
+      type: object
+      properties:
+        user_id:
+          type: string
+        franchise_id:
+          type: integer
+        conquered_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the member Conquered the Franchise; null if they haven't.
+        meters:
+          "$ref": "#/components/schemas/FranchiseProgressMeters"
+        games:
+          type: object
+          properties:
+            mainline:
+              type: array
+              items:
+                "$ref": "#/components/schemas/FranchiseProgressGame"
+            spin_offs:
+              type: array
+              items:
+                "$ref": "#/components/schemas/FranchiseProgressGame"
+          required:
+          - mainline
+          - spin_offs
+          description: Oldest release first, as the Franchise page orders them.
+      required:
+      - user_id
+      - franchise_id
+      - conquered_at
+      - meters
+      - games
+    FranchiseProgressMemberUser:
+      allOf:
+      - "$ref": "#/components/schemas/UserSummary"
+      - type: object
+        properties:
+          discord_avatar:
+            type: string
+            nullable: true
+            description: The member's Discord avatar hash from their last website
+              login; null if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png
+          avatar_url:
+            type: string
+            example: "/api/v1/users/123/avatar"
+            description: The API path of the avatar image the bot stores (404 when
+              it has none).
+        required:
+        - avatar_url
+    FranchiseProgressMember:
+      type: object
+      properties:
+        user:
+          "$ref": "#/components/schemas/FranchiseProgressMemberUser"
+        meters:
+          "$ref": "#/components/schemas/FranchiseProgressMeters"
+        conquered_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - user
+      - meters
+      - conquered_at
+    FranchiseConquestJobPayload:
+      type: object
+      properties:
+        user_id:
+          type: string
+        franchise_id:
+          type: integer
+        completion_id:
+          type: integer
+          nullable: true
+          description: The Completion that finished the Mainline set.
+        franchise_name:
+          type: string
+        conquered_at:
+          type: string
+          format: date-time
+        playtime_minutes:
+          type: integer
+          description: 'The member''s Franchise Playtime: Mainline and spin-offs.'
+        mainline_playtime_minutes:
+          type: integer
+        mainline_total:
+          type: integer
+        covers:
+          type: array
+          maxItems: 10
+          description: Mainline games with a cover, latest release first.
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              release_year:
+                type: integer
+                nullable: true
+              cover_url:
+                type: string
+            required:
+            - game_id
+            - title
+            - cover_url
+        also_conquered:
+          type: array
+          maxItems: 10
+          description: Other current members who Conquered it, earliest first.
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              name:
+                type: string
+              conquered_at:
+                type: string
+                format: date-time
+            required:
+            - user_id
+            - name
+            - conquered_at
+        also_conquered_count:
+          type: integer
+        feature_key:
+          type: string
+          enum:
+          - franchise_progress
+      required:
+      - user_id
+      - franchise_id
+      - completion_id
+      - franchise_name
+      - conquered_at
+      - playtime_minutes
+      - mainline_playtime_minutes
+      - mainline_total
+      - covers
+      - also_conquered
+      - also_conquered_count
+      - feature_key
+      description: Kind `franchise_conquest`. Post the 4B Conquest card for `user_id`
+        and `franchise_id` in the completions channel, with no pings, even when the
+        Completion wasn't announced. Follows the `franchise_progress` Feature Flag.
+        Everything the card shows is here, as it was when the Conquest was written.
     HiddenPlatform:
       type: object
       properties:
@@ -8525,6 +9060,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: backlog list
@@ -8539,6 +9085,12 @@ paths:
                       "$ref": "#/components/schemas/BacklogEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -14827,6 +15379,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: collections list
@@ -14841,6 +15404,12 @@ paths:
                       "$ref": "#/components/schemas/CollectionEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -15457,8 +16026,9 @@ paths:
         (else 409) and matched to a game. Creates the completion; omitted fields take
         the review form defaults and `platform_id: null` records no platform. When
         `platform_id` is the item''s mapped platform and the game lacks it, a WW release
-        is created first. Sets the item to `added`. Rolled back if the import is in
-        test_mode.'
+        is created first. Sets the item to `added`. The member''s open Playthrough
+        of the game closes with the completion, whose empty final playtime takes its
+        time. Rolled back if the import is in test_mode.'
       parameters: []
       responses:
         '200':
@@ -16213,6 +16783,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: completions list
@@ -16227,6 +16808,12 @@ paths:
                       "$ref": "#/components/schemas/CompletionEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -16249,7 +16836,10 @@ paths:
         Now Playing. `started_at` may not be after the finished day (422 `started_after_finished`),
         nor after today without one (422 `started_in_future`), and `completed_at`
         may not be after today in club time (422 `finished_in_future`). A coded 422
-        is used only when the date check is the only problem.'
+        is used only when the date check is the only problem. The member''s open Playthrough
+        of the game closes as `completed` with this Completion; when `final_playtime_hrs`
+        is absent or null it takes the Playthrough''s time in hours (2 decimals).
+        A `final_playtime_hrs` sent wins.'
       parameters: []
       responses:
         '201':
@@ -17373,6 +17963,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: favorites list
@@ -17387,6 +17988,12 @@ paths:
                       "$ref": "#/components/schemas/FavoriteEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -17882,6 +18489,7 @@ paths:
         - release_calendar
         - club_codex
         - game_lists
+        - franchise_progress
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -18250,8 +18858,8 @@ paths:
       - Franchises
       description: Admins and above. Deletes the Franchise and its links, takes it
         out of every Pool's sources (Core Games stay), and remembers an IGDB Franchise
-        so re-imports don't create it again. Franchises merged into it go too. Recorded
-        in the history (not undoable).
+        so re-imports don't create it again. Franchises merged into it go too, and
+        so do its Conquests. Recorded in the history (not undoable).
       parameters:
       - name: acting_user_id
         in: query
@@ -18285,8 +18893,9 @@ paths:
       description: Admins and above. Moves the links to `into_id` (a game in both
         stays Mainline if it was in either), moves remembered unlinks, repoints Pool
         sources and sets `merged_into_id`, so re-imports naming the merged IGDB id
-        resolve to the target. Recorded in the target's history (not undoable). Answers
-        with the target.
+        resolve to the target. Recorded in the target's history (not undoable). Its
+        Conquests move to the target; a member with one in both keeps the earlier.
+        Answers with the target.
       parameters: []
       responses:
         '200':
@@ -18516,7 +19125,8 @@ paths:
       description: Regulars and above (the acting member's stored roles). Links the
         game as `manual` if it isn't linked (forgetting an earlier unlink of the pair),
         and sets Mainline when `mainline` is given. An existing link keeps its source.
-        Hand links survive IGDB re-imports.
+        Hand links survive IGDB re-imports. Members who now hold every Mainline game
+        Conquer the Franchise (announced).
       parameters: []
       responses:
         '200':
@@ -18580,6 +19190,7 @@ paths:
       - Franchises
       description: Regulars and above. Removes the link and remembers it, so an IGDB
         re-import doesn't add it back. Succeeds also when the game wasn't linked.
+        Members who now hold every Mainline game Conquer the Franchise (announced).
       parameters:
       - name: acting_user_id
         in: query
@@ -18598,6 +19209,103 @@ paths:
           description: franchise or game not found
         '401':
           description: unauthenticated
+  "/api/v1/franchises/{id}/progress":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbFranchise id.
+    get:
+      summary: A member's Franchise Progress
+      tags:
+      - Franchise Progress
+      description: Behind the `franchise_progress` Feature. The member's three meters
+        (Mainline, `all` = Mainline and spin-offs, spin-offs), when they Conquered
+        the Franchise, and its Mainline and spin-off games with `done`, `completion_type`
+        and `playtime_minutes`. A game is done with any Game Completion of it; Add-ons
+        are left out and an Alternate Version's Completion doesn't count. Any signed-in
+        member reads anyone's.
+      parameters:
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: The member; defaults to the signed-in member. The bot must give
+          it.
+      responses:
+        '200':
+          description: progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FranchiseProgress"
+        '400':
+          description: the bot gave no `user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown franchise or member, or the Feature is not open to
+            the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/franchises/{id}/progress/members":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbFranchise id.
+    get:
+      summary: The Franchise Progress members table
+      tags:
+      - Franchise Progress
+      description: Behind the `franchise_progress` Feature. Every current member with
+        Playtime, a Game Completion (Add-ons aside) or a Conquest in the Franchise,
+        with their meters. Conquered members first, earliest Conquest first; then
+        by Mainline games done (by all games when the Franchise has no Mainline games),
+        then by Playtime. Each `user` carries their avatar (`discord_avatar` hash
+        and the stored `avatar_url` path). Not paginated.
+      responses:
+        '200':
+          description: members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/FranchiseProgressMember"
+        '404':
+          description: unknown franchise, or the Feature is not open to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{id}/hltb/lookup":
     parameters:
     - name: id
@@ -26150,6 +26858,17 @@ paths:
         required: false
         description: Deprecated; converted to a page number (transitional, for the
           unaudited Discord bot).
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - most_played
+        required: false
+        description: "`most_played` orders by the member's Playtime for the game (most
+          first, none as 0), then title, then the entry id. Absent keeps the list's
+          own order; any other value is 422 `invalid_sort`. Each item carries `playtime_minutes`
+          either way."
       responses:
         '200':
           description: now-playing list
@@ -26164,6 +26883,12 @@ paths:
                       "$ref": "#/components/schemas/NowPlayingEntry"
                   meta:
                     "$ref": "#/components/schemas/PaginationMeta"
+        '422':
+          description: invalid_sort
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
           content:
@@ -26180,7 +26905,9 @@ paths:
         In the same transaction, every backlog row the user has for the game is removed,
         and when `note` is absent or blank the backlog note carries over. If the entry
         can't be created, the backlog is left unchanged. A game already on the list
-        is 409 `already_playing` and the backlog is left unchanged.
+        is 409 `already_playing` and the backlog is left unchanged. It also opens
+        a Playthrough of the game when none is open (see `POST /users/{user_id}/games/{game_id}/playthroughs`);
+        removing the entry later leaves the Playthrough open.
       parameters: []
       responses:
         '201':
@@ -27460,6 +28187,577 @@ paths:
                     "$ref": "#/components/schemas/PlatformDetail"
         '404':
           description: platform not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/games/{game_id}/playthroughs":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GameDB game id.
+    post:
+      summary: Start a Playthrough
+      tags:
+      - Playtime
+      description: 'Starts a Playthrough of the game: one run, measured as the Playtime
+        gained from now on (the member''s Playtime now is its baseline), Manual Playtime
+        added while it is open included, floored at 0. At most one is open per member
+        and game: 409 `playthrough_open` while one is. Adding the game to Now Playing
+        also opens one; a Game Completion of the game closes it. Writes are the member''s
+        own; a Superadmin and the bot''s service token may write for anyone (403 otherwise).
+        Answers with the game''s Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
+        does, with the Playthrough in `playthrough` (open) or `playthroughs` (ended).
+        Ungated.'
+      responses:
+        '201':
+          description: started; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '409':
+          description: "`playthrough_open`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown member or game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/playthroughs/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Playthrough id.
+    patch:
+      summary: Set a Playthrough's total
+      tags:
+      - Playtime
+      description: 'Sets the open Playthrough''s time by hand ("this one took 45 h"),
+        replacing the measured time; `total_minutes: null` goes back to the measured
+        time. 422 `invalid_total_minutes` when it is missing or not a whole number
+        from 0 to 6,000,000 (100,000 hours); 409 `playthrough_closed` once it has
+        ended. Writes are the member''s own; a Superadmin and the bot''s service token
+        may write for anyone (403 otherwise). Answers with the game''s Playtime for
+        that member, as `GET /users/{user_id}/games/{game_id}/playtime` does, with
+        the Playthrough in `playthrough` (open) or `playthroughs` (ended). Ungated.'
+      parameters: []
+      responses:
+        '200':
+          description: saved; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '422':
+          description: "`invalid_total_minutes`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: "`playthrough_closed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    total_minutes:
+                      type: integer
+                      minimum: 0
+                      maximum: 6000000
+                      nullable: true
+                      description: The Playthrough's time; null for the measured time.
+                  required:
+                  - total_minutes
+              required:
+              - data
+        required: true
+  "/api/v1/playthroughs/{id}/abandon":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Playthrough id.
+    post:
+      summary: Abandon a Playthrough
+      tags:
+      - Playtime
+      description: Ends the open Playthrough as `abandoned`, keeping the time it had.
+        409 `playthrough_closed` once it has ended. Writes are the member's own; a
+        Superadmin and the bot's service token may write for anyone (403 otherwise).
+        Answers with the game's Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
+        does, with the Playthrough in `playthrough` (open) or `playthroughs` (ended).
+        Ungated.
+      responses:
+        '200':
+          description: abandoned; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '409':
+          description: "`playthrough_closed`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/games/{game_id}/playtime":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GameDB game id.
+    get:
+      summary: Show a member's Playtime for a game
+      tags:
+      - Playtime
+      description: 'The member''s Playtime for the game (ADR 0015): the sum of every
+        Provider figure (Steam, RetroAchievements, PSN, from synced Achievement Sets
+        mapped to the game; an unmapped set counts for nothing) and every Manual Playtime
+        entry. `breakdown` lists each Provider set with its resolved platform (a label
+        that doesn''t resolve stays raw, with a null `platform_id`) and each Manual
+        entry. A Provider figure on a platform whose Manual entry keeps over it is
+        shown with `counted: false`. `mismatches` lists each platform where a Manual
+        entry and a Provider both report time with no keep chosen. `playthrough` is
+        the member''s open Playthrough of the game (null when none is open) and `playthroughs`
+        the earlier ones, newest first. Open to any signed-in caller; ungated. 404
+        for an unknown member or game.'
+      responses:
+        '200':
+          description: the member's Playtime for the game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '404':
+          description: unknown member or game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/games/{game_id}/playtime/mismatches":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GameDB game id.
+    post:
+      summary: Settle a Playtime mismatch
+      tags:
+      - Playtime
+      description: 'Settles the mismatch on `platform_id`. `keep: manual` ("keep mine")
+        sets the Manual entry''s `keeps_over_provider` to the Provider reporting that
+        platform, so that Provider''s figure there is shown but no longer counted.
+        `keep: provider` deletes the Manual entry. `keep: both` sets the Manual entry''s
+        `mismatch_acknowledged_provider` to that Provider: both figures keep counting
+        (ADR 0015) and the pair is no longer reported as a mismatch; another Provider
+        on the platform still is, and moving the entry to another platform clears
+        it. 422 `no_mismatch` when the platform has none, `invalid_keep` for another
+        `keep`. Writes are the member''s own; a Superadmin and the bot''s service
+        token may write for anyone (403 otherwise). Answers with the game''s Playtime
+        for that member, as `GET /users/{user_id}/games/{game_id}/playtime` does.
+        Ungated.'
+      parameters: []
+      responses:
+        '200':
+          description: settled; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '422':
+          description: "`no_mismatch` or `invalid_keep`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown member or game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    platform_id:
+                      type: integer
+                      description: The mismatch's GameDB platform.
+                    keep:
+                      type: string
+                      enum:
+                      - manual
+                      - provider
+                      - both
+                  required:
+                  - platform_id
+                  - keep
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/games/{game_id}/manual_playtimes":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member.
+    - name: game_id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: GameDB game id.
+    post:
+      summary: Add or set Manual Playtime
+      tags:
+      - Playtime
+      description: 'Creates or changes the member''s Manual Playtime entry for the
+        game on `platform_id` (null is "Other"; one entry per platform). `mode: add`
+        (the default) raises its minutes, `mode: set` replaces them. `note` replaces
+        the note; leaving it out keeps it. 422 `invalid_mode`, `invalid_minutes` (not
+        a whole number from 0 to 6,000,000, 100,000 hours, or an add that would take
+        the entry past it) or `unknown_platform`, and 422 for a note over 280 characters.
+        Writes are the member''s own; a Superadmin and the bot''s service token may
+        write for anyone (403 otherwise). Answers with the game''s Playtime for that
+        member, as `GET /users/{user_id}/games/{game_id}/playtime` does. Ungated.'
+      parameters: []
+      responses:
+        '200':
+          description: saved; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '422':
+          description: invalid mode, minutes, platform or note
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown member or game
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    platform_id:
+                      type: integer
+                      nullable: true
+                      description: GameDB platform; null is "Other".
+                    minutes:
+                      type: integer
+                      minimum: 0
+                      maximum: 6000000
+                      description: Minutes to add, or the new total.
+                    mode:
+                      type: string
+                      enum:
+                      - add
+                      - set
+                      default: add
+                    note:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+                  required:
+                  - minutes
+              required:
+              - data
+        required: true
+  "/api/v1/manual_playtimes/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+      description: Manual entry id.
+    patch:
+      summary: Change a Manual Playtime entry
+      tags:
+      - Playtime
+      description: Changes the entry's `minutes` (the new total), `note` or `platform_id`
+        (null is "Other"), each optional. Moving it to another platform clears its
+        `keeps_over_provider` and `mismatch_acknowledged_provider`; a platform that
+        already has an entry is 422. 422 `invalid_minutes` past 6,000,000 (100,000
+        hours). Writes are the member's own; a Superadmin and the bot's service token
+        may write for anyone (403 otherwise). Answers with the game's Playtime for
+        that member, as `GET /users/{user_id}/games/{game_id}/playtime` does. Ungated.
+      parameters: []
+      responses:
+        '200':
+          description: saved; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '422':
+          description: invalid minutes, platform or note, or the platform already
+            has an entry
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    minutes:
+                      type: integer
+                      minimum: 0
+                      maximum: 6000000
+                    note:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+                    platform_id:
+                      type: integer
+                      nullable: true
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a Manual Playtime entry
+      tags:
+      - Playtime
+      description: Deletes the entry (seeded ones too). Writes are the member's own;
+        a Superadmin and the bot's service token may write for anyone (403 otherwise).
+        Answers with the game's Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
+        does. Ungated.
+      responses:
+        '200':
+          description: deleted; the game's Playtime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GamePlaytime"
+                required:
+                - data
+        '403':
+          description: 'forbidden: not the member, a Superadmin or the bot'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
           content:
             application/json:
               schema:
@@ -35173,7 +36471,8 @@ paths:
       - Users
       description: 'Aggregated profile: user record + membership, socials, and preview
         lists/counts for now-playing, favorites, reviews, completions, and journal
-        (recently journaled games).'
+        (recently journaled games), plus `playtime` (the member''s total Playtime
+        and each shelf''s, a game counted once per shelf).'
       parameters:
       - name: preview_limit
         in: query

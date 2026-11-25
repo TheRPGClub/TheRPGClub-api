@@ -5,6 +5,7 @@ module Api
     class CompletionsController < ApplicationController
       include GameIdFilter
       include CodedRefusals
+      include ShelfPlaytime
 
       feature :game_completions
 
@@ -23,7 +24,8 @@ module Api
 
       def index
         scope = filtered_completions(UserGameCompletion.where(user_id: params[:user_id]))
-        render_collection(scope.preload(:platform, game: :images), resource: CompletionEntryResource, default_order: { completed_at: :desc, created_at: :desc })
+        render_shelf(scope.preload(:platform, game: :images), resource: CompletionEntryResource,
+          default_order: { completed_at: :desc, created_at: :desc })
       end
 
       # GET /api/v1/users/:user_id/completions/months
@@ -140,7 +142,8 @@ module Api
       # boolean) takes the game off the member's Now Playing in the same
       # transaction; when a Superadmin logs one for another member that always
       # happens, as the bot does. `meta.left_now_playing` says whether an entry
-      # was removed.
+      # was removed. The member's open Playthrough of the game closes with
+      # it, and an empty `final_playtime_hrs` takes its time (spec api#457).
       def create
         announce = request_data["announce"]
         leave_now_playing = request_data["leave_now_playing"]
@@ -154,6 +157,7 @@ module Api
 
         record, announce_job, left = UserGameCompletion.transaction do
           completion = UserGameCompletion.create!(writable_data.merge("user_id" => params[:user_id]))
+          Playtime::Playthroughs.close_for_completion!(completion)
           removed =
             if leave_now_playing || logged_for_another_member?
               # Skips callbacks; the completion's own commit refreshes the
@@ -164,6 +168,7 @@ module Api
             end
           [ completion, (enqueue_announce(completion) if announce), removed.positive? ]
         end
+        check_conquests(record)
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash,
                        meta: { announce_job_id: announce_job&.id, left_now_playing: left } }, status: :created
@@ -174,6 +179,7 @@ module Api
       def update
         record = UserGameCompletion.find(params[:id])
         record.update!(writable_data)
+        check_conquests(record)
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash }
       rescue ActiveRecord::RecordInvalid => e
@@ -197,6 +203,13 @@ module Api
       # a Superadmin gets past the gate to do that).
       def logged_for_another_member?
         current_principal&.discord_user? && current_principal.id.to_s != params[:user_id].to_s
+      end
+
+      # Franchise Progress (spec api#457): a Completion may finish a
+      # Franchise's Mainline set. The Conquest is announced whether or not
+      # the Completion was.
+      def check_conquests(completion)
+        Franchises::ConquestCheck.new(requested_by: requester_id).after_completion(completion)
       end
 
       def enqueue_announce(completion)

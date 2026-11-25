@@ -163,7 +163,8 @@ RSpec.describe 'api/v1/franchises', type: :request do
       tags 'Franchises'
       description 'Admins and above. Deletes the Franchise and its links, takes it out of every Pool\'s ' \
                   'sources (Core Games stay), and remembers an IGDB Franchise so re-imports don\'t create it ' \
-                  'again. Franchises merged into it go too. Recorded in the history (not undoable).'
+                  'again. Franchises merged into it go too, and so do its Conquests. Recorded in the history ' \
+                  '(not undoable).'
       parameter name: :acting_user_id, in: :query, schema: { type: :string }, required: false,
         description: 'Bot only: the member it acts for.'
 
@@ -197,7 +198,8 @@ RSpec.describe 'api/v1/franchises', type: :request do
       description 'Admins and above. Moves the links to `into_id` (a game in both stays Mainline if it was in ' \
                   'either), moves remembered unlinks, repoints Pool sources and sets `merged_into_id`, so ' \
                   're-imports naming the merged IGDB id resolve to the target. Recorded in the target\'s ' \
-                  'history (not undoable). Answers with the target.'
+                  'history (not undoable). Its Conquests move to the target; a member with one in both keeps ' \
+                  'the earlier. Answers with the target.'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: {
@@ -337,7 +339,8 @@ RSpec.describe 'api/v1/franchises', type: :request do
       tags 'Franchises'
       description 'Regulars and above (the acting member\'s stored roles). Links the game as `manual` if it ' \
                   'isn\'t linked (forgetting an earlier unlink of the pair), and sets Mainline when `mainline` ' \
-                  'is given. An existing link keeps its source. Hand links survive IGDB re-imports.'
+                  'is given. An existing link keeps its source. Hand links survive IGDB re-imports. Members ' \
+                  'who now hold every Mainline game Conquer the Franchise (announced).'
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: false, schema: {
@@ -382,7 +385,8 @@ RSpec.describe 'api/v1/franchises', type: :request do
     delete 'Unlink a game from a franchise' do
       tags 'Franchises'
       description 'Regulars and above. Removes the link and remembers it, so an IGDB re-import doesn\'t add it ' \
-                  'back. Succeeds also when the game wasn\'t linked.'
+                  'back. Succeeds also when the game wasn\'t linked. Members who now hold every Mainline game ' \
+                  'Conquer the Franchise (announced).'
       parameter name: :acting_user_id, in: :query, schema: { type: :string }, required: false,
         description: 'Bot only: the member it acts for.'
 
@@ -398,6 +402,66 @@ RSpec.describe 'api/v1/franchises', type: :request do
       end
 
       response '404', 'franchise or game not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/franchises/{id}/progress' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbFranchise id.'
+
+    get "A member's Franchise Progress" do
+      tags 'Franchise Progress'
+      description 'Behind the `franchise_progress` Feature. The member\'s three meters (Mainline, `all` = ' \
+                  'Mainline and spin-offs, spin-offs), when they Conquered the Franchise, and its Mainline and ' \
+                  'spin-off games with `done`, `completion_type` and `playtime_minutes`. A game is done with any ' \
+                  'Game Completion of it; Add-ons are left out and an Alternate Version\'s Completion doesn\'t ' \
+                  'count. Any signed-in member reads anyone\'s.'
+      produces 'application/json'
+      parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
+        description: 'The member; defaults to the signed-in member. The bot must give it.'
+
+      response '200', 'progress' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/FranchiseProgress' } }
+      end
+
+      response '400', 'the bot gave no `user_id`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'unknown franchise or member, or the Feature is not open to the caller' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/franchises/{id}/progress/members' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'GamedbFranchise id.'
+
+    get 'The Franchise Progress members table' do
+      tags 'Franchise Progress'
+      description 'Behind the `franchise_progress` Feature. Every current member with Playtime, a Game ' \
+                  'Completion (Add-ons aside) or a Conquest in the Franchise, with their meters. Conquered ' \
+                  'members first, earliest Conquest first; then by Mainline games done (by all games when the ' \
+                  'Franchise has no Mainline games), then by Playtime. Each `user` carries their avatar ' \
+                  '(`discord_avatar` hash and the stored `avatar_url` path). Not paginated.'
+      produces 'application/json'
+
+      response '200', 'members' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/FranchiseProgressMember' } }
+        }
+      end
+
+      response '404', 'unknown franchise, or the Feature is not open to the caller' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

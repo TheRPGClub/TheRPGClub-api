@@ -1,0 +1,135 @@
+{
+  "titles": [
+    {
+      "npTitleId": "PPSA90001_00",
+      "trophyTitles": [
+        {
+          "npServiceName": "trophy2",
+          "npCommunicationId": "NPWR90001_00",
+          "trophyTitleName": "Crimson Desert",
+          "trophyTitleIconUrl": "https://psnobj.prod.dl.playstation.net/psnobj/NPWR90001_00/icon.png",
+          "hasTrophyGroups": true,
+          "trophyGroupCount": 2,
+          "rarestTrophies": [
+            {
+              "trophyId": 28,
+              "trophyHidden": false,
+              "trophyType": "silver",
+              "trophyName": "Protector of Pailune",
+              "trophyDetail": "Freedom returned to Pailune after defeating the Black Bears and the Jackals.",
+              "trophyIconUrl": "https://psnobj.prod.dl.playstation.net/psnobj/NPWR90001_00/trophy.png",
+              "trophyRare": 2,
+              "trophyEarnedRate": "33.5",
+              "earned": true,
+              "earnedDateTime": "2026-04-09T02:12:04Z"
+            }
+          ],
+          "progress": 5,
+          "earnedTrophies": {
+            "bronze": 2,
+            "silver": 1,
+            "gold": 0,
+            "platinum": 0
+          },
+          "definedTrophies": {
+            "bronze": 23,
+            "silver": 14,
+            "gold": 4,
+            "platinum": 1
+          },
+          "lastUpdatedDateTime": "2026-04-09T02:12:05Z"
+        }
+      ]
+    },
+    {
+      "npTitleId": "PPSA90002_00",
+      "trophyTitles": [
+        {
+          "npServiceName": "trophy2",
+          "npCommunicationId": "NPWR90002_00",
+          "trophyTitleName": "Saints Row®: The Third™ Remastered",
+          "trophyTitleIconUrl": "https://psnobj.prod.dl.playstation.net/psnobj/NPWR90002_00/icon.png",
+          "hasTrophyGroups": true,
+          "trophyGroupCount": 4,
+          "rarestTrophies": [
+            {
+              "trophyId": 13,
+              "trophyHidden": false,
+              "trophyType": "silver",
+              "trophyName": "Gangstas... In Space!",
+              "trophyDetail": "Complete Act 3 in another way.",
+              "trophyIconUrl": "https://psnobj.prod.dl.playstation.net/psnobj/NPWR90002_00/trophy.png",
+              "trophyRare": 1,
+              "trophyEarnedRate": "10.4",
+              "earned": true,
+              "earnedDateTime": "2026-11-10T22:56:32Z"
+            }
+          ],
+          "progress": 19,
+          "earnedTrophies": {
+            "bronze": 15,
+            "silver": 3,
+            "gold": 0,
+            "platinum": 0
+          },
+          "definedTrophies": {
+            "bronze": 60,
+            "silver": 17,
+            "gold": 2,
+            "platinum": 1
+          },
+          "lastUpdatedDateTime": "2026-11-10T22:56:33Z"
+        }
+      ]
+    },
+    {
+      "npTitleId": "CUSA90002_00",
+      "trophyTitles": [
+        {
+          "npServiceName": "trophy2",
+          "npCommunicationId": "NPWR90002_00",
+          "trophyTitleName": "Saints Row®: The Third™ Remastered",
+          "trophyTitleIconUrl": "https://psnobj.prod.dl.playstation.net/psnobj/NPWR90002_00/icon.png",
+          "hasTrophyGroups": true,
+          "trophyGroupCount": 4,
+          "rarestTrophies": [
+            {
+              "trophyId": 13,
+              "trophyHidden": false,
+              "trophyType": "silver",
+              "trophyName": "Gangstas... In Space!",
+              "trophyDetail": "Complete Act 3 in another way.",
+              "trophyIconUrl": "https://psnobj.prod.dl.playstation.net/psnobj/NPWR90002_00/trophy.png",
+              "trophyRare": 1,
+              "trophyEarnedRate": "10.4",
+              "earned": true,
+              "earnedDateTime": "2026-11-10T22:56:32Z"
+            }
+          ],
+          "progress": 19,
+          "earnedTrophies": {
+            "bronze": 15,
+            "silver": 3,
+            "gold": 0,
+            "platinum": 0
+          },
+          "definedTrophies": {
+            "bronze": 60,
+            "silver": 17,
+            "gold": 2,
+            "platinum": 1
+          },
+          "lastUpdatedDateTime": "2026-11-10T22:56:33Z"
+        }
+      ]
+    },
+    {
+      "npTitleId": "PPSA90003_00",
+      "trophyTitles": []
+    },
+    {
+      "npTitleId": "CUSA90009_00",
+      "trophyTitles": []
+    }
+  ]
+}

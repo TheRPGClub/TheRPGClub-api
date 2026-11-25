@@ -25,7 +25,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "challenges" => ->(_user) { "/api/v1/challenges" },
     "release_calendar" => ->(_user) { "/api/v1/upcoming_releases" },
     "club_codex" => ->(_user) { "/api/v1/codex/fun_facts" },
-    "game_lists" => ->(_user) { "/api/v1/game_lists" }
+    "game_lists" => ->(_user) { "/api/v1/game_lists" },
+    "franchise_progress" => ->(_user) { "/api/v1/franchises/#{FactoryBot.create(:franchise).franchise_id}/progress/members" }
   }
 
   it "covers every registered Feature" do
@@ -337,7 +338,11 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/live_events" => nil,
     "api/v1/search_synonyms" => nil,
     "api/v1/search_synonym_groups" => nil,
-    "api/v1/search_synonym_drafts" => nil
+    "api/v1/search_synonym_drafts" => nil,
+    "api/v1/playtime" => nil,
+    "api/v1/manual_playtimes" => nil,
+    "api/v1/playthroughs" => nil,
+    "api/v1/franchise_progress" => "franchise_progress"
   }
 
   it "has every routed controller declare the Feature it belongs to, or none" do

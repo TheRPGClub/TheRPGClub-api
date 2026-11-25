@@ -40,11 +40,20 @@ RSpec.describe 'api/v1/now_playing', type: :request do
       parameter name: :offset, in: :query, schema: { type: :integer, minimum: 0 }, required: false,
         description: 'Deprecated; converted to a page number (transitional, for the unaudited Discord bot).'
 
+      parameter name: :sort, in: :query, schema: { type: :string, enum: %w[most_played] }, required: false,
+        description: '`most_played` orders by the member\'s Playtime for the game (most first, none as 0), then ' \
+                     'title, then the entry id. Absent keeps the list\'s own order; any other value is 422 ' \
+                     '`invalid_sort`. Each item carries `playtime_minutes` either way.'
+
       response '200', 'now-playing list' do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/NowPlayingEntry' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
+      end
+
+      response '422', 'invalid_sort' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '401', 'unauthenticated' do
@@ -60,7 +69,9 @@ RSpec.describe 'api/v1/now_playing', type: :request do
                   'In the same transaction, every backlog row the user has for the game is removed, ' \
                   'and when `note` is absent or blank the backlog note carries over. If the entry ' \
                   'can\'t be created, the backlog is left unchanged. A game already on the list is 409 ' \
-                  '`already_playing` and the backlog is left unchanged.'
+                  '`already_playing` and the backlog is left unchanged. It also opens a Playthrough of the ' \
+                  'game when none is open (see `POST /users/{user_id}/games/{game_id}/playthroughs`); ' \
+                  'removing the entry later leaves the Playthrough open.'
       consumes 'application/json'
       produces 'application/json'
 

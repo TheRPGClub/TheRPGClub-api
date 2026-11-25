@@ -155,8 +155,12 @@ module Imports
         ).tap do |created|
           # completed_at has a database default (today); an unknown date is NULL.
           created.update_columns(completed_at: nil) if completed_at.nil? && created.reload.completed_at
+          # Closes the open Playthrough; an empty final playtime takes its time.
+          Playtime::Playthroughs.close_for_completion!(created)
         end
       end
+      # An import's Conquests are written but never announced (spec api#457).
+      Franchises::ConquestCheck.new(announce: false).after_completion(completion)
       item.update!(status: "added", completion_id: completion.completion_id, error_text: nil)
       item
     end
