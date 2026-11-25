@@ -6,7 +6,7 @@
 class GotyNominationResource
   include BaseResource
 
-  attributes :id, :year, :user_id, :gamedb_game_id, :reason, :nominated_at
+  attributes :id, :year, :user_id, :gamedb_game_id, :nominated_at
 
   one :user, resource: UserSummaryResource
   one :game, resource: GameWithPlatformsResource

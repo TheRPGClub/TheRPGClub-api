@@ -15,32 +15,32 @@ RSpec.describe Goty::Nominate do
     create(:game, initial_release_date: Time.utc(year, 6, 1))
   end
 
-  def nominate(game, user: member, reason: nil, at: nominating_at)
-    travel_to(at) { described_class.call(year: 2026, user_id: user.user_id, gamedb_game_id: game.game_id, reason: reason) }
+  def nominate(game, user: member, at: nominating_at)
+    travel_to(at) { described_class.call(year: 2026, user_id: user.user_id, gamedb_game_id: game.game_id) }
   end
 
   context "while nominating" do
     before { create(:goty_vote, year: 2026) }
 
-    it "nominates a game released in the year, with a reason" do
+    it "nominates a game released in the year" do
       game = game_from(2026)
 
-      result = nominate(game, reason: "It was great")
+      result = nominate(game)
 
       expect(result).to be_created
-      expect(result.nomination).to have_attributes(year: 2026, user_id: member.user_id,
-        gamedb_game_id: game.game_id, reason: "It was great")
+      expect(result.nomination).to have_attributes(year: 2026, user_id: member.user_id, gamedb_game_id: game.game_id)
       expect(result.nomination.nominated_at).to be_present
     end
 
-    it "updates the reason when the member nominates the same game again" do
+    it "changes nothing when the member nominates the same game again" do
       game = game_from(2026)
-      nominate(game, reason: "First")
+      first = nominate(game).nomination
 
-      result = nominate(game, reason: "Second")
+      result = nominate(game)
 
       expect(result).not_to be_created
-      expect(result.nomination.reason).to eq("Second")
+      expect(result.nomination).to eq(first)
+      expect(result.nomination.nominated_at).to eq(first.nominated_at)
       expect(GotyNomination.where(year: 2026, user_id: member.user_id).count).to eq(1)
     end
 
@@ -49,7 +49,7 @@ RSpec.describe Goty::Nominate do
       games.each { |game| nominate(game) }
 
       expect { nominate(game_from(2026)) }.to raise_error(described_class::CapReachedError, /3/)
-      expect(nominate(games.first, reason: "Edited").nomination.reason).to eq("Edited")
+      expect(nominate(games.first)).not_to be_created
     end
 
     it "counts the cap per member" do
@@ -58,7 +58,7 @@ RSpec.describe Goty::Nominate do
       expect(nominate(game_from(2026), user: create(:user))).to be_created
     end
 
-    it "refuses a game released in another year with the reason" do
+    it "refuses a game released in another year, saying why" do
       expect { nominate(game_from(2025)) }.to raise_error(described_class::IneligibleError) { |error|
         expect(error.reason).to eq("not_released_in_year")
       }
@@ -69,10 +69,6 @@ RSpec.describe Goty::Nominate do
         expect(error.reason).to eq("release_unknown")
         expect(error.message).to match(/ask staff to record its release/i)
       }
-    end
-
-    it "refuses a reason over 1500 characters" do
-      expect { nominate(game_from(2026), reason: "x" * 1501) }.to raise_error(ActiveRecord::RecordInvalid)
     end
   end
 
@@ -120,13 +116,13 @@ RSpec.describe Goty::Nominate do
         # fourth is posted.
         threads << in_thread do
           GotyNomination.transaction do
-            described_class.call(year: 2026, user_id: member.user_id, gamedb_game_id: games[2].game_id, reason: nil)
+            described_class.call(year: 2026, user_id: member.user_id, gamedb_game_id: games[2].game_id)
             release.pop
           end
         end
         wait_until { lock_held? }
         threads << in_thread do
-          described_class.call(year: 2026, user_id: member.user_id, gamedb_game_id: games[3].game_id, reason: nil)
+          described_class.call(year: 2026, user_id: member.user_id, gamedb_game_id: games[3].game_id)
         end
         wait_for_a_blocked_lock
         release << true

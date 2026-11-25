@@ -1096,8 +1096,7 @@ module OpenapiSchemas
       ),
       # GotyNominationResource: a member's Game of the Year nomination.
       GotyNomination: obj(
-        id: int, year: int, user_id: str, gamedb_game_id: int,
-        reason: str(nullable: true).merge(maxLength: GotyNomination::REASON_MAX), nominated_at: ts,
+        id: int, year: int, user_id: str, gamedb_game_id: int, nominated_at: ts,
         user: ref("UserSummary"), game: ref("GameWithPlatforms")
       ),
       # Goty::Eligibility (GET /games/{id}/goty_eligibility).
@@ -1880,13 +1879,15 @@ module OpenapiSchemas
           description: "The gotm_cache_reload bot job. Null when none was queued (the service's own entry edits)."
         )
       ),
-      # NominationsController single-user delete: `deleted` plus the queued
-      # nomination_deleted bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
+      # NominationsController and GotyNominationsController single delete:
+      # `deleted` plus the queued nomination_deleted / goty_nomination_deleted
+      # bot job, so the website can poll GET /api/v1/bot_jobs/{id}.
       NominationDeletedResponse: obj(
         deleted: { type: :boolean, example: true },
         meta: obj(
           announce_job_id: int(nullable: true).merge(
-            description: "The nomination_deleted bot job. Null when none was queued (owner and service deletes)."
+            description: "The nomination_deleted (GOTM, NR-GOTM) or goty_nomination_deleted (Game of the Year) " \
+                         "bot job. Null when none was queued (owner and service deletes)."
           )
         ),
         _required: %w[deleted meta]

@@ -59,8 +59,8 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
 
     get 'List Game of the Year nominations' do
       tags 'GOTY Vote'
-      description 'Every Game of the Year nomination for the year, oldest first, each with its nominator, game ' \
-                  'and reason. `user_id` narrows it to one member\'s (at most three). Behind the `goty_vote` ' \
+      description 'Every Game of the Year nomination for the year, oldest first, each with its nominator and game ' \
+                  '(nominations carry no reason). `user_id` narrows it to one member\'s (at most three). Behind the `goty_vote` ' \
                   'Feature. 404 for a year with no GOTY Vote.'
       produces 'application/json'
       parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
@@ -85,7 +85,7 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       description 'Nominates a game for the year\'s Game of the Year while the GOTY Vote is `nominating` (from ' \
                   '`nominations_open_at` until `voting_opens_at`). A member nominates for themselves; the ' \
                   'service names the member in `user_id`. Each member nominates up to three games a year, each ' \
-                  'once: posting a game the member already nominated only updates its reason (200). The game ' \
+                  'once: posting a game the member already nominated changes nothing (200). The game ' \
                   'must be eligible (see `GET /games/{id}/goty_eligibility`); playing it is not required. ' \
                   'Behind the `goty_vote` Feature.'
       consumes 'application/json'
@@ -97,7 +97,6 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
             type: :object,
             properties: {
               gamedb_game_id: { type: :integer },
-              reason: { type: :string, nullable: true, maxLength: 1500 },
               user_id: { type: :string, description: 'The member, from the service only. A member may send ' \
                                                        'their own id or leave it out.' }
             },
@@ -111,13 +110,13 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyNomination' } }
       end
 
-      response '200', 'the member\'s nomination of the game, reason updated' do
+      response '200', 'the member had already nominated the game; nothing changed' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyNomination' } }
       end
 
       response '422', '`nominations_closed` outside the nomination window, `nomination_cap_reached` at three, ' \
                       '`not_released_in_year` or `release_unknown` (ask staff to record its release) for an ' \
-                      'ineligible game, `user_id_required` from the service, or a reason over 1500 characters' do
+                      'ineligible game, or `user_id_required` from the service' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -142,19 +141,25 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
     delete 'Withdraw or remove a Game of the Year nomination' do
       tags 'GOTY Vote'
       description 'The owner withdraws their nomination while the GOTY Vote is `nominating`; an Admin (or the ' \
-                  'service) removes any nomination at any time before voting opens. Behind the `goty_vote` ' \
-                  'Feature.'
+                  'service) removes any nomination at any time before voting opens. An Admin removing someone ' \
+                  'else\'s nomination must give a `reason` (1 to 250 characters), and a ' \
+                  '`goty_nomination_deleted` bot job announces the removal (payload: year, user_id, game_title, ' \
+                  'deleted_by_user_id, reason). Owners and the service delete plainly, with no job. Behind the ' \
+                  '`goty_vote` Feature.'
       produces 'application/json'
+      parameter name: :reason, in: :query, schema: { type: :string, maxLength: 250 }, required: false,
+                description: 'Why staff removed it. Required when an Admin removes someone else\'s nomination.'
 
       response '200', 'deleted' do
-        schema type: :object, properties: { deleted: { type: :boolean } }, required: %w[deleted]
+        schema '$ref' => '#/components/schemas/NominationDeletedResponse'
       end
 
       response '403', 'not the owner, and not an Admin' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', '`nominations_closed`: voting has opened, or (for the owner) nominations are not open' do
+      response '422', '`nominations_closed`: voting has opened, or (for the owner) nominations are not open; ' \
+                      '`reason_required` or `reason_too_long` from an Admin removing someone else\'s nomination' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

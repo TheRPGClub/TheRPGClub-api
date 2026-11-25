@@ -708,7 +708,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_110000) do
     t.datetime "created_at", null: false
     t.bigint "gamedb_game_id", null: false
     t.datetime "nominated_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
-    t.string "reason", limit: 1500
     t.datetime "updated_at", null: false
     t.string "user_id", limit: 64, null: false
     t.integer "year", null: false

@@ -8,8 +8,8 @@ module Goty
   # - Open only while the GOTY Vote is nominating (NominationsClosedError).
   # - The game must be eligible for the year (Goty::Eligibility); otherwise
   #   IneligibleError carries the reason. Playing it is not required.
-  # - A member nominates each game once a year: nominating it again only
-  #   updates the reason.
+  # - A member nominates each game once a year, with no reason: nominating
+  #   it again changes nothing.
   # - At most CAP games per member per year (CapReachedError).
   #
   # Concurrency: nominations by one member for one year are serialized with a
@@ -37,7 +37,7 @@ module Goty
 
     def self.call(...) = new.call(...)
 
-    def call(year:, user_id:, gamedb_game_id:, reason:)
+    def call(year:, user_id:, gamedb_game_id:)
       vote = GotyVote.find(year)
       raise NominationsClosedError, closed_message(vote) unless vote.nominations_open?
 
@@ -48,12 +48,12 @@ module Goty
         acquire_lock!(vote.year, user_id)
         nomination = GotyNomination.find_or_initialize_by(year: vote.year, user_id: user_id.to_s,
           gamedb_game_id: game.game_id)
-        created = nomination.new_record?
-        check_cap!(vote.year, user_id) if created
+        next Result.new(nomination: nomination, created: false) if nomination.persisted?
+
+        check_cap!(vote.year, user_id)
         nomination.goty_vote = vote
-        nomination.reason = reason.presence
         nomination.save!
-        Result.new(nomination: nomination.reload, created: created)
+        Result.new(nomination: nomination.reload, created: true)
       end
     end
 

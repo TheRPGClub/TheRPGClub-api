@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 # Game of the Year nominations (spec api#471, ticket api#473): a member
-# nominates up to three games for a year's Game of the Year, each once. The
-# cap of three is enforced in Goty::Nominate under an advisory lock.
+# nominates up to three games for a year's Game of the Year, each once, with
+# no reason attached. The cap of three is enforced in Goty::Nominate under an
+# advisory lock.
 class CreateGotyNominations < ActiveRecord::Migration[8.1]
   def change
     create_table :goty_nominations do |t|
       t.integer :year, null: false
       t.string :user_id, limit: 64, null: false
       t.bigint :gamedb_game_id, null: false
-      t.string :reason, limit: 1500
       t.datetime :nominated_at, precision: 6, null: false, default: -> { "CURRENT_TIMESTAMP" }
       t.timestamps
     end

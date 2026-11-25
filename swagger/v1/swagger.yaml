@@ -3518,10 +3518,6 @@ components:
           type: string
         gamedb_game_id:
           type: integer
-        reason:
-          type: string
-          nullable: true
-          maxLength: 1500
         nominated_at:
           type: string
           format: date-time
@@ -3638,6 +3634,7 @@ components:
           - giveaway_claim_notice
           - giveaway_hub_refresh
           - nomination_deleted
+          - goty_nomination_deleted
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
@@ -5784,6 +5781,7 @@ components:
           - giveaway_claim_notice
           - giveaway_hub_refresh
           - nomination_deleted
+          - goty_nomination_deleted
           - suggestion_submitted
           - suggestion_outcome
           - voting_poll_wakeup
@@ -6138,8 +6136,9 @@ components:
             announce_job_id:
               type: integer
               nullable: true
-              description: The nomination_deleted bot job. Null when none was queued
-                (owner and service deletes).
+              description: The nomination_deleted (GOTM, NR-GOTM) or goty_nomination_deleted
+                (Game of the Year) bot job. Null when none was queued (owner and service
+                deletes).
       required:
       - deleted
       - meta
@@ -23550,9 +23549,9 @@ paths:
       tags:
       - GOTY Vote
       description: Every Game of the Year nomination for the year, oldest first, each
-        with its nominator, game and reason. `user_id` narrows it to one member's
-        (at most three). Behind the `goty_vote` Feature. 404 for a year with no GOTY
-        Vote.
+        with its nominator and game (nominations carry no reason). `user_id` narrows
+        it to one member's (at most three). Behind the `goty_vote` Feature. 404 for
+        a year with no GOTY Vote.
       parameters:
       - name: user_id
         in: query
@@ -23602,9 +23601,9 @@ paths:
         Vote is `nominating` (from `nominations_open_at` until `voting_opens_at`).
         A member nominates for themselves; the service names the member in `user_id`.
         Each member nominates up to three games a year, each once: posting a game
-        the member already nominated only updates its reason (200). The game must
-        be eligible (see `GET /games/{id}/goty_eligibility`); playing it is not required.
-        Behind the `goty_vote` Feature.'
+        the member already nominated changes nothing (200). The game must be eligible
+        (see `GET /games/{id}/goty_eligibility`); playing it is not required. Behind
+        the `goty_vote` Feature.'
       parameters: []
       responses:
         '201':
@@ -23617,7 +23616,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/GotyNomination"
         '200':
-          description: the member's nomination of the game, reason updated
+          description: the member had already nominated the game; nothing changed
           content:
             application/json:
               schema:
@@ -23628,8 +23627,7 @@ paths:
         '422':
           description: "`nominations_closed` outside the nomination window, `nomination_cap_reached`
             at three, `not_released_in_year` or `release_unknown` (ask staff to record
-            its release) for an ineligible game, `user_id_required` from the service,
-            or a reason over 1500 characters"
+            its release) for an ineligible game, or `user_id_required` from the service"
           content:
             application/json:
               schema:
@@ -23664,10 +23662,6 @@ paths:
                   properties:
                     gamedb_game_id:
                       type: integer
-                    reason:
-                      type: string
-                      nullable: true
-                      maxLength: 1500
                     user_id:
                       type: string
                       description: The member, from the service only. A member may
@@ -23695,21 +23689,29 @@ paths:
       summary: Withdraw or remove a Game of the Year nomination
       tags:
       - GOTY Vote
-      description: The owner withdraws their nomination while the GOTY Vote is `nominating`;
+      description: 'The owner withdraws their nomination while the GOTY Vote is `nominating`;
         an Admin (or the service) removes any nomination at any time before voting
-        opens. Behind the `goty_vote` Feature.
+        opens. An Admin removing someone else''s nomination must give a `reason` (1
+        to 250 characters), and a `goty_nomination_deleted` bot job announces the
+        removal (payload: year, user_id, game_title, deleted_by_user_id, reason).
+        Owners and the service delete plainly, with no job. Behind the `goty_vote`
+        Feature.'
+      parameters:
+      - name: reason
+        in: query
+        schema:
+          type: string
+          maxLength: 250
+        required: false
+        description: Why staff removed it. Required when an Admin removes someone
+          else's nomination.
       responses:
         '200':
           description: deleted
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  deleted:
-                    type: boolean
-                required:
-                - deleted
+                "$ref": "#/components/schemas/NominationDeletedResponse"
         '403':
           description: not the owner, and not an Admin
           content:
@@ -23718,7 +23720,8 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: "`nominations_closed`: voting has opened, or (for the owner)
-            nominations are not open"
+            nominations are not open; `reason_required` or `reason_too_long` from
+            an Admin removing someone else's nomination"
           content:
             application/json:
               schema:

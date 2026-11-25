@@ -54,6 +54,7 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     {
       "completion_announce" => "game_completions",
       "nomination_deleted" => "voting_gotm",
+      "goty_nomination_deleted" => "goty_vote",
       "voting_results_publish" => "voting_gotm",
       "voting_panels_repost" => "voting_gotm",
       "voting_tie_broken" => "voting_gotm",
