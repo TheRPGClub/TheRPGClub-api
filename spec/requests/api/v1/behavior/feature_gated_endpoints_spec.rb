@@ -337,7 +337,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/live_events" => nil,
     "api/v1/search_synonyms" => nil,
     "api/v1/search_synonym_groups" => nil,
-    "api/v1/search_synonym_drafts" => nil
+    "api/v1/search_synonym_drafts" => nil,
+    "api/v1/playtime" => nil,
+    "api/v1/manual_playtimes" => nil
   }
 
   it "has every routed controller declare the Feature it belongs to, or none" do

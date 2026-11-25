@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_24_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1524,6 +1524,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_210000) do
     t.index ["user_id"], name: "ix_user_game_journal_entries_user"
   end
 
+  create_table "user_game_manual_playtimes", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.bigint "gamedb_game_id", null: false
+    t.bigint "platform_id"
+    t.integer "minutes", default: 0, null: false
+    t.string "note", limit: 280
+    t.string "origin", limit: 32, default: "member", null: false
+    t.string "keeps_over_provider", limit: 32
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["gamedb_game_id"], name: "index_user_game_manual_playtimes_on_gamedb_game_id"
+    t.index ["user_id", "gamedb_game_id", "platform_id"], name: "ux_user_game_manual_playtimes_platform", unique: true, nulls_not_distinct: true
+    t.check_constraint "minutes >= 0", name: "ck_user_game_manual_playtimes_minutes"
+    t.check_constraint "origin::text = ANY (ARRAY['member'::character varying, 'completion_seed'::character varying]::text[])", name: "ck_user_game_manual_playtimes_origin"
+  end
+
   create_table "user_game_review_revisions", primary_key: "revision_id", force: :cascade do |t|
     t.bigint "review_id", null: false
     t.integer "rating"
@@ -1753,6 +1769,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_24_210000) do
   add_foreign_key "user_game_favorites", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_favorites_user"
   add_foreign_key "user_game_journal_entries", "gamedb_games", primary_key: "game_id", name: "fk_user_game_journal_entries_gamedb"
   add_foreign_key "user_game_journal_entries", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_journal_entries_user"
+  add_foreign_key "user_game_manual_playtimes", "gamedb_games", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "user_game_manual_playtimes", "gamedb_platforms", column: "platform_id", primary_key: "platform_id"
+  add_foreign_key "user_game_manual_playtimes", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "user_game_review_revisions", "user_game_reviews", column: "review_id", primary_key: "review_id", name: "fk_user_game_review_revisions_review", on_delete: :cascade
   add_foreign_key "user_game_reviews", "gamedb_games", primary_key: "game_id", name: "fk_user_game_reviews_gamedb"
   add_foreign_key "user_game_reviews", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_reviews_user"
