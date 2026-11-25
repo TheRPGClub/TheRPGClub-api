@@ -49,6 +49,51 @@ RSpec.describe GotyVote do
     end
   end
 
+  describe ".current" do
+    # GOTY Vote 2026 takes nominations from 2027-01-01 05:00 UTC; its vote
+    # opens 2027-01-15 17:00 UTC and closes 2027-01-18 05:00 UTC.
+    let(:last_year) { described_class.create!(year: 2026) }
+    let(:this_year) { described_class.create!(year: 2027) }
+
+    it "is nil without a GOTY Vote" do
+      expect(described_class.current(Time.utc(2026, 6, 1))).to be_nil
+    end
+
+    it "is the upcoming GOTY Vote before nominations open" do
+      last_year
+      expect(described_class.current(Time.utc(2026, 6, 1))).to eq(last_year)
+    end
+
+    it "is last year's while it takes nominations or votes in January, not this year's upcoming one" do
+      last_year
+      this_year
+
+      expect(described_class.current(Time.utc(2027, 1, 3))).to eq(last_year)
+      expect(described_class.current(Time.utc(2027, 1, 16))).to eq(last_year)
+    end
+
+    it "is last year's while it waits on its tally, a runoff or a tie" do
+      this_year
+      last_year
+      expect(described_class.current(Time.utc(2027, 1, 18, 6))).to eq(last_year)
+
+      last_year.update!(closed_at: Time.utc(2027, 1, 18, 5), runoff_opens_at: Time.utc(2027, 1, 18, 5),
+        runoff_closes_at: Time.utc(2027, 1, 19, 5), runoff_ties: { "gotm" => [ 1, 2 ] },
+        pending_ties: { "gotm" => [ 1, 2 ] })
+      expect(described_class.current(Time.utc(2027, 1, 18, 12))).to eq(last_year)
+
+      last_year.update!(runoff_closed_at: Time.utc(2027, 1, 19, 5))
+      expect(described_class.current(Time.utc(2027, 1, 25))).to eq(last_year)
+    end
+
+    it "is this year's upcoming one once last year's is decided" do
+      last_year.update!(decided_at: Time.utc(2027, 1, 18, 5))
+      this_year
+
+      expect(described_class.current(Time.utc(2027, 1, 18, 6))).to eq(this_year)
+    end
+  end
+
   describe "#phase" do
     let(:vote) { described_class.new(year: 2026).tap(&:validate) }
 

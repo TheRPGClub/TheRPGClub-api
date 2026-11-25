@@ -3,7 +3,8 @@
 module Goty
   # The GOTY Vote's lifecycle (spec api#471, ticket api#475), run by the
   # every-minute voting sweep (Voting::AdvanceRoundsJob) next to the GOTM
-  # round's. It creates year Y's GOTY Vote in December of Y, queues the
+  # round's. It creates year Y's GOTY Vote on 1 January of Y (spec api#481;
+  # the first sweep after a deploy catches up the current year), queues the
   # bot's posts as their moment arrives, freezes the candidates when voting
   # opens, closes the vote, and settles the runoff. Each post is queued once
   # per GOTY Vote (the outbox's unique year/kind index) and each step acts
@@ -18,15 +19,13 @@ module Goty
   # an admin (whose pick queues goty_decided, Goty::Decide.resolve_tie!).
   module AdvanceVotes
     REMINDERS = { "goty_nomination_reminder_5d" => 5, "goty_nomination_reminder_1d" => 1 }.freeze
-    CREATE_MONTH = 12
 
     module_function
 
     def call(now: Time.current)
       return unless Voting.automation_enabled?
 
-      year = creation_year(now)
-      GotyVote.ensure!(year) if year && !GotyVote.exists?(year: year)
+      missing_years(now).each { |year| GotyVote.ensure!(year) }
       GotyVote.where(decided_at: nil).order(:year).each { |vote| advance(vote, now) }
     end
 
@@ -48,28 +47,25 @@ module Goty
       [ upcoming.compact.min, now ].max
     end
 
-    # The year whose GOTY Vote should exist at `now`: this year's from
-    # December 1 (ET), and last year's in January until its default voting
-    # open, should the sweep not have run in December. nil otherwise, so a
-    # year is never created with its windows already past.
-    def creation_year(now)
+    # The years whose GOTY Vote should exist at `now` but does not: this
+    # year's (ET) all year round, and last year's in January until its
+    # default voting open, should it never have been created. A year is
+    # never created with its windows already past.
+    def missing_years(now)
       local = now.in_time_zone(Voting::Schedule::TIME_ZONE)
-      return local.year if local.month == CREATE_MONTH
-      return local.year - 1 if now < Goty::Schedule.voting_opens_at(local.year - 1)
-
-      nil
+      years = [ local.year ]
+      years.unshift(local.year - 1) if now < Goty::Schedule.voting_opens_at(local.year - 1)
+      years - GotyVote.where(year: years).pluck(:year)
     end
 
-    # When the next GOTY Vote is due to be created: now when it is missing,
-    # else December 1 of the first year without one.
+    # When the next GOTY Vote is due to be created: now when one is missing,
+    # else 1 January (ET) of the first later year without one.
     def creation_due_at(now)
-      year = creation_year(now)
-      return now if year && !GotyVote.exists?(year: year)
+      return now if missing_years(now).any?
 
-      local = now.in_time_zone(Voting::Schedule::TIME_ZONE)
-      year = local.year
+      year = now.in_time_zone(Voting::Schedule::TIME_ZONE).year + 1
       year += 1 while GotyVote.exists?(year: year)
-      Date.new(year, CREATE_MONTH, 1).in_time_zone(Voting::Schedule::TIME_ZONE)
+      Date.new(year, 1, 1).in_time_zone(Voting::Schedule::TIME_ZONE)
     end
 
     # [kind, due at, window closes at] for each step #advance takes on the

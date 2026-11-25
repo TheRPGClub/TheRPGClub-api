@@ -1103,7 +1103,20 @@ module OpenapiSchemas
         ),
         pending_ties: json(nullable: false).merge(description: "Awards still tied: { award => [gamedb_game_id] }."),
         runoff_ties: json(nullable: false).merge(description: "The runoff's ballot: { award => [gamedb_game_id] }."),
-        awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year.")),
+        awards: array_of("GotyAward").merge(description: "The three Awards in order: gotm, nr_gotm, game_of_the_year."),
+        club_releases: array_of("GotyClubRelease").merge(
+          description: "Only while the phase is upcoming (the Year So Far; absent in every other phase): games " \
+                       "eligible for the year's Game of the Year that at least one member has completed, has in " \
+                       "Now Playing or has a published Review of, each member counted once per game. Most played " \
+                       "first, then by title, at most 48. Not nominations."
+        )),
+      # One Year So Far club release (Goty::ClubReleases, spec api#481).
+      GotyClubRelease: obj(
+        game: ref("GameSummary"),
+        members_played: int.merge(description: "Distinct members holding a Completion, Now Playing entry or " \
+                                               "published Review of the game."),
+        _required: %w[game members_played]
+      ),
       GotyAward: obj(
         award: str(enum: Goty::AWARDS.keys), name: str,
         ballot: array_of("GotyBallotGame").merge(

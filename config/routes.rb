@@ -446,6 +446,10 @@ Rails.application.routes.draw do
       end
       # The yearly GOTY Vote (spec api#471), keyed by the year it decides.
       resources :goty_votes, param: :year, only: %i[index show update] do
+        # The Current GOTY Vote (spec api#481), in the year's shape.
+        collection do
+          get "current"
+        end
         # Game of the Year nominations (api#473).
         resources :nominations, controller: "goty_nominations", only: %i[index create destroy]
         # Award voting (api#474): cast or toggle, and the admin tie pick.

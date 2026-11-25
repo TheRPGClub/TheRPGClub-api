@@ -41,6 +41,17 @@ class GotyVote < ApplicationRecord
     create_or_find_by!(year: year)
   end
 
+  # The Current GOTY Vote (GLOSSARY; spec api#481), the one members are
+  # shown by default: the undecided GOTY Vote taking nominations or votes,
+  # or waiting on its tally, a runoff or a tie; otherwise the upcoming one.
+  # In January last year's is current until it is decided, while this
+  # year's waits upcoming. nil when no GOTY Vote is undecided. The one place
+  # this rule lives: the website and the bot ask GET /goty_votes/current.
+  def self.current(now = Time.current)
+    undecided = where(decided_at: nil).order(:year).to_a
+    undecided.find { |vote| vote.phase(now) != "upcoming" } || undecided.first
+  end
+
   def nominations_open?(now = Time.current) = phase(now) == "nominating"
 
   private

@@ -8,7 +8,8 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
       tags 'GOTY Vote'
       description 'Every year\'s GOTY Vote, newest first, with its derived `phase`, dates and, once it is ' \
                   'decided, each Award\'s `winners` (game and how it was decided). Behind the ' \
-                  '`goty_vote` Feature. The lifecycle creates each year\'s GOTY Vote with the default schedule: ' \
+                  '`goty_vote` Feature. The lifecycle creates each year\'s GOTY Vote on 1 January of that year, with ' \
+                  'the default schedule: ' \
                   'nominations open January 1 of the next year at 00:00, voting opens at noon on the first Friday ' \
                   'on or after January 15 and closes at the end of that Sunday (US Eastern).'
       produces 'application/json'
@@ -20,6 +21,34 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
           data: { type: :array, items: { '$ref' => '#/components/schemas/GotyVoteSummary' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/goty_votes/current' do
+    get 'Show the Current GOTY Vote' do
+      tags 'GOTY Vote'
+      description 'The Current GOTY Vote, the one members are shown by default, in the same shape as ' \
+                  '`GET /goty_votes/{year}`: the undecided GOTY Vote taking nominations or votes, or waiting on ' \
+                  'its tally, a runoff or a tie; otherwise the upcoming one. In January last year\'s GOTY Vote ' \
+                  'is current until it is decided, while this year\'s waits upcoming. Each year\'s GOTY Vote ' \
+                  'exists from 1 January of that year. Behind the `goty_vote` Feature. 404 when no GOTY Vote is ' \
+                  'undecided.'
+      produces 'application/json'
+      parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
+                description: 'Admins and the service: show this member\'s own votes (the bot\'s vote panels). ' \
+                             'Members always see their own.'
+
+      response '200', 'GOTY Vote' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/GotyVote' } }, required: %w[data]
+      end
+
+      response '404', 'no undecided GOTY Vote' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '401', 'unauthenticated' do
@@ -41,8 +70,9 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
                   'the viewer\'s own votes and cap, any runoff or pending tie, and the ' \
                   'winner with how it was decided. As for GOTM votes, the tally\'s counts are hidden from ' \
                   'members while that ballot is open (Admins and the service see them), and once the GOTY Vote ' \
-                  'is decided the `result` names every voter. Behind the `goty_vote` Feature. 404 for a year ' \
-                  'with no GOTY Vote.'
+                  'is decided the `result` names every voter. While the phase is `upcoming` it also carries ' \
+                  '`club_releases`, the Year So Far\'s played releases (absent in every other phase). Behind ' \
+                  'the `goty_vote` Feature. 404 for a year with no GOTY Vote.'
       produces 'application/json'
       parameter name: :user_id, in: :query, schema: { type: :string }, required: false,
                 description: 'Admins and the service: show this member\'s own votes (the bot\'s vote panels). ' \

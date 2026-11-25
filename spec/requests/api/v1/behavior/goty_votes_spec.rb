@@ -127,6 +127,133 @@ RSpec.describe "api/v1/goty_votes behavior", type: :request do
     end
   end
 
+  describe "GET /api/v1/goty_votes/current" do
+    it "is the GOTY Vote taking nominations in January, not this year's upcoming one, in the year's shape" do
+      create(:goty_vote, year: 2026)
+      create(:goty_vote, year: 2027)
+
+      travel_to(Time.utc(2027, 1, 5)) { get "/api/v1/goty_votes/current", headers: auth_headers_for(member) }
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("year" => 2026, "phase" => "nominating")
+      expect(json.dig("data", "awards").pluck("award")).to eq(%w[gotm nr_gotm game_of_the_year])
+    end
+
+    it "is this year's upcoming GOTY Vote once last year's is decided" do
+      create(:goty_vote, year: 2026, decided_at: Time.utc(2027, 1, 18, 5))
+      create(:goty_vote, year: 2027)
+
+      travel_to(Time.utc(2027, 3, 1)) { get "/api/v1/goty_votes/current", headers: auth_headers_for(member) }
+
+      expect(json.fetch("data")).to include("year" => 2027, "phase" => "upcoming")
+      expect(json.fetch("data")).to have_key("club_releases")
+    end
+
+    it "is not found when no GOTY Vote is undecided" do
+      create(:goty_vote, year: 2026, decided_at: Time.utc(2027, 1, 18, 5))
+
+      travel_to(Time.utc(2027, 3, 1)) { get "/api/v1/goty_votes/current", headers: auth_headers_for(member) }
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "GET /api/v1/goty_votes/:year club_releases" do
+    let(:upcoming) { Time.utc(2026, 11, 25) }
+
+    def game_of_2026(title)
+      create(:game, title: title, initial_release_date: Time.utc(2026, 6, 1))
+    end
+
+    def show(at = upcoming)
+      travel_to(at) { get "/api/v1/goty_votes/2026", headers: auth_headers_for(member) }
+      json.fetch("data")
+    end
+
+    def played(data)
+      data.fetch("club_releases").map { |row| [ row.dig("game", "title"), row["members_played"] ] }
+    end
+
+    before { create(:goty_vote, year: 2026) }
+
+    it "counts each member once per game across Completions, Now Playing and published Reviews" do
+      one, two, three = create_list(:user, 3)
+      completed = game_of_2026("Completed")
+      playing = game_of_2026("Playing")
+      reviewed = game_of_2026("Reviewed")
+      everything = game_of_2026("Everything")
+      drafted = game_of_2026("Drafted")
+      create(:completion, user: one, game: completed)
+      create(:now_playing_entry, user: two, game: playing)
+      create(:review, user: three, game: reviewed)
+      create(:review, :draft, user: one, game: drafted)
+      create(:completion, user: one, game: everything)
+      create(:completion, user: one, game: everything, completion_type: "Completionist")
+      create(:now_playing_entry, user: one, game: everything)
+      create(:review, user: one, game: everything)
+      create(:now_playing_entry, user: two, game: everything)
+
+      data = show
+      expect(played(data)).to eq([ [ "Everything", 2 ], [ "Completed", 1 ], [ "Playing", 1 ], [ "Reviewed", 1 ] ])
+      expect(data["club_releases"].first["game"]).to include("game_id" => everything.game_id)
+    end
+
+    it "leaves out games not eligible for the year" do
+      remake = create(:game, title: "Remade")
+      create(:release, game: remake, release_date: Date.new(2026, 2, 1), date_precision: "day", source: "igdb")
+      create(:release, game: remake, release_date: Date.new(2019, 2, 1), date_precision: "day", source: "igdb")
+      old = create(:game, title: "Old", initial_release_date: Time.utc(2025, 12, 1))
+      unknown = create(:game, title: "Unknown")
+      fresh = create(:game, title: "Fresh")
+      create(:release, game: fresh, release_date: Date.new(2026, 1, 1), date_precision: "year", source: "igdb")
+      [ remake, old, unknown, fresh ].each { |game| create(:completion, game: game) }
+
+      expect(played(show)).to eq([ [ "Fresh", 1 ] ])
+    end
+
+    it "keeps the 48 most played, ties by title" do
+      top = game_of_2026("Zed")
+      create_list(:user, 2).each { |user| create(:completion, user: user, game: top) }
+      (1..50).each { |n| create(:completion, game: game_of_2026(format("Game %02d", n))) }
+
+      rows = played(show)
+      expect(rows.size).to eq(48)
+      expect(rows.first(3)).to eq([ [ "Zed", 2 ], [ "Game 01", 1 ], [ "Game 02", 1 ] ])
+      expect(rows.last).to eq([ "Game 47", 1 ])
+    end
+
+    it "is only there while the GOTY Vote is upcoming" do
+      create(:completion, game: game_of_2026("Played"))
+
+      expect(show).to have_key("club_releases")
+      expect(show(Time.utc(2027, 1, 5))).not_to have_key("club_releases")
+      expect(show(Time.utc(2027, 1, 16))).not_to have_key("club_releases")
+    end
+
+    it "is built in a fixed number of queries" do
+      count = lambda do
+        queries = 0
+        callback = ->(*, payload) { queries += 1 unless payload[:name] == "SCHEMA" }
+        ActiveSupport::Notifications.subscribed(callback, "sql.active_record") { show }
+        queries
+      end
+      create(:completion, game: game_of_2026("First"))
+      count.call
+      one = count.call
+
+      create_list(:user, 3).each_with_index do |user, index|
+        game = game_of_2026("More #{index}")
+        create(:completion, user: user, game: game)
+        create(:now_playing_entry, user: user, game: game)
+        create(:review, user: create(:user), game: game)
+      end
+      create(:completion, game: create(:game, initial_release_date: Time.utc(2024, 1, 1)))
+
+      expect(count.call).to eq(one)
+      expect(json.dig("data", "club_releases").size).to eq(4)
+    end
+  end
+
   describe "GET /api/v1/games/:id/goty_eligibility" do
     let(:game) { create(:game) }
 

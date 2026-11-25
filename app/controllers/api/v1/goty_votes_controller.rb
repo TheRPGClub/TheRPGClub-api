@@ -28,6 +28,13 @@ module Api
         render_vote(GotyVote.find(params[:year]))
       end
 
+      # GET /api/v1/goty_votes/current[?user_id=]: the Current GOTY Vote
+      # (GotyVote.current), as #show renders it; 404 when none is undecided.
+      def current
+        vote = GotyVote.current or raise ActiveRecord::RecordNotFound, "no current GOTY Vote"
+        render_vote(vote)
+      end
+
       # PATCH /api/v1/goty_votes/:year { data: { nominations_open_at, voting_opens_at, voting_closes_at } }
       def update
         vote = GotyVote.find(params[:year])
