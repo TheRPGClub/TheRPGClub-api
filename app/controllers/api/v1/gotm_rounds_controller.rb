@@ -3,8 +3,9 @@
 module Api
   module V1
     # GOTM / NR-GOTM history grouped and paged by round (see Gotm::RoundHistory),
-    # so clients don't group gotm_entries / nr_gotm_entries themselves. Read-only
-    # and open to any authenticated caller.
+    # so clients don't group gotm_entries / nr_gotm_entries themselves, and the
+    # Round Page (Gotm::RoundDetail). Read-only and open to any authenticated
+    # caller.
     class GotmRoundsController < ApplicationController
       feature :voting_gotm
 
@@ -42,6 +43,17 @@ module Api
       def current
         number = Gotm::RoundHistory.latest_round_number or raise ActiveRecord::RecordNotFound, "no GOTM round exists"
         render json: { data: Gotm::RoundHistory.new.rounds([ number ]).first }
+      end
+
+      # GET /api/v1/gotm_rounds/:round
+      #
+      # One closed round in full for the Round Page (see Gotm::RoundDetail).
+      # 404 for a round that is not in the GOTM History or is still taking
+      # nominations or votes.
+      def show
+        data = Gotm::RoundDetail.find(Integer(params[:round], 10)) or
+          raise ActiveRecord::RecordNotFound, "no closed GOTM round #{params[:round]}"
+        render json: { data: }
       end
 
       private

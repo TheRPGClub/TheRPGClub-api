@@ -8159,6 +8159,83 @@ components:
       - round_number
       - gotm
       - nr_gotm
+    GotmRoundNomination:
+      allOf:
+      - "$ref": "#/components/schemas/Nomination"
+      - type: object
+        properties:
+          votes:
+            type: integer
+            nullable: true
+          runoff_votes:
+            type: integer
+            nullable: true
+        required:
+        - votes
+        - runoff_votes
+    GotmRoundWinner:
+      allOf:
+      - "$ref": "#/components/schemas/GotmRoundGame"
+      - type: object
+        properties:
+          nomination:
+            allOf:
+            - "$ref": "#/components/schemas/GotmRoundNomination"
+            nullable: true
+        required:
+        - nomination
+    GotmRoundCategory:
+      type: object
+      properties:
+        month_year:
+          type: string
+          nullable: true
+        voting_results_message_id:
+          type: string
+          nullable: true
+        voted:
+          type: boolean
+        runoff:
+          type: boolean
+        winners:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GotmRoundWinner"
+        nominations:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GotmRoundNomination"
+      required:
+      - month_year
+      - voted
+      - runoff
+      - winners
+      - nominations
+    GotmRoundDetail:
+      type: object
+      properties:
+        round_number:
+          type: integer
+        month_year:
+          type: string
+          nullable: true
+        previous:
+          type: integer
+          nullable: true
+        next:
+          type: integer
+          nullable: true
+        gotm:
+          "$ref": "#/components/schemas/GotmRoundCategory"
+        nr_gotm:
+          "$ref": "#/components/schemas/GotmRoundCategory"
+      required:
+      - round_number
+      - month_year
+      - previous
+      - next
+      - gotm
+      - nr_gotm
     PublicWinner:
       type: object
       properties:
@@ -23731,6 +23808,49 @@ paths:
                     "$ref": "#/components/schemas/GotmRound"
         '404':
           description: no GOTM rounds
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/gotm_rounds/{round}":
+    get:
+      summary: Show a closed GOTM round (Round Page)
+      tags:
+      - GOTM
+      description: 'One closed round in full. A round is closed when it has GOTM or
+        NR-GOTM entries and its voting round, if any, has finished voting (runoff
+        included). Per Category: the winners (each crediting the earliest Nomination
+        of its game, when nominated), then every other Nomination. When the Category
+        had a vote, each Nomination carries `votes` and the list is ordered by votes;
+        otherwise by when it was nominated. `runoff_votes` is set for the games in
+        a runoff. Counts only, never voter identities. `previous` / `next` are the
+        neighbouring closed round numbers, or null.'
+      parameters:
+      - name: round
+        in: path
+        schema:
+          type: integer
+        required: true
+      responses:
+        '200':
+          description: the round
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/GotmRoundDetail"
+        '404':
+          description: not a closed round
           content:
             application/json:
               schema:

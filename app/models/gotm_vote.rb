@@ -10,6 +10,8 @@
 # Casting goes through Voting::CastVote, which owns the toggle / evict / cap
 # rules; this model only mirrors the DB constraints.
 class GotmVote < ApplicationRecord
+  include VoteCounts
+
   self.table_name = "gotm_votes"
   self.primary_key = "vote_id"
 

@@ -72,4 +72,33 @@ RSpec.describe 'api/v1/gotm_rounds', type: :request do
       end
     end
   end
+
+  path '/api/v1/gotm_rounds/{round}' do
+    get 'Show a closed GOTM round (Round Page)' do
+      tags 'GOTM'
+      description 'One closed round in full. A round is closed when it has GOTM or NR-GOTM entries and its ' \
+                  'voting round, if any, has finished voting (runoff included). Per Category: the winners ' \
+                  '(each crediting the earliest Nomination of its game, when nominated), then every other ' \
+                  'Nomination. When the Category had a vote, each Nomination carries `votes` and the list is ' \
+                  'ordered by votes; otherwise by when it was nominated. `runoff_votes` is set for the games ' \
+                  'in a runoff. Counts only, never voter identities. `previous` / `next` are the neighbouring ' \
+                  'closed round numbers, or null.'
+      produces 'application/json'
+      parameter name: :round, in: :path, schema: { type: :integer }, required: true
+
+      response '200', 'the round' do
+        schema type: :object, required: %w[data], properties: {
+          data: { '$ref' => '#/components/schemas/GotmRoundDetail' }
+        }
+      end
+
+      response '404', 'not a closed round' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
 end

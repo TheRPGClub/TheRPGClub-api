@@ -4,6 +4,8 @@
 # GotmVote. Same shape; see GotmVote for the rationale on the denormalized
 # game column and the optional, unenforced associations.
 class NrGotmVote < ApplicationRecord
+  include VoteCounts
+
   self.table_name = "nr_gotm_votes"
   self.primary_key = "vote_id"
 
