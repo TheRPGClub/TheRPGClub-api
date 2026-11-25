@@ -114,7 +114,7 @@ module Api
       # entries). All entries are public, so there is no visibility filtering.
       # Ordered `created_at DESC, entry_id DESC` and paginated.
       def search
-        scope = UserGameJournalEntry.includes(:game, :user)
+        scope = UserGameJournalEntry.includes(:user, game: :images)
         if params[:q].present?
           like = "%#{sanitize_like(params[:q])}%"
           scope = scope.where("entry_title ILIKE :q OR entry_body ILIKE :q", q: like)

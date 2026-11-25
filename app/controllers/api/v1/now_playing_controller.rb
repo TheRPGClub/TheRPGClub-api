@@ -32,7 +32,7 @@ module Api
         scope = UserNowPlaying.with_now_playing_details
           .joins(:user)
           .where(rpg_club_users: { is_bot: false, server_left_at: nil })
-          .preload(:user, :game, :platform)
+          .preload(:user, :platform, game: :images)
 
         game_ids = Array(params[:game_ids]).map(&:to_i).reject(&:zero?)
         scope = scope.where(gamedb_game_id: game_ids) if game_ids.any?
@@ -58,7 +58,7 @@ module Api
       # The user's own list, ordered the way the bot displays it: ascending
       # `sort_order` (nulls last), then newest first.
       def user_index
-        scope = UserNowPlaying.with_now_playing_details.where(user_id: params[:user_id]).preload(:game, :platform)
+        scope = UserNowPlaying.with_now_playing_details.where(user_id: params[:user_id]).preload(:platform, game: :images)
         render_collection(scope, resource: NowPlayingEntryResource,
           default_order: UserNowPlaying::SHELF_ORDER)
       end

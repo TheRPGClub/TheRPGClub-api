@@ -117,8 +117,9 @@ Rails.application.routes.draw do
           get "collections", to: "collections#index"
           post "collections", to: "collections#create"
           # Declared before `completions` so the path reads clearly; `common`
-          # is a fixed segment, never a completion id.
+          # and `months` are fixed segments, never a completion id.
           get "completions/common", to: "completions#common"
+          get "completions/months", to: "completions#months"
           get "completions/export", to: "completions#export"
           get "completions", to: "completions#index"
           post "completions", to: "completions#create"

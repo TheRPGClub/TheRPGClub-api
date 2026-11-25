@@ -106,7 +106,7 @@ module Api
       private
 
       def render_santa(edition, signup)
-        backlog = Challenges::Picks.eligible_backlog(signup.recipient_user_id).preload(:game, :platform)
+        backlog = Challenges::Picks.eligible_backlog(signup.recipient_user_id).preload(:platform, game: :images)
         query = params[:q].to_s.strip
         backlog = backlog.joins(:game).where("gamedb_games.title ILIKE ?", "%#{ApplicationRecord.sanitize_sql_like(query)}%") if query.present?
         picked = signup.picked_game
