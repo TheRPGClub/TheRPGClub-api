@@ -167,6 +167,11 @@ RSpec.describe "api/v1 playtime behavior", type: :request do
 
     before { steam_playtime(member, 600) }
 
+    def playtime_mismatches
+      get playtime_path, headers: auth_headers_for(other)
+      json.dig("data", "mismatches")
+    end
+
     def settle(keep, platform: windows, as: member)
       post "#{playtime_path}/mismatches", params: { data: { platform_id: platform.platform_id, keep: keep } },
         headers: auth_headers_for(as), as: :json
@@ -188,6 +193,40 @@ RSpec.describe "api/v1 playtime behavior", type: :request do
       expect(json.dig("data", "total_minutes")).to eq(600)
       expect(json.dig("data", "mismatches")).to eq([])
       expect(UserGameManualPlaytime.exists?(entry.id)).to be(false)
+    end
+
+    it "keep both counts both figures and stops reporting the mismatch" do
+      settle("both")
+
+      expect(response).to have_http_status(:ok)
+      data = json.fetch("data")
+      expect(data["total_minutes"]).to eq(1100)
+      expect(data["mismatches"]).to eq([])
+      expect(data.dig("breakdown", "provider_sets", 0, "counted")).to be(true)
+      expect(data.dig("breakdown", "manual_entries", 0))
+        .to include("mismatch_acknowledged_provider" => "steam", "keeps_over_provider" => nil)
+      expect(playtime_mismatches).to eq([])
+    end
+
+    it "keep both covers only that Provider: another Provider on the platform is still a mismatch" do
+      settle("both")
+      account = create(:user_linked_account, user: member, provider: "retroachievements")
+      set = create(:achievement_set, provider: "retroachievements", game: game, platform_label: "PC",
+        title: "RA set")
+      create(:user_achievement_set_progress, linked_account: account, achievement_set: set, playtime_minutes: 40)
+
+      expect(playtime_mismatches).to contain_exactly(include("provider" => "retroachievements"))
+    end
+
+    it "moving the entry to another platform clears keep both" do
+      settle("both")
+      patch "/api/v1/manual_playtimes/#{entry.id}", params: { data: { platform_id: switch.platform_id } },
+        headers: auth_headers_for(member), as: :json
+      patch "/api/v1/manual_playtimes/#{entry.id}", params: { data: { platform_id: windows.platform_id } },
+        headers: auth_headers_for(member), as: :json
+
+      expect(json.dig("data", "mismatches")).to contain_exactly(include("provider" => "steam"))
+      expect(json.dig("data", "breakdown", "manual_entries", 0, "mismatch_acknowledged_provider")).to be_nil
     end
 
     it "is 422 when there is no mismatch on the platform, or for an unknown keep" do

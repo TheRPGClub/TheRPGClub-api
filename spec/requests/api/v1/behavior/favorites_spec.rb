@@ -27,6 +27,14 @@ RSpec.describe "api/v1/favorites behavior", type: :request do
       expect(json.dig("data", 0, "game")).to include("game_id" => first.gamedb_game_id)
     end
 
+    it "gives each entry the date it was added as added_at" do
+      create(:favorite, user: owner, created_at: Time.utc(2026, 9, 26, 15))
+
+      get "/api/v1/users/#{owner.user_id}/favorites", headers: service_headers
+
+      expect(json.dig("data", 0, "added_at")).to eq("2026-09-26T15:00:00.000Z")
+    end
+
     it "exposes sort_order but not the timestamps" do
       create(:favorite, user: owner, sort_order: 1)
 

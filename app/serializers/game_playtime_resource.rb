@@ -5,8 +5,8 @@
 # name from `params[:platform_names]` ({ platform_id => name }); a Provider
 # set whose label didn't resolve has a null `platform_id` and keeps its raw
 # `platform_label`. `playthrough` is the open Playthrough (null when none is
-# open) and `playthroughs` the earlier ones, newest first, from
-# `params[:playthroughs]`.
+# open; `baseline_minutes` is the Playtime it counts from) and `playthroughs`
+# the earlier ones, newest first, from `params[:playthroughs]`.
 class GamePlaytimeResource
   include BaseResource
 
@@ -34,7 +34,8 @@ class GamePlaytimeResource
 
   attribute :playthrough do |playtime|
     open = playtime.open_playthrough
-    open && { id: open.id, started_at: open.started_at, minutes: playtime.playthrough_minutes, manual: open.manual? }
+    open && { id: open.id, started_at: open.started_at, minutes: playtime.playthrough_minutes,
+      baseline_minutes: open.baseline_minutes, manual: open.manual? }
   end
 
   attribute :playthroughs do

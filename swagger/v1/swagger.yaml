@@ -1253,6 +1253,10 @@ components:
         sort_order:
           type: integer
           nullable: true
+        added_at:
+          type: string
+          format: date-time
+          description: When the entry was added (its created_at).
         game:
           "$ref": "#/components/schemas/GameSummary"
         platform:
@@ -1269,6 +1273,7 @@ components:
       - entry_id
       - user_id
       - gamedb_game_id
+      - added_at
     BacklogPick:
       type: object
       properties:
@@ -1373,6 +1378,10 @@ components:
         platform_abbreviation:
           type: string
           nullable: true
+        added_at:
+          type: string
+          format: date-time
+          description: When the entry was added (its created_at).
         game:
           "$ref": "#/components/schemas/GameSummary"
         platform:
@@ -1394,6 +1403,7 @@ components:
       - note
       - platform_name
       - platform_abbreviation
+      - added_at
       - game
       - platform
     CollectionUserEntry:
@@ -1658,6 +1668,10 @@ components:
         sort_order:
           type: integer
           nullable: true
+        added_at:
+          type: string
+          format: date-time
+          description: When the entry was added (its created_at).
         game:
           "$ref": "#/components/schemas/GameSummary"
         playtime_minutes:
@@ -1670,6 +1684,7 @@ components:
       - entry_id
       - user_id
       - gamedb_game_id
+      - added_at
     NowPlayingGame:
       allOf:
       - "$ref": "#/components/schemas/GameSummary"
@@ -6251,6 +6266,16 @@ components:
           -
           description: The Provider whose figure on this platform doesn't count ("keep
             mine").
+        mismatch_acknowledged_provider:
+          type: string
+          nullable: true
+          enum:
+          - retroachievements
+          - steam
+          - psn
+          -
+          description: The Provider whose figure on this platform counts alongside
+            this entry with no mismatch reported ("keep both").
         created_at:
           type: string
           format: date-time
@@ -6292,7 +6317,7 @@ components:
       - manual_playtime_id
       - manual_minutes
       description: A Manual entry and a Provider on the same resolved platform, with
-        no keep chosen.
+        no keep chosen (keep mine, the Provider's, or both).
     GamePlaytime:
       type: object
       properties:
@@ -6349,6 +6374,10 @@ components:
           type: integer
           description: The total set by hand when `manual`, else the Playtime gained
             since it started, floored at 0.
+        baseline_minutes:
+          type: integer
+          description: 'The member''s Playtime for the game when it started: the measured
+            time is Playtime now minus this, floored at 0.'
         manual:
           type: boolean
           description: True when the member set its total by hand.
@@ -6356,6 +6385,7 @@ components:
       - id
       - started_at
       - minutes
+      - baseline_minutes
       - manual
       description: The member's open Playthrough of the game (at most one).
     EndedPlaythrough:
@@ -6495,11 +6525,28 @@ components:
       - conquered_at
       - meters
       - games
+    FranchiseProgressMemberUser:
+      allOf:
+      - "$ref": "#/components/schemas/UserSummary"
+      - type: object
+        properties:
+          discord_avatar:
+            type: string
+            nullable: true
+            description: The member's Discord avatar hash from their last website
+              login; null if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png
+          avatar_url:
+            type: string
+            example: "/api/v1/users/123/avatar"
+            description: The API path of the avatar image the bot stores (404 when
+              it has none).
+        required:
+        - avatar_url
     FranchiseProgressMember:
       type: object
       properties:
         user:
-          "$ref": "#/components/schemas/UserSummary"
+          "$ref": "#/components/schemas/FranchiseProgressMemberUser"
         meters:
           "$ref": "#/components/schemas/FranchiseProgressMeters"
         conquered_at:
@@ -19173,7 +19220,8 @@ paths:
         Playtime, a Game Completion (Add-ons aside) or a Conquest in the Franchise,
         with their meters. Conquered members first, earliest Conquest first; then
         by Mainline games done (by all games when the Franchise has no Mainline games),
-        then by Playtime. Not paginated.
+        then by Playtime. Each `user` carries their avatar (`discord_avatar` hash
+        and the stored `avatar_url` path). Not paginated.
       responses:
         '200':
           description: members
@@ -28368,11 +28416,15 @@ paths:
       description: 'Settles the mismatch on `platform_id`. `keep: manual` ("keep mine")
         sets the Manual entry''s `keeps_over_provider` to the Provider reporting that
         platform, so that Provider''s figure there is shown but no longer counted.
-        `keep: provider` deletes the Manual entry. 422 `no_mismatch` when the platform
-        has none, `invalid_keep` for another `keep`. Writes are the member''s own;
-        a Superadmin and the bot''s service token may write for anyone (403 otherwise).
-        Answers with the game''s Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
-        does. Ungated.'
+        `keep: provider` deletes the Manual entry. `keep: both` sets the Manual entry''s
+        `mismatch_acknowledged_provider` to that Provider: both figures keep counting
+        (ADR 0015) and the pair is no longer reported as a mismatch; another Provider
+        on the platform still is, and moving the entry to another platform clears
+        it. 422 `no_mismatch` when the platform has none, `invalid_keep` for another
+        `keep`. Writes are the member''s own; a Superadmin and the bot''s service
+        token may write for anyone (403 otherwise). Answers with the game''s Playtime
+        for that member, as `GET /users/{user_id}/games/{game_id}/playtime` does.
+        Ungated.'
       parameters: []
       responses:
         '200':
@@ -28427,6 +28479,7 @@ paths:
                       enum:
                       - manual
                       - provider
+                      - both
                   required:
                   - platform_id
                   - keep
@@ -28549,10 +28602,11 @@ paths:
       - Playtime
       description: Changes the entry's `minutes` (the new total), `note` or `platform_id`
         (null is "Other"), each optional. Moving it to another platform clears its
-        `keeps_over_provider`; a platform that already has an entry is 422. Writes
-        are the member's own; a Superadmin and the bot's service token may write for
-        anyone (403 otherwise). Answers with the game's Playtime for that member,
-        as `GET /users/{user_id}/games/{game_id}/playtime` does. Ungated.
+        `keeps_over_provider` and `mismatch_acknowledged_provider`; a platform that
+        already has an entry is 422. Writes are the member's own; a Superadmin and
+        the bot's service token may write for anyone (403 otherwise). Answers with
+        the game's Playtime for that member, as `GET /users/{user_id}/games/{game_id}/playtime`
+        does. Ungated.
       parameters: []
       responses:
         '200':

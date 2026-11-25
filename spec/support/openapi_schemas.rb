@@ -447,6 +447,7 @@ module OpenapiSchemas
       BacklogEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         note: str(nullable: true), sort_order: int(nullable: true),
+        added_at: ts.merge(description: "When the entry was added (its created_at)."),
         game: ref("GameSummary"), platform: ref("Platform", nullable: true),
         playtime_minutes: shelf_playtime_minutes
       ),
@@ -477,10 +478,11 @@ module OpenapiSchemas
         entry_id: int, user_id: str, gamedb_game_id: int, platform_id: int(nullable: true),
         ownership_type: str, note: str(nullable: true),
         platform_name: str(nullable: true), platform_abbreviation: str(nullable: true),
+        added_at: ts.merge(description: "When the entry was added (its created_at)."),
         game: ref("GameSummary"), platform: ref("Platform", nullable: true),
         playtime_minutes: shelf_playtime_minutes,
         _required: %w[entry_id user_id gamedb_game_id platform_id ownership_type note
-                      platform_name platform_abbreviation game platform]
+                      platform_name platform_abbreviation added_at game platform]
       ),
       # collections#game_index (CollectionUserEntryResource): the CollectionEntry
       # fields + the owning user, for the community-ownership view (#101).
@@ -551,7 +553,8 @@ module OpenapiSchemas
       # FavoriteEntryResource (no platform association).
       FavoriteEntry: obj(
         entry_id: int, user_id: str, gamedb_game_id: int, note: str(nullable: true),
-        sort_order: int(nullable: true), game: ref("GameSummary"),
+        sort_order: int(nullable: true), added_at: ts.merge(description: "When the entry was added (its created_at)."),
+        game: ref("GameSummary"),
         playtime_minutes: shelf_playtime_minutes
       ),
       # The now-playing embedded game (NowPlayingEmbeds): the GameSummary shape
@@ -1992,10 +1995,14 @@ module OpenapiSchemas
           description: "`completion_seed`: made or raised by the launch seed from Game Completions."),
         keeps_over_provider: str(nullable: true, enum: [ *UserLinkedAccount::PROVIDERS, nil ],
           description: "The Provider whose figure on this platform doesn't count (\"keep mine\")."),
+        mismatch_acknowledged_provider: str(nullable: true, enum: [ *UserLinkedAccount::PROVIDERS, nil ],
+          description: "The Provider whose figure on this platform counts alongside this entry with no " \
+                       "mismatch reported (\"keep both\")."),
         created_at: ts, updated_at: ts
       ),
       PlaytimeMismatch: obj(
-        _description: "A Manual entry and a Provider on the same resolved platform, with no keep chosen.",
+        _description: "A Manual entry and a Provider on the same resolved platform, with no keep chosen " \
+                      "(keep mine, the Provider's, or both).",
         platform_id: int, platform_name: str(nullable: true), provider: str(enum: UserLinkedAccount::PROVIDERS),
         provider_minutes: int.merge(description: "The Provider's figure on this platform (all its sets)."),
         manual_playtime_id: int, manual_minutes: int
@@ -2016,6 +2023,8 @@ module OpenapiSchemas
         id: int, started_at: ts,
         minutes: int.merge(description: "The total set by hand when `manual`, else the Playtime gained since " \
                                         "it started, floored at 0."),
+        baseline_minutes: int.merge(description: "The member's Playtime for the game when it started: the " \
+                                                 "measured time is Playtime now minus this, floored at 0."),
         manual: bool.merge(description: "True when the member set its total by hand.")
       ),
       EndedPlaythrough: obj(
@@ -2060,8 +2069,16 @@ module OpenapiSchemas
         ),
         _required: %w[user_id franchise_id conquered_at meters games]
       ),
+      FranchiseProgressMemberUser: extends("UserSummary",
+        discord_avatar: str(nullable: true).merge(
+          description: "The member's Discord avatar hash from their last website login; null if unknown. " \
+                       "https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png"
+        ),
+        avatar_url: str(example: "/api/v1/users/123/avatar").merge(
+          description: "The API path of the avatar image the bot stores (404 when it has none)."
+        )),
       FranchiseProgressMember: obj(
-        user: ref("UserSummary"), meters: ref("FranchiseProgressMeters"), conquered_at: ts(nullable: true),
+        user: ref("FranchiseProgressMemberUser"), meters: ref("FranchiseProgressMeters"), conquered_at: ts(nullable: true),
         _required: %w[user meters conquered_at]
       ),
       # The Conquest post bot job payload (ticket api#461), as BotJobClaim.payload carries it.

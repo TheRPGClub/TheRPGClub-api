@@ -11,7 +11,7 @@ module Api
     class PlaytimeController < ApplicationController
       include PlaytimeDocument
 
-      KEEPS = %w[manual provider].freeze
+      KEEPS = %w[manual provider both].freeze
 
       before_action :require_owner_or_superadmin!, only: :settle_mismatch
 
@@ -23,15 +23,17 @@ module Api
       end
 
       # POST /api/v1/users/:user_id/games/:game_id/playtime/mismatches
-      # Body: { "data": { "platform_id": <id>, "keep": "manual" | "provider" } }
+      # Body: { "data": { "platform_id": <id>, "keep": "manual" | "provider" | "both" } }
       # Keep mine sets the Manual entry's `keeps_over_provider` to the Provider
       # reporting that platform, so its figure stops counting there; keep the
-      # Provider's deletes the Manual entry. 422 `no_mismatch` when the
+      # Provider's deletes the Manual entry; keep both sets the entry's
+      # `mismatch_acknowledged_provider`, so both figures count and the pair
+      # is no longer a mismatch (ADR 0015). 422 `no_mismatch` when the
       # platform has none.
       def settle_mismatch
         keep = request_data["keep"]
         unless KEEPS.include?(keep)
-          return render(json: { error: "invalid_keep", message: "keep must be manual or provider" },
+          return render(json: { error: "invalid_keep", message: "keep must be manual, provider or both" },
             status: :unprocessable_content)
         end
 
@@ -45,7 +47,11 @@ module Api
         end
 
         entry = UserGameManualPlaytime.find(mismatch.manual_playtime_id)
-        keep == "manual" ? entry.update!(keeps_over_provider: mismatch.provider) : entry.destroy!
+        case keep
+        when "manual" then entry.update!(keeps_over_provider: mismatch.provider)
+        when "both" then entry.update!(mismatch_acknowledged_provider: mismatch.provider)
+        else entry.destroy!
+        end
         render_playtime(user_id, game_id)
       end
     end

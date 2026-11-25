@@ -12,7 +12,9 @@ module Playtime
   # A Provider figure is shown but not counted when the member's Manual entry
   # on the same resolved platform `keeps_over_provider` that Provider ("keep
   # mine"). Otherwise a Manual entry and a Provider set on the same resolved
-  # platform are a mismatch for the member to settle. A set's `platform_label`
+  # platform are a mismatch for the member to settle, unless the entry's
+  # `mismatch_acknowledged_provider` is that Provider ("keep both": both
+  # count, no mismatch). A set's `platform_label`
   # is resolved with Imports::PlatformResolver; a label that doesn't resolve
   # stays raw and never takes part in a mismatch.
   #
@@ -32,8 +34,8 @@ module Playtime
   class Ledger
     ProviderSet = Struct.new(:achievement_set_id, :provider, :title, :platform_label, :platform_id, :minutes,
       :counted, keyword_init: true)
-    ManualEntry = Struct.new(:id, :platform_id, :minutes, :note, :origin, :keeps_over_provider, :created_at,
-      :updated_at, keyword_init: true)
+    ManualEntry = Struct.new(:id, :platform_id, :minutes, :note, :origin, :keeps_over_provider,
+      :mismatch_acknowledged_provider, :created_at, :updated_at, keyword_init: true)
     Mismatch = Struct.new(:platform_id, :provider, :provider_minutes, :manual_playtime_id, :manual_minutes,
       keyword_init: true)
 
@@ -68,7 +70,8 @@ module Playtime
       private
 
       # Marks the Provider sets a Manual entry keeps over as not counted, and
-      # collects a mismatch per (platform, Provider) left unsettled.
+      # collects a mismatch per (platform, Provider) left unsettled ("keep
+      # both" settles one with both still counting).
       def apply_keeps
         manual_entries.each do |entry|
           next if entry.platform_id.nil?
@@ -77,7 +80,7 @@ module Playtime
           on_platform.group_by(&:provider).each do |provider, sets|
             if provider == entry.keeps_over_provider
               sets.each { |set| set.counted = false }
-            else
+            elsif provider != entry.mismatch_acknowledged_provider
               @mismatches << Mismatch.new(platform_id: entry.platform_id, provider: provider,
                 provider_minutes: sets.sum(&:minutes), manual_playtime_id: entry.id, manual_minutes: entry.minutes)
             end
@@ -175,7 +178,8 @@ module Playtime
 
     def manual_entry(row)
       ManualEntry.new(id: row["row_id"], platform_id: row["platform_id"], minutes: row["minutes"], note: row["note"],
-        origin: row["origin"], keeps_over_provider: row["keeps_over_provider"], created_at: row["created_at"],
+        origin: row["origin"], keeps_over_provider: row["keeps_over_provider"],
+        mismatch_acknowledged_provider: row["mismatch_acknowledged_provider"], created_at: row["created_at"],
         updated_at: row["updated_at"])
     end
 
@@ -196,7 +200,8 @@ module Playtime
         achievement_sets.game_id, achievement_sets.provider, achievement_sets.title, achievement_sets.platform_label,
         NULL::bigint AS platform_id, user_achievement_set_progress.playtime_minutes AS minutes,
         achievement_sets.id AS achievement_set_id, NULL::varchar AS note, NULL::varchar AS origin,
-        NULL::varchar AS keeps_over_provider, NULL::timestamp AS created_at, NULL::timestamp AS updated_at
+        NULL::varchar AS keeps_over_provider, NULL::varchar AS mismatch_acknowledged_provider,
+        NULL::timestamp AS created_at, NULL::timestamp AS updated_at
       SQL
       manual = UserGameManualPlaytime.all
       manual = manual.where(user_id: @user_ids) if @user_ids
@@ -204,7 +209,8 @@ module Playtime
       manual = manual.select(<<~SQL.squish)
         'manual' AS source, id AS row_id, user_id, gamedb_game_id AS game_id, NULL::varchar AS provider,
         NULL::varchar AS title, NULL::varchar AS platform_label, platform_id, minutes,
-        NULL::bigint AS achievement_set_id, note, origin, keeps_over_provider, created_at, updated_at
+        NULL::bigint AS achievement_set_id, note, origin, keeps_over_provider, mismatch_acknowledged_provider,
+        created_at, updated_at
       SQL
 
       result = ApplicationRecord.connection.select_all("(#{provider.to_sql}) UNION ALL (#{manual.to_sql})", "Playtime")
