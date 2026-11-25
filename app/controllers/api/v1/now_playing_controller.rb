@@ -79,6 +79,9 @@ module Api
       # supplied the backlog note carries over. If the entry can't be created the
       # backlog is left as it was. A game already on the list is 409
       # `already_playing` (the backlog is untouched).
+      #
+      # It also opens a Playthrough of the game when none is open (spec
+      # api#457). Taking the game off the list leaves the Playthrough open.
       def create
         data = create_data.merge("user_id" => params[:user_id])
         if data["gamedb_game_id"].present? &&
@@ -92,7 +95,11 @@ module Api
             .order(sort_order: :asc, created_at: :desc).to_a
           data["note"] = backlog.map(&:note).find(&:present?) if data["note"].blank? && backlog.any?
           backlog.each(&:destroy!)
-          UserNowPlaying.create!(data)
+          UserNowPlaying.create!(data).tap do |entry|
+            next unless entry.gamedb_game_id
+
+            Playtime::Playthroughs.start_unless_open(user_id: entry.user_id, game_id: entry.gamedb_game_id)
+          end
         end
         render json: { data: serialize_entry(record.entry_id, NowPlayingEntryResource) }, status: :created
       end

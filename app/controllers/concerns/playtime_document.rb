@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
-# Renders a member's Playtime for one game (Playtime::Ledger) as the playtime
-# endpoints answer it, and the write gate they share: the member's own, or a
-# Superadmin's (and the bot's) for anyone, as with Completions.
+# Renders a member's Playtime for one game (Playtime::Ledger), with their open
+# and earlier Playthroughs, as the playtime endpoints answer it, and the write
+# gate they share: the member's own, or a Superadmin's (and the bot's) for
+# anyone, as with Completions.
 module PlaytimeDocument
   extend ActiveSupport::Concern
 
@@ -10,8 +11,10 @@ module PlaytimeDocument
 
   def render_playtime(user_id, game_id, status: :ok)
     playtime = Playtime::Ledger.for_game(user_id: user_id, game_id: game_id)
-    render json: { data: GamePlaytimeResource.new(playtime, params: { platform_names: platform_names(playtime) })
-      .serializable_hash }, status: status
+    playthroughs = UserGamePlaythrough.ended.where(user_id: user_id, gamedb_game_id: game_id)
+      .order(ended_at: :desc, id: :desc).to_a
+    render json: { data: GamePlaytimeResource.new(playtime, params: { platform_names: platform_names(playtime),
+      playthroughs: playthroughs }).serializable_hash }, status: status
   end
 
   def platform_names(playtime)

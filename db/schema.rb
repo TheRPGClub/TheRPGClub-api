@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_25_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_25_120500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1540,6 +1540,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_100000) do
     t.check_constraint "origin::text = ANY (ARRAY['member'::character varying, 'completion_seed'::character varying]::text[])", name: "ck_user_game_manual_playtimes_origin"
   end
 
+  create_table "user_game_playthroughs", force: :cascade do |t|
+    t.string "user_id", limit: 30, null: false
+    t.bigint "gamedb_game_id", null: false
+    t.datetime "started_at", null: false
+    t.integer "baseline_minutes", default: 0, null: false
+    t.integer "manual_total_minutes"
+    t.datetime "ended_at"
+    t.string "end_reason", limit: 16
+    t.bigint "completion_id"
+    t.integer "final_minutes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["completion_id"], name: "index_user_game_playthroughs_on_completion_id"
+    t.index ["gamedb_game_id"], name: "index_user_game_playthroughs_on_gamedb_game_id"
+    t.index ["user_id", "gamedb_game_id"], name: "ux_user_game_playthroughs_open", unique: true, where: "(ended_at IS NULL)"
+    t.check_constraint "(ended_at IS NULL) = (end_reason IS NULL)", name: "ck_user_game_playthroughs_ended"
+    t.check_constraint "baseline_minutes >= 0 AND manual_total_minutes >= 0 AND final_minutes >= 0", name: "ck_user_game_playthroughs_minutes"
+    t.check_constraint "end_reason::text = ANY (ARRAY['completed'::character varying, 'abandoned'::character varying]::text[])", name: "ck_user_game_playthroughs_end_reason"
+  end
+
   create_table "user_game_review_revisions", primary_key: "revision_id", force: :cascade do |t|
     t.bigint "review_id", null: false
     t.integer "rating"
@@ -1772,6 +1792,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_25_100000) do
   add_foreign_key "user_game_manual_playtimes", "gamedb_games", primary_key: "game_id", on_delete: :cascade
   add_foreign_key "user_game_manual_playtimes", "gamedb_platforms", column: "platform_id", primary_key: "platform_id"
   add_foreign_key "user_game_manual_playtimes", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "user_game_playthroughs", "gamedb_games", primary_key: "game_id", on_delete: :cascade
+  add_foreign_key "user_game_playthroughs", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "user_game_playthroughs", "user_game_completions", column: "completion_id", primary_key: "completion_id", on_delete: :nullify
   add_foreign_key "user_game_review_revisions", "user_game_reviews", column: "review_id", primary_key: "review_id", name: "fk_user_game_review_revisions_review", on_delete: :cascade
   add_foreign_key "user_game_reviews", "gamedb_games", primary_key: "game_id", name: "fk_user_game_reviews_gamedb"
   add_foreign_key "user_game_reviews", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_user_game_reviews_user"

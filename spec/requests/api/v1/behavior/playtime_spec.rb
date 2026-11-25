@@ -38,7 +38,7 @@ RSpec.describe "api/v1 playtime behavior", type: :request do
       expect(response).to have_http_status(:ok)
       data = json.fetch("data")
       expect(data).to include("user_id" => member.user_id, "game_id" => game.game_id, "total_minutes" => 645,
-        "open_playthrough" => nil)
+        "playthrough" => nil, "playthroughs" => [])
       expect(data.dig("breakdown", "provider_sets")).to contain_exactly(include(
         "provider" => "steam", "title" => "Steam set", "platform_label" => "PC", "platform_id" => windows.platform_id,
         "platform_name" => "PC (Microsoft Windows)", "minutes" => 600, "counted" => true

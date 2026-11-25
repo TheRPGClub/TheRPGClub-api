@@ -77,7 +77,10 @@ RSpec.describe 'api/v1/completions', type: :request do
                   "member's Now Playing. `started_at` may not be after the finished day " \
                   '(422 `started_after_finished`), nor after today without one (422 `started_in_future`), ' \
                   'and `completed_at` may not be after today in club time (422 `finished_in_future`). ' \
-                  'A coded 422 is used only when the date check is the only problem.'
+                  'A coded 422 is used only when the date check is the only problem. ' \
+                  'The member\'s open Playthrough of the game closes as `completed` with this Completion; ' \
+                  'when `final_playtime_hrs` is absent or null it takes the Playthrough\'s time in hours ' \
+                  '(2 decimals). A `final_playtime_hrs` sent wins.'
       consumes 'application/json'
       produces 'application/json'
 

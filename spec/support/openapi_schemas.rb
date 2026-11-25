@@ -1973,10 +1973,25 @@ module OpenapiSchemas
         breakdown: obj(provider_sets: array_of("PlaytimeProviderSet"), manual_entries: array_of("ManualPlaytimeEntry"),
           _required: %w[provider_sets manual_entries]),
         mismatches: array_of("PlaytimeMismatch"),
-        open_playthrough: { type: :object, nullable: true,
-                            description: "The member's open Playthrough of the game. Always null until " \
-                                         "Playthroughs (api#459) ship." },
-        _required: %w[user_id game_id total_minutes breakdown mismatches open_playthrough]
+        playthrough: ref("OpenPlaythrough", nullable: true),
+        playthroughs: array_of("EndedPlaythrough"),
+        _required: %w[user_id game_id total_minutes breakdown mismatches playthrough playthroughs]
+      ),
+      # Playthroughs (spec api#457, ticket api#459): one run of a game.
+      OpenPlaythrough: obj(
+        _description: "The member's open Playthrough of the game (at most one).",
+        id: int, started_at: ts,
+        minutes: int.merge(description: "The total set by hand when `manual`, else the Playtime gained since " \
+                                        "it started, floored at 0."),
+        manual: bool.merge(description: "True when the member set its total by hand.")
+      ),
+      EndedPlaythrough: obj(
+        _description: "An earlier Playthrough of the game, newest first.",
+        id: int, started_at: ts, ended_at: ts, end_reason: str(enum: UserGamePlaythrough::END_REASONS),
+        minutes: int.merge(description: "Its time when it ended."),
+        manual: bool.merge(description: "True when its total was set by hand."),
+        completion_id: int(nullable: true).merge(description: "The Game Completion that closed it " \
+                                                              "(`completed`).")
       ),
       # HiddenPlatformsController (spec api#421, ticket api#427). A member's
       # Hidden Platforms: the platforms they leave out of their own Release
