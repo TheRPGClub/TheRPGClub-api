@@ -71,6 +71,14 @@ FactoryBot.define do
     game
   end
 
+  # The GOTY Vote for the year must exist (create(:goty_vote) first).
+  factory :goty_winner do
+    year { 2026 }
+    award { "game_of_the_year" }
+    decided_by { "vote" }
+    game
+  end
+
   factory :voting_info, class: "BotVotingInfo" do
     round_number { SecureRandom.random_number(1_000_000_000) }
     next_vote_at { 2.days.from_now }

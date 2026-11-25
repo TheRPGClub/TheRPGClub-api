@@ -6,7 +6,8 @@ RSpec.describe 'api/v1/goty_votes', type: :request do
   path '/api/v1/goty_votes' do
     get 'List GOTY Votes' do
       tags 'GOTY Vote'
-      description 'Every year\'s GOTY Vote, newest first, with its derived `phase` and dates. Behind the ' \
+      description 'Every year\'s GOTY Vote, newest first, with its derived `phase`, dates and, once it is ' \
+                  'decided, each Award\'s `winners` (game and how it was decided). Behind the ' \
                   '`goty_vote` Feature. The lifecycle creates each year\'s GOTY Vote with the default schedule: ' \
                   'nominations open January 1 of the next year at 00:00, voting opens at noon on the first Friday ' \
                   'on or after January 15 and closes at the end of that Sunday (US Eastern).'

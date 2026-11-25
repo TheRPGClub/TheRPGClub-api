@@ -1081,7 +1081,20 @@ module OpenapiSchemas
           description: "Derived at read time: upcoming, nominating, voting, then closed until the tally is in " \
                        "(and again after a runoff window), runoff, tie (awaiting an admin), decided."
         ),
-        nominations_open: bool, voting_open: bool, runoff_open: bool
+        nominations_open: bool, voting_open: bool, runoff_open: bool,
+        winners: array_of("GotyVoteWinner").merge(
+          description: "Each Award's winner in Award order (gotm, nr_gotm, game_of_the_year) once the GOTY Vote " \
+                       "is decided; empty before then. An Award with no votes has no winner."
+        )
+      ),
+      # One Award's winner in the GOTY Vote history (GET /goty_votes).
+      GotyVoteWinner: extends("GotyAwardWinner", required: %w[award name gamedb_game_id decided_by game],
+        award: str(enum: Goty::AWARDS.keys), name: str.merge(description: 'e.g. "GOTM of the Year".')),
+      # A GOTY Vote Award a game won (GET /games/{id} `goty_awards`).
+      GotyAwardWon: obj(
+        year: int, award: str(enum: Goty::AWARDS.keys).merge(
+          description: "gotm (GOTM of the Year), nr_gotm (NR-GOTM of the Year) or game_of_the_year."
+        )
       ),
       # GotyVoteResource: the summary plus each Award's ballot and standings.
       GotyVote: extends("GotyVoteSummary", required: %w[awards pending_ties runoff_ties],

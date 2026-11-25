@@ -3463,6 +3463,13 @@ components:
           type: boolean
         runoff_open:
           type: boolean
+        winners:
+          type: array
+          items:
+            "$ref": "#/components/schemas/GotyVoteWinner"
+          description: Each Award's winner in Award order (gotm, nr_gotm, game_of_the_year)
+            once the GOTY Vote is decided; empty before then. An Award with no votes
+            has no winner.
       required:
       - year
       - name
@@ -3473,6 +3480,41 @@ components:
       - nominations_open
       - voting_open
       - runoff_open
+    GotyVoteWinner:
+      allOf:
+      - "$ref": "#/components/schemas/GotyAwardWinner"
+      - type: object
+        properties:
+          award:
+            type: string
+            enum:
+            - gotm
+            - nr_gotm
+            - game_of_the_year
+          name:
+            type: string
+            description: e.g. "GOTM of the Year".
+        required:
+        - award
+        - name
+        - gamedb_game_id
+        - decided_by
+        - game
+    GotyAwardWon:
+      type: object
+      properties:
+        year:
+          type: integer
+        award:
+          type: string
+          enum:
+          - gotm
+          - nr_gotm
+          - game_of_the_year
+          description: gotm (GOTM of the Year), nr_gotm (NR-GOTM of the Year) or game_of_the_year.
+      required:
+      - year
+      - award
     GotyVote:
       allOf:
       - "$ref": "#/components/schemas/GotyVoteSummary"
@@ -21608,8 +21650,10 @@ paths:
       tags:
       - Games
       description: Returns a game with related GOTM/NR-GOTM month info plus now-playing
-        and completion previews. `now_playing` is left out for a caller who cannot
-        use the Now Playing Feature, `completions` for Game Completions (Feature Flags).
+        and completion previews. `goty_awards` lists every GOTY Vote Award the game
+        won in a decided year, newest year first (the game page badge). `now_playing`
+        is left out for a caller who cannot use the Now Playing Feature, `completions`
+        for Game Completions and `goty_awards` for GOTY Vote (Feature Flags).
       responses:
         '200':
           description: game detail
@@ -21637,6 +21681,10 @@ paths:
                           type: array
                           items:
                             "$ref": "#/components/schemas/CompletionUserEntry"
+                        goty_awards:
+                          type: array
+                          items:
+                            "$ref": "#/components/schemas/GotyAwardWon"
         '404':
           description: game not found
           content:
@@ -23644,8 +23692,9 @@ paths:
       summary: List GOTY Votes
       tags:
       - GOTY Vote
-      description: 'Every year''s GOTY Vote, newest first, with its derived `phase`
-        and dates. Behind the `goty_vote` Feature. The lifecycle creates each year''s
+      description: 'Every year''s GOTY Vote, newest first, with its derived `phase`,
+        dates and, once it is decided, each Award''s `winners` (game and how it was
+        decided). Behind the `goty_vote` Feature. The lifecycle creates each year''s
         GOTY Vote with the default schedule: nominations open January 1 of the next
         year at 00:00, voting opens at noon on the first Friday on or after January
         15 and closes at the end of that Sunday (US Eastern).'
