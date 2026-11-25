@@ -26,6 +26,20 @@ module Api
         render_collection(scope.preload(:platform, game: :images), resource: CompletionEntryResource, default_order: { completed_at: :desc, created_at: :desc })
       end
 
+      # GET /api/v1/users/:user_id/completions/months
+      #
+      # The member's completions tallied per month (`YYYY-MM`, UTC like the
+      # index's `year` filter), newest first, with undated ones as a single
+      # `month: null` row last. One grouped query, so the website's year dial
+      # can be built without paging through every completion.
+      def months
+        rows = UserGameCompletion.where(user_id: params[:user_id])
+          .group(Arel.sql("to_char(completed_at, 'YYYY-MM')"))
+          .order(Arel.sql("to_char(completed_at, 'YYYY-MM') DESC NULLS LAST"))
+          .count
+        render json: { data: rows.map { |month, count| { month: month, count: count } } }
+      end
+
       # Games both members completed (`:user_id` on the left, `other_user_id`
       # on the right). See Completions::Common for the filter/sort semantics.
       # A grouped query, so the count is computed explicitly for pagy (as in

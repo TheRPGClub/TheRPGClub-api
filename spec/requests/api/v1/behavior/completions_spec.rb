@@ -755,4 +755,40 @@ RSpec.describe "api/v1/completions behavior", type: :request do
       expect(UserGameCompletion.exists?(completion.completion_id)).to be(true)
     end
   end
+
+  describe "GET /api/v1/users/:user_id/completions/months" do
+    it "tallies the member's completions per UTC month, newest first, undated last" do
+      # Days are stored at noon club time, which shares its UTC date, so the
+      # month buckets match the `completed_at` the index renders.
+      create(:completion, user: owner, completed_at: Date.new(2026, 8, 9))
+      create(:completion, user: owner, completed_at: Date.new(2026, 8, 1))
+      create(:completion, user: owner, completed_at: Date.new(2026, 3, 15))
+      create(:completion, user: owner, completed_at: Date.new(2025, 12, 31))
+      create(:completion, user: owner, completed_at: nil)
+      create(:completion, user: other_user, completed_at: Date.new(2026, 8, 2))
+
+      get "/api/v1/users/#{owner.user_id}/completions/months", headers: auth_headers_for(other_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to eq([
+        { "month" => "2026-08", "count" => 2 },
+        { "month" => "2026-03", "count" => 1 },
+        { "month" => "2025-12", "count" => 1 },
+        { "month" => nil, "count" => 1 }
+      ])
+    end
+
+    it "is empty for a member with no completions" do
+      get "/api/v1/users/#{owner.user_id}/completions/months", headers: service_headers
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to eq([])
+    end
+
+    it "401s without credentials" do
+      get "/api/v1/users/#{owner.user_id}/completions/months"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end
