@@ -9,6 +9,15 @@ require "rails_helper"
 RSpec.describe "GET /api/v1/franchises/browse", type: :request do
   let(:member) { create(:user) }
 
+  # Image URLs render only with a public base URL configured.
+  around do |example|
+    original = ENV.fetch("BACKBLAZE_PUBLIC_BASE_URL", nil)
+    ENV["BACKBLAZE_PUBLIC_BASE_URL"] = "https://cdn.example.test/club"
+    example.run
+  ensure
+    original.nil? ? ENV.delete("BACKBLAZE_PUBLIC_BASE_URL") : ENV["BACKBLAZE_PUBLIC_BASE_URL"] = original
+  end
+
   def game(title, year: nil, parent: nil, cover: true)
     record = create(:game, title: title, initial_release_date: year && Date.new(year, 6, 1),
       parent_igdb_id: parent&.igdb_id)
