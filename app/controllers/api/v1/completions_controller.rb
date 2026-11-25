@@ -152,6 +152,7 @@ module Api
             end
           [ completion, (enqueue_announce(completion) if announce), removed.positive? ]
         end
+        check_conquests(record)
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash,
                        meta: { announce_job_id: announce_job&.id, left_now_playing: left } }, status: :created
@@ -162,6 +163,7 @@ module Api
       def update
         record = UserGameCompletion.find(params[:id])
         record.update!(writable_data)
+        check_conquests(record)
         record.reload
         render json: { data: CompletionEntryResource.new(record).serializable_hash }
       rescue ActiveRecord::RecordInvalid => e
@@ -185,6 +187,13 @@ module Api
       # a Superadmin gets past the gate to do that).
       def logged_for_another_member?
         current_principal&.discord_user? && current_principal.id.to_s != params[:user_id].to_s
+      end
+
+      # Franchise Progress (spec api#457): a Completion may finish a
+      # Franchise's Mainline set. The Conquest is announced whether or not
+      # the Completion was.
+      def check_conquests(completion)
+        Franchises::ConquestCheck.new(requested_by: requester_id).after_completion(completion)
       end
 
       def enqueue_announce(completion)

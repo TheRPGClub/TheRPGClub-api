@@ -3363,6 +3363,7 @@ components:
           - challenge_dm
           - daily_fun_fact
           - birthday_post
+          - franchise_conquest
         summary:
           type: string
           maxLength: 200
@@ -5456,6 +5457,7 @@ components:
           - challenge_dm
           - daily_fun_fact
           - birthday_post
+          - franchise_conquest
         summary:
           type: string
           maxLength: 200
@@ -5468,7 +5470,8 @@ components:
             carries it too (BotJob::FEATURE_WORK). birthday_post is a public post
             no Feature owns and carries none. Documented payloads: SayJobPayload,
             NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
-            ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload.'
+            ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload,
+            FranchiseConquestJobPayload.'
         status:
           type: string
           enum:
@@ -6322,6 +6325,208 @@ components:
       - minutes
       - manual
       description: An earlier Playthrough of the game, newest first.
+    FranchiseProgressMeter:
+      type: object
+      properties:
+        done:
+          type: integer
+        total:
+          type: integer
+        playtime_minutes:
+          type: integer
+      required:
+      - done
+      - total
+      - playtime_minutes
+      description: 'One meter: games done (any Game Completion, a game counted once)
+        of `total`, and the member''s Playtime on those games. `total` 0 is an empty
+        meter.'
+    FranchiseProgressMeters:
+      type: object
+      properties:
+        mainline:
+          "$ref": "#/components/schemas/FranchiseProgressMeter"
+        all:
+          "$ref": "#/components/schemas/FranchiseProgressMeter"
+          description: Mainline and spin-offs together.
+        spin_offs:
+          "$ref": "#/components/schemas/FranchiseProgressMeter"
+      required:
+      - mainline
+      - all
+      - spin_offs
+      description: Add-ons are left out of every meter.
+    FranchiseProgressGame:
+      type: object
+      properties:
+        game_id:
+          type: integer
+        title:
+          type: string
+        cover_url:
+          type: string
+          nullable: true
+        release_year:
+          type: integer
+          nullable: true
+        done:
+          type: boolean
+          description: The member holds a Game Completion for this game (an Alternate
+            Version's doesn't count).
+        completion_type:
+          type: string
+          nullable: true
+          enum:
+          - Completionist
+          - Main Story + Side Content
+          - Main Story
+          -
+          description: The most thorough of the member's Completions of it; null when
+            not done.
+        playtime_minutes:
+          type: integer
+      required:
+      - game_id
+      - title
+      - cover_url
+      - release_year
+      - done
+      - completion_type
+      - playtime_minutes
+    FranchiseProgress:
+      type: object
+      properties:
+        user_id:
+          type: string
+        franchise_id:
+          type: integer
+        conquered_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the member Conquered the Franchise; null if they haven't.
+        meters:
+          "$ref": "#/components/schemas/FranchiseProgressMeters"
+        games:
+          type: object
+          properties:
+            mainline:
+              type: array
+              items:
+                "$ref": "#/components/schemas/FranchiseProgressGame"
+            spin_offs:
+              type: array
+              items:
+                "$ref": "#/components/schemas/FranchiseProgressGame"
+          required:
+          - mainline
+          - spin_offs
+          description: Oldest release first, as the Franchise page orders them.
+      required:
+      - user_id
+      - franchise_id
+      - conquered_at
+      - meters
+      - games
+    FranchiseProgressMember:
+      type: object
+      properties:
+        user:
+          "$ref": "#/components/schemas/UserSummary"
+        meters:
+          "$ref": "#/components/schemas/FranchiseProgressMeters"
+        conquered_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - user
+      - meters
+      - conquered_at
+    FranchiseConquestJobPayload:
+      type: object
+      properties:
+        user_id:
+          type: string
+        franchise_id:
+          type: integer
+        completion_id:
+          type: integer
+          nullable: true
+          description: The Completion that finished the Mainline set.
+        franchise_name:
+          type: string
+        conquered_at:
+          type: string
+          format: date-time
+        playtime_minutes:
+          type: integer
+          description: 'The member''s Franchise Playtime: Mainline and spin-offs.'
+        mainline_playtime_minutes:
+          type: integer
+        mainline_total:
+          type: integer
+        covers:
+          type: array
+          maxItems: 10
+          description: Mainline games with a cover, latest release first.
+          items:
+            type: object
+            properties:
+              game_id:
+                type: integer
+              title:
+                type: string
+              release_year:
+                type: integer
+                nullable: true
+              cover_url:
+                type: string
+            required:
+            - game_id
+            - title
+            - cover_url
+        also_conquered:
+          type: array
+          maxItems: 10
+          description: Other current members who Conquered it, earliest first.
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              name:
+                type: string
+              conquered_at:
+                type: string
+                format: date-time
+            required:
+            - user_id
+            - name
+            - conquered_at
+        also_conquered_count:
+          type: integer
+        feature_key:
+          type: string
+          enum:
+          - franchise_progress
+      required:
+      - user_id
+      - franchise_id
+      - completion_id
+      - franchise_name
+      - conquered_at
+      - playtime_minutes
+      - mainline_playtime_minutes
+      - mainline_total
+      - covers
+      - also_conquered
+      - also_conquered_count
+      - feature_key
+      description: Kind `franchise_conquest`. Post the 4B Conquest card for `user_id`
+        and `franchise_id` in the completions channel, with no pings, even when the
+        Completion wasn't announced. Follows the `franchise_progress` Feature Flag.
+        Everything the card shows is here, as it was when the Conquest was written.
     HiddenPlatform:
       type: object
       properties:
@@ -18042,6 +18247,7 @@ paths:
         - release_calendar
         - club_codex
         - game_lists
+        - franchise_progress
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -18410,8 +18616,8 @@ paths:
       - Franchises
       description: Admins and above. Deletes the Franchise and its links, takes it
         out of every Pool's sources (Core Games stay), and remembers an IGDB Franchise
-        so re-imports don't create it again. Franchises merged into it go too. Recorded
-        in the history (not undoable).
+        so re-imports don't create it again. Franchises merged into it go too, and
+        so do its Conquests. Recorded in the history (not undoable).
       parameters:
       - name: acting_user_id
         in: query
@@ -18445,8 +18651,9 @@ paths:
       description: Admins and above. Moves the links to `into_id` (a game in both
         stays Mainline if it was in either), moves remembered unlinks, repoints Pool
         sources and sets `merged_into_id`, so re-imports naming the merged IGDB id
-        resolve to the target. Recorded in the target's history (not undoable). Answers
-        with the target.
+        resolve to the target. Recorded in the target's history (not undoable). Its
+        Conquests move to the target; a member with one in both keeps the earlier.
+        Answers with the target.
       parameters: []
       responses:
         '200':
@@ -18676,7 +18883,8 @@ paths:
       description: Regulars and above (the acting member's stored roles). Links the
         game as `manual` if it isn't linked (forgetting an earlier unlink of the pair),
         and sets Mainline when `mainline` is given. An existing link keeps its source.
-        Hand links survive IGDB re-imports.
+        Hand links survive IGDB re-imports. Members who now hold every Mainline game
+        Conquer the Franchise (announced).
       parameters: []
       responses:
         '200':
@@ -18740,6 +18948,7 @@ paths:
       - Franchises
       description: Regulars and above. Removes the link and remembers it, so an IGDB
         re-import doesn't add it back. Succeeds also when the game wasn't linked.
+        Members who now hold every Mainline game Conquer the Franchise (announced).
       parameters:
       - name: acting_user_id
         in: query
@@ -18758,6 +18967,102 @@ paths:
           description: franchise or game not found
         '401':
           description: unauthenticated
+  "/api/v1/franchises/{id}/progress":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbFranchise id.
+    get:
+      summary: A member's Franchise Progress
+      tags:
+      - Franchise Progress
+      description: Behind the `franchise_progress` Feature. The member's three meters
+        (Mainline, `all` = Mainline and spin-offs, spin-offs), when they Conquered
+        the Franchise, and its Mainline and spin-off games with `done`, `completion_type`
+        and `playtime_minutes`. A game is done with any Game Completion of it; Add-ons
+        are left out and an Alternate Version's Completion doesn't count. Any signed-in
+        member reads anyone's.
+      parameters:
+      - name: user_id
+        in: query
+        schema:
+          type: string
+        required: false
+        description: The member; defaults to the signed-in member. The bot must give
+          it.
+      responses:
+        '200':
+          description: progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/FranchiseProgress"
+        '400':
+          description: the bot gave no `user_id`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: unknown franchise or member, or the Feature is not open to
+            the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/franchises/{id}/progress/members":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: GamedbFranchise id.
+    get:
+      summary: The Franchise Progress members table
+      tags:
+      - Franchise Progress
+      description: Behind the `franchise_progress` Feature. Every current member with
+        Playtime, a Game Completion (Add-ons aside) or a Conquest in the Franchise,
+        with their meters. Conquered members first, earliest Conquest first; then
+        by Mainline games done (by all games when the Franchise has no Mainline games),
+        then by Playtime. Not paginated.
+      responses:
+        '200':
+          description: members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/FranchiseProgressMember"
+        '404':
+          description: unknown franchise, or the Feature is not open to the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{id}/hltb/lookup":
     parameters:
     - name: id

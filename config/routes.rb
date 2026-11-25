@@ -83,6 +83,10 @@ Rails.application.routes.draw do
           delete "games/:game_id", action: :unlink_game, as: :unlink_game
           post "merge"
           get "changes", to: "franchise_changes#index"
+          # Franchise Progress (spec api#457): a member's meters and the
+          # members table, behind the `franchise_progress` Feature.
+          get "progress", to: "franchise_progress#show"
+          get "progress/members", to: "franchise_progress#members"
         end
       end
       post "franchise_changes/:id/undo", to: "franchise_changes#undo", as: :undo_franchise_change

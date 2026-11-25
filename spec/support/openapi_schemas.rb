@@ -1695,7 +1695,7 @@ module OpenapiSchemas
                        "birthday_post is a public post no Feature owns and carries none. " \
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
                        "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload, " \
-                       "BirthdayPostJobPayload."
+                       "BirthdayPostJobPayload, FranchiseConquestJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),
@@ -1992,6 +1992,66 @@ module OpenapiSchemas
         manual: bool.merge(description: "True when its total was set by hand."),
         completion_id: int(nullable: true).merge(description: "The Game Completion that closed it " \
                                                               "(`completed`).")
+      ),
+      # Franchise Progress (spec api#457, ticket api#461; Franchises::Progress).
+      FranchiseProgressMeter: obj(
+        _description: "One meter: games done (any Game Completion, a game counted once) of `total`, and the " \
+                      "member's Playtime on those games. `total` 0 is an empty meter.",
+        done: int, total: int, playtime_minutes: int
+      ),
+      FranchiseProgressMeters: obj(
+        _description: "Add-ons are left out of every meter.",
+        mainline: ref("FranchiseProgressMeter"),
+        all: ref("FranchiseProgressMeter").merge(description: "Mainline and spin-offs together."),
+        spin_offs: ref("FranchiseProgressMeter"),
+        _required: %w[mainline all spin_offs]
+      ),
+      FranchiseProgressGame: obj(
+        game_id: int, title: str, cover_url: str(nullable: true), release_year: int(nullable: true),
+        done: bool.merge(description: "The member holds a Game Completion for this game (an Alternate " \
+                                      "Version's doesn't count)."),
+        completion_type: str(nullable: true, enum: [ *Franchises::Progress::COMPLETION_TYPES, nil ],
+          description: "The most thorough of the member's Completions of it; null when not done."),
+        playtime_minutes: int,
+        _required: %w[game_id title cover_url release_year done completion_type playtime_minutes]
+      ),
+      FranchiseProgress: obj(
+        user_id: str, franchise_id: int,
+        conquered_at: ts(nullable: true).merge(description: "When the member Conquered the Franchise; null if " \
+                                                            "they haven't."),
+        meters: ref("FranchiseProgressMeters"),
+        games: obj(
+          _description: "Oldest release first, as the Franchise page orders them.",
+          mainline: array_of("FranchiseProgressGame"), spin_offs: array_of("FranchiseProgressGame"),
+          _required: %w[mainline spin_offs]
+        ),
+        _required: %w[user_id franchise_id conquered_at meters games]
+      ),
+      FranchiseProgressMember: obj(
+        user: ref("UserSummary"), meters: ref("FranchiseProgressMeters"), conquered_at: ts(nullable: true),
+        _required: %w[user meters conquered_at]
+      ),
+      # The Conquest post bot job payload (ticket api#461), as BotJobClaim.payload carries it.
+      FranchiseConquestJobPayload: obj(
+        _description: "Kind `franchise_conquest`. Post the 4B Conquest card for `user_id` and `franchise_id` " \
+                      "in the completions channel, with no pings, even when the Completion wasn't announced. " \
+                      "Follows the `franchise_progress` Feature Flag. Everything the card shows is here, as it " \
+                      "was when the Conquest was written.",
+        _required: %w[user_id franchise_id completion_id franchise_name conquered_at playtime_minutes
+                      mainline_playtime_minutes mainline_total covers also_conquered also_conquered_count feature_key],
+        user_id: str, franchise_id: int,
+        completion_id: int(nullable: true).merge(description: "The Completion that finished the Mainline set."),
+        franchise_name: str, conquered_at: ts,
+        playtime_minutes: int.merge(description: "The member's Franchise Playtime: Mainline and spin-offs."),
+        mainline_playtime_minutes: int, mainline_total: int,
+        covers: { type: :array, maxItems: Franchises::ConquestAnnouncement::COVERS,
+                  description: "Mainline games with a cover, latest release first.",
+                  items: obj(game_id: int, title: str, release_year: int(nullable: true), cover_url: str) },
+        also_conquered: { type: :array, maxItems: Franchises::ConquestAnnouncement::OTHERS,
+                          description: "Other current members who Conquered it, earliest first.",
+                          items: obj(user_id: str, name: str, conquered_at: ts) },
+        also_conquered_count: int,
+        feature_key: str(enum: %w[franchise_progress])
       ),
       # HiddenPlatformsController (spec api#421, ticket api#427). A member's
       # Hidden Platforms: the platforms they leave out of their own Release
