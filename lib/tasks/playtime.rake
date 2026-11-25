@@ -2,7 +2,8 @@
 
 namespace :playtime do
   desc "Launch seed: turn Game Completions' final playtimes into Manual Playtime. Only creates entries, never adds " \
-       "onto one, and leaves out Completions a Playthrough closed, so running it again changes nothing"
+       "onto one, and leaves out Completions a Playthrough closed, so running it again changes nothing. " \
+       "The deploy runs it once through a data migration"
   task seed_from_completions: :environment do
     result = Playtime::CompletionSeed.call
     puts "Seeded Manual Playtime from Game Completions: #{result.created} created, " \
