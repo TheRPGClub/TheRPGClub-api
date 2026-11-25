@@ -142,12 +142,12 @@ RSpec.describe "api/v1/gotm_rounds/:round behavior", type: :request do
     )
   end
 
-  it "credits a winner that was also nominated with its earliest Nomination" do
+  it "credits a winner with its game's earliest Nomination and lists the game's others as co-nominations" do
     decided_round(140)
     game = create(:game)
     create(:gotm_entry, round_number: 140, game:)
     credit = create(:gotm_nomination, round_number: 140, game:, reason: "Because", nominated_at: 3.days.ago)
-    repeat = create(:gotm_nomination, round_number: 140, game:, nominated_at: 1.day.ago)
+    repeat = create(:gotm_nomination, round_number: 140, game:, reason: "Me too", nominated_at: 1.day.ago)
 
     show(140)
 
@@ -155,7 +155,42 @@ RSpec.describe "api/v1/gotm_rounds/:round behavior", type: :request do
       "nomination_id" => credit.nomination_id, "user_id" => credit.user_id, "reason" => "Because"
     )
     expect(category.dig("winners", 0, "nomination", "user")).to include("user_id" => credit.user_id)
-    expect(nomination_ids).to eq([ repeat.nomination_id ])
+    co = category.dig("winners", 0, "nomination", "co_nominations")
+    expect(co.length).to eq(1)
+    expect(co.first).to include("user_id" => repeat.user_id, "reason" => "Me too")
+    expect(co.first.fetch("user")).to include("user_id" => repeat.user_id)
+    expect(co.first.fetch("nominated_at")).to be_present
+    expect(category.fetch("nominations")).to eq([])
+  end
+
+  it "lists a game nominated twice as one row with its votes and runoff votes totalled across both" do
+    tied = create(:game)
+    twice = create(:game)
+    decided_round(151, runoff_ties: { "gotm" => [ tied.game_id, twice.game_id ] },
+      runoff_opens_at: 8.days.ago, runoff_closes_at: 7.days.ago, runoff_closed_at: 7.days.ago)
+    create(:gotm_entry, round_number: 151, game: tied)
+    create(:gotm_nomination, round_number: 151, game: tied, nominated_at: 6.days.ago)
+    first = create(:gotm_nomination, round_number: 151, game: twice, nominated_at: 5.days.ago)
+    second = create(:gotm_nomination, round_number: 151, game: twice, nominated_at: 4.days.ago, reason: "Again")
+    single = create(:gotm_nomination, round_number: 151, nominated_at: 7.days.ago)
+    winner = Gotm::RoundDetail::CATEGORIES.fetch("gotm").first.find_by(round_number: 151, gamedb_game_id: tied.game_id)
+    3.times { create(:gotm_vote, nomination: winner) }
+    2.times { create(:gotm_vote, nomination: first) }
+    create(:gotm_vote, nomination: second)
+    2.times { create(:gotm_vote, nomination: single) }
+    3.times { create(:gotm_vote, nomination: winner, runoff: true) }
+    create(:gotm_vote, nomination: first, runoff: true)
+    create(:gotm_vote, nomination: second, runoff: true)
+
+    show(151)
+
+    expect(category.dig("winners", 0, "nomination")).to include("votes" => 3, "runoff_votes" => 3, "co_nominations" => [])
+    expect(nomination_ids).to eq([ first.nomination_id, single.nomination_id ])
+    row = category.dig("nominations", 0)
+    expect(row).to include("gamedb_game_id" => twice.game_id, "votes" => 3, "runoff_votes" => 2)
+    expect(row.fetch("co_nominations").map { |n| n.fetch("user_id") }).to eq([ second.user_id ])
+    expect(row.dig("co_nominations", 0, "reason")).to eq("Again")
+    expect(category.dig("nominations", 1)).to include("votes" => 2, "runoff_votes" => nil, "co_nominations" => [])
   end
 
   it "returns every winner of a round with co-winners in game_index order" do
@@ -195,6 +230,33 @@ RSpec.describe "api/v1/gotm_rounds/:round behavior", type: :request do
       show(number)
       expect(response).to have_http_status(:not_found), "round #{number}"
     end
+  end
+
+  it "returns 404 for a round left tied or closed but not yet decided" do
+    create(:voting_round, round_number: 210, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago,
+      closed_at: 2.days.ago, pending_ties: { "gotm" => [ 1, 2 ] })
+    create(:gotm_entry, round_number: 210)
+    create(:voting_round, round_number: 211, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago)
+    create(:gotm_entry, round_number: 211)
+
+    [ 210, 211 ].each do |number|
+      show(number)
+      expect(response).to have_http_status(:not_found), "round #{number}"
+    end
+  end
+
+  it "does not link to neighbours that are tied or closed but undecided" do
+    create(:voting_round, round_number: 220, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago,
+      closed_at: 2.days.ago, pending_ties: { "gotm" => [ 1, 2 ] })
+    create(:gotm_entry, round_number: 220)
+    decided_round(221)
+    create(:gotm_entry, round_number: 221)
+    create(:voting_round, round_number: 222, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago)
+    create(:gotm_entry, round_number: 222)
+
+    show(221)
+
+    expect(json.fetch("data")).to include("previous" => nil, "next" => nil)
   end
 
   it "links the previous and next closed rounds, null at the edges" do

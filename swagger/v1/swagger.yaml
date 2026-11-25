@@ -8151,6 +8151,10 @@ components:
       properties:
         round_number:
           type: integer
+        closed:
+          type: boolean
+          description: Whether the round is decided (or predates voting rounds), so
+            it has a Round Page. False while its voting, runoff or tie is still open.
         gotm:
           allOf:
           - "$ref": "#/components/schemas/GotmRoundBlock"
@@ -8161,13 +8165,38 @@ components:
           nullable: true
       required:
       - round_number
+      - closed
       - gotm
       - nr_gotm
+    GotmRoundCoNomination:
+      type: object
+      properties:
+        user_id:
+          type: string
+        reason:
+          type: string
+          nullable: true
+        nominated_at:
+          type: string
+          format: date-time
+        user:
+          allOf:
+          - "$ref": "#/components/schemas/UserSummary"
+          nullable: true
+      required:
+      - user_id
+      - reason
+      - nominated_at
+      - user
     GotmRoundNomination:
       allOf:
       - "$ref": "#/components/schemas/Nomination"
       - type: object
         properties:
+          co_nominations:
+            type: array
+            items:
+              "$ref": "#/components/schemas/GotmRoundCoNomination"
           votes:
             type: integer
             nullable: true
@@ -8175,6 +8204,7 @@ components:
             type: integer
             nullable: true
         required:
+        - co_nominations
         - votes
         - runoff_votes
     GotmRoundWinner:

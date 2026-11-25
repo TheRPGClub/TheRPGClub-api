@@ -2590,17 +2590,28 @@ module OpenapiSchemas
         _required: %w[month_year games nominations_count]
       ),
       GotmRound: obj(
-        round_number: int, gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
-        _required: %w[round_number gotm nr_gotm]
+        round_number: int,
+        closed: bool.merge(description: "Whether the round is decided (or predates voting rounds), so it has a " \
+                                        "Round Page. False while its voting, runoff or tie is still open."),
+        gotm: ref("GotmRoundBlock", nullable: true), nr_gotm: ref("GotmRoundBlock", nullable: true),
+        _required: %w[round_number closed gotm nr_gotm]
       ),
       # Gotm::RoundDetail (GotmRoundsController#show): the Round Page.
-      # A Nomination with its anonymous counts: `votes` is null when the
-      # Category had no vote, `runoff_votes` null unless its game was in the
-      # runoff. `user` is null for an unknown nominator (imported
-      # `poll-import-N` placeholders), shown as "Unknown member".
+      # One game's row: its earliest Nomination, the game's later Nominations
+      # as `co_nominations`, and the game's anonymous vote totals across all
+      # of them: `votes` is null when the Category had no vote,
+      # `runoff_votes` null unless the game was in the runoff. `user` is null
+      # for an unknown nominator (imported `poll-import-N` placeholders),
+      # shown as "Unknown member".
+      GotmRoundCoNomination: obj(
+        user_id: str, reason: str(nullable: true), nominated_at: ts,
+        user: ref("UserSummary", nullable: true),
+        _required: %w[user_id reason nominated_at user]
+      ),
       GotmRoundNomination: extends("Nomination",
+        co_nominations: array_of("GotmRoundCoNomination"),
         votes: int(nullable: true), runoff_votes: int(nullable: true),
-        required: %w[votes runoff_votes]),
+        required: %w[co_nominations votes runoff_votes]),
       # A winner: the GotmRoundGame plus the earliest Nomination of its game
       # (null when it wasn't nominated, as in rounds before nominations were
       # recorded).

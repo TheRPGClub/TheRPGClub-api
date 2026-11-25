@@ -172,6 +172,8 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
         create(:nr_gotm_entry, round_number: number)
         create_list(:gotm_nomination, 2, round_number: number, game: create(:game, title: "Zelda Nominee #{number}"))
         create(:nr_gotm_nomination, round_number: number, game: create(:game, title: "Zelda NR #{number}"))
+        create(:voting_round, round_number: number, voting_opens_at: 10.days.ago, voting_closes_at: 8.days.ago,
+          closed_at: 8.days.ago, decided_at: (8.days.ago if number.odd?))
       end
 
       headers # sign the viewer in before counting
@@ -183,6 +185,23 @@ RSpec.describe "api/v1/gotm_rounds behavior", type: :request do
 
       expect(json.fetch("data").size).to eq(5)
       expect(large).to eq(small)
+    end
+
+    it "marks a round closed when it has no VotingRound or its VotingRound is decided" do
+      create(:gotm_entry, round_number: 1)
+      create(:voting_round, round_number: 2, voting_opens_at: 10.days.ago, voting_closes_at: 8.days.ago,
+        closed_at: 8.days.ago, decided_at: 8.days.ago)
+      create(:gotm_entry, round_number: 2)
+      create(:voting_round, round_number: 3, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago,
+        closed_at: 2.days.ago, pending_ties: { "gotm" => [ 1, 2 ] })
+      create(:gotm_entry, round_number: 3)
+      create(:voting_round, round_number: 4, voting_opens_at: 3.days.ago, voting_closes_at: 2.days.ago)
+      create(:gotm_entry, round_number: 4)
+
+      get "/api/v1/gotm_rounds", headers: headers
+
+      closed = json.fetch("data").to_h { |round| [ round.fetch("round_number"), round.fetch("closed") ] }
+      expect(closed).to eq(1 => true, 2 => true, 3 => false, 4 => false)
     end
 
     it "sorts rounds descending by default and ascending with sort=asc" do

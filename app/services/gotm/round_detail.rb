@@ -6,20 +6,21 @@ module Gotm
   # and any runoff. Never says who voted.
   #
   # A round is closed when it is in the GOTM History (it has entries in
-  # either Category) and its VotingRound, if it has one, has finished voting,
-  # runoff included. Winners come from Gotm::RoundHistory (same game shape,
-  # NR-GOTM "N/A" placeholders dropped, so a Category can have no winner). A
-  # winner credits the earliest Nomination of its game; `nominations` holds
-  # every other Nomination, most votes first when the Category had a vote,
-  # otherwise in the order they were made.
+  # either Category) and is decided (Gotm::RoundHistory.closed?). Winners come
+  # from Gotm::RoundHistory (same game shape, NR-GOTM "N/A" placeholders
+  # dropped, so a Category can have no winner). Rounds are decided per game,
+  # so Nominations are listed one row per game: the game's earliest
+  # Nomination, with any later Nominations of the same game as
+  # `co_nominations` and the game's vote totals. A winner credits its game's
+  # row; `nominations` holds every other row, most votes (then runoff votes)
+  # first when the Category had a vote, otherwise in the order they were made.
   #
   # Built in a fixed number of queries, whatever the number of winners,
   # Nominations or votes.
   class RoundDetail
-    CATEGORIES = {
-      "gotm" => [ GotmNomination, GotmVote ],
-      "nr_gotm" => [ NrGotmNomination, NrGotmVote ]
-    }.freeze
+    CATEGORIES = Voting::CATEGORIES.keys.to_h do |kind|
+      [ kind, Voting.models_for(kind).values_at(:nomination, :vote) ]
+    end.freeze
 
     # The serialized round, or nil when `round_number` is not a closed round.
     def self.find(round_number)
@@ -36,12 +37,12 @@ module Gotm
 
       numbers = [ neighbours["previous"], @round_number, neighbours["next"] ].compact
       voting_rounds = VotingRound.where(round_number: numbers).index_by(&:round_number)
-      return unless closed?(voting_rounds[@round_number])
+      return unless RoundHistory.closed?(voting_rounds[@round_number])
 
       # Rounds run in order, so only the rounds next to this one can still be
       # open; a neighbour that is not closed has no Round Page to link to.
       previous, following = neighbours.values_at("previous", "next").map do |number|
-        number if number && closed?(voting_rounds[number])
+        number if number && RoundHistory.closed?(voting_rounds[number])
       end
 
       history = RoundHistory.new.rounds([ @round_number ]).first
@@ -69,12 +70,6 @@ module Gotm
       ActiveRecord::Base.connection.select_one(sql)
     end
 
-    # A round without a VotingRound predates the voting rounds (or never had
-    # one); one that has a VotingRound is closed once all its voting is over.
-    def closed?(voting_round)
-      voting_round.nil? || (voting_round.voting_ended? && !voting_round.runoff_open?)
-    end
-
     def category(kind, block, voting_round)
       nomination_model, vote_model = CATEGORIES.fetch(kind)
       nominations = nomination_model.where(round_number: @round_number)
@@ -86,22 +81,22 @@ module Gotm
       runoff_games = Array(voting_round&.runoff_ties&.dig(kind)).map(&:to_i) |
         nominations.select { |nomination| counts.dig(true, nomination.nomination_id) }.map(&:gamedb_game_id)
 
-      serialize = lambda do |nomination|
-        NominationResource.new(nomination).serializable_hash.merge(
-          votes: voted ? counts[false].fetch(nomination.nomination_id, 0) : nil,
-          runoff_votes: runoff_games.include?(nomination.gamedb_game_id) ? counts.fetch(true, {}).fetch(nomination.nomination_id, 0) : nil
-        )
-      end
+      # One row per game, led by its earliest Nomination (rounds are decided
+      # per game, as in Voting::Tally); a Nomination without a game is a row
+      # of its own.
+      rows = nominations.group_by { |nomination| nomination.gamedb_game_id || [ :nomination, nomination.nomination_id ] }
+        .values
+        .map { |row| serialize_row(row, counts, voted, runoff_games) }
 
-      others = nominations.dup
+      others = rows.dup
       winners = Array(block&.dig(:games)).map do |game|
-        credit = others.find { |nomination| game[:gamedb_game_id] && nomination.gamedb_game_id == game[:gamedb_game_id] }
+        credit = others.find { |row| game[:gamedb_game_id] && row[:gamedb_game_id] == game[:gamedb_game_id] }
         others.delete(credit) if credit
-        game.merge(nomination: credit && serialize.call(credit))
+        game.merge(nomination: credit)
       end
       if voted
         others = others.each_with_index
-          .sort_by { |nomination, index| [ -counts[false].fetch(nomination.nomination_id, 0), index ] }
+          .sort_by { |row, index| [ -row[:votes], -row[:runoff_votes].to_i, index ] }
           .map(&:first)
       end
 
@@ -111,8 +106,23 @@ module Gotm
         voted:,
         runoff: runoff_games.any?,
         winners:,
-        nominations: others.map(&serialize)
+        nominations: others
       }
+    end
+
+    # A game's row: its earliest Nomination, the game's other Nominations as
+    # `co_nominations`, and the game's vote totals across all of them.
+    def serialize_row(row, counts, voted, runoff_games)
+      lead, *rest = row
+      total = ->(runoff) { row.sum { |nomination| counts.dig(runoff, nomination.nomination_id) || 0 } }
+      NominationResource.new(lead).serializable_hash.transform_keys(&:to_sym).merge(
+        co_nominations: rest.map do |nomination|
+          NominationResource.new(nomination).serializable_hash.transform_keys(&:to_sym)
+            .slice(:user_id, :user, :reason, :nominated_at)
+        end,
+        votes: voted ? total.call(false) : nil,
+        runoff_votes: runoff_games.include?(lead.gamedb_game_id) ? total.call(true) : nil
+      )
     end
 
     # `{ runoff => { nomination_id => votes } }` over the round's two ballots.
