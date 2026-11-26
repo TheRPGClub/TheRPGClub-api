@@ -27,6 +27,11 @@ components:
       bearerFormat: UserSessionToken
       description: Bearer token issued by `POST /auth/discord/callback` (user session)
         or the service-account token used by the Discord bot.
+    releaseToken:
+      type: http
+      scheme: bearer
+      description: The versioning job's token (RPGCLUB_RELEASE_API_TOKEN), accepted
+        only by `POST /api/v1/pending_changes`.
   schemas:
     Error:
       type: object
@@ -9498,6 +9503,107 @@ components:
           nullable: true
       required:
       - round
+    PendingChange:
+      type: object
+      properties:
+        id:
+          type: integer
+        repo:
+          type: string
+          enum:
+          - api
+          - bot
+          - www
+        pr_number:
+          type: integer
+        type:
+          type: string
+          enum:
+          - feat
+          - fix
+          - perf
+          - refactor
+          - chore
+          - docs
+          - test
+          - ci
+          description: The pull request title's type.
+        title:
+          type: string
+          maxLength: 300
+          description: The pull request's title.
+        version:
+          type: string
+          description: The repo's version this merge produced, e.g. 1.4.0.
+        patch_note:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: The pull request's optional "Patch note:" line, for the drafted
+            bullet.
+        section:
+          type: string
+          enum:
+          - new
+          - improved
+          - fixed
+          description: 'The Patch section it drafts into: feat new, fix fixed, anything
+            else improved.'
+        status:
+          type: string
+          enum:
+          - open
+          - covered
+          - dismissed
+          description: open, covered (a Patch covers it) or dismissed (never both).
+        patch_number:
+          type: integer
+          nullable: true
+          description: The Patch that covers it, if any.
+        dismissed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When staff dismissed it; null unless dismissed.
+        created_at:
+          type: string
+          format: date-time
+          description: When the versioning job reported it.
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - repo
+      - pr_number
+      - type
+      - title
+      - version
+      - patch_note
+      - section
+      - status
+      - patch_number
+      - dismissed_at
+      - created_at
+      - updated_at
+    Versions:
+      type: object
+      properties:
+        api:
+          type: string
+          nullable: true
+        bot:
+          type: string
+          nullable: true
+        www:
+          type: string
+          nullable: true
+      required:
+      - api
+      - bot
+      - www
+      description: Each repo's current version, e.g. 1.4.0; null until versioning
+        reports one.
     GotmNominationSummary:
       type: object
       properties:
@@ -30718,6 +30824,365 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/pending_changes":
+    get:
+      summary: List Pending Changes
+      tags:
+      - Patch Notes
+      description: 'Newest first. Admins and Superadmins signed in on the website
+        only: Moderators, members and the service token get 403 `forbidden`. Belongs
+        to the Patch Notes Feature: not found for everyone when Off.'
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - open
+          - covered
+          - dismissed
+          - all
+          default: open
+      - name: patch
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Only the ones this Patch number covers.
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Pending Changes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/PendingChange"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: 'invalid_status: `status` is not open, covered, dismissed or
+            all'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Report a Pending Change
+      tags:
+      - Patch Notes
+      description: 'The versioning job reports a merged pull request, which also sets
+        that repo''s current version. Only the release token (RPGCLUB_RELEASE_API_TOKEN)
+        is accepted; it is accepted nowhere else. Once per repo and pull request:
+        a repeat returns the recorded one unchanged. Collects whatever the Patch Notes
+        Feature''s state. Other keys in `data` are ignored.'
+      security:
+      - releaseToken: []
+      parameters: []
+      responses:
+        '201':
+          description: recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PendingChange"
+        '200':
+          description: already recorded for this repo and pull request; unchanged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PendingChange"
+        '400':
+          description: missing `data`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: no token, or an unknown one
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: the bot's service token or a member's session
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_pending_change: a missing field, an unknown repo or
+            type, a version that is not x.y.z, or a NUL character'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - repo
+                  - pr_number
+                  - type
+                  - title
+                  - version
+                  properties:
+                    repo:
+                      type: string
+                      enum:
+                      - api
+                      - bot
+                      - www
+                    pr_number:
+                      type: integer
+                      minimum: 1
+                    type:
+                      type: string
+                      enum:
+                      - feat
+                      - fix
+                      - perf
+                      - refactor
+                      - chore
+                      - docs
+                      - test
+                      - ci
+                      description: The pull request title's type.
+                    title:
+                      type: string
+                      maxLength: 300
+                    version:
+                      type: string
+                      pattern: "^\\d+\\.\\d+\\.\\d+$"
+                      description: The version this merge produced.
+                    patch_note:
+                      type: string
+                      nullable: true
+                      maxLength: 500
+                      description: The pull request's optional "Patch note:" line.
+        required: true
+  "/api/v1/pending_changes/{id}/dismiss":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Dismiss a Pending Change
+      tags:
+      - Patch Notes
+      description: 'Members don''t need to hear about it, so it leaves the drafts.
+        Admins and Superadmins signed in on the website only: Moderators, members
+        and the service token get 403 `forbidden`. Belongs to the Patch Notes Feature:
+        not found for everyone when Off.'
+      responses:
+        '200':
+          description: dismissed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PendingChange"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Pending Change, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: already_dismissed, or covered (a Patch covers it)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/pending_changes/{id}/undismiss":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Undo a dismissal
+      tags:
+      - Patch Notes
+      description: 'Opens a dismissed Pending Change again. Admins and Superadmins
+        signed in on the website only: Moderators, members and the service token get
+        403 `forbidden`. Belongs to the Patch Notes Feature: not found for everyone
+        when Off.'
+      responses:
+        '200':
+          description: open again
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PendingChange"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Pending Change, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not_dismissed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/patches/{number}/pending_changes":
+    parameters:
+    - name: number
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Set what a Patch covers
+      tags:
+      - Patch Notes
+      description: 'Replaces the whole list: the ids given become covered by this
+        Patch, and the ones it covered before but are left out are open again. Refused
+        whole, changing nothing. Draft or published. Deleting a draft Patch opens
+        what it covered. Admins and Superadmins signed in on the website only: Moderators,
+        members and the service token get 403 `forbidden`. Belongs to the Patch Notes
+        Feature: not found for everyone when Off.'
+      parameters: []
+      responses:
+        '200':
+          description: what the Patch now covers, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/PendingChange"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch or Pending Change, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid_pending_changes (ids is not a list of ids), dismissed
+            (undo the dismissal first), covered_elsewhere (another Patch covers one)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - ids
+                  properties:
+                    ids:
+                      type: array
+                      items:
+                        type: integer
+        required: true
+  "/api/v1/versions":
+    get:
+      summary: Current versions
+      tags:
+      - Patch Notes
+      description: 'Each repo''s current version, from its newest Pending Change;
+        null until versioning reports one. Public: no sign-in needed, whatever the
+        Patch Notes Feature''s state.'
+      security:
+      - {}
+      responses:
+        '200':
+          description: the versions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Versions"
   "/api/v1/perspectives":
     get:
       summary: List perspectives
