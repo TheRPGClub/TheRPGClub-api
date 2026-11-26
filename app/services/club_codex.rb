@@ -8,10 +8,11 @@
 module ClubCodex
   # A member as Club Codex payloads show them (an entry's author, a mentioned
   # member): their id, which is also their profile's, the name they go by now
-  # (their Discord display name, else username, else id) and the path of
-  # their stored avatar (GET /api/v1/users/{id}/avatar).
+  # (their Discord display name, else username, else id), their Discord
+  # avatar hash (null if unknown; with the id it makes a Discord CDN URL) and
+  # the path of their stored avatar (GET /api/v1/users/{id}/avatar).
   def self.member(user)
     { user_id: user.user_id, name: user.global_name.presence || user.username.presence || user.user_id,
-      avatar_url: "/api/v1/users/#{user.user_id}/avatar" }
+      discord_avatar: user.discord_avatar, avatar_url: "/api/v1/users/#{user.user_id}/avatar" }
   end
 end

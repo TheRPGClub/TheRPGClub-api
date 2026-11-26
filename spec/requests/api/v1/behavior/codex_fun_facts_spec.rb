@@ -39,7 +39,7 @@ RSpec.describe "api/v1/codex/fun_facts behavior", type: :request do
         "kind" => nil, "mentions" => {}, "images" => [], "links" => [],
         "viewer" => { "can_edit" => true, "can_delete" => true },
         "author" => { "user_id" => regular.user_id, "name" => "Rhea",
-                      "avatar_url" => "/api/v1/users/#{regular.user_id}/avatar" }
+                      "discord_avatar" => regular.discord_avatar, "avatar_url" => "/api/v1/users/#{regular.user_id}/avatar" }
       )
 
       get "/api/v1/codex/fun_facts/#{json.dig('data', 'id')}", headers: auth_headers_for(member)
@@ -280,8 +280,8 @@ RSpec.describe "api/v1/codex/fun_facts behavior", type: :request do
 
       expect(json.dig("data", "body")).to eq("<@#{ada.user_id}> and <@!#{bo.user_id}> met <@999999999999999999>.")
       expect(json.dig("data", "mentions")).to eq(
-        ada.user_id => { "user_id" => ada.user_id, "name" => "Ada", "avatar_url" => "/api/v1/users/#{ada.user_id}/avatar" },
-        bo.user_id => { "user_id" => bo.user_id, "name" => "bo", "avatar_url" => "/api/v1/users/#{bo.user_id}/avatar" }
+        ada.user_id => { "user_id" => ada.user_id, "name" => "Ada", "discord_avatar" => ada.discord_avatar, "avatar_url" => "/api/v1/users/#{ada.user_id}/avatar" },
+        bo.user_id => { "user_id" => bo.user_id, "name" => "bo", "discord_avatar" => bo.discord_avatar, "avatar_url" => "/api/v1/users/#{bo.user_id}/avatar" }
       )
     end
 

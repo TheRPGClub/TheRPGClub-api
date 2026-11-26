@@ -357,6 +357,8 @@ module OpenapiSchemas
       # UserFields): a consumer-audited subset of rpg_club_users.
       UserSummary: obj(
         user_id: str, username: str(nullable: true), global_name: str(nullable: true),
+        discord_avatar: str(nullable: true, description: "Their Discord avatar hash from their last website login; " \
+          "null if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png"),
         is_bot: bool, role_admin: bool, role_moderator: bool, role_regular: bool,
         role_dev: bool, role_member: bool, role_newcomer: bool,
         server_left_at: ts(nullable: true)
@@ -1342,6 +1344,8 @@ module OpenapiSchemas
         user_id: str(description: "Their Discord id, which is also their profile's id."),
         name: str(description: "The name they go by now: their Discord display name, else their username " \
           "(their last known one once they have left)."),
+        discord_avatar: str(nullable: true, description: "Their Discord avatar hash from their last website login; " \
+          "null if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png"),
         avatar_url: str(description: "Path of their stored avatar (GET /api/v1/users/{id}/avatar, 404 without one).")
       ),
       # What the acting member may do with a Club Codex entry (ClubCodex::Actor).
