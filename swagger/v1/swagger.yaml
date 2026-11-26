@@ -30513,7 +30513,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: 'published: unpublish the Patch first'
+          description: 'published: unpublish the Patch first; posted: its Discord
+            post is still up or a post job is still open'
           content:
             application/json:
               schema:
@@ -30563,7 +30564,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: already_published
+          description: 'already_published; post_removing: the bot is still removing
+            the post an unpublish queued'
           content:
             application/json:
               schema:

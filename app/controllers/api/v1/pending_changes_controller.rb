@@ -74,21 +74,28 @@ module Api
       end
 
       # POST /api/v1/pending_changes/:id/dismiss
+      #
+      # The row is locked for the check and the write, so a cover or another
+      # dismiss at the same moment waits and then sees the outcome.
       def dismiss
         change = PendingChange.find(params[:id])
-        return refuse("covered", "Patch #{change.patch_number} covers it; uncover it first.") if change.patch_id
-        return refuse("already_dismissed", "It is already dismissed.") if change.dismissed_at
+        change.with_lock do
+          return refuse("covered", "Patch #{change.patch_number} covers it; uncover it first.") if change.patch_id
+          return refuse("already_dismissed", "It is already dismissed.") if change.dismissed_at
 
-        change.update!(dismissed_at: Time.current)
+          change.update!(dismissed_at: Time.current)
+        end
         render_change(change)
       end
 
       # POST /api/v1/pending_changes/:id/undismiss
       def undismiss
         change = PendingChange.find(params[:id])
-        return refuse("not_dismissed", "It is not dismissed.") unless change.dismissed_at
+        change.with_lock do
+          return refuse("not_dismissed", "It is not dismissed.") unless change.dismissed_at
 
-        change.update!(dismissed_at: nil)
+          change.update!(dismissed_at: nil)
+        end
         render_change(change)
       end
 
@@ -106,14 +113,17 @@ module Api
           return refuse("invalid_pending_changes", "ids must be a list of Pending Change ids")
         end
 
-        changes = PendingChange.where(id: ids).to_a
-        raise ActiveRecord::RecordNotFound, "not_found" if changes.size < ids.uniq.size
-        return refuse("dismissed", "Undo a dismissal before covering it.") if changes.any?(&:dismissed_at)
-        if changes.any? { |change| change.patch_id && change.patch_id != patch.id }
-          return refuse("covered_elsewhere", "Another Patch covers one of them.")
-        end
+        # The Patch's row and the given rows are locked before the checks, so
+        # a dismiss or another cover at the same moment waits for this one
+        # and then sees what it did.
+        patch.with_lock do
+          changes = PendingChange.where(id: ids).order(:id).lock.to_a
+          raise ActiveRecord::RecordNotFound, "not_found" if changes.size < ids.uniq.size
+          return refuse("dismissed", "Undo a dismissal before covering it.") if changes.any?(&:dismissed_at)
+          if changes.any? { |change| change.patch_id && change.patch_id != patch.id }
+            return refuse("covered_elsewhere", "Another Patch covers one of them.")
+          end
 
-        PendingChange.transaction do
           PendingChange.where(patch: patch).where.not(id: ids).update_all(patch_id: nil, updated_at: Time.current)
           PendingChange.where(id: ids, patch_id: nil).update_all(patch_id: patch.id, updated_at: Time.current)
         end

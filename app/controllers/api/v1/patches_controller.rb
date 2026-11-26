@@ -20,7 +20,8 @@ module Api
     #
     # Refusals carry `{ error, message }` (403 `forbidden`, 422
     # `invalid_patch`, `already_published`, `not_published`, `published`,
-    # `already_posted`, `post_queued`, `not_posted`, `invalid_post`).
+    # `posted`, `post_removing`, `already_posted`, `post_queued`,
+    # `not_posted`, `invalid_post`).
     class PatchesController < ApplicationController
       feature :patch_notes
 
@@ -80,9 +81,15 @@ module Api
       end
 
       # POST /api/v1/patches/:number/publish
+      #
+      # 422 `post_removing` while the bot is still taking down the post an
+      # unpublish queued, so the removal can't land on the published Patch.
       def publish
         patch = find_patch
         return refuse("already_published", "Patch #{patch.number} is already published.") if patch.published?
+        if patch.post_removing?
+          return refuse("post_removing", "The bot is still removing Patch #{patch.number}'s #patch-notes post; try again in a moment.")
+        end
 
         patch.publish!
         render_patch(patch)
@@ -150,10 +157,15 @@ module Api
 
       # DELETE /api/v1/patches/:number
       #
-      # Drafts only; its number is never used again.
+      # Drafts only; its number is never used again. 422 `posted` while its
+      # Discord post is up or a post job is still open, so no post is left
+      # behind without its Patch.
       def destroy
         patch = find_patch
         return refuse("published", "Unpublish Patch #{patch.number} before deleting it.") if patch.published?
+        if patch.post_pending?
+          return refuse("posted", "Patch #{patch.number}'s #patch-notes post is still up or on its way; wait for the bot to remove it.")
+        end
 
         patch.destroy!
         render json: { data: { number: patch.number, deleted: true } }

@@ -48,10 +48,12 @@ class PendingChange < ApplicationRecord
 
   def patch_number = patch&.number
 
-  # Each repo's current version: the version of its newest Pending Change,
-  # nil until it has one.
+  # Each repo's current version: the highest version among its Pending
+  # Changes, compared number by number (so 1.10.0 beats 1.9.3 whatever order
+  # they arrived in), nil until it has one.
   def self.versions
-    latest = select("DISTINCT ON (repo) repo, version").order(:repo, created_at: :desc, id: :desc)
+    latest = select("DISTINCT ON (repo) repo, version")
+      .order(:repo, Arel.sql("string_to_array(version, '.')::numeric[] DESC"), id: :desc)
     REPOS.index_with(nil).merge(latest.to_h { |row| [ row.repo, row.version ] })
   end
 end

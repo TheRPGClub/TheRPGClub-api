@@ -33,7 +33,8 @@ module Versioning
   TITLE_FORMAT = /\A(?<type>[a-z]+)(?:\((?<scope>[^()\s]+)\))?(?<bang>!)?: +(?<description>\S.*)\z/
   TAG_FORMAT = /\Av(\d+)\.(\d+)\.(\d+)\z/
   BREAKING_LINE = /^[ \t]*BREAKING[ -]CHANGE:/
-  PATCH_NOTE_LINE = /^[ \t]*patch note:[ \t]*(\S.*?)[ \t]*\r?$/i
+  PATCH_NOTE_LABEL = /\A\s*patch note:(.*)\z/i
+  HEADING = /\A\s*#/
   MERGE_MESSAGE = /\AMerge pull request #(\d+) /
   COMMENT = /<!--.*?-->/m
 
@@ -94,9 +95,12 @@ module Versioning
     BREAKING_LINE.match?(uncommented(body))
   end
 
-  # The pull request's optional "Patch note:" line (the first filled one), or nil.
+  # The pull request's optional Patch note, or nil: the text after the first
+  # filled "Patch note:" label, or, when the label is left empty, the first
+  # non-empty line after it (unless that is a heading, such as the template's
+  # next section).
   def patch_note(body)
-    note = uncommented(body).scan(PATCH_NOTE_LINE).flatten.first
+    note = find_patch_note(uncommented(body))
     return unless note
     return note if note.length <= PATCH_NOTE_MAX
 
@@ -147,6 +151,24 @@ module Versioning
     return "#{parsed.breaking ? '!' : 'a BREAKING CHANGE line'} bumps the major" if part == :major
 
     "#{parsed.type} bumps the #{part}"
+  end
+
+  def find_patch_note(text)
+    awaiting = false
+    text.each_line(chomp: true) do |line|
+      label = PATCH_NOTE_LABEL.match(line)
+      if label
+        note = label[1].strip
+        return note unless note.empty?
+
+        awaiting = true
+      elsif awaiting && !line.strip.empty?
+        return line.strip unless HEADING.match?(line)
+
+        awaiting = false
+      end
+    end
+    nil
   end
 
   def uncommented(body)
