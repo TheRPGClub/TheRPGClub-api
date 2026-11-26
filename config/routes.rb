@@ -514,6 +514,8 @@ Rails.application.routes.draw do
       resources :search_synonym_drafts, only: %i[index show create update destroy]
       # The Release Calendar (spec #389): GameDB's Upcoming Releases.
       get "upcoming_releases", to: "upcoming_releases#index"
+      # The Roadmap (spec api#505): Milestones and Roadmap Items.
+      get "roadmap", to: "roadmap#show"
       # Club Codex (spec #397): its three parts' entries, gated by the
       # `club_codex` Feature.
       namespace :codex do

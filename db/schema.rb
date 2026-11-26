@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_170000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -945,6 +945,36 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_160000) do
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_nr_gotm_votes_round_runoff_user_game", unique: true
   end
 
+  create_table "roadmap_items", force: :cascade do |t|
+    t.bigint "milestone_id", null: false
+    t.string "title", limit: 120, null: false
+    t.string "blurb", limit: 500, null: false
+    t.integer "position", null: false
+    t.string "area", limit: 8
+    t.string "github_issue_url", limit: 300
+    t.timestamptz "shipped_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["milestone_id", "position"], name: "ix_roadmap_items_milestone_position"
+    t.check_constraint "\"position\" >= 1", name: "ck_roadmap_items_position"
+    t.check_constraint "area::text = ANY (ARRAY['bot'::character varying, 'website'::character varying, 'both'::character varying]::text[])", name: "ck_roadmap_items_area"
+  end
+
+  create_table "roadmap_milestones", force: :cascade do |t|
+    t.string "name", limit: 100, null: false
+    t.string "blurb", limit: 280
+    t.date "target_date"
+    t.string "date_precision", limit: 8, default: "tba", null: false
+    t.integer "position", null: false
+    t.timestamptz "reached_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["position"], name: "ix_roadmap_milestones_position"
+    t.check_constraint "(date_precision::text = 'tba'::text) = (target_date IS NULL)", name: "ck_roadmap_milestones_tba_has_no_date"
+    t.check_constraint "\"position\" >= 1", name: "ck_roadmap_milestones_position"
+    t.check_constraint "date_precision::text = ANY (ARRAY['day'::character varying, 'month'::character varying, 'quarter'::character varying, 'year'::character varying, 'tba'::character varying]::text[])", name: "ck_roadmap_milestones_date_precision"
+  end
+
   create_table "rpg_club_admin_wizard_sessions", primary_key: "session_id", id: { type: :string, limit: 200 }, force: :cascade do |t|
     t.string "channel_id", limit: 64, null: false
     t.string "command_key", limit: 80, null: false
@@ -1853,6 +1883,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_160000) do
   add_foreign_key "member_hidden_platforms", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "roadmap_items", "roadmap_milestones", column: "milestone_id", name: "fk_roadmap_items_milestone", on_delete: :restrict
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify

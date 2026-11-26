@@ -123,7 +123,12 @@ module Features
     # until staff set it Live before the first vote opens.
     define("goty_vote", "GOTY Vote", core: true,
       website: [ "GOTY Vote page", "Game page GOTY badge" ],
-      bot: [ "/goty" ])
+      bot: [ "/goty" ]),
+    # Spec api#505. Registered after Feature Flags shipped, so it has no
+    # stored state and starts in Preview while staff fill it. Its Feedback
+    # Board badge follows it.
+    define("roadmap", "Roadmap", core: false,
+      website: [ "Roadmap", "Feedback roadmap badge" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze
