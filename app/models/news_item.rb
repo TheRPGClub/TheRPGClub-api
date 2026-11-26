@@ -45,6 +45,12 @@ class NewsItem < ApplicationRecord
   validate :images_are_addresses_with_expiry
   validate :has_link_or_image
 
+  # `listed_at` is when the News Item first had a News Category, so members
+  # could first see it: on recording for a live item, when staff sort it for
+  # an imported one (NewsImport::Assign sets it itself). It never changes
+  # after that. The News Mark counts News Items listed after it as new.
+  before_save { self.listed_at ||= Time.current if category_key.present? }
+
   # Any change to a News Item may change what the feed shows: an open News
   # page polls the stamp (NewsItem::FeedStamp). remove! bumps it itself.
   after_commit { FeedStamp.bump! }

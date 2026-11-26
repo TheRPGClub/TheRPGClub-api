@@ -121,6 +121,8 @@ RSpec.describe "api/v1/news_mark behavior", type: :request do
       [ { other: 1 }, "news_mark or all_seen required" ],
       [ { news_mark: "yesterday" }, "news_mark must be an ISO 8601 instant" ],
       [ { news_mark: 5 }, "news_mark must be an ISO 8601 instant" ],
+      [ { news_mark: "2026-11-24T21:40:00" }, "news_mark must be an ISO 8601 instant" ],
+      [ { news_mark: "2026-11-24" }, "news_mark must be an ISO 8601 instant" ],
       [ { all_seen: false }, "all_seen must be true" ],
       [ { all_seen: true, news_mark: "2026-11-24T21:40:00Z" }, "give either news_mark or all_seen, not both" ]
     ].each do |data, error|

@@ -2388,17 +2388,18 @@ module OpenapiSchemas
         },
         news_mark: ts(nullable: true).merge(
           description: "The member's News Mark (UTC, microseconds), as `GET /api/v1/users/{user_id}/news_mark` " \
-                       "serves it. Null without one (a first visit) and for the service token."
+                       "serves it, or `mark` when the request gave one. Null without either (a first visit) " \
+                       "and for the service token without `mark`."
         ),
-        new_count: int.merge(
-          description: "How many News Items in this view were posted after the News Mark: the default view " \
-                       "(switched-off News Categories left out) or the asked `category`, and `q`, but not " \
-                       "`since`/`until`. 0 without a News Mark."
+        new_count: int(nullable: true).merge(
+          description: "How many News Items in this view were listed after the News Mark (or `mark`): the " \
+                       "default view (switched-off News Categories left out) or the asked `category`, and `q`, " \
+                       "but not `since`/`until`. 0 without a News Mark. Null past page one unless `mark` is given."
         ),
         new_category_counts: {
-          type: :object,
+          type: :object, nullable: true,
           description: "`new_count` per News Category, keyed by every News Category key in order, 0 for none " \
-                       "(and for every News Category outside this view).",
+                       "(and for every News Category outside this view). Null past page one unless `mark` is given.",
           properties: NewsCategory.keys.index_with { { type: :integer } },
           required: NewsCategory.keys,
           example: NewsCategory.keys.index_with(0).merge("releases" => 4, "rumours" => 1)
@@ -2446,6 +2447,11 @@ module OpenapiSchemas
           description: "The member's own words: the message text as a reader sees it, without the link " \
                        "address. Null when there are none."),
         posted_at: ts.merge(description: "When the message was posted in Discord."),
+        listed_at: ts(nullable: true).merge(
+          description: "When the News Item was listed (first had a News Category, so members could see it), " \
+                       "UTC with microseconds. The News Mark counts News Items listed after it as new, so one " \
+                       "recorded late is still new. Null only for an unsorted imported News Item."
+        ),
         edited_at: ts(nullable: true).merge(description: "When the message was last edited; null if never."),
         link: ref("NewsItemLink", nullable: true).merge(
           description: "The message's first link and Discord's preview of it. Null for an image-only News Item."
@@ -2454,7 +2460,7 @@ module OpenapiSchemas
           description: "The message's image attachments in posted order; empty when there are none."
         ),
         author: ref("NewsItemAuthor"),
-        _required: %w[message_id category_key origin comment posted_at edited_at link images author
+        _required: %w[message_id category_key origin comment posted_at listed_at edited_at link images author
                       picked_category_key news_copy]
       ),
       NewsCategoryChange: obj(

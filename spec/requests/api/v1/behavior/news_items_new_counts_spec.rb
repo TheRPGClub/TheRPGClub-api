@@ -2,10 +2,12 @@
 
 require "rails_helper"
 
-# The Catch-up view's reads of the feed (spec api#494, ticket api#496):
-# `since` and `until` bound `posted_at` so the page can list the News Items
-# new since the member's News Mark and the ones already seen, and `meta`
-# carries the News Mark with how many News Items in the same view are new.
+# The Catch-up view's reads of the feed (spec api#494, ticket api#496, and
+# the code-review fix pass): `since` and `until` bound `listed_at` (when the
+# News Item was listed, not when it was posted) so the page can list the
+# News Items new since the member's News Mark and the ones already seen, and
+# `meta` carries the News Mark (or the `mark` the page asked with) with how
+# many News Items in the same view are new.
 RSpec.describe "api/v1/news_items since, until and new counts", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
@@ -31,7 +33,12 @@ RSpec.describe "api/v1/news_items since, until and new counts", type: :request d
     keys.each { |key| create(:member_news_category_preference, user: member, category_key: key) }
   end
 
-  def item(at, **attrs) = create(:news_item, posted_at: at, **attrs)
+  # A News Item posted at `at` and listed at `listed` (by default as soon as
+  # it was posted; never for an unsorted import).
+  def item(at, listed: at, **attrs)
+    listed = nil if attrs.key?(:category_key) && attrs[:category_key].nil?
+    create(:news_item, posted_at: at, listed_at: listed, **attrs)
+  end
 
   describe "since and until" do
     let!(:old) { item(mark - 2.days) }
@@ -48,6 +55,18 @@ RSpec.describe "api/v1/news_items since, until and new counts", type: :request d
 
     it "since and until together keep the News Items between them" do
       expect(feed_ids(since: (mark - 3.days).iso8601, until: (mark - 1.hour).iso8601)).to eq([ old.message_id ])
+    end
+
+    it "since keeps a News Item listed after it though posted before it (recorded late)" do
+      late = item(mark - 1.day, listed: mark + 2.hours)
+
+      expect(feed_ids(since: mark.iso8601(3))).to eq([ fresh.message_id, late.message_id ])
+    end
+
+    it "until leaves out a News Item listed after it though posted before it, so Seen is exactly the rest" do
+      item(mark - 1.day, listed: mark + 2.hours)
+
+      expect(feed_ids(until: mark.iso8601(3))).to eq([ at_mark.message_id, old.message_id ])
     end
 
     it "accepts any ISO 8601 offset" do
@@ -77,7 +96,7 @@ RSpec.describe "api/v1/news_items since, until and new counts", type: :request d
       expect(feed_ids(since: "", until: " ").size).to eq(3)
     end
 
-    [ "yesterday", "2026-13-01T00:00:00Z", "1732650000" ].each do |bad|
+    [ "yesterday", "2026-13-01T00:00:00Z", "1732650000", "2026-11-24T21:40:00", "2026-11-24" ].each do |bad|
       it "is a 400 for a bad since (#{bad})" do
         get "/api/v1/news_items", params: { since: bad }, headers: auth_headers_for(member)
 
@@ -122,7 +141,7 @@ RSpec.describe "api/v1/news_items since, until and new counts", type: :request d
       expect(body.fetch("new_category_counts")).to eq(new_counts)
     end
 
-    it "count the News Items posted after the News Mark, keyed by every News Category in order" do
+    it "count the News Items listed after the News Mark, keyed by every News Category in order" do
       set_mark
       2.times { item(mark + 1.hour, category_key: "releases") }
       item(mark + 2.hours, category_key: "rumours")
@@ -179,7 +198,18 @@ RSpec.describe "api/v1/news_items since, until and new counts", type: :request d
       expect(body.fetch("new_count")).to eq(1)
     end
 
-    it "count imported News Items only when posted after the News Mark" do
+    it "count a News Item listed after the News Mark though posted before it (recorded late)" do
+      set_mark
+      item(mark - 1.day, listed: mark + 1.hour, category_key: "industry")
+      item(mark + 1.hour, listed: mark, category_key: "general")
+
+      body = feed.fetch("meta")
+
+      expect(body.fetch("new_count")).to eq(1)
+      expect(body.fetch("new_category_counts")).to eq(new_counts(industry: 1))
+    end
+
+    it "count imported News Items only when listed after the News Mark" do
       set_mark
       item(mark - 1.year, origin: "import", category_key: "general")
       late = item(mark + 1.hour, origin: "import", category_key: "general")
@@ -200,6 +230,68 @@ RSpec.describe "api/v1/news_items since, until and new counts", type: :request d
       expect(body.fetch("new_count")).to eq(0)
       expect(body.fetch("new_category_counts")).to eq(new_counts)
     end
+  end
+
+  describe "mark" do
+    let(:visit_mark) { mark - 1.day }
+
+    before do
+      item(visit_mark - 1.hour, category_key: "general")
+      item(visit_mark + 1.hour, category_key: "releases")
+      item(mark + 1.hour, category_key: "industry")
+    end
+
+    it "counts against the given mark instead of the stored News Mark, and leaves the stored one alone" do
+      set_mark
+
+      body = feed(mark: visit_mark.iso8601(3)).fetch("meta")
+
+      expect(body).to include("news_mark" => "2026-11-23T21:40:00.123000Z", "new_count" => 2)
+      expect(body.fetch("new_category_counts")).to eq(new_counts(releases: 1, industry: 1))
+      expect(NewsMark.for(member.user_id)).to eq(mark)
+    end
+
+    it "counts for a member with no stored News Mark, and stores none" do
+      expect(feed(mark: visit_mark.iso8601(3)).dig("meta", "new_count")).to eq(2)
+      expect(NewsMark.for(member.user_id)).to be_nil
+    end
+
+    it "takes any offset and answers in UTC" do
+      expect(feed(mark: "2026-11-24T00:40:00.123+03:00").dig("meta", "news_mark")).to eq("2026-11-23T21:40:00.123000Z")
+    end
+
+    [ "soon", "2026-11-23T21:40:00", "1732650000" ].each do |bad|
+      it "is a 400 for a bad mark (#{bad})" do
+        get "/api/v1/news_items", params: { mark: bad }, headers: auth_headers_for(member)
+
+        expect(response).to have_http_status(:bad_request)
+        expect(json.fetch("error")).to eq("mark must be an ISO 8601 instant")
+      end
+    end
+  end
+
+  describe "past page one" do
+    before do
+      set_mark
+      3.times { item(mark + 1.hour, category_key: "releases") }
+    end
+
+    it "leaves the new counts null, so later pages skip that query" do
+      body = feed(page: 2, per: 2).fetch("meta")
+
+      expect(body).to include("page" => 2, "new_count" => nil, "new_category_counts" => nil)
+      expect(body.fetch("news_mark")).to eq("2026-11-24T21:40:00.123000Z")
+    end
+
+    it "counts when a mark is given" do
+      expect(feed(page: 2, per: 2, mark: mark.iso8601(3)).dig("meta", "new_count")).to eq(3)
+    end
+  end
+
+  it "serves listed_at on each News Item, in UTC with microseconds" do
+    item(mark - 1.day, listed: Time.zone.parse("2026-11-25 08:00:00.654321 UTC"))
+
+    expect(feed.fetch("data").first.fetch("listed_at")).to eq("2026-11-25T08:00:00.654321Z")
   end
 
   it "reads the new counts in one grouped query, whatever the number of News Items" do
