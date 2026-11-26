@@ -1027,6 +1027,11 @@ components:
         global_name:
           type: string
           nullable: true
+        discord_avatar:
+          type: string
+          nullable: true
+          description: Their Discord avatar hash from their last website login; null
+            if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png
         is_bot:
           type: boolean
         role_admin:
@@ -4346,6 +4351,11 @@ components:
           type: string
           description: 'The name they go by now: their Discord display name, else
             their username (their last known one once they have left).'
+        discord_avatar:
+          type: string
+          nullable: true
+          description: Their Discord avatar hash from their last website login; null
+            if unknown. https://cdn.discordapp.com/avatars/{user_id}/{discord_avatar}.png
         avatar_url:
           type: string
           description: Path of their stored avatar (GET /api/v1/users/{id}/avatar,

@@ -36,7 +36,7 @@ RSpec.describe "api/v1/codex/history_events behavior", type: :request do
         "kind" => "platform", "occurred_on" => "2018-03-01", "date_precision" => "month",
         "viewer" => { "can_edit" => false, "can_delete" => false },
         "author" => { "user_id" => admin.user_id, "name" => "Ada",
-                      "avatar_url" => "/api/v1/users/#{admin.user_id}/avatar" })
+                      "discord_avatar" => admin.discord_avatar, "avatar_url" => "/api/v1/users/#{admin.user_id}/avatar" })
     end
 
     it "hides Club History from a Visitor in Preview and Off" do

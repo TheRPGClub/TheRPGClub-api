@@ -33,7 +33,7 @@ RSpec.describe "api/v1/codex/lore_entries behavior", type: :request do
         "kind" => nil, "mentions" => {}, "images" => [], "links" => [],
         "viewer" => { "can_edit" => true, "can_delete" => true },
         "author" => { "user_id" => regular.user_id, "name" => "Rhea",
-                      "avatar_url" => "/api/v1/users/#{regular.user_id}/avatar" }
+                      "discord_avatar" => regular.discord_avatar, "avatar_url" => "/api/v1/users/#{regular.user_id}/avatar" }
       )
 
       get "/api/v1/codex/lore_entries/#{json.dig('data', 'id')}", headers: auth_headers_for(member)
@@ -341,7 +341,7 @@ RSpec.describe "api/v1/codex/lore_entries behavior", type: :request do
       add_lore_entry(as: regular, body: "<@#{ada.user_id}> and <@!#{bo.user_id}> met <@999999999999999999>.")
       expect(json.dig("data", "mentions").keys).to contain_exactly(ada.user_id, bo.user_id)
       expect(json.dig("data", "mentions", ada.user_id)).to eq(
-        "user_id" => ada.user_id, "name" => "Ada", "avatar_url" => "/api/v1/users/#{ada.user_id}/avatar"
+        "user_id" => ada.user_id, "name" => "Ada", "discord_avatar" => ada.discord_avatar, "avatar_url" => "/api/v1/users/#{ada.user_id}/avatar"
       )
 
       patch "/api/v1/codex/lore_entries/#{json.dig('data', 'id')}",
