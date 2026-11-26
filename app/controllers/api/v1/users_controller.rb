@@ -19,9 +19,6 @@ module Api
       # endpoint into an open redirect.
       TRUSTED_IMAGE_HOSTS = %w[cdn.discordapp.com media.discordapp.net].freeze
       TRUSTED_IMAGE_HOST_SUFFIX = ".backblazeb2.com"
-      # A Discord avatar hash ("a_" marks an animated one) as Discord login
-      # stores it in `discord_avatar`; anything else is never built into a URL.
-      DISCORD_AVATAR_HASH = /\A(a_)?\h{32}\z/
 
       # Canonical `has_platform` tokens mapped to the `social_platforms.label`
       # substrings they match (case-insensitively). This mirrors the Discord
@@ -295,7 +292,7 @@ module Api
       # stored hash looks like one Discord issued; nil otherwise.
       def discord_avatar_url
         hash = RpgClubUser.where(user_id: params[:user_id].to_s).pick(:discord_avatar).to_s
-        return unless DISCORD_AVATAR_HASH.match?(hash) && params[:user_id].to_s.match?(/\A\d+\z/)
+        return unless RpgClubUser::DISCORD_AVATAR_HASH.match?(hash) && params[:user_id].to_s.match?(/\A\d+\z/)
 
         "https://cdn.discordapp.com/avatars/#{params[:user_id]}/#{hash}.png?size=256"
       end
