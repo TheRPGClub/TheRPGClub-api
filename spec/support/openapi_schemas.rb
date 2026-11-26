@@ -1409,8 +1409,18 @@ module OpenapiSchemas
         counts: obj(new: int, improved: int, fixed: int,
           _description: "How many changes it lists under its New, Improved and Fixed H2 headings: the top-level " \
                         "items of the lists in each section (nested items are details)."),
+        posted_at: ts(nullable: true).merge(description: "When the bot first posted it to Discord (ticket api#513); " \
+          "null while not posted. Updating the post keeps it."),
+        post_channel_id: str(nullable: true, description: "The channel the bot posted it in (#patch-notes, or the " \
+          "staff test channel while Patch Notes was in Preview); null while not posted."),
+        post_message_id: str(nullable: true, description: "Its Discord message; null while not posted."),
+        edited_since_post: bool.merge(description: "Posted, and its text changed after the post last matched it: " \
+          "offer \"Update the post\"."),
+        post_job: ref("BotJob", nullable: true).merge(description: "A single Patch, for Admins and Superadmins only: " \
+          "the latest patch_post, patch_edit or patch_delete bot job for it, null if none."),
         created_at: ts, updated_at: ts,
-        _required: %w[id number title status published_at rich_body body cut_body counts created_at updated_at]
+        _required: %w[id number title status published_at rich_body body cut_body counts posted_at post_channel_id
+                      post_message_id edited_since_post created_at updated_at]
       ),
       PatchWithNeighbours: extends("Patch", required: %w[previous_number next_number],
         previous_number: int(nullable: true).merge(description: "The published Patch just before it, if any."),
@@ -1916,6 +1926,40 @@ module OpenapiSchemas
         entry_id: int.merge(description: "The Fun Fact drawn for the day; the queue already counts it shown."),
         feature_key: str(enum: %w[club_codex])
       ),
+      # The Patch post bot job payloads (spec api#510, ticket api#513), as
+      # BotJobClaim.payload carries them.
+      PatchPostJobPayload: obj(
+        _description: "Kind `patch_post`. Post Patch `number` in #patch-notes, or the staff test channel while " \
+                      "Patch Notes is in Preview (nothing when Off), with no pings: `cut_body`, a separator and " \
+                      "a \"Read the full Patch\" link button to its page. Queued only by an Admin's \"Post to " \
+                      "#patch-notes\". Once posted, record the message with PUT " \
+                      "/api/v1/patches/{number}/discord_post, then ack it done.",
+        _required: %w[number title cut_body published_at feature_key],
+        number: int.merge(description: "The Patch's number; its page is /patch-notes/{number}."),
+        title: str(nullable: true, description: "Its optional title."),
+        cut_body: str(description: "The Discord markdown to post, already cut to Discord's limit."),
+        published_at: ts.merge(description: "When it was published."),
+        feature_key: str(enum: %w[patch_notes])
+      ),
+      PatchEditJobPayload: obj(
+        _description: "Kind `patch_edit`. Edit message `message_id` in `channel_id` to the Patch's text, in " \
+                      "the same shape as patch_post. Queued only by an Admin's \"Update the post\". Once " \
+                      "edited, record it with PUT /api/v1/patches/{number}/discord_post (the same ids), then " \
+                      "ack it done.",
+        _required: %w[number title cut_body published_at channel_id message_id feature_key],
+        number: int, title: str(nullable: true), cut_body: str, published_at: ts,
+        channel_id: str(description: "Where the post is: the channel it was posted in, whatever the Flag says now."),
+        message_id: str(description: "The post's message."),
+        feature_key: str(enum: %w[patch_notes])
+      ),
+      PatchDeleteJobPayload: obj(
+        _description: "Kind `patch_delete`. Delete message `message_id` in `channel_id`: the Patch was " \
+                      "unpublished (or its post landed after it was). Once deleted, or already gone, record " \
+                      "it with DELETE /api/v1/patches/{number}/discord_post?message_id=, then ack it done.",
+        _required: %w[number channel_id message_id feature_key],
+        number: int, channel_id: str, message_id: str,
+        feature_key: str(enum: %w[patch_notes])
+      ),
       # The Birthday Post bot job payload (#401), as BotJobClaim.payload carries it.
       BirthdayPostJobPayload: obj(
         _description: "Kind `birthday_post`. Post one Birthday Post in `channel_id` greeting every member in " \
@@ -1965,7 +2009,8 @@ module OpenapiSchemas
                        "Documented payloads: SayJobPayload, NewsImagesRenewJobPayload, NewsCatchUpJobPayload, " \
                        "ChallengeAnnounceJobPayload, ChallengeDmJobPayload, DailyFunFactJobPayload, " \
                        "BirthdayPostJobPayload, FranchiseConquestJobPayload, PsnAuthExpiredJobPayload, " \
-                       "PsnAuthRestoredJobPayload."
+                       "PsnAuthRestoredJobPayload, PatchPostJobPayload, PatchEditJobPayload, " \
+                       "PatchDeleteJobPayload."
         ),
         status: str(enum: BotJob::STATUSES), requested_by_user_id: str(nullable: true), attempts: int,
         error_message: str(nullable: true), result_text: str(nullable: true), claimed_at: ts(nullable: true),

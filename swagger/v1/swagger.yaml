@@ -4078,6 +4078,9 @@ components:
           - franchise_conquest
           - psn_auth_expired
           - psn_auth_restored
+          - patch_post
+          - patch_edit
+          - patch_delete
         summary:
           type: string
           maxLength: 200
@@ -4563,6 +4566,31 @@ components:
           description: 'How many changes it lists under its New, Improved and Fixed
             H2 headings: the top-level items of the lists in each section (nested
             items are details).'
+        posted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the bot first posted it to Discord (ticket api#513); null
+            while not posted. Updating the post keeps it.
+        post_channel_id:
+          type: string
+          nullable: true
+          description: The channel the bot posted it in (#patch-notes, or the staff
+            test channel while Patch Notes was in Preview); null while not posted.
+        post_message_id:
+          type: string
+          nullable: true
+          description: Its Discord message; null while not posted.
+        edited_since_post:
+          type: boolean
+          description: 'Posted, and its text changed after the post last matched it:
+            offer "Update the post".'
+        post_job:
+          allOf:
+          - "$ref": "#/components/schemas/BotJob"
+          nullable: true
+          description: 'A single Patch, for Admins and Superadmins only: the latest
+            patch_post, patch_edit or patch_delete bot job for it, null if none.'
         created_at:
           type: string
           format: date-time
@@ -4579,6 +4607,10 @@ components:
       - body
       - cut_body
       - counts
+      - posted_at
+      - post_channel_id
+      - post_message_id
+      - edited_since_post
       - created_at
       - updated_at
     PatchWithNeighbours:
@@ -6220,6 +6252,97 @@ components:
         with no pings. Queued once per club day at 15:00 America/New_York. Drop it,
         acked done, when `club_date` is no longer today in New York or the Fun Fact
         has been deleted (404).
+    PatchPostJobPayload:
+      type: object
+      properties:
+        number:
+          type: integer
+          description: The Patch's number; its page is /patch-notes/{number}.
+        title:
+          type: string
+          nullable: true
+          description: Its optional title.
+        cut_body:
+          type: string
+          description: The Discord markdown to post, already cut to Discord's limit.
+        published_at:
+          type: string
+          format: date-time
+          description: When it was published.
+        feature_key:
+          type: string
+          enum:
+          - patch_notes
+      required:
+      - number
+      - title
+      - cut_body
+      - published_at
+      - feature_key
+      description: 'Kind `patch_post`. Post Patch `number` in #patch-notes, or the
+        staff test channel while Patch Notes is in Preview (nothing when Off), with
+        no pings: `cut_body`, a separator and a "Read the full Patch" link button
+        to its page. Queued only by an Admin''s "Post to #patch-notes". Once posted,
+        record the message with PUT /api/v1/patches/{number}/discord_post, then ack
+        it done.'
+    PatchEditJobPayload:
+      type: object
+      properties:
+        number:
+          type: integer
+        title:
+          type: string
+          nullable: true
+        cut_body:
+          type: string
+        published_at:
+          type: string
+          format: date-time
+        channel_id:
+          type: string
+          description: 'Where the post is: the channel it was posted in, whatever
+            the Flag says now.'
+        message_id:
+          type: string
+          description: The post's message.
+        feature_key:
+          type: string
+          enum:
+          - patch_notes
+      required:
+      - number
+      - title
+      - cut_body
+      - published_at
+      - channel_id
+      - message_id
+      - feature_key
+      description: Kind `patch_edit`. Edit message `message_id` in `channel_id` to
+        the Patch's text, in the same shape as patch_post. Queued only by an Admin's
+        "Update the post". Once edited, record it with PUT /api/v1/patches/{number}/discord_post
+        (the same ids), then ack it done.
+    PatchDeleteJobPayload:
+      type: object
+      properties:
+        number:
+          type: integer
+        channel_id:
+          type: string
+        message_id:
+          type: string
+        feature_key:
+          type: string
+          enum:
+          - patch_notes
+      required:
+      - number
+      - channel_id
+      - message_id
+      - feature_key
+      description: 'Kind `patch_delete`. Delete message `message_id` in `channel_id`:
+        the Patch was unpublished (or its post landed after it was). Once deleted,
+        or already gone, record it with DELETE /api/v1/patches/{number}/discord_post?message_id=,
+        then ack it done.'
     BirthdayPostJobPayload:
       type: object
       properties:
@@ -6320,6 +6443,9 @@ components:
           - franchise_conquest
           - psn_auth_expired
           - psn_auth_restored
+          - patch_post
+          - patch_edit
+          - patch_delete
         summary:
           type: string
           maxLength: 200
@@ -6333,7 +6459,8 @@ components:
             no Feature owns and carries none. Documented payloads: SayJobPayload,
             NewsImagesRenewJobPayload, NewsCatchUpJobPayload, ChallengeAnnounceJobPayload,
             ChallengeDmJobPayload, DailyFunFactJobPayload, BirthdayPostJobPayload,
-            FranchiseConquestJobPayload, PsnAuthExpiredJobPayload, PsnAuthRestoredJobPayload.'
+            FranchiseConquestJobPayload, PsnAuthExpiredJobPayload, PsnAuthRestoredJobPayload,
+            PatchPostJobPayload, PatchEditJobPayload, PatchDeleteJobPayload.'
         status:
           type: string
           enum:
@@ -30347,8 +30474,9 @@ paths:
       tags:
       - Patch Notes
       description: 'Takes a published Patch back to a draft, hidden from every read
-        but staff''s; it keeps its number. Admins and Superadmins signed in on the
-        website only: Moderators, members and the service token get 403 `forbidden`
+        but staff''s; it keeps its number. A posted Patch also queues a `patch_delete`
+        bot job that takes its Discord post down. Admins and Superadmins signed in
+        on the website only: Moderators, members and the service token get 403 `forbidden`
         ("Only Admins can write Patches."). Belongs to the Patch Notes Feature: not
         found for non-staff in Preview and for everyone when Off.'
       responses:
@@ -30381,6 +30509,211 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '422':
           description: not_published
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/patches/{number}/post":
+    parameters:
+    - name: number
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: 'Post a Patch to #patch-notes'
+      tags:
+      - Patch Notes
+      description: 'Queues a `patch_post` bot job: the bot posts the Patch''s `cut_body`
+        in #patch-notes (the staff test channel while Patch Notes is in Preview) and
+        records the message. Never queued on a schedule. Admins and Superadmins signed
+        in on the website only: Moderators, members and the service token get 403
+        `forbidden` ("Only Admins can write Patches."). Belongs to the Patch Notes
+        Feature: not found for non-staff in Preview and for everyone when Off.'
+      responses:
+        '202':
+          description: queued; poll GET /api/v1/bot_jobs/{id} or the Patch's `post_job`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'not_published: a draft; already_posted: update the post instead;
+            post_queued: a post is already on its way'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/patches/{number}/update_post":
+    parameters:
+    - name: number
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: 'Update a Patch''s #patch-notes post'
+      tags:
+      - Patch Notes
+      description: 'Queues a `patch_edit` bot job: the bot edits the posted message
+        to the Patch''s text now and records it, which clears `edited_since_post`.
+        Admins and Superadmins signed in on the website only: Moderators, members
+        and the service token get 403 `forbidden` ("Only Admins can write Patches.").
+        Belongs to the Patch Notes Feature: not found for non-staff in Preview and
+        for everyone when Off.'
+      responses:
+        '202':
+          description: queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/BotJob"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'not_posted: the Patch is not published and posted'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/patches/{number}/discord_post":
+    parameters:
+    - name: number
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Record a Patch's Discord post
+      tags:
+      - Patch Notes
+      description: 'After a `patch_post` or `patch_edit`: the message the bot posted
+        or edited. A new message stamps `posted_at`; the same message keeps it. Either
+        clears `edited_since_post`. A post recorded for a Patch unpublished meanwhile
+        queues its `patch_delete` at once. The bot only (service token); anyone else
+        gets 403.'
+      parameters: []
+      responses:
+        '200':
+          description: recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Patch"
+        '403':
+          description: not the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_post: channel_id and message_id must be Discord ids'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  required:
+                  - channel_id
+                  - message_id
+                  properties:
+                    channel_id:
+                      type: string
+                      example: '1234567890'
+                    message_id:
+                      type: string
+                      example: '1234567891'
+        required: true
+    delete:
+      summary: Record that a Patch's Discord post is gone
+      tags:
+      - Patch Notes
+      description: 'After a `patch_delete`: the Patch is no longer posted, unless
+        it was posted again as another message since. The bot only (service token);
+        anyone else gets 403.'
+      parameters:
+      - name: message_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: The message the bot deleted (or found already gone).
+      responses:
+        '200':
+          description: recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Patch"
+        '403':
+          description: not the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
           content:
             application/json:
               schema:

@@ -546,6 +546,12 @@ Rails.application.routes.draw do
         member do
           post :publish
           post :unpublish
+          # Posting to Discord (ticket api#513): staff queue the post and its
+          # edits; the bot records the message it posted or removed.
+          post :post, action: :queue_post
+          post :update_post, action: :queue_post_update
+          put :discord_post, action: :record_post
+          delete :discord_post, action: :clear_post
         end
       end
       # Upcoming Birthdays (spec #396, api#400): the shared Birthdays in the

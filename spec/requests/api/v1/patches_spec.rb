@@ -198,7 +198,8 @@ RSpec.describe 'api/v1/patches', type: :request do
     post 'Unpublish a Patch' do
       tags 'Patch Notes'
       description "Takes a published Patch back to a draft, hidden from every read but staff's; it keeps its " \
-                  "number. #{writers} #{gate}"
+                  "number. A posted Patch also queues a `patch_delete` bot job that takes its Discord post down. " \
+                  "#{writers} #{gate}"
       produces 'application/json'
 
       response '200', 'unpublished' do
@@ -218,6 +219,130 @@ RSpec.describe 'api/v1/patches', type: :request do
       end
 
       response '422', 'not_published' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  bot_job = { type: :object, properties: { data: { '$ref' => '#/components/schemas/BotJob' } } }
+  bot_only = 'The bot only (service token); anyone else gets 403.'
+
+  path '/api/v1/patches/{number}/post' do
+    parameter name: :number, in: :path, schema: { type: :integer }, required: true
+
+    post 'Post a Patch to #patch-notes' do
+      tags 'Patch Notes'
+      description "Queues a `patch_post` bot job: the bot posts the Patch's `cut_body` in #patch-notes (the staff " \
+                  "test channel while Patch Notes is in Preview) and records the message. Never queued on a " \
+                  "schedule. #{writers} #{gate}"
+      produces 'application/json'
+
+      response '202', 'queued; poll GET /api/v1/bot_jobs/{id} or the Patch\'s `post_job`' do
+        schema bot_job
+      end
+
+      response '401', 'not signed in' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not an Admin or Superadmin, or the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no such Patch, or the Feature is Off' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'not_published: a draft; already_posted: update the post instead; post_queued: a post is ' \
+                      'already on its way' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/patches/{number}/update_post' do
+    parameter name: :number, in: :path, schema: { type: :integer }, required: true
+
+    post 'Update a Patch\'s #patch-notes post' do
+      tags 'Patch Notes'
+      description "Queues a `patch_edit` bot job: the bot edits the posted message to the Patch's text now and " \
+                  "records it, which clears `edited_since_post`. #{writers} #{gate}"
+      produces 'application/json'
+
+      response '202', 'queued' do
+        schema bot_job
+      end
+
+      response '401', 'not signed in' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'not an Admin or Superadmin, or the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no such Patch, or the Feature is Off' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'not_posted: the Patch is not published and posted' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/patches/{number}/discord_post' do
+    parameter name: :number, in: :path, schema: { type: :integer }, required: true
+
+    put 'Record a Patch\'s Discord post' do
+      tags 'Patch Notes'
+      description "After a `patch_post` or `patch_edit`: the message the bot posted or edited. A new message " \
+                  "stamps `posted_at`; the same message keeps it. Either clears `edited_since_post`. A post " \
+                  "recorded for a Patch unpublished meanwhile queues its `patch_delete` at once. #{bot_only}"
+      consumes 'application/json'
+      produces 'application/json'
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object, required: %w[data], properties: {
+          data: { type: :object, required: %w[channel_id message_id], properties: {
+            channel_id: { type: :string, example: '1234567890' }, message_id: { type: :string, example: '1234567891' }
+          } }
+        }
+      }
+
+      response '200', 'recorded' do
+        schema one_patch
+      end
+
+      response '403', 'not the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no such Patch, or the Feature is Off' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '422', 'invalid_post: channel_id and message_id must be Discord ids' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    delete 'Record that a Patch\'s Discord post is gone' do
+      tags 'Patch Notes'
+      description "After a `patch_delete`: the Patch is no longer posted, unless it was posted again as another " \
+                  "message since. #{bot_only}"
+      produces 'application/json'
+      parameter name: :message_id, in: :query, required: true, schema: { type: :string },
+        description: 'The message the bot deleted (or found already gone).'
+
+      response '200', 'recorded' do
+        schema one_patch
+      end
+
+      response '403', 'not the service token' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'no such Patch, or the Feature is Off' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

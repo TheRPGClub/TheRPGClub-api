@@ -48,6 +48,9 @@ class BotJob < ApplicationRecord
     franchise_conquest
     psn_auth_expired
     psn_auth_restored
+    patch_post
+    patch_edit
+    patch_delete
   ].freeze
   # The kinds that post, and the Feature each post belongs to (the posts in
   # Features::REGISTRY's coverage): the claim notice's claim log and the
@@ -66,7 +69,10 @@ class BotJob < ApplicationRecord
     "voting_tie_broken" => "voting_gotm",
     "challenge_announce" => "challenges",
     "daily_fun_fact" => "club_codex",
-    "franchise_conquest" => "franchise_progress"
+    "franchise_conquest" => "franchise_progress",
+    "patch_post" => "patch_notes",
+    "patch_edit" => "patch_notes",
+    "patch_delete" => "patch_notes"
   }.freeze
   # Kinds that post nothing but do a Feature's work, and that Feature: the
   # News Hub's image renewal and catch-up scan (ticket #358), and Challenge
