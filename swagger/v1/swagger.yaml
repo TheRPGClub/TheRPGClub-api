@@ -4507,6 +4507,96 @@ components:
       - viewer
       - created_at
       - updated_at
+    Patch:
+      type: object
+      properties:
+        id:
+          type: integer
+        number:
+          type: integer
+          description: The Patch's number, assigned on creation and never reused,
+            even after its Patch is unpublished or deleted.
+        title:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: Optional, e.g. "The Franchise update".
+        status:
+          type: string
+          enum:
+          - draft
+          - published
+          description: draft (seen only by Admins and Superadmins) or published.
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When it was last published; null while a draft.
+        rich_body:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: The Plate.js value the website edits, as it saved it (never
+            checked by the API).
+        body:
+          type: string
+          description: The full text as Discord markdown, made from `rich_body` by
+            the website.
+        cut_body:
+          type: string
+          description: '`body` cut to Discord''s limit by the website, ending in "..."
+            when cut; what the bot posts.'
+        counts:
+          type: object
+          properties:
+            new:
+              type: integer
+            improved:
+              type: integer
+            fixed:
+              type: integer
+          required:
+          - new
+          - improved
+          - fixed
+          description: 'How many changes it lists under its New, Improved and Fixed
+            H2 headings: the top-level items of the lists in each section (nested
+            items are details).'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - number
+      - title
+      - status
+      - published_at
+      - rich_body
+      - body
+      - cut_body
+      - counts
+      - created_at
+      - updated_at
+    PatchWithNeighbours:
+      allOf:
+      - "$ref": "#/components/schemas/Patch"
+      - type: object
+        properties:
+          previous_number:
+            type: integer
+            nullable: true
+            description: The published Patch just before it, if any.
+          next_number:
+            type: integer
+            nullable: true
+            description: The published Patch just after it, if any.
+        required:
+        - previous_number
+        - next_number
     Challenge:
       type: object
       properties:
@@ -6665,8 +6755,8 @@ components:
             the club default (voting, games, members, news) until they save their
             own list. Keys: voting, gotm_history, goty, challenges, games, franchises,
             reviews, releases, achievements, journals, members, news, codex, lists,
-            giveaways, suggestions, staff_desk, voting_console, synonyms, live_events,
-            public_reminders, suggestion_review.'
+            giveaways, suggestions, patch_notes, staff_desk, voting_console, synonyms,
+            live_events, public_reminders, suggestion_review.'
         customised:
           type: boolean
           description: Whether the member saved their own list. False while they follow
@@ -19415,6 +19505,7 @@ paths:
         - game_lists
         - franchise_progress
         - goty_vote
+        - patch_notes
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -29740,6 +29831,414 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/patches":
+    get:
+      summary: List Patches
+      tags:
+      - Patch Notes
+      description: 'Newest first. Published Patches only, unless an Admin or Superadmin
+        asks for `draft` or `all`. Public: no sign-in needed. A signed-out caller
+        is treated like any non-staff member, so Patches are found only while Patch
+        Notes is Live (not found in Preview and Off).'
+      security:
+      - {}
+      - bearerAuth: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - published
+          - draft
+          - all
+          default: published
+        description: "`draft` and `all` are for Admins and Superadmins (anyone else
+          gets 403)."
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      responses:
+        '200':
+          description: Patches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Patch"
+                  meta:
+                    "$ref": "#/components/schemas/PaginationMeta"
+        '400':
+          description: 'invalid_status: `status` is not published, draft or all'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: "`draft` or `all` asked by someone who is not an Admin or Superadmin"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Start a Patch
+      tags:
+      - Patch Notes
+      description: 'A new draft, numbered from the Patch sequence. Admins and Superadmins
+        signed in on the website only: Moderators, members and the service token get
+        403 `forbidden` ("Only Admins can write Patches."). Belongs to the Patch Notes
+        Feature: not found for non-staff in Preview and for everyone when Off.'
+      parameters: []
+      responses:
+        '201':
+          description: started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Patch"
+        '400':
+          description: missing `data`
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_patch: a field a Patch does not take, `title` that
+            is not text or null, `body` or `cut_body` that is not text, `rich_body`
+            that is not a list, or a NUL character'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                      nullable: true
+                      maxLength: 100
+                      description: Optional.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      description: The Patch as Plate.js content, stored as given.
+                    body:
+                      type: string
+                      description: The full text as Discord markdown, made from `rich_body`.
+                    cut_body:
+                      type: string
+                      description: '`body` cut to Discord''s limit, ending in "..."
+                        when cut.'
+              required:
+              - data
+        required: true
+  "/api/v1/patches/{number}":
+    parameters:
+    - name: number
+      in: path
+      schema:
+        type: integer
+      required: true
+    get:
+      summary: Show a Patch
+      tags:
+      - Patch Notes
+      description: 'A published Patch, with the published Patches either side of it.
+        Admins and Superadmins also find drafts. Public: no sign-in needed. A signed-out
+        caller is treated like any non-staff member, so Patches are found only while
+        Patch Notes is Live (not found in Preview and Off).'
+      security:
+      - {}
+      - bearerAuth: []
+      responses:
+        '200':
+          description: the Patch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PatchWithNeighbours"
+        '404':
+          description: no such published Patch, or the Feature is hidden from the
+            caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit a Patch
+      tags:
+      - Patch Notes
+      description: 'Changes only the fields given, draft or published. Admins and
+        Superadmins signed in on the website only: Moderators, members and the service
+        token get 403 `forbidden` ("Only Admins can write Patches."). Belongs to the
+        Patch Notes Feature: not found for non-staff in Preview and for everyone when
+        Off.'
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Patch"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'invalid_patch: a field a Patch does not take, `title` that
+            is not text or null, `body` or `cut_body` that is not text, `rich_body`
+            that is not a list, or a NUL character'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                      nullable: true
+                      maxLength: 100
+                      description: Optional.
+                    rich_body:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                      description: The Patch as Plate.js content, stored as given.
+                    body:
+                      type: string
+                      description: The full text as Discord markdown, made from `rich_body`.
+                    cut_body:
+                      type: string
+                      description: '`body` cut to Discord''s limit, ending in "..."
+                        when cut.'
+              required:
+              - data
+        required: true
+    delete:
+      summary: Delete a draft Patch
+      tags:
+      - Patch Notes
+      description: 'Drafts only; its number is never used again. Admins and Superadmins
+        signed in on the website only: Moderators, members and the service token get
+        403 `forbidden` ("Only Admins can write Patches."). Belongs to the Patch Notes
+        Feature: not found for non-staff in Preview and for everyone when Off.'
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      number:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - number
+                    - deleted
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: 'published: unpublish the Patch first'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/patches/{number}/publish":
+    parameters:
+    - name: number
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Publish a Patch
+      tags:
+      - Patch Notes
+      description: 'Puts a draft on the website (only; posting to Discord is a separate
+        step) and stamps `published_at`. Never blocked by length. Admins and Superadmins
+        signed in on the website only: Moderators, members and the service token get
+        403 `forbidden` ("Only Admins can write Patches."). Belongs to the Patch Notes
+        Feature: not found for non-staff in Preview and for everyone when Off.'
+      responses:
+        '200':
+          description: published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Patch"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: already_published
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/patches/{number}/unpublish":
+    parameters:
+    - name: number
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Unpublish a Patch
+      tags:
+      - Patch Notes
+      description: 'Takes a published Patch back to a draft, hidden from every read
+        but staff''s; it keeps its number. Admins and Superadmins signed in on the
+        website only: Moderators, members and the service token get 403 `forbidden`
+        ("Only Admins can write Patches."). Belongs to the Patch Notes Feature: not
+        found for non-staff in Preview and for everyone when Off.'
+      responses:
+        '200':
+          description: unpublished
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Patch"
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: not an Admin or Superadmin, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: no such Patch, or the Feature is Off
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: not_published
           content:
             application/json:
               schema:

@@ -536,6 +536,15 @@ Rails.application.routes.draw do
           resources :images, only: %i[create destroy], controller: "entry_images"
         end
       end
+      # Patch Notes (spec api#510, ticket api#511): Patches by number, gated
+      # by the `patch_notes` Feature. Anyone reads the published ones;
+      # Admins and Superadmins write, publish, unpublish and delete drafts.
+      resources :patches, only: %i[index show create update destroy], param: :number do
+        member do
+          post :publish
+          post :unpublish
+        end
+      end
       # Upcoming Birthdays (spec #396, api#400): the shared Birthdays in the
       # next 30 club days.
       get "birthdays/upcoming", to: "birthdays#upcoming"

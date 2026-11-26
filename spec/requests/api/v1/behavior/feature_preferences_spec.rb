@@ -48,7 +48,9 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
           { "key" => "game_lists", "name" => "Game Lists", "state" => "live", "preview" => false,
             "hidden" => false, "website" => [ "Lists", "Profile Lists", "Game page Lists" ] },
           { "key" => "franchise_progress", "name" => "Franchise Progress", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Franchise Progress tab" ] }
+            "hidden" => false, "website" => [ "Franchise Progress tab" ] },
+          { "key" => "patch_notes", "name" => "Patch Notes", "state" => "live", "preview" => false,
+            "hidden" => false, "website" => [ "Patch Notes" ] }
         ]
       )
     end
@@ -72,14 +74,16 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
         [ "release_calendar", "live", false ],
         [ "club_codex", "live", false ],
         [ "game_lists", "live", false ],
-        [ "franchise_progress", "live", false ]
+        [ "franchise_progress", "live", false ],
+        [ "patch_notes", "live", false ]
       ])
     end
 
     it "lists a member no Features when no hideable Feature is Live" do
       set_all_feature_flags("live")
       %w[reviews achievement_hub giveaways].each { |key| set_feature_flag(key, "off") }
-      %w[journals suggestions news_hub challenges release_calendar club_codex game_lists franchise_progress].each do |key|
+      %w[journals suggestions news_hub challenges release_calendar club_codex game_lists franchise_progress
+         patch_notes].each do |key|
         set_feature_flag(key, "preview")
       end
 
