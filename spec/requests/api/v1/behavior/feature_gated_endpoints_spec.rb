@@ -290,6 +290,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/game_lists" => "game_lists",
     # Patch Notes
     "api/v1/patches" => "patch_notes",
+    "api/v1/patch_marks" => "patch_notes",
     # Not part of any Feature.
     "api/v1/health" => nil,
     "api/v1/sessions" => nil,
