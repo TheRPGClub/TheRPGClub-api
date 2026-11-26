@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_27_100000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -958,8 +958,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_100000) do
     t.timestamptz "published_at", comment: "When it was last published; NULL while a draft."
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "post_channel_id", comment: "The channel the bot posted it in; NULL while not posted."
+    t.string "post_message_id", comment: "The Discord message the bot posted; NULL while not posted."
+    t.timestamptz "posted_at", comment: "When the bot first posted it; NULL while not posted."
+    t.boolean "edited_since_post", default: false, null: false, comment: "Its text changed after the post; cleared when the bot records the edited post."
     t.index ["number"], name: "index_patches_on_number", unique: true
     t.index ["status", "number"], name: "index_patches_on_status_and_number"
+    t.check_constraint "(post_message_id IS NULL) = (posted_at IS NULL) AND (post_message_id IS NULL) = (post_channel_id IS NULL)", name: "ck_patches_post"
     t.check_constraint "(status::text = 'published'::text) = (published_at IS NOT NULL)", name: "ck_patches_published_at"
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying]::text[])", name: "ck_patches_status"
   end

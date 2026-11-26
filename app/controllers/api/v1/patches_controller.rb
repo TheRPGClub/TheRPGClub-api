@@ -13,8 +13,14 @@ module Api
     # Only Admins and Superadmins signed in on the website write: Moderators,
     # members and the bot's service token are refused.
     #
+    # Posting to Discord (ticket api#513): writers queue the bot's post of a
+    # published Patch and its later edits; unpublishing a posted Patch queues
+    # the post's removal. The bot (service token only) records the message it
+    # posted or removed through `discord_post`.
+    #
     # Refusals carry `{ error, message }` (403 `forbidden`, 422
-    # `invalid_patch`, `already_published`, `not_published`, `published`).
+    # `invalid_patch`, `already_published`, `not_published`, `published`,
+    # `already_posted`, `post_queued`, `not_posted`, `invalid_post`).
     class PatchesController < ApplicationController
       feature :patch_notes
 
@@ -24,9 +30,12 @@ module Api
       REQUIRED_TEXT = %w[body cut_body].freeze
       STATUS_FILTERS = %w[published draft all].freeze
       FORBIDDEN = "Only Admins can write Patches."
+      BOT_RECORDS = %i[record_post clear_post].freeze
+      DISCORD_ID = /\A\d{1,30}\z/
 
       skip_before_action :require_authentication!, only: READS
-      before_action :require_writer!, except: READS
+      before_action :require_writer!, except: READS + BOT_RECORDS
+      before_action :require_service!, only: BOT_RECORDS
 
       # GET /api/v1/patches?status=&page=&per=
       #
@@ -84,7 +93,58 @@ module Api
         patch = find_patch
         return refuse("not_published", "Patch #{patch.number} is not published.") unless patch.published?
 
-        patch.unpublish!
+        patch.unpublish!(requested_by: requester_id)
+        render_patch(patch)
+      end
+
+      # POST /api/v1/patches/:number/post
+      #
+      # 202 with the queued `patch_post` bot job. 422 `not_published` for a
+      # draft, `already_posted` once posted, `post_queued` while a post is on
+      # its way.
+      def queue_post
+        patch = find_patch
+        return refuse("not_published", "Publish Patch #{patch.number} before posting it.") unless patch.published?
+        return refuse("already_posted", "Patch #{patch.number} is already posted; update the post instead.") if patch.posted?
+        return refuse("post_queued", "Patch #{patch.number} is already on its way to Discord.") if patch.post_queued?
+
+        render_job(patch.queue_post!(requested_by: requester_id))
+      end
+
+      # POST /api/v1/patches/:number/update_post
+      #
+      # 202 with the queued `patch_edit` bot job. 422 `not_posted` unless
+      # the Patch is published and posted.
+      def queue_post_update
+        patch = find_patch
+        return refuse("not_posted", "Patch #{patch.number} is not posted.") unless patch.published? && patch.posted?
+
+        render_job(patch.queue_post_edit!(requested_by: requester_id))
+      end
+
+      # PUT /api/v1/patches/:number/discord_post (service)
+      # Body: { "data": { "channel_id": "...", "message_id": "..." } }
+      #
+      # The bot posted or edited the Patch's message. 422 `invalid_post`
+      # unless both are Discord ids.
+      def record_post
+        ids = request_data.slice("channel_id", "message_id").transform_values(&:to_s)
+        unless ids.size == 2 && ids.values.all?(DISCORD_ID)
+          return refuse("invalid_post", "channel_id and message_id must be Discord ids")
+        end
+
+        patch = find_patch
+        patch.record_post!(channel_id: ids["channel_id"], message_id: ids["message_id"])
+        render_patch(patch)
+      end
+
+      # DELETE /api/v1/patches/:number/discord_post?message_id= (service)
+      #
+      # The bot removed message `message_id`; the Patch is no longer posted
+      # unless it was posted again since.
+      def clear_post
+        patch = find_patch
+        patch.clear_post!(message_id: params[:message_id].to_s)
         render_patch(patch)
       end
 
@@ -118,7 +178,19 @@ module Api
       def render_patch(patch, status: :ok, neighbours: false)
         data = PatchResource.new(patch).serializable_hash
         data = data.merge(previous_number: patch.previous_number, next_number: patch.next_number) if neighbours
+        data = data.merge(post_job: post_job(patch)) if writer?
         render json: { data: data }, status: status
+      end
+
+      # The latest bot job for its Discord post, for the editor.
+      def post_job(patch)
+        job = patch.post_job
+        job && BotJobResource.new(job).serializable_hash
+      end
+
+      # 202: the bot carries the job out; poll GET /bot_jobs/:id for its outcome.
+      def render_job(job)
+        render json: { data: BotJobResource.new(job).serializable_hash }, status: :accepted
       end
 
       # The Patch fields `data` gives, as attributes; 422 `invalid_patch` and
