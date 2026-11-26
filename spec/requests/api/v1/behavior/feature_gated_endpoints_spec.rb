@@ -347,6 +347,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/search_synonym_groups" => nil,
     "api/v1/search_synonym_drafts" => nil,
     "api/v1/playtime" => nil,
+    # Intake and the versions read stay open while Patch Notes is Off (api#514).
+    "api/v1/pending_changes" => "patch_notes",
     "api/v1/manual_playtimes" => nil,
     "api/v1/playthroughs" => nil,
     "api/v1/franchise_progress" => "franchise_progress",

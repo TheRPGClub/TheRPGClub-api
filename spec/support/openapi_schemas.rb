@@ -3023,6 +3023,30 @@ module OpenapiSchemas
 
       # ---- aggregate game-profile sub-shapes (#115) ------------------------
       GotmWin: obj(round: int, reddit_url: str(nullable: true)),
+      # PendingChangeResource (spec api#510, ticket api#514): a merged pull
+      # request waiting for a Patch.
+      PendingChange: obj(
+        id: int, repo: str(enum: PendingChange::REPOS), pr_number: int,
+        type: str(enum: PendingChange::TYPES, description: "The pull request title's type."),
+        title: str(maxLength: PendingChange::TITLE_MAX, description: "The pull request's title."),
+        version: str(description: "The repo's version this merge produced, e.g. 1.4.0."),
+        patch_note: str(nullable: true, maxLength: PendingChange::PATCH_NOTE_MAX,
+          description: "The pull request's optional \"Patch note:\" line, for the drafted bullet."),
+        section: str(enum: %w[new improved fixed],
+          description: "The Patch section it drafts into: feat new, fix fixed, anything else improved."),
+        status: str(enum: PendingChange::STATUSES,
+          description: "open, covered (a Patch covers it) or dismissed (never both)."),
+        patch_number: int(nullable: true).merge(description: "The Patch that covers it, if any."),
+        dismissed_at: ts(nullable: true).merge(description: "When staff dismissed it; null unless dismissed."),
+        created_at: ts.merge(description: "When the versioning job reported it."), updated_at: ts,
+        _required: %w[id repo pr_number type title version patch_note section status patch_number dismissed_at
+                      created_at updated_at]
+      ),
+      Versions: obj(
+        api: str(nullable: true), bot: str(nullable: true), www: str(nullable: true),
+        _description: "Each repo's current version, e.g. 1.4.0; null until versioning reports one.",
+        _required: %w[api bot www]
+      ),
       GotmNominationSummary: obj(round: int, user_id: str, username: str(nullable: true)),
       CollectionOwner: obj(user_id: str, username: str(nullable: true)),
       # RpgClubHltbCache surfaced under the bot's logical field names.

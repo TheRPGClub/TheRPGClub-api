@@ -26,6 +26,11 @@ module Auth
       new(kind: "service", id: "discord_bot")
     end
 
+    # The versioning job (ticket api#514): may only report Pending Changes.
+    def self.release
+      new(kind: "release", id: "release")
+    end
+
     def self.discord_user(user, discord_payload = {}, is_dev: false, is_longstanding: false)
       new(
         kind: "discord_user",
@@ -77,6 +82,10 @@ module Auth
 
     def discord_user?
       kind == "discord_user"
+    end
+
+    def release?
+      kind == "release"
     end
 
     def dev?

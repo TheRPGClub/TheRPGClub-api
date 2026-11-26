@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_27_120512) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -969,6 +969,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_120512) do
     t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying]::text[])", name: "ck_patches_status"
   end
 
+  create_table "pending_changes", comment: "Merged pull requests waiting for a Patch (spec api#510).", force: :cascade do |t|
+    t.string "repo", null: false, comment: "api, bot or www."
+    t.integer "pr_number", null: false, comment: "The merged pull request's number in its repo."
+    t.string "change_type", null: false, comment: "The pull request title's type, e.g. feat, fix, perf."
+    t.string "title", limit: 300, null: false, comment: "The pull request's title."
+    t.string "version", limit: 50, null: false, comment: "The repo's version this merge produced."
+    t.string "patch_note", limit: 500, comment: "The pull request's optional \"Patch note:\" line."
+    t.bigint "patch_id", comment: "The Patch that covers it, if any."
+    t.timestamptz "dismissed_at", comment: "When staff dismissed it; NULL unless dismissed."
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["patch_id"], name: "index_pending_changes_on_patch_id"
+    t.index ["repo", "pr_number"], name: "index_pending_changes_on_repo_and_pr_number", unique: true
+    t.check_constraint "patch_id IS NULL OR dismissed_at IS NULL", name: "ck_pending_changes_covered_or_dismissed"
+    t.check_constraint "repo::text = ANY (ARRAY['api'::character varying, 'bot'::character varying, 'www'::character varying]::text[])", name: "ck_pending_changes_repo"
+  end
+
   create_table "rpg_club_admin_wizard_sessions", primary_key: "session_id", id: { type: :string, limit: 200 }, force: :cascade do |t|
     t.string "channel_id", limit: 64, null: false
     t.string "command_key", limit: 80, null: false
@@ -1879,6 +1896,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_120512) do
   add_foreign_key "member_hidden_platforms", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "pending_changes", "patches", on_delete: :nullify
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify
