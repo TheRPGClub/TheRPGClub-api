@@ -1393,6 +1393,28 @@ module OpenapiSchemas
         _required: %w[id part title rich_body body occurred_on date_precision kind author mentions images links
                       viewer created_at updated_at]
       ),
+      # PatchResource (spec api#510, ticket api#511): a Patch of Patch Notes.
+      Patch: obj(
+        id: int,
+        number: int.merge(description: "The Patch's number, assigned on creation and never reused, even after " \
+          "its Patch is unpublished or deleted."),
+        title: str(nullable: true, maxLength: Patch::TITLE_MAX, description: "Optional, e.g. \"The Franchise update\"."),
+        status: str(enum: Patch::STATUSES, description: "draft (seen only by Admins and Superadmins) or published."),
+        published_at: ts(nullable: true).merge(description: "When it was last published; null while a draft."),
+        rich_body: { type: :array, items: { type: :object, additionalProperties: true },
+                     description: "The Plate.js value the website edits, as it saved it (never checked by the API)." },
+        body: str(description: "The full text as Discord markdown, made from `rich_body` by the website."),
+        cut_body: str(description: "`body` cut to Discord's limit by the website, ending in \"...\" when cut; " \
+          "what the bot posts."),
+        counts: obj(new: int, improved: int, fixed: int,
+          _description: "How many changes it lists under its New, Improved and Fixed H2 headings: the top-level " \
+                        "items of the lists in each section (nested items are details)."),
+        created_at: ts, updated_at: ts,
+        _required: %w[id number title status published_at rich_body body cut_body counts created_at updated_at]
+      ),
+      PatchWithNeighbours: extends("Patch", required: %w[previous_number next_number],
+        previous_number: int(nullable: true).merge(description: "The published Patch just before it, if any."),
+        next_number: int(nullable: true).merge(description: "The published Patch just after it, if any.")),
       # ChallengeResource (spec #376, ticket #377): a Challenge with its
       # Challenge Format's settings under the Format's key.
       Challenge: obj(
@@ -2078,7 +2100,7 @@ module OpenapiSchemas
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
                               "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
-                              "journals, members, news, codex, lists, giveaways, suggestions, staff_desk, " \
+                              "journals, members, news, codex, lists, giveaways, suggestions, patch_notes, staff_desk, " \
                               "voting_console, synonyms, live_events, public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),

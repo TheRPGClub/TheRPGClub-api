@@ -27,7 +27,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "club_codex" => ->(_user) { "/api/v1/codex/fun_facts" },
     "game_lists" => ->(_user) { "/api/v1/game_lists" },
     "franchise_progress" => ->(_user) { "/api/v1/franchises/#{FactoryBot.create(:franchise).franchise_id}/progress/members" },
-    "goty_vote" => ->(_user) { "/api/v1/goty_votes" }
+    "goty_vote" => ->(_user) { "/api/v1/goty_votes" },
+    "patch_notes" => ->(_user) { "/api/v1/patches" }
   }
 
   it "covers every registered Feature" do
@@ -287,6 +288,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/codex/entries" => "club_codex",
     "api/v1/codex/entry_links" => "club_codex",
     "api/v1/game_lists" => "game_lists",
+    # Patch Notes
+    "api/v1/patches" => "patch_notes",
     # Not part of any Feature.
     "api/v1/health" => nil,
     "api/v1/sessions" => nil,

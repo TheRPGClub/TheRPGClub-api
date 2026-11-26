@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_190000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -946,6 +946,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_190000) do
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_nr_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_nr_gotm_votes_round_runoff_user_game", unique: true
+  end
+
+  create_table "patches", comment: "Patch Notes' numbered Patches (spec api#510).", force: :cascade do |t|
+    t.serial "number", null: false, comment: "Assigned on creation from its own sequence; never reused."
+    t.string "title", limit: 100, comment: "Optional, e.g. \"The Franchise update\"."
+    t.jsonb "rich_body", default: [], null: false, comment: "The Plate value the website edits."
+    t.text "body", default: "", null: false, comment: "The full text as Discord markdown, made by the website."
+    t.text "cut_body", default: "", null: false, comment: "The Discord markdown cut to the Discord limit, made by the website; what the bot posts."
+    t.string "status", default: "draft", null: false, comment: "draft or published."
+    t.timestamptz "published_at", comment: "When it was last published; NULL while a draft."
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["number"], name: "index_patches_on_number", unique: true
+    t.index ["status", "number"], name: "index_patches_on_status_and_number"
+    t.check_constraint "(status::text = 'published'::text) = (published_at IS NOT NULL)", name: "ck_patches_published_at"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying]::text[])", name: "ck_patches_status"
   end
 
   create_table "rpg_club_admin_wizard_sessions", primary_key: "session_id", id: { type: :string, limit: 200 }, force: :cascade do |t|
