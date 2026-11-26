@@ -353,6 +353,13 @@ module OpenapiSchemas
         reached: array_of("RoadmapMilestone").merge(description: "Reached Milestones, newest Reached first."),
         _required: %w[milestones reached]
       ),
+      # A Roadmap edit the rules refuse (Roadmap::Refused, ticket api#507).
+      RoadmapRefusal: obj(
+        error: str(enum: %w[milestone_has_items invalid_order milestone_not_found milestone_reached invalid_position
+          invalid_destination no_destination already_reached not_reached]),
+        message: str(description: "Written for staff, as the website shows it."),
+        _required: %w[error message]
+      ),
       # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.
       ReleaseRefreshMeta: obj(
         added: int, total: int,
