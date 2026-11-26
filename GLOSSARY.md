@@ -96,7 +96,7 @@ A GameDB game coming out on one platform in one region. Its date is known to a D
 _Avoid_: Launch, release date (when meaning the whole record)
 
 **Date Precision**:
-How exactly a Release's date is known: an exact day, a month, a quarter, a year, or not yet announced (TBA).
+How exactly a Release's or a Milestone's date is known: an exact day, a month, a quarter, a year, or not yet announced (TBA).
 _Avoid_: Date format, accuracy
 
 **IGDB Release**:
@@ -462,3 +462,25 @@ The bot's post of the next Fun Fact in general chat at 15:00 America/New_York ev
 _Avoid_: Fact of the day, daily trivia
 
 The same moment can appear in more than one part of the Club Codex, such as a History Event recording that something happened and a Lore Entry telling the story, and any Club Codex entry can link to any others, the link showing on both. Members named in Club Codex entries are not asked for their consent and have no special say over them. An author can edit or delete their own Lore Entries and Fun Facts, and Moderators and above can edit or remove anyone's. Club History is public; Club Lore and Fun Facts are for Members only.
+
+## Roadmap
+
+**Roadmap**:
+The members-only page where staff show what is planned for the club's bot and website, as Roadmap Items grouped into Milestones, with the Milestones already Reached kept below as a record of what shipped. Members read it; only Admins and Superadmins edit it. Asking for something belongs on the Feedback Board, not here.
+_Avoid_: Feedback Board, changelog, plan, patch notes
+
+**Milestone**:
+A named stop on the Roadmap, such as "Launch" or "In The Future", placed in an order staff choose. It may have a target date known to a Date Precision; without one it reads TBA.
+_Avoid_: Lane, phase, release, version, sprint
+
+**Reached**:
+A Milestone staff have marked as arrived, on the date they did so. Its Roadmap Items are all Shipped by then; anything left unfinished has moved to another Milestone. A Reached Milestone stops being a column and is kept on the Roadmap as a heading over what shipped with it. Staff can take a Milestone back from Reached.
+_Avoid_: Done, completed, closed, released
+
+**Roadmap Item**:
+One planned change on the Roadmap, written by staff in words members understand, sitting in exactly one Milestone. It may say whether it touches the bot, the website or both, and it may answer one or more pieces of Feedback; a piece of Feedback is answered by at most one Roadmap Item.
+_Avoid_: Task, ticket, issue, feature (a Feature is a part staff flag)
+
+**Shipped**:
+A Roadmap Item staff have marked as delivered, on the date they did so. It can be Shipped while its Milestone is still to come, and then shows as ready in that Milestone. Staff can take it back.
+_Avoid_: Done (that is Feedback's), released, live (that is a Feature Flag state)
