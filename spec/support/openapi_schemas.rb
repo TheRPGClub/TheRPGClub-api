@@ -2450,7 +2450,8 @@ module OpenapiSchemas
         listed_at: ts(nullable: true).merge(
           description: "When the News Item was listed (first had a News Category, so members could see it), " \
                        "UTC with microseconds. The News Mark counts News Items listed after it as new, so one " \
-                       "recorded late is still new. Null only for an unsorted imported News Item."
+                       "recorded late is still new. An imported News Item is listed at its posting time, so it " \
+                       "never counts as new. Null only for an unsorted imported News Item."
         ),
         edited_at: ts(nullable: true).merge(description: "When the message was last edited; null if never."),
         link: ref("NewsItemLink", nullable: true).merge(

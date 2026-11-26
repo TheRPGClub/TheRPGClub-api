@@ -39,20 +39,35 @@ RSpec.describe NewsItem, "listed_at" do
     expect(item.reload.listed_at).to be_nil
   end
 
-  it "is when staff sort an imported News Item with a News Import upload" do
-    item = create(:news_item, origin: "import", category_key: nil)
-    travel_to(recorded_at) { NewsImport::Assign.call([ { "message_id" => item.message_id, "value" => "general" } ], by: "3") }
+  describe "for an imported News Item, which never counts as new" do
+    let(:posted_at) { Time.zone.parse("2025-03-01 12:00:00 UTC") }
+    let(:item) { create(:news_item, origin: "import", category_key: nil, posted_at: posted_at) }
 
-    expect(item.reload.listed_at).to eq(recorded_at)
-  end
+    it "is its posting time when staff sort it with a News Import upload" do
+      travel_to(recorded_at) { NewsImport::Assign.call([ { "message_id" => item.message_id, "value" => "general" } ], by: "3") }
 
-  it "keeps its first value when staff sort an imported News Item again" do
-    item = create(:news_item, origin: "import", category_key: nil)
-    travel_to(recorded_at) { NewsImport::Assign.call([ { "message_id" => item.message_id, "value" => "general" } ], by: "3") }
-    travel_to(recorded_at + 1.day) do
-      NewsImport::Assign.call([ { "message_id" => item.message_id, "value" => "industry" } ], by: "3")
+      expect(item.reload.listed_at).to eq(posted_at)
     end
 
-    expect(item.reload).to have_attributes(category_key: "industry", listed_at: recorded_at)
+    it "is its posting time when staff give it its first News Category with Change news category" do
+      travel_to(recorded_at) { item.change_category!("general", by: "3") }
+
+      expect(item.reload.listed_at).to eq(posted_at)
+    end
+
+    it "is its posting time when it is imported with a News Category already" do
+      sorted = travel_to(recorded_at) { create(:news_item, origin: "import", category_key: "general", posted_at: posted_at) }
+
+      expect(sorted.reload.listed_at).to eq(posted_at)
+    end
+
+    it "keeps its first value when staff sort it again" do
+      NewsImport::Assign.call([ { "message_id" => item.message_id, "value" => "general" } ], by: "3")
+      travel_to(recorded_at + 1.day) do
+        NewsImport::Assign.call([ { "message_id" => item.message_id, "value" => "industry" } ], by: "3")
+      end
+
+      expect(item.reload).to have_attributes(category_key: "industry", listed_at: posted_at)
+    end
   end
 end

@@ -209,17 +209,17 @@ RSpec.describe "api/v1/news_items since, until and new counts", type: :request d
       expect(body.fetch("new_category_counts")).to eq(new_counts(industry: 1))
     end
 
-    it "count imported News Items only when listed after the News Mark" do
+    it "never count an imported News Item staff sort after the News Mark" do
       set_mark
-      item(mark - 1.year, origin: "import", category_key: "general")
-      late = item(mark + 1.hour, origin: "import", category_key: "general")
+      unsorted = create(:news_item, origin: "import", category_key: nil, posted_at: mark - 1.year)
+      NewsImport::Assign.call([ { "message_id" => unsorted.message_id, "value" => "general" } ], by: "3")
       item(mark + 1.hour, origin: "import", category_key: nil)
 
       body = feed.fetch("meta")
 
-      expect(late).to be_persisted
-      expect(body.fetch("new_count")).to eq(1)
-      expect(body.fetch("new_category_counts")).to eq(new_counts(general: 1))
+      expect(feed_ids).to include(unsorted.message_id)
+      expect(body.fetch("new_count")).to eq(0)
+      expect(body.fetch("new_category_counts")).to eq(new_counts)
     end
 
     it "are 0 for the bot's service token" do
