@@ -2392,6 +2392,17 @@ module OpenapiSchemas
         ),
         _required: %w[user_id news_mark]
       ),
+      # PatchMarksController (spec api#510, ticket api#512): a member's Patch Mark.
+      PatchMark: obj(
+        user_id: str,
+        patch_mark: { type: :integer, nullable: true, example: 12,
+                      description: "The number of the newest Patch the member has seen. Null until the website " \
+                                   "first sets it: every published Patch is unseen." },
+        unseen: { type: :boolean,
+                  description: "Whether a published Patch is newer than `patch_mark` (any published Patch " \
+                               "while it is null). Drafts never count." },
+        _required: %w[user_id patch_mark unseen]
+      ),
       # NewsItemsController#index meta: pagination plus the category rail.
       NewsFeedMeta: extends("PaginationMeta",
         category_counts: {

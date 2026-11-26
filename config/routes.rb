@@ -198,6 +198,9 @@ Rails.application.routes.draw do
           # The News Mark (spec api#494, ticket api#495): how far the member has seen the News Hub.
           get "news_mark", to: "news_marks#show"
           put "news_mark", to: "news_marks#update"
+          # The Patch Mark (spec api#510, ticket api#512): the newest Patch the member has seen.
+          get "patch_mark", to: "patch_marks#show"
+          put "patch_mark", to: "patch_marks#update"
           get "game_keys", to: "game_keys#user_index"
           get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"

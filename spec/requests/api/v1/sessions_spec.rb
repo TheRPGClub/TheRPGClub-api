@@ -103,9 +103,22 @@ RSpec.describe 'api/v1/sessions', type: :request do
           pinned_pages_limit: {
             type: :integer, example: 6,
             description: 'The most Pinned Pages a member may keep, counting the ones they can\'t see right now.'
+          },
+          patch_notes_unseen: {
+            type: :boolean,
+            description: 'Whether a published Patch is newer than the member\'s Patch Mark (any published Patch ' \
+                         'while they have none), for the sidebar\'s "NEW" mark. False when Patch Notes is not ' \
+                         'shown to the viewer (Off, Preview for a non-staff member, hidden by a Feature ' \
+                         'Preference) and for the service token.'
+          },
+          patch_mark: {
+            type: :integer, nullable: true, example: 12,
+            description: 'The member\'s Patch Mark: the number of the newest Patch they have seen (as GET ' \
+                         '/api/v1/users/{user_id}/patch_mark). Null until first set, and whenever ' \
+                         '`patch_notes_unseen` is forced false because Patch Notes is not shown.'
           }
         }, required: %w[principal features pinned_pages pinned_pages_customised pinned_pages_room
-                        pinned_pages_default pinned_pages_limit]
+                        pinned_pages_default pinned_pages_limit patch_notes_unseen patch_mark]
       end
 
       response '401', 'unauthenticated' do

@@ -7528,6 +7528,25 @@ components:
       required:
       - user_id
       - news_mark
+    PatchMark:
+      type: object
+      properties:
+        user_id:
+          type: string
+        patch_mark:
+          type: integer
+          nullable: true
+          example: 12
+          description: 'The number of the newest Patch the member has seen. Null until
+            the website first sets it: every published Patch is unseen.'
+        unseen:
+          type: boolean
+          description: Whether a published Patch is newer than `patch_mark` (any published
+            Patch while it is null). Drafts never count.
+      required:
+      - user_id
+      - patch_mark
+      - unseen
     NewsFeedMeta:
       allOf:
       - "$ref": "#/components/schemas/PaginationMeta"
@@ -29835,6 +29854,129 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/users/{user_id}/patch_mark":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's Patch Mark
+      tags:
+      - Patch Notes
+      description: 'The Patch Mark: the number of the newest Patch the member has
+        seen, the same on every device. The website marks published Patches above
+        it "NEW". `patch_mark` is null until the website first sets it; `unseen` says
+        whether a published Patch is newer. Only the member themself may read it;
+        another member, staff and the bot''s service token get 403. Belongs to the
+        Patch Notes Feature: a member who cannot use it (Preview: Admins and Superadmins
+        only; Off: nobody) gets 404 `not_found`.'
+      responses:
+        '200':
+          description: Patch Mark
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PatchMark"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the Patch Notes Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Move a member's Patch Mark forward
+      tags:
+      - Patch Notes
+      description: 'Moves the Patch Mark forward to a Patch number: the newest Patch
+        /patch-notes or a Patch page showed. It never moves backwards: a number below
+        the stored mark keeps the stored one and still returns 200 with it. A number
+        past the newest published Patch is clamped to that Patch; with no published
+        Patch the mark stays as it is. Returns the stored Patch Mark. Only the member
+        themself may set it. Belongs to the Patch Notes Feature: a member who cannot
+        use it (Preview: Admins and Superadmins only; Off: nobody) gets 404 `not_found`.'
+      parameters: []
+      responses:
+        '200':
+          description: the stored Patch Mark
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/PatchMark"
+                required:
+                - data
+        '422':
+          description: "`patch_mark` missing or not a positive whole number"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the Patch Notes Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    patch_mark:
+                      type: integer
+                      minimum: 1
+                      example: 12
+                      description: The Patch number to move the Patch Mark forward
+                        to.
+                  required:
+                  - patch_mark
+              required:
+              - data
+        required: true
   "/api/v1/patches":
     get:
       summary: List Patches
@@ -35309,6 +35451,21 @@ paths:
                     example: 6
                     description: The most Pinned Pages a member may keep, counting
                       the ones they can't see right now.
+                  patch_notes_unseen:
+                    type: boolean
+                    description: Whether a published Patch is newer than the member's
+                      Patch Mark (any published Patch while they have none), for the
+                      sidebar's "NEW" mark. False when Patch Notes is not shown to
+                      the viewer (Off, Preview for a non-staff member, hidden by a
+                      Feature Preference) and for the service token.
+                  patch_mark:
+                    type: integer
+                    nullable: true
+                    example: 12
+                    description: 'The member''s Patch Mark: the number of the newest
+                      Patch they have seen (as GET /api/v1/users/{user_id}/patch_mark).
+                      Null until first set, and whenever `patch_notes_unseen` is forced
+                      false because Patch Notes is not shown.'
                 required:
                 - principal
                 - features
@@ -35317,6 +35474,8 @@ paths:
                 - pinned_pages_room
                 - pinned_pages_default
                 - pinned_pages_limit
+                - patch_notes_unseen
+                - patch_mark
         '401':
           description: unauthenticated
           content:
