@@ -31,8 +31,14 @@ module Api
       # `category[]`); an unknown key is a 400. Without it, the member's
       # default view: every News Category but the ones they switched off
       # (News Category Preferences, ticket #357). `q` searches link title and
-      # comment. `meta` adds `category_counts` and `hidden_categories` for the
-      # page's category rail.
+      # comment. `since` and `until` (ISO 8601; a bad value is a 400) bound
+      # posted_at: after `since`, at or before `until` (ticket api#496), so
+      # the Catch-up view lists the new News Items with `since` set to the
+      # News Mark and the seen ones with `until`. `meta` adds
+      # `category_counts` and `hidden_categories` for the page's category
+      # rail, and the member's `news_mark` with `new_count` and
+      # `new_category_counts`: the News Items in the same view (categories
+      # and `q`, not `since`/`until`) posted after the News Mark.
       #
       # An image whose Discord address has expired is served as unavailable,
       # and the bot is asked to renew it (NewsHub::BotJobs). The bot's own
@@ -42,11 +48,17 @@ module Api
         categories = category_filter
         return if performed?
 
+        bounds = posted_bounds
+        return if performed?
+
         searched = search(NewsItem.listed)
         hidden = switched_off_categories
-        scope = searched
-        scope = scope.where(category_key: categories) if categories.any?
-        scope = scope.where.not(category_key: hidden) if categories.empty? && hidden.any?
+        view = searched
+        view = view.where(category_key: categories) if categories.any?
+        view = view.where.not(category_key: hidden) if categories.empty? && hidden.any?
+        scope = view
+        scope = scope.where("news_items.posted_at > ?", bounds[:since]) if bounds[:since]
+        scope = scope.where(posted_at: ..bounds[:until]) if bounds[:until]
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
         now = Time.current
@@ -54,7 +66,8 @@ module Api
 
         render json: {
           data: news_item_json(items, now: now),
-          meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden)
+          meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden,
+            **new_counts(view))
         }
       end
 
@@ -214,6 +227,30 @@ module Api
       def category_counts(scope)
         counts = scope.group(:category_key).count
         NewsCategory.keys.index_with { |key| counts.fetch(key, 0) }
+      end
+
+      # The signed-in member's News Mark and how many News Items in `view`
+      # were posted after it, per News Category (every key, in order) in one
+      # grouped query. No News Mark (and the service token) counts nothing.
+      def new_counts(view)
+        mark = current_principal.discord_user? ? NewsMark.for(current_principal.id) : nil
+        counts = mark ? view.where("news_items.posted_at > ?", mark).group(:category_key).count : {}
+        by_category = NewsCategory.keys.index_with { |key| counts.fetch(key, 0) }
+        { news_mark: mark&.utc&.iso8601(6), new_count: by_category.values.sum, new_category_counts: by_category }
+      end
+
+      # The `since` and `until` instants (nil when blank). Renders 400 for a
+      # value that is not an ISO 8601 instant.
+      def posted_bounds
+        %i[since until].index_with do |name|
+          value = params[name].to_s.strip
+          next if value.empty?
+
+          Time.iso8601(value)
+        rescue ArgumentError
+          render(json: { error: "#{name} must be an ISO 8601 instant" }, status: :bad_request)
+          return {}
+        end
       end
 
       # Narrows to the News Items whose link title or comment contains `q`,

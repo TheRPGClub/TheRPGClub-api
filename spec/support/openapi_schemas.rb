@@ -2386,7 +2386,24 @@ module OpenapiSchemas
           description: "The News Category keys the member switched off, in order, whatever this request " \
                        "filters by: the default view leaves these out. Empty for the service token."
         },
-        required: %w[category_counts hidden_categories]),
+        news_mark: ts(nullable: true).merge(
+          description: "The member's News Mark (UTC, microseconds), as `GET /api/v1/users/{user_id}/news_mark` " \
+                       "serves it. Null without one (a first visit) and for the service token."
+        ),
+        new_count: int.merge(
+          description: "How many News Items in this view were posted after the News Mark: the default view " \
+                       "(switched-off News Categories left out) or the asked `category`, and `q`, but not " \
+                       "`since`/`until`. 0 without a News Mark."
+        ),
+        new_category_counts: {
+          type: :object,
+          description: "`new_count` per News Category, keyed by every News Category key in order, 0 for none " \
+                       "(and for every News Category outside this view).",
+          properties: NewsCategory.keys.index_with { { type: :integer } },
+          required: NewsCategory.keys,
+          example: NewsCategory.keys.index_with(0).merge("releases" => 4, "rumours" => 1)
+        },
+        required: %w[category_counts hidden_categories news_mark new_count new_category_counts]),
       # NewsItemsController#shelves (ticket api#497): the Shelves tab.
       NewsShelf: obj(
         category_key: str(enum: NewsCategory.keys, description: "The shelf's News Category."),
