@@ -2,13 +2,14 @@
 
 require 'swagger_helper'
 
-RSpec.describe 'api/v1/suggestions', type: :request do
-  # The client-writable RpgClubSuggestion columns. `suggestion_id` and the
+RSpec.describe 'api/v1/feedback', type: :request do
+  # The client-writable RpgClubFeedback columns. `feedback_id` and the
   # timestamps are server-managed.
   writable = {
-    title: { type: :string, description: 'Suggestion title. Required on create.' },
+    kind: { type: :string, enum: RpgClubFeedback::KINDS,
+            description: 'Feature Request, Suggestion or Bug Report. Required on create.' },
+    title: { type: :string, description: 'Title. Required on create.' },
     details: { type: :string, nullable: true, description: 'Optional longer description.' },
-    labels: { type: :string, nullable: true, description: 'Optional labels (free-form string).' },
     created_by: { type: :string, nullable: true,
                   description: 'Discord user id of the author. Service only; a member is always the author.' },
     created_by_name: { type: :string, nullable: true,
@@ -16,17 +17,17 @@ RSpec.describe 'api/v1/suggestions', type: :request do
   }
   # Status and the review columns are server-managed and ignored on create.
 
-  path '/api/v1/suggestions' do
-    get 'List suggestions' do
-      tags 'Suggestions'
+  path '/api/v1/feedback' do
+    get 'List Feedback' do
+      tags 'Feedback'
       description 'Open to any authenticated caller. By default (`sort=board`) most upvoted first, then ' \
                   'newest; `sort=recent` lists the latest activity first (`last_activity_at`, then newest ' \
-                  'suggestion_id), for the Suggestion Board Dashboard Panel. Each row carries ' \
+                  'feedback_id), for the Feedback Board Dashboard Panel. Each row carries ' \
                   '`upvote_count`, `viewer_upvoted` (always false for the service) and `last_activity_at`.'
       produces 'application/json'
       parameter name: :status, in: :query, schema: { type: :string }, required: false,
         description: 'Comma-separated statuses to include (pending, approved, rejected, withdrawn). ' \
-                     'Absent = every status. The Suggestion Board default is `pending,approved`.'
+                     'Absent = every status. The Feedback Board default is `pending,approved`.'
       parameter name: :sort, in: :query, schema: { type: :string, enum: %w[board recent], default: 'board' },
         required: false,
         description: '`board`: most upvoted, then newest. `recent`: latest activity first.'
@@ -37,9 +38,9 @@ RSpec.describe 'api/v1/suggestions', type: :request do
       parameter name: :offset, in: :query, schema: { type: :integer, minimum: 0 }, required: false,
         description: 'Deprecated; converted to a page number (transitional, for the unaudited Discord bot).'
 
-      response '200', 'suggestions list' do
+      response '200', 'Feedback list' do
         schema type: :object, properties: {
-          data: { type: :array, items: { '$ref' => '#/components/schemas/Suggestion' } },
+          data: { type: :array, items: { '$ref' => '#/components/schemas/Feedback' } },
           meta: { '$ref' => '#/components/schemas/PaginationMeta' }
         }
       end
@@ -57,27 +58,27 @@ RSpec.describe 'api/v1/suggestions', type: :request do
       end
     end
 
-    post 'Create a suggestion' do
-      tags 'Suggestions'
-      description 'Members role holders, Moderator and above, or the service. `title` is required; everything else is optional. ' \
+    post 'Create Feedback' do
+      tags 'Feedback'
+      description 'Members role holders, Moderator and above, or the service. `kind` and `title` are required; everything else is optional. ' \
                   'Always created Pending. A member is recorded as the author (body `created_by` and ' \
-                  '`created_by_name` are ignored) and their submission enqueues a `suggestion_submitted` ' \
-                  'bot job (payload `{ suggestion_id, created_by, feature_key: "suggestions" }`) so the bot pings the bot dev. ' \
+                  '`created_by_name` are ignored) and their submission enqueues a `feedback_submitted` ' \
+                  'bot job (payload `{ feedback_id, kind, created_by, feature_key: "feedback" }`) so the bot pings the bot dev. ' \
                   "A service create enqueues nothing: the bot pings inline for its own submissions."
       consumes 'application/json'
       produces 'application/json'
 
       parameter name: :body, in: :body, required: true, schema: {
         type: :object,
-        properties: { data: { type: :object, properties: writable, required: %w[title] } },
+        properties: { data: { type: :object, properties: writable, required: %w[kind title] } },
         required: %w[data]
       }
 
-      response '201', 'suggestion created' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Suggestion' } }
+      response '201', 'Feedback created' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
-      response '422', 'validation failed' do
+      response '422', 'validation failed (e.g. missing or unknown kind)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -95,15 +96,15 @@ RSpec.describe 'api/v1/suggestions', type: :request do
     end
   end
 
-  path '/api/v1/suggestions/{id}' do
-    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubSuggestion id.'
+  path '/api/v1/feedback/{id}' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
 
-    get 'Show a suggestion' do
-      tags 'Suggestions'
+    get 'Show Feedback' do
+      tags 'Feedback'
       produces 'application/json'
 
-      response '200', 'suggestion detail' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Suggestion' } }
+      response '200', 'Feedback detail' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
       response '404', 'not found' do
@@ -116,17 +117,17 @@ RSpec.describe 'api/v1/suggestions', type: :request do
     end
   end
 
-  path '/api/v1/suggestions/{id}/approve' do
-    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubSuggestion id.'
+  path '/api/v1/feedback/{id}/approve' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
 
-    post 'Approve a suggestion into a GitHub issue' do
-      tags 'Suggestions'
+    post 'Approve Feedback into a GitHub issue' do
+      tags 'Feedback'
       description 'Superadmin or the service, while Pending. Opens a GitHub issue in `target_repo` (title = the ' \
-                  'Suggestion title, body = "<author name>: <details>" plus a hidden Suggestion marker, labels = ' \
-                  'the comma-separated `labels`) through the GitHub App, stores its number and URL, and sets ' \
+                  'Feedback title, body = "<author name>: <details>" plus a hidden Feedback marker, label = the ' \
+                  'kind\'s label in that repo) through the GitHub App, stores its number and URL, and sets ' \
                   'status approved. An issue that already carries the marker (an earlier attempt whose response ' \
                   'was lost) is reused instead of opening a duplicate. ' \
-                  'Enqueues a `suggestion_outcome` bot job (payload `{ suggestion_id, outcome, created_by, title, ' \
+                  'Enqueues a `feedback_outcome` bot job (payload `{ feedback_id, kind, outcome, created_by, title, ' \
                   'github_issue_number, github_issue_url, rejection_reason }`), the bot\'s own reviews included; ' \
                   '`meta.outcome_job_id` is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
       consumes 'application/json'
@@ -138,7 +139,7 @@ RSpec.describe 'api/v1/suggestions', type: :request do
           data: {
             type: :object,
             properties: {
-              target_repo: { type: :string, enum: RpgClubSuggestion::TARGET_REPOS },
+              target_repo: { type: :string, enum: RpgClubFeedback::TARGET_REPOS },
               reviewed_by: { type: :string, description: 'Service only: the Discord id of the reviewer. A signed-in Superadmin is always the reviewer.' }
             },
             required: %w[target_repo]
@@ -149,8 +150,8 @@ RSpec.describe 'api/v1/suggestions', type: :request do
 
       response '200', 'approved' do
         schema type: :object, properties: {
-          data: { '$ref' => '#/components/schemas/Suggestion' },
-          meta: { '$ref' => '#/components/schemas/SuggestionReviewMeta' }
+          data: { '$ref' => '#/components/schemas/Feedback' },
+          meta: { '$ref' => '#/components/schemas/FeedbackReviewMeta' }
         }
       end
 
@@ -188,13 +189,13 @@ RSpec.describe 'api/v1/suggestions', type: :request do
     end
   end
 
-  path '/api/v1/suggestions/{id}/reject' do
-    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubSuggestion id.'
+  path '/api/v1/feedback/{id}/reject' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
 
-    post 'Reject a suggestion' do
-      tags 'Suggestions'
+    post 'Reject Feedback' do
+      tags 'Feedback'
       description 'Superadmin or the service, while Pending. Sets status rejected with the (trimmed) reason. ' \
-                  'Enqueues a `suggestion_outcome` bot job (payload `{ suggestion_id, outcome, created_by, title, ' \
+                  'Enqueues a `feedback_outcome` bot job (payload `{ feedback_id, kind, outcome, created_by, title, ' \
                   'github_issue_number, github_issue_url, rejection_reason }`), the bot\'s own reviews included; ' \
                   '`meta.outcome_job_id` is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
       consumes 'application/json'
@@ -217,8 +218,8 @@ RSpec.describe 'api/v1/suggestions', type: :request do
 
       response '200', 'rejected' do
         schema type: :object, properties: {
-          data: { '$ref' => '#/components/schemas/Suggestion' },
-          meta: { '$ref' => '#/components/schemas/SuggestionReviewMeta' }
+          data: { '$ref' => '#/components/schemas/Feedback' },
+          meta: { '$ref' => '#/components/schemas/FeedbackReviewMeta' }
         }
       end
 
@@ -248,16 +249,16 @@ RSpec.describe 'api/v1/suggestions', type: :request do
     end
   end
 
-  path '/api/v1/suggestions/{id}/withdraw' do
-    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubSuggestion id.'
+  path '/api/v1/feedback/{id}/withdraw' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
 
-    post 'Withdraw a suggestion' do
-      tags 'Suggestions'
+    post 'Withdraw Feedback' do
+      tags 'Feedback'
       description 'The author only, while Pending. Staff and the service are refused.'
       produces 'application/json'
 
       response '200', 'withdrawn' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Suggestion' } }
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
       response '409', 'not pending' do
@@ -278,17 +279,17 @@ RSpec.describe 'api/v1/suggestions', type: :request do
     end
   end
 
-  path '/api/v1/suggestions/{id}/upvote' do
-    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubSuggestion id.'
+  path '/api/v1/feedback/{id}/upvote' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
 
-    post 'Upvote a suggestion' do
-      tags 'Suggestions'
+    post 'Upvote Feedback' do
+      tags 'Feedback'
       description 'Members role holders or staff, signed in (the service is refused). One upvote per member; repeating it is a no-op. ' \
-                  'Only Pending and Approved suggestions take upvotes.'
+                  'Only Pending and Approved Feedback takes upvotes.'
       produces 'application/json'
 
-      response '200', 'upvoted; returns the updated suggestion' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Suggestion' } }
+      response '200', 'upvoted; returns the updated Feedback' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
       response '409', 'rejected or withdrawn' do
@@ -309,12 +310,12 @@ RSpec.describe 'api/v1/suggestions', type: :request do
     end
 
     delete 'Remove an upvote' do
-      tags 'Suggestions'
+      tags 'Feedback'
       description "Members role holders or staff, signed in (the service is refused). Removes the caller's upvote if any (a no-op otherwise), whatever the status."
       produces 'application/json'
 
-      response '200', 'removed; returns the updated suggestion' do
-        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Suggestion' } }
+      response '200', 'removed; returns the updated Feedback' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
       response '404', 'not found' do

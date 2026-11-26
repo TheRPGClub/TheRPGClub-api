@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Github
-  # Refreshes the cached issue states a Suggestion Board read found missing
+  # Refreshes the cached issue states a Feedback Board read found missing
   # or stale (Github::IssueStateCache), so reads never wait on GitHub. One
   # runs at a time; states another run already refreshed are skipped. Each
   # lookup has a short timeout, and a run stops at the first failure: the

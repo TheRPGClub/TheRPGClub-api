@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 module Github
-  # An issue's state ("open" or "closed") for the Suggestion Board, kept in
+  # An issue's state ("open" or "closed") for the Feedback Board, kept in
   # the Rails cache. nil when the GitHub App is not configured, the issue is
   # gone, GitHub fails, or the state hasn't been read yet.
   #
   # Reads never call GitHub. They read every state a page needs in one cache
   # read (`states_for`; in production the cache is a database, so this is one
-  # round trip, not one per suggestion), and queue Github::IssueStateRefreshJob
+  # round trip, not one per Feedback), and queue Github::IssueStateRefreshJob
   # for any state that is missing or older than TTL. A stale state keeps being
   # served (for up to KEEP) while it refreshes, so the board doesn't blank out
   # every TTL.

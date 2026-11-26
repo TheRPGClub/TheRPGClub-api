@@ -137,7 +137,7 @@ RSpec.describe Github::Client do
 
   describe "#find_issue_by_marker" do
     let(:since) { Time.utc(2026, 11, 1, 9, 0, 0) }
-    let(:marker) { "<!-- rpgclub-suggestion:12 -->" }
+    let(:marker) { "<!-- rpgclub-feedback:12 -->" }
 
     it "returns the newest issue updated since the time whose body holds the marker, skipping pull requests" do
       stub_token

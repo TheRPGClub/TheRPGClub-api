@@ -1,0 +1,279 @@
+# frozen_string_literal: true
+
+module Api
+  module V1
+    # The Feedback Board (GLOSSARY.md "Feedback"; spec api#498): members file
+    # Feedback of one kind and upvote it; a Superadmin reviews it.
+    class FeedbackController < ApplicationController
+      feature :feedback
+
+      # Columns a caller may set on create. Status and the review columns are
+      # server-managed; a member's authorship comes from their session.
+      WRITABLE = %w[kind title details created_by created_by_name].freeze
+      # How long an approval in progress blocks another; longer than its
+      # GitHub calls can take (three, each with Github::Client::TIMEOUT_SECONDS).
+      APPROVAL_WINDOW = 2.minutes
+      # The index's orders: `board` (the default: most upvoted, then newest)
+      # and `recent` (latest activity first, for the Feedback Board
+      # Dashboard Panel).
+      SORTS = { "board" => RpgClubFeedback::BOARD_ORDER, "recent" => RpgClubFeedback::RECENT_ORDER }.freeze
+
+      before_action :require_superadmin!, only: %i[approve reject]
+      before_action :require_member_or_staff!, only: %i[create upvote remove_upvote]
+      before_action :require_member!, only: %i[withdraw upvote remove_upvote]
+
+      # GET /api/v1/feedback?status=&sort=board|recent&page=&per=
+      def index
+        statuses = status_filter
+        return if performed?
+
+        order = sort_param(SORTS, default: "board")
+        return if performed?
+
+        scope = viewer_scope
+        scope = scope.where(status: statuses) if statuses
+        render_collection(scope, resource: FeedbackResource, default_order: order,
+          prepare: ->(records) { FeedbackResource.issue_states(records) })
+      end
+
+      def show
+        render_feedback(params[:id])
+      end
+
+      # Members role holders, staff, or the bot. A member is always the author, and
+      # their submission asks the bot to ping the bot dev; the bot pings
+      # inline for its own /feedback submissions, so a service create
+      # enqueues nothing.
+      def create
+        attrs = request_data.slice(*WRITABLE)
+        record = RpgClubFeedback.transaction do
+          if current_principal.discord_user?
+            attrs.merge!("created_by" => current_principal.id, "created_by_name" => author_name)
+          end
+          feedback = RpgClubFeedback.create!(attrs)
+          enqueue_submitted_ping(feedback) if current_principal.discord_user?
+          feedback
+        end
+        render_feedback(record.feedback_id, status: :created)
+      end
+
+      # Superadmin (or the bot, for a Discord reviewer named in `reviewed_by`).
+      # Opens a GitHub issue in `target_repo` (one of
+      # RpgClubFeedback::TARGET_REPOS) as the bot did, stores it and asks the
+      # bot to announce the outcome. A GitHub failure changes nothing.
+      #
+      # No lock or transaction is held across the GitHub calls. A short lock
+      # marks the approval as in progress (a second approve meanwhile is a 409
+      # `approval_in_progress`), the issue is opened, then a second short lock
+      # re-checks Pending and stores it. The issue body carries a marker, and an
+      # issue already carrying it is reused, so a retry after a lost GitHub
+      # response does not open a duplicate.
+      def approve
+        data = request_data
+        repo = data["target_repo"].to_s.strip
+        unless RpgClubFeedback::TARGET_REPOS.include?(repo)
+          return render json: { error: "target_repo must be one of #{RpgClubFeedback::TARGET_REPOS.join(', ')}" },
+            status: :unprocessable_content
+        end
+
+        feedback = RpgClubFeedback.find(params[:id])
+        mark = claim_approval(feedback)
+        return unless mark
+
+        begin
+          issue = find_or_open_issue(feedback, repo)
+          Github::IssueStateCache.store(repo, issue.number, issue.state)
+          review(data) do
+            { status: "approved", target_repo: repo, github_issue_number: issue.number, github_issue_url: issue.url,
+              approval_started_at: nil }
+          end
+        ensure
+          release_approval(feedback, mark)
+        end
+      rescue Github::Client::ConfigurationError => error
+        render json: { error: "github_not_configured", message: error.message }, status: :service_unavailable
+      rescue Github::Client::RequestError => error
+        render json: { error: "github_issue_failed", message: error.message }, status: :bad_gateway
+      end
+
+      # Superadmin (or the bot, as for approve). `rejection_reason` is required.
+      def reject
+        data = request_data
+        reason = data["rejection_reason"].to_s.strip
+        return render json: { error: "rejection_reason is required" }, status: :unprocessable_content if reason.empty?
+
+        review(data) { { status: "rejected", rejection_reason: reason } }
+      end
+
+      # The author takes back their own Pending Feedback. Anyone else
+      # (staff and the service included) is refused; a reviewed or already
+      # withdrawn Feedback is a 409.
+      def withdraw
+        feedback = RpgClubFeedback.find(params[:id])
+        return render json: { error: "forbidden" }, status: :forbidden unless feedback.created_by == current_principal.id
+
+        feedback.with_lock do
+          unless feedback.status == "pending"
+            return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
+          end
+
+          feedback.update!(status: "withdrawn")
+        end
+        render_feedback(feedback.feedback_id)
+      end
+
+      # A member's upvote, at most one each (repeating it is a no-op). Only
+      # Pending and Approved Feedback takes upvotes.
+      def upvote
+        feedback = RpgClubFeedback.find(params[:id])
+        unless RpgClubFeedback::UPVOTABLE_STATUSES.include?(feedback.status)
+          return render json: { error: "#{feedback.status} feedback cannot be upvoted" }, status: :conflict
+        end
+
+        RpgClubFeedbackUpvote.insert(
+          { feedback_id: feedback.feedback_id, user_id: current_principal.id },
+          unique_by: :ux_rpg_club_feedback_upvotes_feedback_user
+        )
+        render_feedback(feedback.feedback_id)
+      end
+
+      # Removes the member's upvote, if any, whatever the status.
+      def remove_upvote
+        feedback = RpgClubFeedback.find(params[:id])
+        feedback.upvotes.where(user_id: current_principal.id).delete_all
+        render_feedback(feedback.feedback_id)
+      end
+
+      private
+
+      # Locks the Feedback, 409s unless it is pending, applies the block's
+      # columns plus the reviewer and time, and enqueues the outcome job, all in
+      # one short transaction (the block makes no external calls). Renders
+      # `{ data: Feedback, meta: { outcome_job_id } }`.
+      def review(data)
+        feedback = RpgClubFeedback.find(params[:id])
+        job = nil
+        feedback.with_lock do
+          unless feedback.status == "pending"
+            return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
+          end
+
+          feedback.update!(**yield, reviewed_by: reviewer_id(data), reviewed_at: Time.current)
+          job = enqueue_outcome(feedback)
+        end
+        render json: {
+          data: FeedbackResource.new(viewer_scope.find(feedback.feedback_id)).serializable_hash,
+          meta: { outcome_job_id: job.id }
+        }
+      end
+
+      # Marks Pending Feedback as being approved, under a short row lock,
+      # and returns the mark's time. Renders 409 and returns nil when it is not
+      # Pending or another approval started within APPROVAL_WINDOW (an older
+      # mark is from a request that died, and is taken over).
+      def claim_approval(feedback)
+        feedback.with_lock do
+          unless feedback.status == "pending"
+            render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
+            return nil
+          end
+          if feedback.approval_started_at&.after?(APPROVAL_WINDOW.ago)
+            render json: { error: "approval_in_progress", message: "this feedback is already being approved" },
+              status: :conflict
+            return nil
+          end
+
+          feedback.update_columns(approval_started_at: Time.current.floor(6))
+          feedback.approval_started_at
+        end
+      end
+
+      # Clears this request's mark if it is still there (a finished approval
+      # already cleared it; a takeover replaced it).
+      def release_approval(feedback, mark)
+        RpgClubFeedback.where(feedback_id: feedback.feedback_id, approval_started_at: mark)
+          .update_all(approval_started_at: nil)
+      end
+
+      def find_or_open_issue(feedback, repo)
+        client = Github::Client.new
+        marker = issue_marker(feedback)
+        client.find_issue_by_marker(repo: repo, marker: marker, since: feedback.created_at) ||
+          client.create_issue(repo: repo, title: feedback.title, body: "#{issue_body(feedback)}\n\n#{marker}",
+            labels: [ feedback.issue_label(repo) ])
+      end
+
+      # Hidden in the rendered issue; identifies the Feedback an issue is for.
+      def issue_marker(feedback)
+        "<!-- rpgclub-feedback:#{feedback.feedback_id} -->"
+      end
+
+      # A member reviews as themselves; the bot names the Discord reviewer.
+      def reviewer_id(data)
+        current_principal.discord_user? ? current_principal.id : data["reviewed_by"].presence&.to_s
+      end
+
+      # The issue body as the bot's /suggestion review wrote it.
+      def issue_body(feedback)
+        "#{feedback.created_by_name.presence || 'Unknown'}: #{feedback.details.presence || 'No details provided.'}"
+      end
+
+      # Payload (kind feedback_outcome): { feedback_id, kind, outcome, created_by,
+      # title, github_issue_number, github_issue_url, rejection_reason }.
+      # Enqueued for the bot's own reviews too: the job is the announcement.
+      def enqueue_outcome(feedback)
+        BotJob.enqueue!(
+          kind: "feedback_outcome",
+          summary: %(Announce that the #{feedback.kind_name} "#{feedback.title}" was #{feedback.status}),
+          payload: {
+            feedback_id: feedback.feedback_id, kind: feedback.kind, outcome: feedback.status,
+            created_by: feedback.created_by, title: feedback.title, github_issue_number: feedback.github_issue_number,
+            github_issue_url: feedback.github_issue_url, rejection_reason: feedback.rejection_reason
+          },
+          requested_by: requester_id
+        )
+      end
+
+      # Upvotes and withdraw act as a signed-in member; the service has no
+      # member identity to act as.
+      def require_member!
+        gate_or_forbid(current_principal.discord_user?)
+      end
+
+      def viewer_scope
+        RpgClubFeedback.with_upvotes(current_principal.discord_user? ? current_principal.id : nil)
+      end
+
+      def render_feedback(id, status: :ok)
+        render json: { data: FeedbackResource.new(viewer_scope.find(id)).serializable_hash }, status: status
+      end
+
+      def author_name
+        RpgClubUser.where(user_id: current_principal.id).pick(:username) || current_principal.username
+      end
+
+      # Payload (kind feedback_submitted): { feedback_id, kind, created_by }.
+      def enqueue_submitted_ping(feedback)
+        BotJob.enqueue!(
+          kind: "feedback_submitted",
+          summary: %(Announce the new #{feedback.kind_name} "#{feedback.title}"),
+          payload: { feedback_id: feedback.feedback_id, kind: feedback.kind, created_by: feedback.created_by },
+          requested_by: current_principal.id
+        )
+      end
+
+      # `?status=pending,approved`: nil (every status) when absent; 400 for a
+      # value outside RpgClubFeedback::STATUSES.
+      def status_filter
+        return if params[:status].blank?
+
+        statuses = params[:status].to_s.split(",").map(&:strip).compact_blank.uniq
+        unknown = statuses - RpgClubFeedback::STATUSES
+        return statuses if unknown.empty?
+
+        render json: { error: "unknown status: #{unknown.join(', ')}" }, status: :bad_request
+        nil
+      end
+    end
+  end
+end

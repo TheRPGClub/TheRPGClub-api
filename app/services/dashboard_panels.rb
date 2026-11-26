@@ -37,7 +37,7 @@ module DashboardPanels
     panel("reviews", "club", "reviews"),
     panel("journals", "club", "journals"),
     panel("giveaways", "club", "giveaways"),
-    panel("suggestions", "club", "suggestions"),
+    panel("feedback", "club", "feedback"),
     panel("codex", "club", "club_codex"),
     panel("birthdays", "club", nil)
   ].freeze
@@ -47,10 +47,11 @@ module DashboardPanels
   # The panels the site launched with. A member who never opened edit mode has
   # seen these and nothing else, so none is New at launch and every panel
   # added later is. Never add a key here: a later panel stays out so it is New.
+  # (`feedback` is the launch panel `suggestions`, renamed with the Feedback Board.)
   LAUNCH_KEYS = %w[
     news now_playing_club releases achievements_club challenges_club now_playing_mine achievements_mine
     challenge_runs_mine completions_club completions_mine backlog_pick reviews journals giveaways
-    suggestions codex birthdays
+    feedback codex birthdays
   ].freeze
 
   def self.all = BY_KEY.values

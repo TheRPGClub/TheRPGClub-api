@@ -854,12 +854,15 @@ module OpenapiSchemas
       ),
 
       # ---- RPGClub features ------------------------------------------------
-      # SuggestionResource: every column plus the upvote count and whether
-      # the viewer upvoted (#318). The review columns are null until review.
-      Suggestion: obj(
-        suggestion_id: int, title: str, details: str(nullable: true), created_by: str(nullable: true),
-        created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true),
-        status: str(enum: RpgClubSuggestion::STATUSES),
+      # FeedbackResource: every column plus the upvote count and whether
+      # the viewer upvoted (#318, spec api#498). The review columns are null
+      # until review.
+      Feedback: obj(
+        feedback_id: int,
+        kind: str(enum: RpgClubFeedback::KINDS).merge(description: "Feature Request, Suggestion or Bug Report."),
+        title: str, details: str(nullable: true), created_by: str(nullable: true),
+        created_at: ts, updated_at: ts, created_by_name: str(nullable: true),
+        status: str(enum: RpgClubFeedback::STATUSES),
         reviewed_by: str(nullable: true).merge(description: "Discord user id of the reviewing Superadmin."),
         reviewed_at: ts(nullable: true),
         rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
@@ -876,15 +879,10 @@ module OpenapiSchemas
                        "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
         )
       ),
-      # SuggestionsController#approve / #reject meta: the queued outcome job,
+      # FeedbackController#approve / #reject meta: the queued outcome job,
       # so the website can poll GET /api/v1/bot_jobs/{id}.
-      SuggestionReviewMeta: obj(
-        outcome_job_id: int.merge(description: "The suggestion_outcome bot job (the bot announces the outcome).")
-      ),
-      # `suggestion_ids` is the stored JSON string, returned verbatim.
-      SuggestionReviewSession: obj(
-        session_id: str, reviewer_id: str, suggestion_ids: str, current_index: int,
-        total_count: int, created_at: ts, updated_at: ts
+      FeedbackReviewMeta: obj(
+        outcome_job_id: int.merge(description: "The feedback_outcome bot job (the bot announces the outcome).")
       ),
       StarboardEntry: obj(
         message_id: str, channel_id: str, starboard_message_id: str, author_id: str,
@@ -2078,8 +2076,8 @@ module OpenapiSchemas
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
                               "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
-                              "journals, members, news, codex, lists, giveaways, suggestions, staff_desk, " \
-                              "voting_console, synonyms, live_events, public_reminders, suggestion_review." },
+                              "journals, members, news, codex, lists, giveaways, feedback, staff_desk, " \
+                              "voting_console, synonyms, live_events, public_reminders, feedback_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),
         _required: %w[user_id pages customised]
@@ -2104,7 +2102,7 @@ module OpenapiSchemas
       DashboardPanel: obj(
         key: str(description: "Panel key: news, now_playing_club, releases, achievements_club, challenges_club, " \
                               "now_playing_mine, achievements_mine, challenge_runs_mine, completions_club, " \
-                              "completions_mine, backlog_pick, reviews, journals, giveaways, suggestions, codex, " \
+                              "completions_mine, backlog_pick, reviews, journals, giveaways, feedback, codex, " \
                               "birthdays.", example: "news"),
         scope: str(enum: %w[club mine], description: "Whether the panel shows club activity or the member's own."),
         new: bool.merge(description: "Whether the panel reached the site since the member last opened dashboard " \

@@ -58,8 +58,8 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
       "voting_results_publish" => "voting_gotm",
       "voting_panels_repost" => "voting_gotm",
       "voting_tie_broken" => "voting_gotm",
-      "suggestion_outcome" => "suggestions",
-      "suggestion_submitted" => "suggestions",
+      "feedback_outcome" => "feedback",
+      "feedback_submitted" => "feedback",
       "giveaway_hub_refresh" => "giveaways",
       "giveaway_claim_notice" => "giveaways",
       "challenge_announce" => "challenges",
@@ -143,8 +143,8 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     end
 
     it "gives a kind with its own lease that long before handing it out again" do
-      stub_const("BotJob::LEASES", { "suggestion_submitted" => 30.minutes })
-      long = enqueue(kind: "suggestion_submitted", payload: {})
+      stub_const("BotJob::LEASES", { "feedback_submitted" => 30.minutes })
+      long = enqueue(kind: "feedback_submitted", payload: {})
       short = enqueue
       claimed = poll
 
@@ -159,8 +159,8 @@ RSpec.describe "api/v1/bot_jobs behavior", type: :request do
     end
 
     it "wakes the lowered signal when the earliest lease runs out" do
-      stub_const("BotJob::LEASES", { "suggestion_submitted" => 30.minutes })
-      job = enqueue(kind: "suggestion_submitted", payload: {})
+      stub_const("BotJob::LEASES", { "feedback_submitted" => 30.minutes })
+      job = enqueue(kind: "feedback_submitted", payload: {})
       poll
 
       travel(20.minutes) { expect(postgres_queries { poll }).to be_empty }

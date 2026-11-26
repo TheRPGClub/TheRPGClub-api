@@ -10,7 +10,7 @@ module Github
   # (b/src/services/GithubIssuesService.ts): signs an RS256 app JWT, trades it
   # for an installation token (kept in process until a minute before it
   # expires), then calls the REST API as the installation. Only what
-  # Suggestion review needs is ported: create an issue and read its state.
+  # Feedback review needs is ported: create an issue and read its state.
   #
   # Credentials default to GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and
   # GITHUB_APP_PRIVATE_KEY (the bot's names). The private key may be a PEM
