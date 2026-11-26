@@ -2378,6 +2378,26 @@ module OpenapiSchemas
                        "filters by: the default view leaves these out. Empty for the service token."
         },
         required: %w[category_counts hidden_categories]),
+      # NewsItemsController#shelves (ticket api#497): the Shelves tab.
+      NewsShelf: obj(
+        category_key: str(enum: NewsCategory.keys, description: "The shelf's News Category."),
+        name: str(example: "Releases & Updates", description: "The News Category's display name."),
+        today_count: int.merge(description: "How many of the News Category's News Items were posted since " \
+                                            "the start of the current UTC day, whatever `per` is."),
+        items: array_of("NewsItem").merge(
+          description: "The News Category's newest News Items, newest first, at most `per`; empty for none."
+        ),
+        _required: %w[category_key name today_count items]
+      ),
+      NewsShelvesMeta: obj(
+        per: int.merge(description: "The most News Items a shelf holds in this answer (`per`, clamped to 1-20)."),
+        hidden_categories: {
+          type: :array, items: str(enum: NewsCategory.keys),
+          description: "The News Category keys the member switched off, in order: they have no shelf. Empty " \
+                       "for the service token."
+        },
+        _required: %w[per hidden_categories]
+      ),
       # NewsItemResource: a News Item as the website and the bot read it.
       NewsItem: obj(
         message_id: str(example: "1300000000000000003",

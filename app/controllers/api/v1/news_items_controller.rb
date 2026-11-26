@@ -20,6 +20,10 @@ module Api
 
       before_action :require_service!, only: %i[uncopied update change_category destroy]
 
+      # News Items per shelf on the Shelves tab: the default and the most.
+      SHELF_PER = 10
+      SHELF_MAX_PER = 20
+
       # GET /api/v1/news_items?category=releases,industry&q=zelda&page=1&per=50
       #
       # The News Items that have a News Category, newest first. `category`
@@ -64,6 +68,29 @@ module Api
       def stamp
         response.headers["Cache-Control"] = "no-store"
         render json: { data: { stamp: NewsItem::FeedStamp.read.to_s } }
+      end
+
+      # GET /api/v1/news_items/shelves?per=10
+      #
+      # The Shelves tab (ticket api#497): for each News Category in the
+      # member's default view, in News Category order, its newest `per` News
+      # Items (default 10, at most 20) as the feed serves them, and how many
+      # were posted today (UTC). The switched-off News Categories are left
+      # out and listed in `meta.hidden_categories`. Expired images are
+      # renewed as the feed renews them.
+      def shelves
+        hidden = switched_off_categories
+        keys = NewsCategory.keys - hidden
+        per = clamp_per(params[:per], default_per: SHELF_PER, max_per: SHELF_MAX_PER)
+        now = Time.current
+        shelved = NewsItem.newest_by_category(keys, per: per)
+        items = shelved.values.flatten
+        NewsHub::BotJobs.renew_expired_images!(items, now: now) unless current_principal.service?
+
+        render json: {
+          data: shelves_json(shelved, NewsItem.posted_today_by_category(keys, now: now), items, now: now),
+          meta: { per: per, hidden_categories: hidden }
+        }
       end
 
       # GET /api/v1/news_items/uncopied?origin=live&page=1&per=50
@@ -138,6 +165,18 @@ module Api
       end
 
       private
+
+      # One shelf per News Category of `shelved` ({ key => items }), in
+      # order, with its today count; the authors of every shelved item are
+      # looked up once.
+      def shelves_json(shelved, today_counts, items, now:)
+        authors = NewsItemResource.authors_for(items)
+        names = NewsCategory.all.to_h { |category| [ category.key, category.name ] }
+        shelved.map do |key, shelf_items|
+          { category_key: key, name: names.fetch(key), today_count: today_counts.fetch(key),
+            items: NewsItemResource.new(shelf_items, params: { authors: authors, now: now }).serializable_hash }
+        end
+      end
 
       # The News Item, or a list of them, as the API serves it, with each
       # author's name; `options` adds serializer params (the feed's `now`).

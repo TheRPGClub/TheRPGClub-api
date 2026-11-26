@@ -80,6 +80,41 @@ RSpec.describe 'api/v1/news_items', type: :request do
     end
   end
 
+  path '/api/v1/news_items/shelves' do
+    get 'The News Hub shelves' do
+      tags 'News Hub'
+      description "The News page's Shelves tab in one request: one shelf per News Category in the member's " \
+                  'default view (every News Category except the ones they switched off with a News Category ' \
+                  'Preference), in News Category order. Each shelf holds that News Category\'s newest `per` ' \
+                  'News Items, newest first (`posted_at` descending, as the feed orders them), serialized as ' \
+                  'the feed serializes them, and `today_count`: how many of its News Items were posted since ' \
+                  'the start of the current UTC day, whatever `per` is. A News Category with no News Items ' \
+                  'still has its shelf, empty. The switched-off News Categories are listed in ' \
+                  '`meta.hidden_categories`. Imported News Items staff have not sorted are never shown. An ' \
+                  'image whose Discord address has expired comes back unavailable and queues its renewal ' \
+                  "exactly as the feed does (none for the service token's own reads). " \
+                  "#{gate}"
+      produces 'application/json'
+      parameter name: :per, in: :query, required: false, schema: { type: :integer, default: 10, maximum: 20 },
+        description: 'News Items per shelf. Missing, zero or not a number means 10; above 20 means 20.'
+
+      response '200', 'the shelves' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/NewsShelf' } },
+          meta: { '$ref' => '#/components/schemas/NewsShelvesMeta' }
+        }, required: %w[data meta]
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'the viewer cannot use the News Hub Feature' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/news_items/uncopied' do
     get 'News Items without a News Copy' do
       tags 'News Hub'
