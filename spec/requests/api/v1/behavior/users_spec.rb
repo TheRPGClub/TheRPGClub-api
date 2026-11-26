@@ -9,7 +9,8 @@ RSpec.describe "api/v1/users behavior", type: :request do
   # The consumer-audited UserFields column allowlist (#36) — notably WITHOUT
   # the binary avatar_blob/profile_image columns.
   let(:summary_keys) do
-    %w[user_id username global_name is_bot role_admin role_moderator role_regular server_left_at]
+    %w[user_id username global_name is_bot role_admin role_moderator role_regular
+       role_dev role_member role_newcomer server_left_at]
   end
 
   describe "GET /api/v1/users" do

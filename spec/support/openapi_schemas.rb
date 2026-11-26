@@ -358,6 +358,7 @@ module OpenapiSchemas
       UserSummary: obj(
         user_id: str, username: str(nullable: true), global_name: str(nullable: true),
         is_bot: bool, role_admin: bool, role_moderator: bool, role_regular: bool,
+        role_dev: bool, role_member: bool, role_newcomer: bool,
         server_left_at: ts(nullable: true)
       ),
       # The computed membership summary (RpgClubUser#membership). `admin`,
