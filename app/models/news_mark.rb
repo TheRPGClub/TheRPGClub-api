@@ -16,10 +16,13 @@ module NewsMark
   end
 
   # Moves the member's News Mark forward to `instant` (clamped to now) and
-  # returns the stored mark (nil when the API has no row for the member). One UPDATE, so two requests at once (a beacon
-  # racing Mark all seen) still never move it backwards.
+  # returns the stored mark. Creates the member's row first, as the other
+  # member documents do, so the mark is never dropped. One UPDATE, so two
+  # requests at once (a beacon racing Mark all seen) still never move it
+  # backwards.
   def advance!(user_id, instant, now: Time.current)
     to = [ instant, now ].min
+    RpgClubUser.find_or_create_by!(user_id: user_id)
     RpgClubUser.where(user_id: user_id)
       .update_all([ "news_mark_at = GREATEST(COALESCE(news_mark_at, :to), :to)", { to: to } ])
     self.for(user_id)
