@@ -198,6 +198,9 @@ Rails.application.routes.draw do
           # The News Mark (spec api#494, ticket api#495): how far the member has seen the News Hub.
           get "news_mark", to: "news_marks#show"
           put "news_mark", to: "news_marks#update"
+          # The Patch Mark (spec api#510, ticket api#512): the newest Patch the member has seen.
+          get "patch_mark", to: "patch_marks#show"
+          put "patch_mark", to: "patch_marks#update"
           get "game_keys", to: "game_keys#user_index"
           get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"
@@ -550,9 +553,36 @@ Rails.application.routes.draw do
           resources :images, only: %i[create destroy], controller: "entry_images"
         end
       end
+      # Patch Notes (spec api#510, ticket api#511): Patches by number, gated
+      # by the `patch_notes` Feature. Anyone reads the published ones;
+      # Admins and Superadmins write, publish, unpublish and delete drafts.
+      resources :patches, only: %i[index show create update destroy], param: :number do
+        member do
+          post :publish
+          post :unpublish
+          # Posting to Discord (ticket api#513): staff queue the post and its
+          # edits; the bot records the message it posted or removed.
+          post :post, action: :queue_post
+          post :update_post, action: :queue_post_update
+          put :discord_post, action: :record_post
+          delete :discord_post, action: :clear_post
+        end
+      end
       # Upcoming Birthdays (spec #396, api#400): the shared Birthdays in the
       # next 30 club days.
       get "birthdays/upcoming", to: "birthdays#upcoming"
+      # Pending Changes (spec api#510, ticket api#514): the versioning job
+      # reports merges with its release token; Admins and Superadmins list,
+      # dismiss and undo them, and set which ones a Patch covers. Anyone
+      # reads the current versions.
+      resources :pending_changes, only: %i[index create] do
+        member do
+          post :dismiss
+          post :undismiss
+        end
+      end
+      put "patches/:number/pending_changes", to: "pending_changes#cover"
+      get "versions", to: "pending_changes#versions"
       # News Hub (spec #355): the fixed News Categories; the members' feed of
       # News Items; the bot records (PUT, an upsert) and removes News Items
       # by their Discord message id (service-only), lists those with no

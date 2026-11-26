@@ -487,6 +487,20 @@ _Avoid_: Fact of the day, daily trivia
 
 The same moment can appear in more than one part of the Club Codex, such as a History Event recording that something happened and a Lore Entry telling the story, and any Club Codex entry can link to any others, the link showing on both. Members named in Club Codex entries are not asked for their consent and have no special say over them. An author can edit or delete their own Lore Entries and Fun Facts, and Moderators and above can edit or remove anyone's. Club History is public; Club Lore and Fun Facts are for Members only.
 
+## Patch Notes
+
+**Patch Notes**:
+The place where members read what changed on the club's website and bot: what was added, what improved and which bugs were fixed, written for members rather than developers. It is a Feature that members can hide, and anyone can read it, Visitors included.
+_Avoid_: Changelog, news, release notes, updates
+
+**Patch**:
+One dated post in the Patch Notes that gathers a batch of changes, sorted into new, improved and fixed. Only Admins and Superadmins write and publish it; until it is published nobody else can see it. Publishing puts it on the website only; staff post it to Discord as a separate step. Patches are numbered in order from 1.
+_Avoid_: Release (that is the Release Calendar's term), update, changelog entry, news item
+
+**Pending Change**:
+A change merged into the club's website, bot or backend that may go into a coming Patch. Each one comes from one merged pull request, waits until staff either put it in a Patch or dismiss it, and is never shown to members as it is. One line in a Patch can cover several Pending Changes, such as the website, bot and backend parts of a single new feature.
+_Avoid_: Commit, PR (when meaning the change members read about), entry
+
 ## Roadmap
 
 **Roadmap**:

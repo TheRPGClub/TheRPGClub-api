@@ -48,6 +48,12 @@ RSpec.configure do |config|
             bearerFormat: 'UserSessionToken',
             description: 'Bearer token issued by `POST /auth/discord/callback` (user session) or ' \
                          'the service-account token used by the Discord bot.'
+          },
+          releaseToken: {
+            type: :http,
+            scheme: :bearer,
+            description: 'The versioning job\'s token (RPGCLUB_RELEASE_API_TOKEN), accepted only by ' \
+                         '`POST /api/v1/pending_changes`.'
           }
         },
         # Reusable resource/response component schemas, cross-checked against the

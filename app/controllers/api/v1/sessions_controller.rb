@@ -20,11 +20,22 @@ module Api
           principal: current_principal,
           membership: membership,
           features: access.session_features,
-          **pinned_pages(user, access)
+          **pinned_pages(user, access),
+          **patch_notes(user, access)
         }
       end
 
       private
+
+      # The member's Patch Mark and whether a published Patch is newer
+      # (ticket api#512), so the sidebar shows "NEW" without another request.
+      # Nothing for a viewer not shown Patch Notes or for the service token.
+      def patch_notes(user, access)
+        return { patch_notes_unseen: false, patch_mark: nil } unless current_principal.discord_user? && access.shown?(:patch_notes)
+
+        mark = user&.patch_mark
+        { patch_notes_unseen: PatchMark.unseen?(mark), patch_mark: mark }
+      end
 
       # The member's Pinned Pages (tickets api#418, api#419), so the sidebar
       # renders without another request: the visible list, whether they saved

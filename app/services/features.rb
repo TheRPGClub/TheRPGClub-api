@@ -126,6 +126,13 @@ module Features
     define("goty_vote", "GOTY Vote", core: true,
       website: [ "GOTY Vote page", "Game page GOTY badge" ],
       bot: [ "/goty" ]),
+    # Spec api#510. Registered after Feature Flags shipped, so it has no
+    # stored state and starts in Preview, its posts going to the staff test
+    # channel.
+    define("patch_notes", "Patch Notes", core: false,
+      website: [ "Patch Notes" ],
+      bot: [ "/patch-notes" ],
+      posts: [ "Patch posts" ]),
     # Spec api#505. Registered after Feature Flags shipped, so it has no
     # stored state and starts in Preview while staff fill it. Its Feedback
     # Board badge follows it.

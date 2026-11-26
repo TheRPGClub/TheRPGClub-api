@@ -22,7 +22,7 @@ RSpec.describe Features do
       .to eq(%w[game_index voting_gotm backlog collection now_playing game_completions goty_vote])
     expect(described_class.all.select(&:hideable?).map(&:key))
       .to eq(%w[reviews achievement_hub giveaways journals feedback news_hub challenges release_calendar club_codex
-                     game_lists franchise_progress roadmap])
+                     game_lists franchise_progress patch_notes roadmap])
   end
 
   it "does not know things that are not Features" do

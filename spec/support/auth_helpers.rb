@@ -3,6 +3,7 @@
 # The api_token warden strategy compares the bearer against this env var at
 # request time, so give the test environment a stable known value.
 ENV["RPGCLUB_BOT_API_TOKEN"] ||= "test-service-token"
+ENV["RPGCLUB_RELEASE_API_TOKEN"] ||= "test-release-token"
 
 # Request-spec helpers for the two authentication modes (see
 # config/initializers/warden.rb): the bot service token and a user session
@@ -11,6 +12,11 @@ module AuthHelpers
   # Headers authenticating as the bot service principal.
   def service_headers
     { "Authorization" => "Bearer #{ENV.fetch('RPGCLUB_BOT_API_TOKEN')}" }
+  end
+
+  # Headers carrying the versioning job's release token (ticket api#514).
+  def release_headers
+    { "Authorization" => "Bearer #{ENV.fetch('RPGCLUB_RELEASE_API_TOKEN')}" }
   end
 
   # Headers authenticating as `user` via a freshly issued session token.

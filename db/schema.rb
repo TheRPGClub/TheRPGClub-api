@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_220000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -948,6 +948,44 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_220000) do
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_nr_gotm_votes_round_runoff_user_game", unique: true
   end
 
+  create_table "patches", comment: "Patch Notes' numbered Patches (spec api#510).", force: :cascade do |t|
+    t.serial "number", null: false, comment: "Assigned on creation from its own sequence; never reused."
+    t.string "title", limit: 100, comment: "Optional, e.g. \"The Franchise update\"."
+    t.jsonb "rich_body", default: [], null: false, comment: "The Plate value the website edits."
+    t.text "body", default: "", null: false, comment: "The full text as Discord markdown, made by the website."
+    t.text "cut_body", default: "", null: false, comment: "The Discord markdown cut to the Discord limit, made by the website; what the bot posts."
+    t.string "status", default: "draft", null: false, comment: "draft or published."
+    t.timestamptz "published_at", comment: "When it was last published; NULL while a draft."
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "post_channel_id", comment: "The channel the bot posted it in; NULL while not posted."
+    t.string "post_message_id", comment: "The Discord message the bot posted; NULL while not posted."
+    t.timestamptz "posted_at", comment: "When the bot first posted it; NULL while not posted."
+    t.boolean "edited_since_post", default: false, null: false, comment: "Its text changed after the post; cleared when the bot records the edited post."
+    t.index ["number"], name: "index_patches_on_number", unique: true
+    t.index ["status", "number"], name: "index_patches_on_status_and_number"
+    t.check_constraint "(post_message_id IS NULL) = (posted_at IS NULL) AND (post_message_id IS NULL) = (post_channel_id IS NULL)", name: "ck_patches_post"
+    t.check_constraint "(status::text = 'published'::text) = (published_at IS NOT NULL)", name: "ck_patches_published_at"
+    t.check_constraint "status::text = ANY (ARRAY['draft'::character varying, 'published'::character varying]::text[])", name: "ck_patches_status"
+  end
+
+  create_table "pending_changes", comment: "Merged pull requests waiting for a Patch (spec api#510).", force: :cascade do |t|
+    t.string "repo", null: false, comment: "api, bot or www."
+    t.integer "pr_number", null: false, comment: "The merged pull request's number in its repo."
+    t.string "change_type", null: false, comment: "The pull request title's type, e.g. feat, fix, perf."
+    t.string "title", limit: 300, null: false, comment: "The pull request's title."
+    t.string "version", limit: 50, null: false, comment: "The repo's version this merge produced."
+    t.string "patch_note", limit: 500, comment: "The pull request's optional \"Patch note:\" line."
+    t.bigint "patch_id", comment: "The Patch that covers it, if any."
+    t.timestamptz "dismissed_at", comment: "When staff dismissed it; NULL unless dismissed."
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["patch_id"], name: "index_pending_changes_on_patch_id"
+    t.index ["repo", "pr_number"], name: "index_pending_changes_on_repo_and_pr_number", unique: true
+    t.check_constraint "patch_id IS NULL OR dismissed_at IS NULL", name: "ck_pending_changes_covered_or_dismissed"
+    t.check_constraint "repo::text = ANY (ARRAY['api'::character varying, 'bot'::character varying, 'www'::character varying]::text[])", name: "ck_pending_changes_repo"
+  end
+
   create_table "roadmap_item_feedback", force: :cascade do |t|
     t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
     t.bigint "feedback_id", null: false
@@ -1394,6 +1432,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_220000) do
     t.boolean "dashboard_panels_customised", default: false, null: false, comment: "Whether the member saved their own Dashboard Panels; false follows the club default."
     t.string "dashboard_panels_seen_keys", comment: "Dashboard Panel keys the member has seen in edit mode; NULL until they first open it.", array: true
     t.timestamptz "news_mark_at", comment: "The member's News Mark: the moment up to which they have seen the News Hub; NULL until first set."
+    t.integer "patch_mark", comment: "The member's Patch Mark: the number of the newest Patch they have seen; NULL until first set."
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
     t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end
@@ -1897,6 +1936,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_220000) do
   add_foreign_key "member_hidden_platforms", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "pending_changes", "patches", on_delete: :nullify
   add_foreign_key "roadmap_item_feedback", "roadmap_items", column: "item_id", name: "fk_roadmap_item_feedback_item", on_delete: :cascade
   add_foreign_key "roadmap_item_feedback", "rpg_club_feedback", column: "feedback_id", primary_key: "feedback_id", name: "fk_roadmap_item_feedback_feedback", on_delete: :cascade
   add_foreign_key "roadmap_items", "roadmap_milestones", column: "milestone_id", name: "fk_roadmap_items_milestone", on_delete: :restrict

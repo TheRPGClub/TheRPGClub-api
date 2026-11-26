@@ -40,6 +40,7 @@ module PinnedPages
     page("lists", feature: "game_lists"),
     page("giveaways", feature: "giveaways"),
     page("feedback", feature: "feedback"),
+    page("patch_notes", feature: "patch_notes"),
     page("roadmap", feature: "roadmap"),
     page("staff_desk", staff: :moderator),
     page("voting_console", staff: :admin),

@@ -51,6 +51,7 @@ RSpec.describe "feature access lookup", type: :request do
         [ "game_lists", "live" ],
         [ "franchise_progress", "live" ],
         [ "goty_vote", "live" ],
+        [ "patch_notes", "live" ],
         [ "roadmap", "live" ]
       ])
     end

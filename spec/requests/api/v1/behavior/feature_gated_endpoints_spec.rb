@@ -28,6 +28,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "game_lists" => ->(_user) { "/api/v1/game_lists" },
     "franchise_progress" => ->(_user) { "/api/v1/franchises/#{FactoryBot.create(:franchise).franchise_id}/progress/members" },
     "goty_vote" => ->(_user) { "/api/v1/goty_votes" },
+    "patch_notes" => ->(_user) { "/api/v1/patches" },
     "roadmap" => ->(_user) { "/api/v1/roadmap" }
   }
 
@@ -288,6 +289,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/codex/entries" => "club_codex",
     "api/v1/codex/entry_links" => "club_codex",
     "api/v1/game_lists" => "game_lists",
+    # Patch Notes
+    "api/v1/patches" => "patch_notes",
+    "api/v1/patch_marks" => "patch_notes",
     # Not part of any Feature.
     "api/v1/health" => nil,
     "api/v1/sessions" => nil,
@@ -344,6 +348,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/search_synonym_groups" => nil,
     "api/v1/search_synonym_drafts" => nil,
     "api/v1/playtime" => nil,
+    # Intake and the versions read stay open while Patch Notes is Off (api#514).
+    "api/v1/pending_changes" => "patch_notes",
     "api/v1/manual_playtimes" => nil,
     "api/v1/playthroughs" => nil,
     "api/v1/franchise_progress" => "franchise_progress",

@@ -1,0 +1,16 @@
+# Checks the pull request title versioning reads (spec api#510, ticket api#515).
+name: PR title
+
+on:
+  pull_request:
+    types: [ opened, edited, reopened, synchronize, ready_for_review ]
+
+jobs:
+  pr-title:
+    name: PR title
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pr-title-reusable.yml
+    with:
+      # The parser as of this pull request, so a change to it checks itself.
+      tools_ref: ${{ github.sha }}
