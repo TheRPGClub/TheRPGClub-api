@@ -35,6 +35,27 @@ Warden::Strategies.add(:api_token) do
   end
 end
 
+# The versioning job's narrow token (spec api#510, ticket api#514): it may
+# only report Pending Changes. ApplicationController never tries it, so it
+# signs nobody in anywhere else; PendingChangesController#create asks for it
+# by name. Its principal is neither the service nor a Discord user.
+Warden::Strategies.add(:release_token) do
+  def valid?
+    expected = ENV["RPGCLUB_RELEASE_API_TOKEN"]
+    header = request.get_header("HTTP_AUTHORIZATION")
+    return false if expected.blank? || !header&.start_with?("Bearer ")
+
+    given = header.delete_prefix("Bearer ").strip
+    given.present? && ActiveSupport::SecurityUtils.secure_compare(
+      Digest::SHA256.hexdigest(given), Digest::SHA256.hexdigest(expected)
+    )
+  end
+
+  def authenticate!
+    success!(Auth::Principal.release)
+  end
+end
+
 Warden::Strategies.add(:user_session_token) do
   def valid?
     bearer_token.present?

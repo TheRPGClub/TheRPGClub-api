@@ -548,6 +548,18 @@ Rails.application.routes.draw do
       # Upcoming Birthdays (spec #396, api#400): the shared Birthdays in the
       # next 30 club days.
       get "birthdays/upcoming", to: "birthdays#upcoming"
+      # Pending Changes (spec api#510, ticket api#514): the versioning job
+      # reports merges with its release token; Admins and Superadmins list,
+      # dismiss and undo them, and set which ones a Patch covers. Anyone
+      # reads the current versions.
+      resources :pending_changes, only: %i[index create] do
+        member do
+          post :dismiss
+          post :undismiss
+        end
+      end
+      put "patches/:number/pending_changes", to: "pending_changes#cover"
+      get "versions", to: "pending_changes#versions"
       # News Hub (spec #355): the fixed News Categories; the members' feed of
       # News Items; the bot records (PUT, an upsert) and removes News Items
       # by their Discord message id (service-only), lists those with no
