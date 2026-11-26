@@ -7483,6 +7483,63 @@ components:
         required:
         - category_counts
         - hidden_categories
+    NewsShelf:
+      type: object
+      properties:
+        category_key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The shelf's News Category.
+        name:
+          type: string
+          example: Releases & Updates
+          description: The News Category's display name.
+        today_count:
+          type: integer
+          description: How many of the News Category's News Items were posted since
+            the start of the current UTC day, whatever `per` is.
+        items:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsItem"
+          description: The News Category's newest News Items, newest first, at most
+            `per`; empty for none.
+      required:
+      - category_key
+      - name
+      - today_count
+      - items
+    NewsShelvesMeta:
+      type: object
+      properties:
+        per:
+          type: integer
+          description: The most News Items a shelf holds in this answer (`per`, clamped
+            to 1-20).
+        hidden_categories:
+          type: array
+          items:
+            type: string
+            enum:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+          description: 'The News Category keys the member switched off, in order:
+            they have no shelf. Empty for the service token.'
+      required:
+      - per
+      - hidden_categories
     NewsItem:
       type: object
       properties:
@@ -27529,6 +27586,65 @@ paths:
                     - stamp
                 required:
                 - data
+  "/api/v1/news_items/shelves":
+    get:
+      summary: The News Hub shelves
+      tags:
+      - News Hub
+      description: 'The News page''s Shelves tab in one request: one shelf per News
+        Category in the member''s default view (every News Category except the ones
+        they switched off with a News Category Preference), in News Category order.
+        Each shelf holds that News Category''s newest `per` News Items, newest first
+        (`posted_at` descending, as the feed orders them), serialized as the feed
+        serializes them, and `today_count`: how many of its News Items were posted
+        since the start of the current UTC day, whatever `per` is. A News Category
+        with no News Items still has its shelf, empty. The switched-off News Categories
+        are listed in `meta.hidden_categories`. Imported News Items staff have not
+        sorted are never shown. An image whose Discord address has expired comes back
+        unavailable and queues its renewal exactly as the feed does (none for the
+        service token''s own reads). Belongs to the News Hub Feature: a member who
+        cannot use it (Preview: Admins and Superadmins only; Off: nobody) gets 404
+        `not_found`. The service token is not gated; the bot runs its own feature
+        gate.'
+      parameters:
+      - name: per
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 10
+          maximum: 20
+        description: News Items per shelf. Missing, zero or not a number means 10;
+          above 20 means 20.
+      responses:
+        '200':
+          description: the shelves
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsShelf"
+                  meta:
+                    "$ref": "#/components/schemas/NewsShelvesMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/news_items/uncopied":
     get:
       summary: News Items without a News Copy
