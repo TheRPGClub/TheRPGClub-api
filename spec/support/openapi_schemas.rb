@@ -332,6 +332,58 @@ module OpenapiSchemas
         releases: array_of("UpcomingReleaseRelease"),
         _required: %w[game date date_precision section first_released_on first_released_precision releases]
       ),
+      # A Roadmap Item (RoadmapItemResource, spec api#505).
+      RoadmapItem: obj(
+        id: int, milestone_id: int,
+        title: str(maxLength: RoadmapItem::TITLE_MAX),
+        blurb: str(maxLength: RoadmapItem::BLURB_MAX, description: "One or two sentences members understand."),
+        area: str(nullable: true, enum: [ *RoadmapItem::AREAS, nil ],
+          description: "Whether it touches the bot, the website or both; null when not said."),
+        github_issue_url: str(nullable: true, description: "A GitHub issue it is tracked by, if any."),
+        position: int,
+        shipped_at: ts(nullable: true).merge(description: "When staff marked it Shipped; null until then."),
+        feedback: array_of("RoadmapItemFeedback").merge(description: "Its linked Feedback, oldest first.")
+      ),
+      # A Feedback linked to a Roadmap Item (ticket api#508).
+      RoadmapItemFeedback: obj(
+        id: int.merge(description: "The Feedback's feedback_id."),
+        title: str,
+        kind: str(enum: RpgClubFeedback::KINDS),
+        status: str(enum: RpgClubFeedback::STATUSES),
+        done: bool.merge(description: "Approved and its GitHub issue was last seen closed.")
+      ),
+      # A Feedback's Roadmap badge (ticket api#508).
+      FeedbackRoadmapBadge: obj(
+        item_id: int.merge(description: "The Roadmap Item it is linked to."),
+        milestone_name: str(description: "The item's current Milestone."),
+        shipped: bool.merge(description: "The item is Shipped: the badge reads \"Shipped\" instead.")
+      ),
+      # A Milestone with its Roadmap Items (RoadmapMilestoneResource, spec api#505).
+      RoadmapMilestone: obj(
+        id: int,
+        name: str(maxLength: RoadmapMilestone::NAME_MAX),
+        blurb: str(nullable: true, maxLength: RoadmapMilestone::BLURB_MAX),
+        target_date: date(nullable: true, description: "Plain calendar date (YYYY-MM-DD) at its Date Precision: " \
+          "the first day of the month or quarter, 1 January of the year, null when TBA."),
+        date_precision: str(enum: RoadmapMilestone::DATE_PRECISIONS),
+        position: int,
+        reached_at: ts(nullable: true).merge(description: "When staff marked it Reached; null while it is open."),
+        items: array_of("RoadmapItem"),
+        _required: %w[id name blurb target_date date_precision position reached_at items]
+      ),
+      # GET /roadmap's `data` (spec api#505).
+      Roadmap: obj(
+        milestones: array_of("RoadmapMilestone").merge(description: "Open Milestones in staff order."),
+        reached: array_of("RoadmapMilestone").merge(description: "Reached Milestones, newest Reached first."),
+        _required: %w[milestones reached]
+      ),
+      # A Roadmap edit the rules refuse (Roadmap::Refused, ticket api#507).
+      RoadmapRefusal: obj(
+        error: str(enum: %w[milestone_has_items invalid_order milestone_not_found milestone_reached invalid_position
+          invalid_destination no_destination already_reached not_reached feedback_not_found invalid_feedback_ids]),
+        message: str(description: "Written for staff, as the website shows it."),
+        _required: %w[error message]
+      ),
       # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.
       ReleaseRefreshMeta: obj(
         added: int, total: int,
@@ -903,6 +955,11 @@ module OpenapiSchemas
         last_activity_at: ts.merge(
           description: "The latest activity: the newest of its last change (submitted, reviewed or " \
                        "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
+        ),
+        roadmap: ref("FeedbackRoadmapBadge", nullable: true).merge(
+          description: "On the Roadmap: the linked Roadmap Item's id, current Milestone and whether it is " \
+                       "Shipped. Null when not linked, and for everything when the Roadmap Feature is Off, " \
+                       "Preview for a non-staff viewer, or hidden by the viewer."
         )
       ),
       # FeedbackController#index meta.totals: one entry per kind, unfiltered.
@@ -2106,7 +2163,7 @@ module OpenapiSchemas
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
                               "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
-                              "journals, members, news, codex, lists, giveaways, feedback, staff_desk, " \
+                              "journals, members, news, codex, lists, giveaways, feedback, roadmap, staff_desk, " \
                               "voting_console, synonyms, live_events, public_reminders, feedback_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),

@@ -510,6 +510,27 @@ Rails.application.routes.draw do
       resources :search_synonym_drafts, only: %i[index show create update destroy]
       # The Release Calendar (spec #389): GameDB's Upcoming Releases.
       get "upcoming_releases", to: "upcoming_releases#index"
+      # The Roadmap (spec api#505): Milestones and Roadmap Items.
+      get "roadmap", to: "roadmap#show"
+      # Staff editing (ticket api#507). Each `order` route is drawn before the
+      # `:id` routes it would otherwise be read as.
+      scope "roadmap" do
+        resources :milestones, controller: "roadmap_milestones", only: %i[create update destroy] do
+          put :order, on: :collection
+          member do
+            put    "items/order", action: :order_items
+            post   "reach",       action: :reach
+            delete "reach",       action: :unreach
+          end
+        end
+        resources :items, controller: "roadmap_items", only: %i[create update destroy] do
+          member do
+            put    "move", action: :move
+            post   "ship", action: :ship
+            delete "ship", action: :unship
+          end
+        end
+      end
       # Club Codex (spec #397): its three parts' entries, gated by the
       # `club_codex` Feature.
       namespace :codex do

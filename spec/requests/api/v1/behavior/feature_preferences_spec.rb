@@ -48,7 +48,9 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
           { "key" => "game_lists", "name" => "Game Lists", "state" => "live", "preview" => false,
             "hidden" => false, "website" => [ "Lists", "Profile Lists", "Game page Lists" ] },
           { "key" => "franchise_progress", "name" => "Franchise Progress", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Franchise Progress tab" ] }
+            "hidden" => false, "website" => [ "Franchise Progress tab" ] },
+          { "key" => "roadmap", "name" => "Roadmap", "state" => "live", "preview" => false,
+            "hidden" => false, "website" => [ "Roadmap", "Feedback roadmap badge" ] }
         ]
       )
     end
@@ -72,14 +74,15 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
         [ "release_calendar", "live", false ],
         [ "club_codex", "live", false ],
         [ "game_lists", "live", false ],
-        [ "franchise_progress", "live", false ]
+        [ "franchise_progress", "live", false ],
+        [ "roadmap", "live", false ]
       ])
     end
 
     it "lists a member no Features when no hideable Feature is Live" do
       set_all_feature_flags("live")
       %w[reviews achievement_hub giveaways].each { |key| set_feature_flag(key, "off") }
-      %w[journals feedback news_hub challenges release_calendar club_codex game_lists franchise_progress].each do |key|
+      %w[journals feedback news_hub challenges release_calendar club_codex game_lists franchise_progress roadmap].each do |key|
         set_feature_flag(key, "preview")
       end
 
@@ -125,6 +128,13 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
       expect(json.dig("data", "hidden")).to eq([ "journals" ])
       expect(preferences_for(member)["hidden"]).to eq([ "journals" ])
       expect(preferences_for(member)["features"].find { |f| f["key"] == "journals" }).to include("hidden" => true)
+    end
+
+    it "hides the Roadmap" do
+      patch_preferences(member, { hidden: { roadmap: true } })
+
+      expect(response).to have_http_status(:ok)
+      expect(preferences_for(member)["hidden"]).to eq([ "roadmap" ])
     end
 
     it "shows a hidden Feature again" do

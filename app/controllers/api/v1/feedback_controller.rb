@@ -6,6 +6,7 @@ module Api
     # Feedback of one kind and upvote it; a Superadmin reviews it.
     class FeedbackController < ApplicationController
       feature :feedback
+      include FeedbackRoadmapBadges
 
       # Columns a caller may set on create. Status and the review columns are
       # server-managed; a member's authorship comes from their session.
@@ -50,7 +51,7 @@ module Api
         scope = scope.where(kind: kinds) if kinds
         scope = filter_statuses(scope, statuses, done) if statuses
         render_collection(scope, resource: FeedbackResource, default_order: order,
-          prepare: ->(records) { FeedbackResource.issue_states(records) },
+          prepare: ->(records) { FeedbackResource.issue_states(records).merge(feedback_badge_params(records)) },
           meta: { totals: RpgClubFeedback.board_totals })
       end
 
@@ -190,7 +191,7 @@ module Api
           job = enqueue_outcome(feedback, original: original)
         end
         render json: {
-          data: FeedbackResource.new(viewer_scope.find(feedback.feedback_id)).serializable_hash,
+          data: serialize_feedback(viewer_scope.find(feedback.feedback_id)),
           meta: { outcome_job_id: job.id }
         }
       end
@@ -292,7 +293,7 @@ module Api
           job = enqueue_outcome(feedback)
         end
         render json: {
-          data: FeedbackResource.new(viewer_scope.find(feedback.feedback_id)).serializable_hash,
+          data: serialize_feedback(viewer_scope.find(feedback.feedback_id)),
           meta: { outcome_job_id: job.id }
         }
       end
@@ -403,7 +404,11 @@ module Api
       end
 
       def render_feedback(id, status: :ok)
-        render json: { data: FeedbackResource.new(viewer_scope.find(id)).serializable_hash }, status: status
+        render json: { data: serialize_feedback(viewer_scope.find(id)) }, status: status
+      end
+
+      def serialize_feedback(feedback)
+        FeedbackResource.new(feedback, params: feedback_badge_params(feedback)).serializable_hash
       end
 
       def author_name

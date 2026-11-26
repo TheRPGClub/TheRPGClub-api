@@ -31,7 +31,7 @@ RSpec.describe "session features", type: :request, feature_flags: :none do
       )
     end
 
-    it "lists all 18 Features in registry order when every Feature is Live, Core ones not hideable" do
+    it "lists all 19 Features in registry order when every Feature is Live, Core ones not hideable" do
       set_all_feature_flags("live")
 
       features = features_for(auth_headers_for(member))
@@ -54,7 +54,8 @@ RSpec.describe "session features", type: :request, feature_flags: :none do
         [ "club_codex", "Club Codex", true ],
         [ "game_lists", "Game Lists", true ],
         [ "franchise_progress", "Franchise Progress", true ],
-        [ "goty_vote", "GOTY Vote", false ]
+        [ "goty_vote", "GOTY Vote", false ],
+        [ "roadmap", "Roadmap", true ]
       ])
       expect(features).to all(include("state" => "live", "shown" => true, "preview" => false))
     end
@@ -67,7 +68,7 @@ RSpec.describe "session features", type: :request, feature_flags: :none do
       keys = features_for(auth_headers_for(member)).map { |f| f["key"] }
 
       expect(keys).not_to include("journals", "giveaways")
-      expect(keys.size).to eq(16)
+      expect(keys.size).to eq(17)
     end
 
     it "reads a Feature with no stored state as Preview, so it is not listed" do
@@ -115,7 +116,7 @@ RSpec.describe "session features", type: :request, feature_flags: :none do
     it "lists every Feature, reading one with no stored state as Preview" do
       features = features_for(headers)
 
-      expect(features.size).to eq(18)
+      expect(features.size).to eq(19)
       expect(entry(features, "game_index")).to include("state" => "preview", "shown" => true, "preview" => true)
     end
   end

@@ -7,6 +7,7 @@ module Api
     # kept by FeedbackScreenshots; the Feedback's `screenshot_url` serves it.
     class FeedbackScreenshotsController < ApplicationController
       feature :feedback
+      include FeedbackRoadmapBadges
 
       before_action :find_own_feedback
 
@@ -51,7 +52,7 @@ module Api
 
       def render_feedback
         feedback = RpgClubFeedback.with_upvotes(current_principal.id).find(@feedback.feedback_id)
-        render json: { data: FeedbackResource.new(feedback).serializable_hash }
+        render json: { data: FeedbackResource.new(feedback, params: feedback_badge_params(feedback)).serializable_hash }
       end
     end
   end

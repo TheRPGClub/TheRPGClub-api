@@ -245,6 +245,19 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
       expect(pinned_for(member)["pages"]).to eq(%w[members])
     end
 
+    it "lets a member pin the Roadmap, behind its Feature and their Feature Preference" do
+      pin(member, %w[roadmap members])
+      expect(response).to have_http_status(:ok)
+      expect(pinned_for(member)["pages"]).to eq(%w[roadmap members])
+
+      MemberFeaturePreference.create!(user_id: member.user_id, feature_key: "roadmap")
+      expect(pinned_for(member)["pages"]).to eq(%w[members])
+
+      MemberFeaturePreference.where(user_id: member.user_id).delete_all
+      set_feature_flag("roadmap", "preview")
+      expect(pinned_for(member)["pages"]).to eq(%w[members])
+    end
+
     it "leaves out a default page the member hid with a Feature Preference" do
       MemberFeaturePreference.create!(user_id: member.user_id, feature_key: "news_hub")
 
