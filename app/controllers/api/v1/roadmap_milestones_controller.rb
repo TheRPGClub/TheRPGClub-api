@@ -61,8 +61,13 @@ module Api
         @milestone ||= RoadmapMilestone.find(params[:id])
       end
 
+      # The optional body's data: none, or an object (422 `invalid_data`
+      # for anything else).
       def optional_data
-        params[:data].present? ? request_data : {}
+        return {} if params[:data].blank?
+        return request_data if params[:data].is_a?(ActionController::Parameters)
+
+        raise Roadmap::Refused.new("invalid_data", "data must be an object.")
       end
 
       def render_milestone(record, status: :ok)
