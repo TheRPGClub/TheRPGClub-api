@@ -488,6 +488,63 @@ RSpec.describe "api/v1/feedback review behavior", type: :request do
         expect(row_for(approved).fetch("github_issue_state")).to be_nil
       end
 
+      describe "Done" do
+        let(:done_jobs) { BotJob.where(kind: "feedback_outcome").select { |job| job.payload["outcome"] == "done" } }
+
+        it "makes Approved Feedback Done and queues exactly one Done notice when it sees the issue closed" do
+          Github::IssueStateRefreshJob.perform_now(pairs)
+          travel(11.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+
+          expect(approved.reload).to be_done
+          expect(done_jobs.size).to eq(1)
+          expect(done_jobs.first.payload).to include(
+            "feedback_id" => approved.feedback_id, "kind" => approved.kind, "outcome" => "done",
+            "created_by" => approved.created_by, "title" => approved.title, "github_issue_number" => 5,
+            "github_issue_url" => approved.github_issue_url, "feature_key" => "feedback"
+          )
+          board
+          expect(row_for(approved)).to include("done" => true, "github_issue_state" => "closed")
+        end
+
+        it "moves reopened Feedback back to Open without a notice, and sends none when it closes again" do
+          Github::IssueStateRefreshJob.perform_now(pairs)
+          allow(client).to receive(:issue_state).and_return("open")
+          travel(11.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+
+          expect(approved.reload).not_to be_done
+          expect(approved).to be_upvotable
+
+          allow(client).to receive(:issue_state).and_return("closed")
+          travel(22.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+
+          expect(approved.reload).to be_done
+          expect(done_jobs.size).to eq(1)
+        end
+
+        it "sends nothing while the issue is open, or for Feedback that is not Approved" do
+          allow(client).to receive(:issue_state).and_return("open")
+          Github::IssueStateRefreshJob.perform_now(pairs)
+          expect(approved.reload).not_to be_done
+
+          rejected = create(:feedback, status: "rejected", rejection_reason: "No",
+            target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 6)
+          allow(client).to receive(:issue_state).and_return("closed")
+          Github::IssueStateRefreshJob.perform_now([ [ "TheRPGClub/TheRPGClub-bot", 6 ] ])
+
+          expect(rejected.reload.done_at).to be_nil
+          expect(done_jobs).to be_empty
+        end
+
+        it "changes nothing when the lookup fails" do
+          allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "boom")
+
+          Github::IssueStateRefreshJob.perform_now(pairs)
+
+          expect(approved.reload).not_to be_done
+          expect(done_jobs).to be_empty
+        end
+      end
+
       it "leaves the state null when the issue no longer exists" do
         allow(client).to receive(:issue_state).and_return(nil)
 

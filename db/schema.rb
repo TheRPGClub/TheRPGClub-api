@@ -1047,6 +1047,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_180000) do
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "kind", limit: 32, null: false
     t.bigint "duplicate_of_id"
+    t.timestamptz "done_at"
+    t.timestamptz "done_notified_at"
     t.string "where", limit: 16
     t.string "what_happened", limit: 2000
     t.string "expected", limit: 2000

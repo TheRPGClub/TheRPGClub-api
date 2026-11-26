@@ -16,6 +16,11 @@ module Api
       # How long an approval in progress blocks another; longer than its
       # GitHub calls can take (three, each with Github::Client::TIMEOUT_SECONDS).
       APPROVAL_WINDOW = 2.minutes
+      # Groups for the Feedback Board's status filter: `open` (Pending and
+      # Approved, Done included), `closed` (Rejected, Duplicate, Withdrawn),
+      # alongside `done` (Approved and Done) and single statuses.
+      STATUS_GROUPS = { "open" => RpgClubFeedback::OPEN_STATUSES,
+                        "closed" => RpgClubFeedback::CLOSED_STATUSES }.freeze
       # The index's orders: `board` (the default: most upvoted, then newest)
       # and `recent` (latest activity first, for the Feedback Board
       # Dashboard Panel).
@@ -25,18 +30,27 @@ module Api
       before_action :require_member_or_staff!, only: %i[create upvote remove_upvote]
       before_action :require_member!, only: %i[withdraw upvote remove_upvote]
 
-      # GET /api/v1/feedback?status=&sort=board|recent&page=&per=
+      # GET /api/v1/feedback?kind=&status=&sort=board|recent&page=&per=
+      #
+      # The Feedback Board shows one kind at a time with an Open / Closed
+      # filter: `kind=bug_report&status=open`. `meta.totals` counts every
+      # kind's Open, Closed and Done Feedback (unfiltered) for the tabs.
       def index
-        statuses = status_filter
+        kinds = kind_filter
+        return if performed?
+
+        statuses, done = status_filter
         return if performed?
 
         order = sort_param(SORTS, default: "board")
         return if performed?
 
         scope = viewer_scope
-        scope = scope.where(status: statuses) if statuses
+        scope = scope.where(kind: kinds) if kinds
+        scope = filter_statuses(scope, statuses, done) if statuses
         render_collection(scope, resource: FeedbackResource, default_order: order,
-          prepare: ->(records) { FeedbackResource.issue_states(records) })
+          prepare: ->(records) { FeedbackResource.issue_states(records) },
+          meta: { totals: RpgClubFeedback.board_totals })
       end
 
       def show
@@ -214,12 +228,10 @@ module Api
       end
 
       # A member's upvote, at most one each (repeating it is a no-op). Only
-      # Pending and Approved Feedback takes upvotes.
+      # Pending and Approved Feedback that is not Done takes upvotes.
       def upvote
         feedback = RpgClubFeedback.find(params[:id])
-        unless RpgClubFeedback::UPVOTABLE_STATUSES.include?(feedback.status)
-          return render json: { error: "#{feedback.status} feedback cannot be upvoted" }, status: :conflict
-        end
+        return render_frozen(feedback) unless feedback.upvotable?
 
         RpgClubFeedbackUpvote.insert(
           { feedback_id: feedback.feedback_id, user_id: current_principal.id },
@@ -228,9 +240,12 @@ module Api
         render_feedback(feedback.feedback_id)
       end
 
-      # Removes the member's upvote, if any, whatever the status.
+      # Removes the member's upvote, if any. Upvotes are frozen as upvote's
+      # are: Done, Rejected, Duplicate and Withdrawn Feedback keeps them.
       def remove_upvote
         feedback = RpgClubFeedback.find(params[:id])
+        return render_frozen(feedback) unless feedback.upvotable?
+
         feedback.upvotes.where(user_id: current_principal.id).delete_all
         render_feedback(feedback.feedback_id)
       end
@@ -363,16 +378,45 @@ module Api
         )
       end
 
-      # `?status=pending,approved`: nil (every status) when absent; 400 for a
-      # value outside RpgClubFeedback::STATUSES.
+      # 409 for an upvote change on Feedback whose upvotes are frozen.
+      def render_frozen(feedback)
+        state = feedback.done? ? "done" : feedback.status
+        render json: { error: "#{state} feedback cannot be upvoted" }, status: :conflict
+      end
+
+      # `?status=open` or `?status=pending,approved`: returns [statuses, done]
+      # (done: whether `done` was asked for), or nil (every status) when
+      # absent. 400 for a value that is neither a status, a group nor `done`.
       def status_filter
         return if params[:status].blank?
 
-        statuses = params[:status].to_s.split(",").map(&:strip).compact_blank.uniq
-        unknown = statuses - RpgClubFeedback::STATUSES
-        return statuses if unknown.empty?
+        values = params[:status].to_s.split(",").map(&:strip).compact_blank.uniq
+        unknown = values - RpgClubFeedback::STATUSES - STATUS_GROUPS.keys - %w[done]
+        unless unknown.empty?
+          render json: { error: "unknown status: #{unknown.join(', ')}" }, status: :bad_request
+          return
+        end
 
-        render json: { error: "unknown status: #{unknown.join(', ')}" }, status: :bad_request
+        statuses = values.flat_map { |value| STATUS_GROUPS.fetch(value, value == "done" ? [] : [ value ]) }.uniq
+        [ statuses, values.include?("done") ]
+      end
+
+      def filter_statuses(scope, statuses, done)
+        filtered = scope.where(status: statuses)
+        filtered = filtered.or(scope.where(status: "approved").where.not(done_at: nil)) if done
+        filtered
+      end
+
+      # `?kind=bug_report` (comma-separated for several): nil (every kind)
+      # when absent; 400 for a kind outside RpgClubFeedback::KINDS.
+      def kind_filter
+        return if params[:kind].blank?
+
+        kinds = params[:kind].to_s.split(",").map(&:strip).compact_blank.uniq
+        unknown = kinds - RpgClubFeedback::KINDS
+        return kinds if unknown.empty?
+
+        render json: { error: "unknown kind: #{unknown.join(', ')}" }, status: :bad_request
         nil
       end
     end

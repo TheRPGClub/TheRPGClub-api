@@ -60,6 +60,60 @@ RSpec.describe "api/v1/feedback behavior", type: :request do
         .to include(pending_one.feedback_id, withdrawn.feedback_id)
     end
 
+    describe "kind tabs with the Open / Closed filter" do
+      let(:headers) { auth_headers_for(create(:user)) }
+      let!(:original) { create(:feedback, kind: "bug_report") }
+      let!(:pending_bug) { original }
+      let!(:approved_bug) { create(:feedback, kind: "bug_report", status: "approved") }
+      let!(:done_bug) { create(:feedback, kind: "bug_report", status: "approved", done_at: 1.hour.ago) }
+      let!(:rejected_bug) { create(:feedback, kind: "bug_report", status: "rejected", rejection_reason: "No") }
+      let!(:duplicate_bug) { create(:feedback, kind: "bug_report", status: "duplicate", duplicate_of: original) }
+      let!(:withdrawn_bug) { create(:feedback, kind: "bug_report", status: "withdrawn") }
+      let!(:pending_idea) { create(:feedback, kind: "feature_request") }
+
+      def ids = json.fetch("data").map { |row| row.fetch("feedback_id") }
+
+      it "lists one kind's Open Feedback, Done included and marked Done" do
+        get "/api/v1/feedback", params: { kind: "bug_report", status: "open" }, headers: headers
+
+        expect(response).to have_http_status(:ok)
+        expect(ids).to contain_exactly(pending_bug.feedback_id, approved_bug.feedback_id, done_bug.feedback_id)
+        done_flags = json.fetch("data").to_h { |row| [ row.fetch("feedback_id"), row.fetch("done") ] }
+        expect(done_flags).to eq(pending_bug.feedback_id => false, approved_bug.feedback_id => false,
+          done_bug.feedback_id => true)
+        expect(json.dig("meta", "count")).to eq(3)
+      end
+
+      it "lists one kind's Closed Feedback: Rejected, Duplicate and Withdrawn" do
+        get "/api/v1/feedback", params: { kind: "bug_report", status: "closed" }, headers: headers
+
+        expect(ids).to contain_exactly(rejected_bug.feedback_id, duplicate_bug.feedback_id, withdrawn_bug.feedback_id)
+      end
+
+      it "lists only Done Feedback with status=done" do
+        get "/api/v1/feedback", params: { kind: "bug_report", status: "done" }, headers: headers
+
+        expect(ids).to eq([ done_bug.feedback_id ])
+      end
+
+      it "counts every kind's Open, Closed and Done Feedback, whatever the filters" do
+        get "/api/v1/feedback", params: { kind: "bug_report", status: "closed" }, headers: headers
+
+        expect(json.dig("meta", "totals")).to eq(
+          "bug_report" => { "open" => 3, "closed" => 3, "done" => 1 },
+          "feature_request" => { "open" => 1, "closed" => 0, "done" => 0 },
+          "suggestion" => { "open" => 0, "closed" => 0, "done" => 0 }
+        )
+      end
+
+      it "400s for an unknown kind" do
+        get "/api/v1/feedback", params: { kind: "bug_report,idea" }, headers: headers
+
+        expect(response).to have_http_status(:bad_request)
+        expect(json.fetch("error")).to include("idea")
+      end
+    end
+
     it "400s for an unknown status" do
       get "/api/v1/feedback", params: { status: "pending,bogus" }, headers: auth_headers_for(create(:user))
 
@@ -413,6 +467,24 @@ RSpec.describe "api/v1/feedback behavior", type: :request do
       end
     end
 
+    it "409s on a Duplicate" do
+      feedback.update!(status: "duplicate", duplicate_of: create(:feedback))
+
+      post "/api/v1/feedback/#{feedback.feedback_id}/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:conflict)
+    end
+
+    it "409s on Done feedback" do
+      feedback.update!(status: "approved", done_at: Time.current)
+
+      post "/api/v1/feedback/#{feedback.feedback_id}/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("done feedback cannot be upvoted")
+      expect(feedback.upvotes.count).to eq(0)
+    end
+
     it "refuses a signed-in user without the Members role" do
       post "/api/v1/feedback/#{feedback.feedback_id}/upvote", headers: auth_headers_for(create(:user))
 
@@ -452,13 +524,35 @@ RSpec.describe "api/v1/feedback behavior", type: :request do
       expect(json.fetch("data")).to include("upvote_count" => 1, "viewer_upvoted" => false)
     end
 
-    it "is a no-op when the member had not upvoted, whatever the status" do
-      feedback.update!(status: "withdrawn")
-
+    it "is a no-op when the member had not upvoted" do
       delete "/api/v1/feedback/#{feedback.feedback_id}/upvote", headers: auth_headers_for(member)
 
       expect(response).to have_http_status(:ok)
       expect(json.fetch("data")).to include("upvote_count" => 0, "viewer_upvoted" => false)
+    end
+
+    it "removes an upvote on Approved feedback that is not Done" do
+      feedback.update!(status: "approved")
+      create(:feedback_upvote, feedback: feedback, user: member)
+
+      delete "/api/v1/feedback/#{feedback.feedback_id}/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:ok)
+      expect(json.fetch("data")).to include("upvote_count" => 0)
+    end
+
+    {
+      "rejected" => { rejection_reason: "No" }, "withdrawn" => {}, "approved" => { done_at: Time.current }
+    }.each do |status, extra|
+      it "409s and keeps the upvote on #{extra.key?(:done_at) ? 'Done' : status} feedback" do
+        create(:feedback_upvote, feedback: feedback, user: member)
+        feedback.update!(status: status, **extra)
+
+        delete "/api/v1/feedback/#{feedback.feedback_id}/upvote", headers: auth_headers_for(member)
+
+        expect(response).to have_http_status(:conflict)
+        expect(feedback.upvotes.count).to eq(1)
+      end
     end
 
     it "refuses the service" do

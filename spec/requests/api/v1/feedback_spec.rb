@@ -29,14 +29,20 @@ RSpec.describe 'api/v1/feedback', type: :request do
   path '/api/v1/feedback' do
     get 'List Feedback' do
       tags 'Feedback'
-      description 'Open to any authenticated caller. By default (`sort=board`) most upvoted first, then ' \
+      description 'Open to any authenticated caller. The Feedback Board shows one kind at a time (`kind`) with an ' \
+                  'Open / Closed filter (`status=open|closed`); `meta.totals` counts each kind\'s Open, Closed ' \
+                  'and Done Feedback, whatever the filters, for the tabs. ' \
+                  'By default (`sort=board`) most upvoted first, then ' \
                   'newest; `sort=recent` lists the latest activity first (`last_activity_at`, then newest ' \
                   'feedback_id), for the Feedback Board Dashboard Panel. Each row carries ' \
                   '`upvote_count`, `viewer_upvoted` (always false for the service) and `last_activity_at`.'
       produces 'application/json'
+      parameter name: :kind, in: :query, schema: { type: :string }, required: false,
+        description: 'Comma-separated kinds to include (feature_request, suggestion, bug_report). Absent = every kind.'
       parameter name: :status, in: :query, schema: { type: :string }, required: false,
-        description: 'Comma-separated statuses to include (pending, approved, rejected, withdrawn, duplicate). ' \
-                     'Absent = every status. The Feedback Board default is `pending,approved`.'
+        description: 'Comma-separated, combined with OR: `open` (pending and approved, Done included), ' \
+                     '`closed` (rejected, duplicate, withdrawn), `done` (approved and Done), or single statuses ' \
+                     '(pending, approved, rejected, withdrawn, duplicate). Absent = every status.'
       parameter name: :sort, in: :query, schema: { type: :string, enum: %w[board recent], default: 'board' },
         required: false,
         description: '`board`: most upvoted, then newest. `recent`: latest activity first.'
@@ -50,11 +56,13 @@ RSpec.describe 'api/v1/feedback', type: :request do
       response '200', 'Feedback list' do
         schema type: :object, properties: {
           data: { type: :array, items: { '$ref' => '#/components/schemas/Feedback' } },
-          meta: { '$ref' => '#/components/schemas/PaginationMeta' }
+          meta: { allOf: [ { '$ref' => '#/components/schemas/PaginationMeta' }, { type: :object, properties: {
+            totals: { '$ref' => '#/components/schemas/FeedbackBoardTotals' }
+          }, required: %w[totals] } ] }
         }
       end
 
-      response '400', 'unknown status' do
+      response '400', 'unknown status or kind' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -539,14 +547,14 @@ RSpec.describe 'api/v1/feedback', type: :request do
     post 'Upvote Feedback' do
       tags 'Feedback'
       description 'Members role holders or staff, signed in (the service is refused). One upvote per member; repeating it is a no-op. ' \
-                  'Only Pending and Approved Feedback takes upvotes.'
+                  'Only Pending and Approved Feedback that is not Done takes upvotes.'
       produces 'application/json'
 
       response '200', 'upvoted; returns the updated Feedback' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
-      response '409', 'rejected, withdrawn or a Duplicate' do
+      response '409', 'upvotes frozen: Done, Rejected, Withdrawn or a Duplicate' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -565,11 +573,16 @@ RSpec.describe 'api/v1/feedback', type: :request do
 
     delete 'Remove an upvote' do
       tags 'Feedback'
-      description "Members role holders or staff, signed in (the service is refused). Removes the caller's upvote if any (a no-op otherwise), whatever the status."
+      description "Members role holders or staff, signed in (the service is refused). Removes the caller's upvote if any (a no-op otherwise). " \
+                  'Upvotes are frozen as for upvoting: refused unless Pending, or Approved and not Done.'
       produces 'application/json'
 
       response '200', 'removed; returns the updated Feedback' do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
+      end
+
+      response '409', 'upvotes frozen: Done, Rejected, Withdrawn or a Duplicate' do
+        schema '$ref' => '#/components/schemas/Error'
       end
 
       response '404', 'not found' do

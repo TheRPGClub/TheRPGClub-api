@@ -49,6 +49,15 @@ module OpenapiSchemas
                    "Only on the member's list endpoint (GET /users/{user_id}/<list>)." }
   end
 
+  # One kind's counts in FeedbackBoardTotals.
+  def feedback_kind_totals
+    obj(
+      open: int.merge(description: "Pending and Approved, Done included."),
+      closed: int.merge(description: "Rejected, Duplicate and Withdrawn."),
+      done: int.merge(description: "The Done part of open.")
+    )
+  end
+
   # Build an object schema from keyword properties, auto-deriving `required` as
   # the always-present, non-null scalar columns (nullable columns, embedded
   # `$ref`s and arrays are excluded). The `_required` / `_description` sentinel
@@ -882,12 +891,23 @@ module OpenapiSchemas
           description: "Approved only: the GitHub issue's state, cached about ten minutes. " \
                        "Null otherwise, or when GitHub cannot say."
         ),
+        done: bool.merge(
+          description: "Done: Approved and its GitHub issue was last seen closed. Done Feedback stays under " \
+                       "the board's Open filter and takes no upvotes; reopening the issue clears it."
+        ),
+        done_at: ts(nullable: true).merge(
+          description: "When the issue was seen closed; null unless Done."
+        ),
         upvote_count: int,
         viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service."),
         last_activity_at: ts.merge(
           description: "The latest activity: the newest of its last change (submitted, reviewed or " \
                        "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
         )
+      ),
+      # FeedbackController#index meta.totals: one entry per kind, unfiltered.
+      FeedbackBoardTotals: obj(
+        **RpgClubFeedback::KINDS.to_h { |kind| [ kind.to_sym, feedback_kind_totals ] }
       ),
       # FeedbackController#approve / #reject meta: the queued outcome job,
       # so the website can poll GET /api/v1/bot_jobs/{id}.

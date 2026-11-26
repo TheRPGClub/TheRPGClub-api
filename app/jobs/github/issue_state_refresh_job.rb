@@ -5,7 +5,8 @@ module Github
   # or stale (Github::IssueStateCache), so reads never wait on GitHub. One
   # runs at a time; states another run already refreshed are skipped. Each
   # lookup has a short timeout, and a run stops at the first failure: the
-  # rest refresh on a later read.
+  # rest refresh on a later read. Each state read also updates whether the
+  # Approved Feedback on that issue is Done (RpgClubFeedback.record_issue_state).
   class IssueStateRefreshJob < ApplicationJob
     queue_as :default
     limits_concurrency to: 1, key: "github_issue_states", duration: 5.minutes
@@ -19,12 +20,14 @@ module Github
         next if IssueStateCache.fresh?(repo, number)
 
         begin
-          IssueStateCache.store(repo, number, client.issue_state(repo: repo, number: number))
+          state = client.issue_state(repo: repo, number: number)
+          IssueStateCache.store(repo, number, state)
         rescue Client::RequestError, Client::ConfigurationError => error
           Rails.logger.warn("GitHub issue state for #{repo}##{number} failed: #{error.message}")
           IssueStateCache.failed(repo, number)
           break
         end
+        RpgClubFeedback.record_issue_state(repo, number, state)
       end
     end
   end

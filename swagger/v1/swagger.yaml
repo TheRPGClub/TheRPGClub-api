@@ -2697,6 +2697,16 @@ components:
           -
           description: 'Approved only: the GitHub issue''s state, cached about ten
             minutes. Null otherwise, or when GitHub cannot say.'
+        done:
+          type: boolean
+          description: 'Done: Approved and its GitHub issue was last seen closed.
+            Done Feedback stays under the board''s Open filter and takes no upvotes;
+            reopening the issue clears it.'
+        done_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the issue was seen closed; null unless Done.
         upvote_count:
           type: integer
         viewer_upvoted:
@@ -2715,9 +2725,65 @@ components:
       - created_at
       - updated_at
       - status
+      - done
       - upvote_count
       - viewer_upvoted
       - last_activity_at
+    FeedbackBoardTotals:
+      type: object
+      properties:
+        feature_request:
+          type: object
+          properties:
+            open:
+              type: integer
+              description: Pending and Approved, Done included.
+            closed:
+              type: integer
+              description: Rejected, Duplicate and Withdrawn.
+            done:
+              type: integer
+              description: The Done part of open.
+          required:
+          - open
+          - closed
+          - done
+        suggestion:
+          type: object
+          properties:
+            open:
+              type: integer
+              description: Pending and Approved, Done included.
+            closed:
+              type: integer
+              description: Rejected, Duplicate and Withdrawn.
+            done:
+              type: integer
+              description: The Done part of open.
+          required:
+          - open
+          - closed
+          - done
+        bug_report:
+          type: object
+          properties:
+            open:
+              type: integer
+              description: Pending and Approved, Done included.
+            closed:
+              type: integer
+              description: Rejected, Duplicate and Withdrawn.
+            done:
+              type: integer
+              description: The Done part of open.
+          required:
+          - open
+          - closed
+          - done
+      required:
+      - feature_request
+      - suggestion
+      - bug_report
     FeedbackReviewMeta:
       type: object
       properties:
@@ -19391,20 +19457,31 @@ paths:
       summary: List Feedback
       tags:
       - Feedback
-      description: Open to any authenticated caller. By default (`sort=board`) most
-        upvoted first, then newest; `sort=recent` lists the latest activity first
-        (`last_activity_at`, then newest feedback_id), for the Feedback Board Dashboard
-        Panel. Each row carries `upvote_count`, `viewer_upvoted` (always false for
-        the service) and `last_activity_at`.
+      description: Open to any authenticated caller. The Feedback Board shows one
+        kind at a time (`kind`) with an Open / Closed filter (`status=open|closed`);
+        `meta.totals` counts each kind's Open, Closed and Done Feedback, whatever
+        the filters, for the tabs. By default (`sort=board`) most upvoted first, then
+        newest; `sort=recent` lists the latest activity first (`last_activity_at`,
+        then newest feedback_id), for the Feedback Board Dashboard Panel. Each row
+        carries `upvote_count`, `viewer_upvoted` (always false for the service) and
+        `last_activity_at`.
       parameters:
+      - name: kind
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Comma-separated kinds to include (feature_request, suggestion,
+          bug_report). Absent = every kind.
       - name: status
         in: query
         schema:
           type: string
         required: false
-        description: Comma-separated statuses to include (pending, approved, rejected,
-          withdrawn, duplicate). Absent = every status. The Feedback Board default
-          is `pending,approved`.
+        description: 'Comma-separated, combined with OR: `open` (pending and approved,
+          Done included), `closed` (rejected, duplicate, withdrawn), `done` (approved
+          and Done), or single statuses (pending, approved, rejected, withdrawn, duplicate).
+          Absent = every status.'
       - name: sort
         in: query
         schema:
@@ -19459,9 +19536,16 @@ paths:
                     items:
                       "$ref": "#/components/schemas/Feedback"
                   meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      properties:
+                        totals:
+                          "$ref": "#/components/schemas/FeedbackBoardTotals"
+                      required:
+                      - totals
         '400':
-          description: unknown status
+          description: unknown status or kind
           content:
             application/json:
               schema:
@@ -20279,7 +20363,7 @@ paths:
       - Feedback
       description: Members role holders or staff, signed in (the service is refused).
         One upvote per member; repeating it is a no-op. Only Pending and Approved
-        Feedback takes upvotes.
+        Feedback that is not Done takes upvotes.
       responses:
         '200':
           description: upvoted; returns the updated Feedback
@@ -20291,7 +20375,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Feedback"
         '409':
-          description: rejected, withdrawn or a Duplicate
+          description: 'upvotes frozen: Done, Rejected, Withdrawn or a Duplicate'
           content:
             application/json:
               schema:
@@ -20318,8 +20402,9 @@ paths:
       summary: Remove an upvote
       tags:
       - Feedback
-      description: Members role holders or staff, signed in (the service is refused).
-        Removes the caller's upvote if any (a no-op otherwise), whatever the status.
+      description: 'Members role holders or staff, signed in (the service is refused).
+        Removes the caller''s upvote if any (a no-op otherwise). Upvotes are frozen
+        as for upvoting: refused unless Pending, or Approved and not Done.'
       responses:
         '200':
           description: removed; returns the updated Feedback
@@ -20330,6 +20415,12 @@ paths:
                 properties:
                   data:
                     "$ref": "#/components/schemas/Feedback"
+        '409':
+          description: 'upvotes frozen: Done, Rejected, Withdrawn or a Duplicate'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
         '404':
           description: not found
           content:
