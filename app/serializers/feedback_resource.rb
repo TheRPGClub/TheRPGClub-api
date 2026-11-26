@@ -7,8 +7,12 @@
 class FeedbackResource
   include BaseResource
 
-  # approval_started_at is approve's internal bookkeeping.
-  columns_of RpgClubFeedback, except: %w[approval_started_at]
+  # approval_started_at is approve's internal bookkeeping; the screenshot's
+  # storage key is served as `screenshot_url`.
+  columns_of RpgClubFeedback, except: %w[approval_started_at screenshot_key]
+
+  # A Bug Report's screenshot, nil without one.
+  attribute :screenshot_url, &:screenshot_url
 
   attribute :upvote_count do |feedback|
     feedback.attributes["upvote_count"].to_i

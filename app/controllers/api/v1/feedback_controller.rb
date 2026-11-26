@@ -9,7 +9,10 @@ module Api
 
       # Columns a caller may set on create. Status and the review columns are
       # server-managed; a member's authorship comes from their session.
-      WRITABLE = %w[kind title details created_by created_by_name].freeze
+      WRITABLE = (%w[kind title details created_by created_by_name] + RpgClubFeedback::BUG_FIELDS).freeze
+      # What the author may change while it is Pending (api#500); the bug
+      # fields only on a Bug Report.
+      EDITABLE = (%w[title details] + RpgClubFeedback::BUG_FIELDS).freeze
       # How long an approval in progress blocks another; longer than its
       # GitHub calls can take (three, each with Github::Client::TIMEOUT_SECONDS).
       APPROVAL_WINDOW = 2.minutes
@@ -46,15 +49,38 @@ module Api
       # enqueues nothing.
       def create
         attrs = request_data.slice(*WRITABLE)
+        attrs.except!(*RpgClubFeedback::BUG_FIELDS) unless attrs["kind"] == "bug_report"
         record = RpgClubFeedback.transaction do
           if current_principal.discord_user?
             attrs.merge!("created_by" => current_principal.id, "created_by_name" => author_name)
           end
-          feedback = RpgClubFeedback.create!(attrs)
+          feedback = RpgClubFeedback.new(attrs)
+          feedback.save!(context: :filing)
           enqueue_submitted_ping(feedback) if current_principal.discord_user?
           feedback
         end
         render_feedback(record.feedback_id, status: :created)
+      end
+
+      # The author changes their own Pending Feedback (api#500): title,
+      # details and, on a Bug Report, its bug fields (the screenshot has its
+      # own endpoint). Anyone else is refused; reviewed or withdrawn Feedback
+      # is a 409.
+      def update
+        feedback = RpgClubFeedback.find(params[:id])
+        return render json: { error: "forbidden" }, status: :forbidden unless own?(feedback)
+
+        attrs = request_data.slice(*EDITABLE)
+        feedback.with_lock do
+          unless feedback.pending?
+            return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
+          end
+
+          attrs.except!(*RpgClubFeedback::BUG_FIELDS) unless feedback.bug_report?
+          feedback.assign_attributes(attrs)
+          feedback.save!(context: :filing)
+        end
+        render_feedback(feedback.feedback_id)
       end
 
       # Superadmin (or the bot, for a Discord reviewer named in `reviewed_by`).
@@ -278,9 +304,12 @@ module Api
         current_principal.discord_user? ? current_principal.id : data["reviewed_by"].presence&.to_s
       end
 
-      # The issue body as the bot's /suggestion review wrote it.
-      def issue_body(feedback)
-        "#{feedback.created_by_name.presence || 'Unknown'}: #{feedback.details.presence || 'No details provided.'}"
+      # See RpgClubFeedback#issue_body (a Bug Report lays out its fields).
+      def issue_body(feedback) = feedback.issue_body
+
+      # Whether the signed-in member wrote it (the service never did).
+      def own?(feedback)
+        current_principal.discord_user? && feedback.created_by == current_principal.id
       end
 
       # Payload (kind feedback_outcome): { feedback_id, kind, outcome, created_by,

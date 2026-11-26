@@ -400,7 +400,9 @@ Rails.application.routes.draw do
       post   "nr_gotm_entries/:round/votes",          to: "votes#create_nr_gotm"
       delete "nr_gotm_entries/:round/votes",          to: "votes#destroy_all_nr_gotm"
       # No destroy: Feedback is kept and reviewed with approve/reject (#319, spec api#498).
-      resources :feedback, only: %i[index show create] do
+      resources :feedback, only: %i[index show create update] do
+        # A Bug Report's one screenshot (api#500): add or replace, remove.
+        resource :screenshot, only: %i[update destroy], controller: "feedback_screenshots"
         member do
           post :approve
           post :reject

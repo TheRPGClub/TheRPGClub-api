@@ -263,6 +263,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/journal_message_contexts" => "journals",
     # Feedback
     "api/v1/feedback" => "feedback",
+    "api/v1/feedback_screenshots" => "feedback",
     # News Hub
     "api/v1/news_items" => "news_hub",
     "api/v1/challenges" => "challenges",

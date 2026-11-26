@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_171000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1047,6 +1047,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_171000) do
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "kind", limit: 32, null: false
     t.bigint "duplicate_of_id"
+    t.string "where", limit: 16
+    t.string "what_happened", limit: 2000
+    t.string "expected", limit: 2000
+    t.string "steps", limit: 2000
+    t.string "screenshot_key", limit: 500
     t.index ["created_at"], name: "ix_rpg_club_feedback_created"
     t.index ["duplicate_of_id"], name: "ix_rpg_club_feedback_duplicate_of"
     t.index ["kind"], name: "ix_rpg_club_feedback_kind"
@@ -1054,6 +1059,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_171000) do
     t.check_constraint "(status::text = 'duplicate'::text) = (duplicate_of_id IS NOT NULL)", name: "ck_rpg_club_feedback_duplicate_of"
     t.check_constraint "kind::text = ANY (ARRAY['feature_request'::character varying, 'suggestion'::character varying, 'bug_report'::character varying]::text[])", name: "ck_rpg_club_feedback_kind"
     t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying, 'duplicate'::character varying]::text[])", name: "ck_rpg_club_feedback_status"
+    t.check_constraint "\"where\" IS NULL OR (\"where\"::text = ANY (ARRAY['bot'::character varying, 'website'::character varying]::text[]))", name: "ck_rpg_club_feedback_where"
   end
 
   create_table "rpg_club_feedback_upvotes", force: :cascade do |t|

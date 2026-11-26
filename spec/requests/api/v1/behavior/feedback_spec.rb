@@ -204,8 +204,8 @@ RSpec.describe "api/v1/feedback behavior", type: :request do
 
     it "lets a Members role holder create one as its author and asks the bot to ping the bot dev" do
       member = create(:user, username: "suggester", role_member: true)
-      forged = { data: { kind: "bug_report", title: "Dark mode", details: "Please",
-                         created_by: "999", created_by_name: "someone else" } }
+      forged = { data: { kind: "bug_report", title: "Dark mode", details: "Please", what_happened: "Light",
+                         expected: "Dark", created_by: "999", created_by_name: "someone else" } }
 
       expect {
         post "/api/v1/feedback", params: forged, headers: auth_headers_for(member), as: :json
@@ -294,7 +294,8 @@ RSpec.describe "api/v1/feedback behavior", type: :request do
 
     it "takes each kind" do
       RpgClubFeedback::KINDS.each do |kind|
-        post "/api/v1/feedback", params: { data: { kind: kind, title: "A #{kind}" } }, headers: service_headers,
+        bug = kind == "bug_report" ? { what_happened: "It broke", expected: "It works" } : {}
+        post "/api/v1/feedback", params: { data: { kind: kind, title: "A #{kind}", **bug } }, headers: service_headers,
           as: :json
 
         expect(response).to have_http_status(:created)
