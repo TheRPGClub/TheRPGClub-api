@@ -3,7 +3,8 @@
 # A member's Feedback on the bot or website (GLOSSARY.md "Feedback"; spec
 # api#498): exactly one kind, a Feature Request, a Suggestion or a Bug Report.
 # Kept after review with a status: pending until a Superadmin approves it into
-# a GitHub issue or rejects it with a reason, or its author withdraws it.
+# a GitHub issue, rejects it with a reason or closes it as a Duplicate of
+# another, or its author withdraws it.
 class RpgClubFeedback < ApplicationRecord
   self.table_name = "rpg_club_feedback"
   self.primary_key = "feedback_id"
@@ -12,7 +13,10 @@ class RpgClubFeedback < ApplicationRecord
   # How a kind reads in text (bot job summaries, notices).
   KIND_NAMES = { "feature_request" => "Feature Request", "suggestion" => "Suggestion",
                  "bug_report" => "Bug Report" }.freeze
-  STATUSES = %w[pending approved rejected withdrawn].freeze
+  STATUSES = %w[pending approved rejected withdrawn duplicate].freeze
+  # Statuses a Duplicate's original may have: Pending, or Approved (Done is
+  # Approved with a closed issue).
+  ORIGINAL_STATUSES = %w[pending approved].freeze
   # Repos an approval may open its GitHub issue in (`target_repo`).
   TARGET_REPOS = %w[TheRPGClub/TheRPGClub-bot TheRPGClub/TheRPGClub-api TheRPGClub/TheRPGClub-www].freeze
   # The GitHub label an approval puts on its issue, per repo and kind: one the
@@ -39,6 +43,10 @@ class RpgClubFeedback < ApplicationRecord
 
   has_many :upvotes, class_name: "RpgClubFeedbackUpvote", foreign_key: :feedback_id,
     inverse_of: :feedback, dependent: :delete_all
+  # A Duplicate's original: always the root (an original is never itself a
+  # Duplicate when it is set, and Duplicates of a Feedback that later becomes
+  # a Duplicate are repointed).
+  belongs_to :duplicate_of, class_name: "RpgClubFeedback", optional: true, inverse_of: false
 
   validates :title, presence: true
   validates :kind, inclusion: { in: KINDS }
@@ -63,6 +71,29 @@ class RpgClubFeedback < ApplicationRecord
   end
 
   def kind_name = KIND_NAMES.fetch(kind)
+
+  # Follows a chain of Duplicates to the Feedback they all duplicate (itself
+  # when it is not a Duplicate). Stops at a loop, should one ever exist.
+  def root_original
+    record = self
+    seen = Set[feedback_id]
+    while record.status == "duplicate" && record.duplicate_of && seen.add?(record.duplicate_of_id)
+      record = record.duplicate_of
+    end
+    record
+  end
+
+  # Moves this Feedback's upvotes to `original`, keeping one per member (an
+  # upvote the member already has there wins). Returns how many moved.
+  def move_upvotes_to(original)
+    moved = self.class.connection.exec_update(self.class.sanitize_sql_array([ <<~SQL, original.feedback_id, feedback_id ]))
+      INSERT INTO rpg_club_feedback_upvotes (feedback_id, user_id, created_at)
+      SELECT ?, user_id, created_at FROM rpg_club_feedback_upvotes WHERE feedback_id = ?
+      ON CONFLICT (feedback_id, user_id) DO NOTHING
+    SQL
+    upvotes.delete_all
+    moved
+  end
 
   # The label its GitHub issue gets in `repo`.
   def issue_label(repo) = ISSUE_LABELS.fetch(repo).fetch(kind)

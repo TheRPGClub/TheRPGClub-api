@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_170100) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_171000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1046,11 +1046,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_170100) do
     t.string "title", limit: 200, null: false
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "kind", limit: 32, null: false
+    t.bigint "duplicate_of_id"
     t.index ["created_at"], name: "ix_rpg_club_feedback_created"
+    t.index ["duplicate_of_id"], name: "ix_rpg_club_feedback_duplicate_of"
     t.index ["kind"], name: "ix_rpg_club_feedback_kind"
     t.index ["status"], name: "ix_rpg_club_feedback_status"
+    t.check_constraint "(status::text = 'duplicate'::text) = (duplicate_of_id IS NOT NULL)", name: "ck_rpg_club_feedback_duplicate_of"
     t.check_constraint "kind::text = ANY (ARRAY['feature_request'::character varying, 'suggestion'::character varying, 'bug_report'::character varying]::text[])", name: "ck_rpg_club_feedback_kind"
-    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying::text, 'approved'::character varying::text, 'rejected'::character varying::text, 'withdrawn'::character varying::text])", name: "ck_rpg_club_feedback_status"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying, 'duplicate'::character varying]::text[])", name: "ck_rpg_club_feedback_status"
   end
 
   create_table "rpg_club_feedback_upvotes", force: :cascade do |t|
@@ -1846,6 +1849,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_170100) do
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
+  add_foreign_key "rpg_club_feedback", "rpg_club_feedback", column: "duplicate_of_id", primary_key: "feedback_id", name: "fk_rpg_club_feedback_duplicate_of"
   add_foreign_key "rpg_club_feedback_upvotes", "rpg_club_feedback", column: "feedback_id", primary_key: "feedback_id", name: "fk_rpg_club_feedback_upvotes_feedback", on_delete: :cascade
   add_foreign_key "rpg_club_feedback_upvotes", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_rpg_club_feedback_upvotes_user", on_delete: :cascade
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify

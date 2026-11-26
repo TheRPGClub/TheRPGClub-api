@@ -866,6 +866,9 @@ module OpenapiSchemas
         reviewed_by: str(nullable: true).merge(description: "Discord user id of the reviewing Superadmin."),
         reviewed_at: ts(nullable: true),
         rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
+        duplicate_of_id: int(nullable: true).merge(
+          description: "Set when a Duplicate: the root original Feedback it duplicates."
+        ),
         target_repo: str(nullable: true).merge(description: "Repo the approval opened its GitHub issue in."),
         github_issue_number: int(nullable: true), github_issue_url: str(nullable: true),
         github_issue_state: str(nullable: true, enum: [ "open", "closed", nil ]).merge(

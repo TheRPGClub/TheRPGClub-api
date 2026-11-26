@@ -404,6 +404,8 @@ Rails.application.routes.draw do
         member do
           post :approve
           post :reject
+          post :duplicate
+          post :kind, action: :change_kind
           post :withdraw
           post :upvote
           delete :upvote, action: :remove_upvote

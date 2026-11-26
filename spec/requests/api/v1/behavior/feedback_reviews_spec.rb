@@ -83,6 +83,8 @@ RSpec.describe "api/v1/feedback review behavior", type: :request do
       "TheRPGClub/TheRPGClub-bot" => { "feature_request" => "new feature", "suggestion" => "improvement",
                                        "bug_report" => "bug" },
       "TheRPGClub/TheRPGClub-api" => { "feature_request" => "enhancement", "suggestion" => "enhancement",
+                                       "bug_report" => "bug" },
+      "TheRPGClub/TheRPGClub-www" => { "feature_request" => "enhancement", "suggestion" => "enhancement",
                                        "bug_report" => "bug" }
     }.each do |repo, labels|
       labels.each do |kind, label|

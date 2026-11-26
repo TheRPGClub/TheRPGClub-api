@@ -2637,6 +2637,7 @@ components:
           - approved
           - rejected
           - withdrawn
+          - duplicate
         reviewed_by:
           type: string
           nullable: true
@@ -2649,6 +2650,10 @@ components:
           type: string
           nullable: true
           description: Set when rejected.
+        duplicate_of_id:
+          type: integer
+          nullable: true
+          description: 'Set when a Duplicate: the root original Feedback it duplicates.'
         target_repo:
           type: string
           nullable: true
@@ -19374,7 +19379,8 @@ paths:
           type: string
         required: false
         description: Comma-separated statuses to include (pending, approved, rejected,
-          withdrawn). Absent = every status. The Feedback Board default is `pending,approved`.
+          withdrawn, duplicate). Absent = every status. The Feedback Board default
+          is `pending,approved`.
       - name: sort
         in: query
         schema:
@@ -19763,6 +19769,178 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/feedback/{id}/duplicate":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Mark Feedback a Duplicate
+      tags:
+      - Feedback
+      description: 'Superadmin or the service, while Pending (Approved Feedback is
+        refused: close its GitHub issue instead). Sets status duplicate with `duplicate_of_id`
+        = the original, resolved to its root when it is itself a Duplicate. The original
+        may be of any kind and must be Pending or Approved (Done included), not Rejected
+        or Withdrawn. The upvotes move to the original, each member counted once,
+        and Duplicates of this Feedback are repointed to the original. Enqueues a
+        `feedback_outcome` bot job (payload as for reject, plus `duplicate_of_id`
+        and `duplicate_of_title`); `meta.outcome_job_id` is that job.'
+      parameters: []
+      responses:
+        '200':
+          description: marked a Duplicate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+                  meta:
+                    "$ref": "#/components/schemas/FeedbackReviewMeta"
+        '422':
+          description: original missing, unknown, this Feedback itself, or Rejected/Withdrawn
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    original_id:
+                      type: integer
+                      description: The Feedback this one duplicates.
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - original_id
+              required:
+              - data
+        required: true
+  "/api/v1/feedback/{id}/kind":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Change the kind of Feedback
+      tags:
+      - Feedback
+      description: Superadmin or the service, while Pending. Sets `kind`; a kind's
+        required fields (a Bug Report's) are not checked, since staff are reshaping
+        the Feedback, not filing it. Enqueues nothing.
+      parameters: []
+      responses:
+        '200':
+          description: kind changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '422':
+          description: kind missing or unknown
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    kind:
+                      type: string
+                      enum:
+                      - feature_request
+                      - suggestion
+                      - bug_report
+                  required:
+                  - kind
+              required:
+              - data
+        required: true
   "/api/v1/feedback/{id}/withdraw":
     parameters:
     - name: id
@@ -19836,7 +20014,7 @@ paths:
                   data:
                     "$ref": "#/components/schemas/Feedback"
         '409':
-          description: rejected or withdrawn
+          description: rejected, withdrawn or a Duplicate
           content:
             application/json:
               schema:

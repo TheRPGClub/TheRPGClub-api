@@ -18,7 +18,7 @@ module Api
       # Dashboard Panel).
       SORTS = { "board" => RpgClubFeedback::BOARD_ORDER, "recent" => RpgClubFeedback::RECENT_ORDER }.freeze
 
-      before_action :require_superadmin!, only: %i[approve reject]
+      before_action :require_superadmin!, only: %i[approve reject duplicate change_kind]
       before_action :require_member_or_staff!, only: %i[create upvote remove_upvote]
       before_action :require_member!, only: %i[withdraw upvote remove_upvote]
 
@@ -103,6 +103,71 @@ module Api
         return render json: { error: "rejection_reason is required" }, status: :unprocessable_content if reason.empty?
 
         review(data) { { status: "rejected", rejection_reason: reason } }
+      end
+
+      # Superadmin (or the bot, as for approve). Closes Pending Feedback as a
+      # Duplicate of `original_id`, resolved to its root original, which must
+      # be Pending or Approved (Done included) and of any kind. Its upvotes
+      # move to the original, one per member, and Duplicates of it are
+      # repointed to the original. Approved Feedback is refused (409): close
+      # its GitHub issue instead. Renders as reject does.
+      def duplicate
+        data = request_data
+        feedback = RpgClubFeedback.find(params[:id])
+        original = RpgClubFeedback.find_by(feedback_id: data["original_id"].to_s.presence)&.root_original
+        unless original
+          return render json: { error: "original_id must be an existing Feedback" }, status: :unprocessable_content
+        end
+        if original.feedback_id == feedback.feedback_id
+          return render json: { error: "feedback cannot be a duplicate of itself" }, status: :unprocessable_content
+        end
+
+        job = nil
+        RpgClubFeedback.transaction do
+          locked = RpgClubFeedback.where(feedback_id: [ feedback.feedback_id, original.feedback_id ])
+            .order(:feedback_id).lock.index_by(&:feedback_id)
+          feedback = locked.fetch(feedback.feedback_id)
+          original = locked.fetch(original.feedback_id)
+          unless feedback.status == "pending"
+            return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
+          end
+          unless RpgClubFeedback::ORIGINAL_STATUSES.include?(original.status)
+            return render json: { error: "the original is #{original.status}; it must be pending or approved" },
+              status: :unprocessable_content
+          end
+
+          feedback.move_upvotes_to(original)
+          RpgClubFeedback.where(duplicate_of_id: feedback.feedback_id).update_all(duplicate_of_id: original.feedback_id)
+          feedback.update!(status: "duplicate", duplicate_of: original, reviewed_by: reviewer_id(data),
+            reviewed_at: Time.current)
+          job = enqueue_outcome(feedback, original: original)
+        end
+        render json: {
+          data: FeedbackResource.new(viewer_scope.find(feedback.feedback_id)).serializable_hash,
+          meta: { outcome_job_id: job.id }
+        }
+      end
+
+      # Superadmin (or the bot). Sets Pending Feedback's `kind`. Staff are
+      # reshaping it, not filing it, so a kind's required fields (a Bug
+      # Report's) are not checked.
+      def change_kind
+        kind = request_data["kind"].to_s
+        unless RpgClubFeedback::KINDS.include?(kind)
+          return render json: { error: "kind must be one of #{RpgClubFeedback::KINDS.join(', ')}" },
+            status: :unprocessable_content
+        end
+
+        feedback = RpgClubFeedback.find(params[:id])
+        feedback.with_lock do
+          unless feedback.status == "pending"
+            return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
+          end
+
+          feedback.kind = kind
+          feedback.save!(validate: false)
+        end
+        render_feedback(feedback.feedback_id)
       end
 
       # The author takes back their own Pending Feedback. Anyone else
@@ -219,17 +284,24 @@ module Api
       end
 
       # Payload (kind feedback_outcome): { feedback_id, kind, outcome, created_by,
-      # title, github_issue_number, github_issue_url, rejection_reason }.
+      # title, github_issue_number, github_issue_url, rejection_reason }, plus
+      # { duplicate_of_id, duplicate_of_title } for a Duplicate.
       # Enqueued for the bot's own reviews too: the job is the announcement.
-      def enqueue_outcome(feedback)
+      def enqueue_outcome(feedback, original: nil)
+        payload = {
+          feedback_id: feedback.feedback_id, kind: feedback.kind, outcome: feedback.status,
+          created_by: feedback.created_by, title: feedback.title, github_issue_number: feedback.github_issue_number,
+          github_issue_url: feedback.github_issue_url, rejection_reason: feedback.rejection_reason
+        }
+        outcome = feedback.status
+        if original
+          payload.merge!(duplicate_of_id: original.feedback_id, duplicate_of_title: original.title)
+          outcome = %(marked a duplicate of "#{original.title}")
+        end
         BotJob.enqueue!(
           kind: "feedback_outcome",
-          summary: %(Announce that the #{feedback.kind_name} "#{feedback.title}" was #{feedback.status}),
-          payload: {
-            feedback_id: feedback.feedback_id, kind: feedback.kind, outcome: feedback.status,
-            created_by: feedback.created_by, title: feedback.title, github_issue_number: feedback.github_issue_number,
-            github_issue_url: feedback.github_issue_url, rejection_reason: feedback.rejection_reason
-          },
+          summary: %(Announce that the #{feedback.kind_name} "#{feedback.title}" was #{outcome}),
+          payload: payload,
           requested_by: requester_id
         )
       end

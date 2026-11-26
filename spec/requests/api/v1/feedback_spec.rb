@@ -26,7 +26,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
                   '`upvote_count`, `viewer_upvoted` (always false for the service) and `last_activity_at`.'
       produces 'application/json'
       parameter name: :status, in: :query, schema: { type: :string }, required: false,
-        description: 'Comma-separated statuses to include (pending, approved, rejected, withdrawn). ' \
+        description: 'Comma-separated statuses to include (pending, approved, rejected, withdrawn, duplicate). ' \
                      'Absent = every status. The Feedback Board default is `pending,approved`.'
       parameter name: :sort, in: :query, schema: { type: :string, enum: %w[board recent], default: 'board' },
         required: false,
@@ -249,6 +249,121 @@ RSpec.describe 'api/v1/feedback', type: :request do
     end
   end
 
+  path '/api/v1/feedback/{id}/duplicate' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
+
+    post 'Mark Feedback a Duplicate' do
+      tags 'Feedback'
+      description 'Superadmin or the service, while Pending (Approved Feedback is refused: close its GitHub issue ' \
+                  'instead). Sets status duplicate with `duplicate_of_id` = the original, resolved to its root when ' \
+                  'it is itself a Duplicate. The original may be of any kind and must be Pending or Approved (Done ' \
+                  'included), not Rejected or Withdrawn. The upvotes move to the original, each member counted once, ' \
+                  'and Duplicates of this Feedback are repointed to the original. ' \
+                  'Enqueues a `feedback_outcome` bot job (payload as for reject, plus `duplicate_of_id` and ' \
+                  '`duplicate_of_title`); `meta.outcome_job_id` is that job.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: {
+              original_id: { type: :integer, description: 'The Feedback this one duplicates.' },
+              reviewed_by: { type: :string, description: 'Service only: the Discord id of the reviewer. A signed-in Superadmin is always the reviewer.' }
+            },
+            required: %w[original_id]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'marked a Duplicate' do
+        schema type: :object, properties: {
+          data: { '$ref' => '#/components/schemas/Feedback' },
+          meta: { '$ref' => '#/components/schemas/FeedbackReviewMeta' }
+        }
+      end
+
+      response '422', 'original missing, unknown, this Feedback itself, or Rejected/Withdrawn' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'not pending' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not a Superadmin or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing data envelope' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/feedback/{id}/kind' do
+    parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
+
+    post 'Change the kind of Feedback' do
+      tags 'Feedback'
+      description 'Superadmin or the service, while Pending. Sets `kind`; a kind\'s required fields (a Bug ' \
+                  'Report\'s) are not checked, since staff are reshaping the Feedback, not filing it. Enqueues nothing.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: {
+          data: {
+            type: :object,
+            properties: { kind: { type: :string, enum: RpgClubFeedback::KINDS } },
+            required: %w[kind]
+          }
+        },
+        required: %w[data]
+      }
+
+      response '200', 'kind changed' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
+      end
+
+      response '422', 'kind missing or unknown' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'not pending' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not a Superadmin or the service' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing data envelope' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
   path '/api/v1/feedback/{id}/withdraw' do
     parameter name: :id, in: :path, schema: { type: :string }, required: true, description: 'RpgClubFeedback id.'
 
@@ -292,7 +407,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
-      response '409', 'rejected or withdrawn' do
+      response '409', 'rejected, withdrawn or a Duplicate' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
