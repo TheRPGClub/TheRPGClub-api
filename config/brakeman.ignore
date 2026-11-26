@@ -26,25 +26,25 @@
     {
       "warning_type": "Redirect",
       "warning_code": 18,
-      "fingerprint": "81af1f8f2f669c40a14a8fc4bca0bd960a6c7f4d085527d7deba4a2549915128",
+      "fingerprint": "7ca85ae42c04dc02711ccd5a3b3406b65e913c3e83fd792a3b4ecfba475114b7",
       "check_name": "Redirect",
       "message": "Possible unprotected redirect",
       "file": "app/controllers/api/v1/users_controller.rb",
-      "line": 173,
+      "line": 182,
       "link": "https://brakemanscanner.org/docs/warning_types/redirect/",
-      "code": "redirect_to(RpgClubUserAvatarHistory.where(:user_id => params[:user_id]).where.not(:avatar_url => ([nil, \"\"])).order(:changed_at => :desc, :event_id => :desc).pick(:avatar_url), :allow_other_host => true)",
+      "code": "redirect_to((discord_avatar_url or RpgClubUserAvatarHistory.where(:user_id => params[:user_id]).where.not(:avatar_url => ([nil, \"\"])).order(:changed_at => :desc, :event_id => :desc).pick(:avatar_url)), :allow_other_host => true)",
       "render_path": null,
       "location": {
         "type": "method",
         "class": "Api::V1::UsersController",
         "method": "avatar"
       },
-      "user_input": "RpgClubUserAvatarHistory.where(:user_id => params[:user_id]).where.not(:avatar_url => ([nil, \"\"])).order(:changed_at => :desc, :event_id => :desc).pick(:avatar_url)",
+      "user_input": "(discord_avatar_url or RpgClubUserAvatarHistory.where(:user_id => params[:user_id]).where.not(:avatar_url => ([nil, \"\"])).order(:changed_at => :desc, :event_id => :desc).pick(:avatar_url))",
       "confidence": "Weak",
       "cwe_id": [
         601
       ],
-      "note": "False positive. The target is not request input: it is the stored avatar_url from avatar history, which only the bot's service token can write (UserAvatarHistoryController#create requires require_service!). params[:user_id] only picks the row. The action also redirects only when trusted_image_url? passes (https on cdn.discordapp.com, media.discordapp.net, *.backblazeb2.com or the BACKBLAZE_PUBLIC_BASE_URL host) and streams the blob otherwise. Brakeman cannot see that guard. Covered by the 'never redirects off the trusted image hosts' spec."
+      "note": "False positive. The target is not request input. It is either the Discord CDN URL discord_avatar_url builds from the member's stored discord_avatar hash (only built when the hash matches Discord's /\\A(a_)?\\h{32}\\z/ shape and the user id is all digits), or the stored avatar_url from avatar history, which only the bot's service token can write (UserAvatarHistoryController#create requires require_service!). params[:user_id] only picks the row. The action also redirects only when trusted_image_url? passes (https on cdn.discordapp.com, media.discordapp.net, *.backblazeb2.com or the BACKBLAZE_PUBLIC_BASE_URL host) and streams the blob otherwise. Brakeman cannot see that guard. Covered by the 'never redirects off the trusted image hosts' and 'ignores a Discord avatar hash that isn't one Discord issues' specs."
     }
   ],
   "brakeman_version": "8.0.4"
