@@ -24,6 +24,10 @@ _Avoid_: Favourite, shortcut, bookmark
 One block of recent club or personal activity that a Member chooses to show on their own dashboard, below the current issue, in the order they choose. Members who have changed nothing see the club's default Dashboard Panels. A Dashboard Panel belonging to a Feature the Member cannot currently see stays chosen and returns when they can. A Dashboard Panel is not a Pinned Page: pins decide where a Member can go, panels show what is happening.
 _Avoid_: Widget, card, tile, module
 
+**Share Card**:
+The image, title and description a chat app or social site shows when someone posts a link to the website. It looks like the public front page and shows the GOTM and NR-GOTM winners of the latest decided round; it changes only when a round is decided. Every link to the website shares the same Share Card.
+_Avoid_: Embed, OG image, link preview, thumbnail
+
 ## Achievement Hub
 
 **Provider**:
