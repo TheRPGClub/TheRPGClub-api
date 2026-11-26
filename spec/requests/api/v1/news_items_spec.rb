@@ -17,9 +17,20 @@ RSpec.describe 'api/v1/news_items', type: :request do
                   "member's default view: every News Category except the ones they switched off with a News " \
                   'Category Preference. With `category`, exactly those News Categories are returned, switched ' \
                   'off or not, so a preference never blocks anything. `q` searches the link title and the ' \
-                  'comment (case-insensitive substring) and combines with `category`. `meta` adds, for the ' \
+                  'comment (case-insensitive substring) and combines with `category`. `since` and `until` ' \
+                  'bound `listed_at`, when the News Item was listed rather than posted (after `since`, at or ' \
+                  'before `until`), and combine with `category` and `q`; the order stays `posted_at`. The ' \
+                  "Catch-up view lists exactly the new News Items with `since` set to the member's News Mark " \
+                  'and exactly the seen ones with `until` set to it. `meta` adds, for the ' \
                   "page's category rail, `category_counts` (every News Category's count over the search alone) " \
-                  'and `hidden_categories` (the switched-off keys). Each item names its author by their current ' \
+                  "and `hidden_categories` (the switched-off keys), and the member's `news_mark` with " \
+                  '`new_count` and `new_category_counts`: the News Items in the same view (the default view or ' \
+                  'the asked `category`, and `q`, but not `since`/`until`) listed after the News Mark, all 0 ' \
+                  'without a News Mark. `mark` counts against that instant instead of the stored News Mark, ' \
+                  'so a visit keeps its new/seen split across reloads; it is never stored. The new counts are ' \
+                  'read only on page one or with `mark`: past page one without `mark`, `new_count` and ' \
+                  '`new_category_counts` are null. `since`, `until` and `mark` must name an offset (`Z` or ' \
+                  '`+hh:mm`). Each item names its author by their current ' \
                   'member name, or by the name recorded with the message when they have no member record. ' \
                   'An image whose Discord address has expired comes back unavailable (`url` null) and queues ' \
                   'a `news_images_renew` bot job for its message: one at a time per message, none within six ' \
@@ -35,6 +46,19 @@ RSpec.describe 'api/v1/news_items', type: :request do
       parameter name: :q, in: :query, required: false, schema: { type: :string, example: 'zelda' },
         description: 'Search text, matched case-insensitively anywhere in the link title or the comment. ' \
                      'Blank means no search.'
+      parameter name: :since, in: :query, required: false,
+        schema: { type: :string, format: 'date-time', example: '2026-11-24T21:40:00.123Z' },
+        description: 'Only News Items listed after this ISO 8601 instant (with `Z` or an offset). Blank ' \
+                     'means no bound; anything else is a 400.'
+      parameter name: :until, in: :query, required: false,
+        schema: { type: :string, format: 'date-time', example: '2026-11-24T21:40:00.123Z' },
+        description: 'Only News Items listed at or before this ISO 8601 instant (with `Z` or an offset). ' \
+                     'Blank means no bound; anything else is a 400.'
+      parameter name: :mark, in: :query, required: false,
+        schema: { type: :string, format: 'date-time', example: '2026-11-24T21:40:00.123456Z' },
+        description: "Count `new_count` and `new_category_counts` (and answer `news_mark`) against this ISO " \
+                     "8601 instant (with `Z` or an offset) instead of the member's stored News Mark. Read " \
+                     'only: never stored. Blank means the stored News Mark; anything else is a 400.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
@@ -45,7 +69,9 @@ RSpec.describe 'api/v1/news_items', type: :request do
         }, required: %w[data meta]
       end
 
-      response '400', 'an unknown News Category key, e.g. `{ "error": "unknown category: piracy" }`' do
+      response '400', 'an unknown News Category key, e.g. `{ "error": "unknown category: piracy" }`, or a ' \
+                      '`since`/`until`/`mark` that is not an ISO 8601 instant with an offset, e.g. ' \
+                      '`{ "error": "since must be an ISO 8601 instant" }`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -76,6 +102,41 @@ RSpec.describe 'api/v1/news_items', type: :request do
           data: { type: :object, properties: { stamp: { type: :string, example: '1795006223125' } },
                   required: %w[stamp] }
         }, required: %w[data]
+      end
+    end
+  end
+
+  path '/api/v1/news_items/shelves' do
+    get 'The News Hub shelves' do
+      tags 'News Hub'
+      description "The News page's Shelves tab in one request: one shelf per News Category in the member's " \
+                  'default view (every News Category except the ones they switched off with a News Category ' \
+                  'Preference), in News Category order. Each shelf holds that News Category\'s newest `per` ' \
+                  'News Items, newest first (`posted_at` descending, as the feed orders them), serialized as ' \
+                  'the feed serializes them, and `today_count`: how many of its News Items were posted since ' \
+                  'the start of the current UTC day, whatever `per` is. A News Category with no News Items ' \
+                  'still has its shelf, empty. The switched-off News Categories are listed in ' \
+                  '`meta.hidden_categories`. Imported News Items staff have not sorted are never shown. An ' \
+                  'image whose Discord address has expired comes back unavailable and queues its renewal ' \
+                  "exactly as the feed does (none for the service token's own reads). " \
+                  "#{gate}"
+      produces 'application/json'
+      parameter name: :per, in: :query, required: false, schema: { type: :integer, default: 10, maximum: 20 },
+        description: 'News Items per shelf. Missing, zero or not a number means 10; above 20 means 20.'
+
+      response '200', 'the shelves' do
+        schema type: :object, properties: {
+          data: { type: :array, items: { '$ref' => '#/components/schemas/NewsShelf' } },
+          meta: { '$ref' => '#/components/schemas/NewsShelvesMeta' }
+        }, required: %w[data meta]
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'the viewer cannot use the News Hub Feature' do
+        schema '$ref' => '#/components/schemas/Error'
       end
     end
   end

@@ -20,6 +20,10 @@ module Api
 
       before_action :require_service!, only: %i[uncopied update change_category destroy]
 
+      # News Items per shelf on the Shelves tab: the default and the most.
+      SHELF_PER = 10
+      SHELF_MAX_PER = 20
+
       # GET /api/v1/news_items?category=releases,industry&q=zelda&page=1&per=50
       #
       # The News Items that have a News Category, newest first. `category`
@@ -27,8 +31,20 @@ module Api
       # `category[]`); an unknown key is a 400. Without it, the member's
       # default view: every News Category but the ones they switched off
       # (News Category Preferences, ticket #357). `q` searches link title and
-      # comment. `meta` adds `category_counts` and `hidden_categories` for the
-      # page's category rail.
+      # comment. `since` and `until` bound listed_at (when the News Item was
+      # listed, not posted): after `since`, at or before `until` (ticket
+      # api#496, fix pass), so the Catch-up view lists exactly the new News
+      # Items with `since` set to the News Mark and exactly the seen ones with
+      # `until`. The order stays posted_at. `meta` adds `category_counts` and
+      # `hidden_categories` for the page's category rail, and the member's
+      # `news_mark` with `new_count` and `new_category_counts`: the News Items
+      # in the same view (categories and `q`, not `since`/`until`) listed
+      # after the News Mark. `mark` counts against that instant instead of
+      # the stored News Mark (read only, never stored), so a visit keeps its
+      # split. The new counts are only read on page one or with `mark`; past
+      # page one without `mark` they are null. `since`, `until` and `mark`
+      # must be ISO 8601 instants with `Z` or an offset; anything else is a
+      # 400.
       #
       # An image whose Discord address has expired is served as unavailable,
       # and the bot is asked to renew it (NewsHub::BotJobs). The bot's own
@@ -38,11 +54,17 @@ module Api
         categories = category_filter
         return if performed?
 
+        bounds = instant_params
+        return if performed?
+
         searched = search(NewsItem.listed)
         hidden = switched_off_categories
-        scope = searched
-        scope = scope.where(category_key: categories) if categories.any?
-        scope = scope.where.not(category_key: hidden) if categories.empty? && hidden.any?
+        view = searched
+        view = view.where(category_key: categories) if categories.any?
+        view = view.where.not(category_key: hidden) if categories.empty? && hidden.any?
+        scope = view
+        scope = scope.where("news_items.listed_at > ?", bounds[:since]) if bounds[:since]
+        scope = scope.where(listed_at: ..bounds[:until]) if bounds[:until]
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
         now = Time.current
@@ -50,7 +72,8 @@ module Api
 
         render json: {
           data: news_item_json(items, now: now),
-          meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden)
+          meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden,
+            **new_counts(view, mark: bounds[:mark], counted: pagy.page == 1 || bounds.key?(:mark)))
         }
       end
 
@@ -64,6 +87,29 @@ module Api
       def stamp
         response.headers["Cache-Control"] = "no-store"
         render json: { data: { stamp: NewsItem::FeedStamp.read.to_s } }
+      end
+
+      # GET /api/v1/news_items/shelves?per=10
+      #
+      # The Shelves tab (ticket api#497): for each News Category in the
+      # member's default view, in News Category order, its newest `per` News
+      # Items (default 10, at most 20) as the feed serves them, and how many
+      # were posted today (UTC). The switched-off News Categories are left
+      # out and listed in `meta.hidden_categories`. Expired images are
+      # renewed as the feed renews them.
+      def shelves
+        hidden = switched_off_categories
+        keys = NewsCategory.keys - hidden
+        per = clamp_per(params[:per], default_per: SHELF_PER, max_per: SHELF_MAX_PER)
+        now = Time.current
+        shelved = NewsItem.newest_by_category(keys, per: per)
+        items = shelved.values.flatten
+        NewsHub::BotJobs.renew_expired_images!(items, now: now) unless current_principal.service?
+
+        render json: {
+          data: shelves_json(shelved, NewsItem.posted_today_by_category(keys, now: now), items, now: now),
+          meta: { per: per, hidden_categories: hidden }
+        }
       end
 
       # GET /api/v1/news_items/uncopied?origin=live&page=1&per=50
@@ -139,6 +185,18 @@ module Api
 
       private
 
+      # One shelf per News Category of `shelved` ({ key => items }), in
+      # order, with its today count; the authors of every shelved item are
+      # looked up once.
+      def shelves_json(shelved, today_counts, items, now:)
+        authors = NewsItemResource.authors_for(items)
+        names = NewsCategory.all.to_h { |category| [ category.key, category.name ] }
+        shelved.map do |key, shelf_items|
+          { category_key: key, name: names.fetch(key), today_count: today_counts.fetch(key),
+            items: NewsItemResource.new(shelf_items, params: { authors: authors, now: now }).serializable_hash }
+        end
+      end
+
       # The News Item, or a list of them, as the API serves it, with each
       # author's name; `options` adds serializer params (the feed's `now`).
       def news_item_json(items, **options)
@@ -175,6 +233,37 @@ module Api
       def category_counts(scope)
         counts = scope.group(:category_key).count
         NewsCategory.keys.index_with { |key| counts.fetch(key, 0) }
+      end
+
+      # The News Mark (`mark` when the page asked with one, else the
+      # signed-in member's stored one) and how many News Items in `view` were
+      # listed after it, per News Category (every key, in order) in one
+      # grouped query. No News Mark (and the service token without `mark`)
+      # counts nothing. Unless `counted`, the counts are null and not read.
+      def new_counts(view, mark:, counted:)
+        mark ||= NewsMark.for(current_principal.id) if current_principal.discord_user?
+        news_mark = mark&.utc&.iso8601(6)
+        return { news_mark: news_mark, new_count: nil, new_category_counts: nil } unless counted
+
+        counts = mark ? view.where("news_items.listed_at > ?", mark).group(:category_key).count : {}
+        by_category = NewsCategory.keys.index_with { |key| counts.fetch(key, 0) }
+        { news_mark: news_mark, new_count: by_category.values.sum, new_category_counts: by_category }
+      end
+
+      # The `since`, `until` and `mark` instants given (blank ones left
+      # out). Renders 400 for a value that is not an ISO 8601 instant with
+      # an offset (NewsMark.parse_instant).
+      def instant_params
+        %i[since until mark].each_with_object({}) do |name, found|
+          value = params[name]
+          next if value.is_a?(String) && value.strip.empty?
+          next if value.nil?
+
+          found[name] = NewsMark.parse_instant(value)
+        rescue ArgumentError
+          render(json: { error: "#{name} must be an ISO 8601 instant" }, status: :bad_request)
+          return {}
+        end
       end
 
       # Narrows to the News Items whose link title or comment contains `q`,
