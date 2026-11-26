@@ -92,4 +92,4 @@ jobs:
           RELEASE_API_TOKEN: ${{ secrets.release_api_token }}
           DRY_RUN: ${{ inputs.dry_run }}
         # The runner image's own Ruby runs the stdlib-only versioning.rb.
-        run: .versioning/script/versioning/release.sh
+        run: bash .versioning/script/versioning/release.sh
