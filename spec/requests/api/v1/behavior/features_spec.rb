@@ -25,7 +25,7 @@ RSpec.describe "staff flag control", type: :request do
       expect(json.fetch("data").map { |f| [ f["key"], f["state"] ] }).to eq([
         [ "game_index", "live" ], [ "voting_gotm", "live" ], [ "backlog", "live" ], [ "collection", "live" ],
         [ "now_playing", "live" ], [ "game_completions", "live" ], [ "reviews", "live" ],
-        [ "achievement_hub", "live" ], [ "giveaways", "live" ], [ "journals", "off" ], [ "suggestions", "live" ],
+        [ "achievement_hub", "live" ], [ "giveaways", "live" ], [ "journals", "off" ], [ "feedback", "live" ],
         [ "news_hub", "live" ], [ "challenges", "live" ],
         [ "release_calendar", "live" ], [ "club_codex", "live" ], [ "game_lists", "live" ],
         [ "franchise_progress", "live" ], [ "goty_vote", "live" ], [ "roadmap", "live" ]
@@ -154,7 +154,7 @@ RSpec.describe "staff flag control", type: :request do
     end
 
     it "logs and announces without a reason" do
-      set_flag("suggestions", { state: "off" })
+      set_flag("feedback", { state: "off" })
 
       expect(response).to have_http_status(:ok)
       expect(json.dig("data", "last_change", "reason")).to be_nil

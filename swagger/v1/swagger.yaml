@@ -2725,11 +2725,18 @@ components:
       - user_id
       - game_count
       - entry_count
-    Suggestion:
+    Feedback:
       type: object
       properties:
-        suggestion_id:
+        feedback_id:
           type: integer
+        kind:
+          type: string
+          enum:
+          - feature_request
+          - suggestion
+          - bug_report
+          description: Feature Request, Suggestion or Bug Report.
         title:
           type: string
         details:
@@ -2744,9 +2751,6 @@ components:
         updated_at:
           type: string
           format: date-time
-        labels:
-          type: string
-          nullable: true
         created_by_name:
           type: string
           nullable: true
@@ -2757,6 +2761,7 @@ components:
           - approved
           - rejected
           - withdrawn
+          - duplicate
         reviewed_by:
           type: string
           nullable: true
@@ -2769,6 +2774,10 @@ components:
           type: string
           nullable: true
           description: Set when rejected.
+        duplicate_of_id:
+          type: integer
+          nullable: true
+          description: 'Set when a Duplicate: the root original Feedback it duplicates.'
         target_repo:
           type: string
           nullable: true
@@ -2779,6 +2788,30 @@ components:
         github_issue_url:
           type: string
           nullable: true
+        where:
+          type: string
+          nullable: true
+          enum:
+          - bot
+          - website
+          -
+          description: 'Bug Reports: where it happened.'
+        what_happened:
+          type: string
+          nullable: true
+          description: 'Bug Reports: what happened.'
+        expected:
+          type: string
+          nullable: true
+          description: 'Bug Reports: what the member expected.'
+        steps:
+          type: string
+          nullable: true
+          description: 'Bug Reports: steps to reproduce, if given.'
+        screenshot_url:
+          type: string
+          nullable: true
+          description: 'Bug Reports: the screenshot''s address, if one.'
         github_issue_state:
           type: string
           nullable: true
@@ -2788,6 +2821,16 @@ components:
           -
           description: 'Approved only: the GitHub issue''s state, cached about ten
             minutes. Null otherwise, or when GitHub cannot say.'
+        done:
+          type: boolean
+          description: 'Done: Approved and its GitHub issue was last seen closed.
+            Done Feedback stays under the board''s Open filter and takes no upvotes;
+            reopening the issue clears it.'
+        done_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the issue was seen closed; null unless Done.
         upvote_count:
           type: integer
         viewer_upvoted:
@@ -2800,49 +2843,79 @@ components:
             reviewed or withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent`
             orders by it.'
       required:
-      - suggestion_id
+      - feedback_id
+      - kind
       - title
       - created_at
       - updated_at
       - status
+      - done
       - upvote_count
       - viewer_upvoted
       - last_activity_at
-    SuggestionReviewMeta:
+    FeedbackBoardTotals:
+      type: object
+      properties:
+        feature_request:
+          type: object
+          properties:
+            open:
+              type: integer
+              description: Pending and Approved, Done included.
+            closed:
+              type: integer
+              description: Rejected, Duplicate and Withdrawn.
+            done:
+              type: integer
+              description: The Done part of open.
+          required:
+          - open
+          - closed
+          - done
+        suggestion:
+          type: object
+          properties:
+            open:
+              type: integer
+              description: Pending and Approved, Done included.
+            closed:
+              type: integer
+              description: Rejected, Duplicate and Withdrawn.
+            done:
+              type: integer
+              description: The Done part of open.
+          required:
+          - open
+          - closed
+          - done
+        bug_report:
+          type: object
+          properties:
+            open:
+              type: integer
+              description: Pending and Approved, Done included.
+            closed:
+              type: integer
+              description: Rejected, Duplicate and Withdrawn.
+            done:
+              type: integer
+              description: The Done part of open.
+          required:
+          - open
+          - closed
+          - done
+      required:
+      - feature_request
+      - suggestion
+      - bug_report
+    FeedbackReviewMeta:
       type: object
       properties:
         outcome_job_id:
           type: integer
-          description: The suggestion_outcome bot job (the bot announces the outcome).
+          description: The feedback_outcome bot job (the bot announces the outcome).
       required:
       - outcome_job_id
-    SuggestionReviewSession:
-      type: object
-      properties:
-        session_id:
-          type: string
-        reviewer_id:
-          type: string
-        suggestion_ids:
-          type: string
-        current_index:
-          type: integer
-        total_count:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-      - session_id
-      - reviewer_id
-      - suggestion_ids
-      - current_index
-      - total_count
-      - created_at
-      - updated_at
     StarboardEntry:
       type: object
       properties:
@@ -4181,8 +4254,8 @@ components:
           - giveaway_hub_refresh
           - nomination_deleted
           - goty_nomination_deleted
-          - suggestion_submitted
-          - suggestion_outcome
+          - feedback_submitted
+          - feedback_outcome
           - voting_poll_wakeup
           - voting_results_publish
           - voting_panels_repost
@@ -6333,8 +6406,8 @@ components:
           - giveaway_hub_refresh
           - nomination_deleted
           - goty_nomination_deleted
-          - suggestion_submitted
-          - suggestion_outcome
+          - feedback_submitted
+          - feedback_outcome
           - voting_poll_wakeup
           - voting_results_publish
           - voting_panels_repost
@@ -6789,8 +6862,8 @@ components:
             the club default (voting, games, members, news) until they save their
             own list. Keys: voting, gotm_history, goty, challenges, games, franchises,
             reviews, releases, achievements, journals, members, news, codex, lists,
-            giveaways, suggestions, roadmap, staff_desk, voting_console, synonyms,
-            live_events, public_reminders, suggestion_review.'
+            giveaways, feedback, roadmap, staff_desk, voting_console, synonyms, live_events,
+            public_reminders, feedback_review.'
         customised:
           type: boolean
           description: Whether the member saved their own list. False while they follow
@@ -6835,7 +6908,7 @@ components:
           description: 'Panel key: news, now_playing_club, releases, achievements_club,
             challenges_club, now_playing_mine, achievements_mine, challenge_runs_mine,
             completions_club, completions_mine, backlog_pick, reviews, journals, giveaways,
-            suggestions, codex, birthdays.'
+            feedback, codex, birthdays.'
           example: news
         scope:
           type: string
@@ -7547,6 +7620,21 @@ components:
       - user_id
       - hidden
       - categories
+    NewsMark:
+      type: object
+      properties:
+        user_id:
+          type: string
+        news_mark:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'The moment up to which the member has seen the News Hub''s
+            News Items (UTC, microseconds). Null until the website first sets it:
+            a first visit.'
+      required:
+      - user_id
+      - news_mark
     NewsFeedMeta:
       allOf:
       - "$ref": "#/components/schemas/PaginationMeta"
@@ -7604,9 +7692,120 @@ components:
             description: 'The News Category keys the member switched off, in order,
               whatever this request filters by: the default view leaves these out.
               Empty for the service token.'
+          news_mark:
+            type: string
+            format: date-time
+            nullable: true
+            description: The member's News Mark (UTC, microseconds), as `GET /api/v1/users/{user_id}/news_mark`
+              serves it, or `mark` when the request gave one. Null without either
+              (a first visit) and for the service token without `mark`.
+          new_count:
+            type: integer
+            nullable: true
+            description: 'How many News Items in this view were listed after the News
+              Mark (or `mark`): the default view (switched-off News Categories left
+              out) or the asked `category`, and `q`, but not `since`/`until`. 0 without
+              a News Mark. Null past page one unless `mark` is given.'
+          new_category_counts:
+            type: object
+            nullable: true
+            description: "`new_count` per News Category, keyed by every News Category
+              key in order, 0 for none (and for every News Category outside this view).
+              Null past page one unless `mark` is given."
+            properties:
+              announcements:
+                type: integer
+              releases:
+                type: integer
+              emulation:
+                type: integer
+              industry:
+                type: integer
+              hardware:
+                type: integer
+              rumours:
+                type: integer
+              general:
+                type: integer
+            required:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+            example:
+              announcements: 0
+              releases: 4
+              emulation: 0
+              industry: 0
+              hardware: 0
+              rumours: 1
+              general: 0
         required:
         - category_counts
         - hidden_categories
+        - news_mark
+        - new_count
+        - new_category_counts
+    NewsShelf:
+      type: object
+      properties:
+        category_key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The shelf's News Category.
+        name:
+          type: string
+          example: Releases & Updates
+          description: The News Category's display name.
+        today_count:
+          type: integer
+          description: How many of the News Category's News Items were posted since
+            the start of the current UTC day, whatever `per` is.
+        items:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsItem"
+          description: The News Category's newest News Items, newest first, at most
+            `per`; empty for none.
+      required:
+      - category_key
+      - name
+      - today_count
+      - items
+    NewsShelvesMeta:
+      type: object
+      properties:
+        per:
+          type: integer
+          description: The most News Items a shelf holds in this answer (`per`, clamped
+            to 1-20).
+        hidden_categories:
+          type: array
+          items:
+            type: string
+            enum:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+          description: 'The News Category keys the member switched off, in order:
+            they have no shelf. Empty for the service token.'
+      required:
+      - per
+      - hidden_categories
     NewsItem:
       type: object
       properties:
@@ -7664,6 +7863,15 @@ components:
           type: string
           format: date-time
           description: When the message was posted in Discord.
+        listed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the News Item was listed (first had a News Category, so
+            members could see it), UTC with microseconds. The News Mark counts News
+            Items listed after it as new, so one recorded late is still new. An imported
+            News Item is listed at its posting time, so it never counts as new. Null
+            only for an unsorted imported News Item.
         edited_at:
           type: string
           format: date-time
@@ -7689,6 +7897,7 @@ components:
       - origin
       - comment
       - posted_at
+      - listed_at
       - edited_at
       - link
       - images
@@ -19395,7 +19604,7 @@ paths:
         - achievement_hub
         - giveaways
         - journals
-        - suggestions
+        - feedback
         - news_hub
         - challenges
         - release_calendar
@@ -19504,6 +19713,1004 @@ paths:
               required:
               - data
         required: true
+  "/api/v1/feedback":
+    get:
+      summary: List Feedback
+      tags:
+      - Feedback
+      description: Open to any authenticated caller. The Feedback Board shows one
+        kind at a time (`kind`) with an Open / Closed filter (`status=open|closed`);
+        `meta.totals` counts each kind's Open, Closed and Done Feedback, whatever
+        the filters, for the tabs. By default (`sort=board`) Approved (not Done) first,
+        then Pending, then Done, then Rejected, Duplicate and Withdrawn; most upvoted
+        first, then newest, within each; `sort=recent` lists the latest activity first
+        (`last_activity_at`, then newest feedback_id), for the Feedback Board Dashboard
+        Panel. Each row carries `upvote_count`, `viewer_upvoted` (always false for
+        the service) and `last_activity_at`.
+      parameters:
+      - name: kind
+        in: query
+        schema:
+          type: string
+        required: false
+        description: Comma-separated kinds to include (feature_request, suggestion,
+          bug_report). Absent = every kind.
+      - name: status
+        in: query
+        schema:
+          type: string
+        required: false
+        description: 'Comma-separated, combined with OR: `open` (pending and approved,
+          Done included), `closed` (rejected, duplicate, withdrawn), `done` (approved
+          and Done), or single statuses (pending, approved, rejected, withdrawn, duplicate).
+          Absent = every status.'
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - board
+          - recent
+          default: board
+        required: false
+        description: "`board`: Approved (not Done), Pending, Done, then closed; most
+          upvoted, then newest, within each. `recent`: latest activity first."
+      - name: page
+        in: query
+        schema:
+          type: integer
+          default: 1
+          minimum: 1
+        required: false
+      - name: per
+        in: query
+        schema:
+          type: integer
+          default: 50
+          maximum: 500
+        required: false
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 500
+        required: false
+        description: Deprecated alias for `per` (transitional, for the unaudited Discord
+          bot).
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+        required: false
+        description: Deprecated; converted to a page number (transitional, for the
+          unaudited Discord bot).
+      responses:
+        '200':
+          description: Feedback list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/Feedback"
+                  meta:
+                    allOf:
+                    - "$ref": "#/components/schemas/PaginationMeta"
+                    - type: object
+                      properties:
+                        totals:
+                          "$ref": "#/components/schemas/FeedbackBoardTotals"
+                      required:
+                      - totals
+        '400':
+          description: unknown status or kind
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: unknown sort (`invalid_sort`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    post:
+      summary: Create Feedback
+      tags:
+      - Feedback
+      description: 'Members role holders, Moderator and above, or the service. `kind`
+        and `title` are required; a Bug Report also needs `where`, `what_happened`
+        and `expected`. The bug fields (`where`, `what_happened`, `expected`, `steps`)
+        are dropped for the other kinds; a screenshot is added afterwards with `PUT
+        /api/v1/feedback/{id}/screenshot`. Always created Pending. A member is recorded
+        as the author (body `created_by` and `created_by_name` are ignored) and their
+        submission enqueues a `feedback_submitted` bot job (payload `{ feedback_id,
+        kind, created_by, feature_key: "feedback" }`) so the bot pings the bot dev.
+        A service create enqueues nothing: the bot pings inline for its own submissions.'
+      parameters: []
+      responses:
+        '201':
+          description: Feedback created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '422':
+          description: validation failed (e.g. missing or unknown kind, or a Bug Report
+            without what happened or expected)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller lacks the Members role and is not staff'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    kind:
+                      type: string
+                      enum:
+                      - feature_request
+                      - suggestion
+                      - bug_report
+                      description: Feature Request, Suggestion or Bug Report. Required
+                        on create.
+                    title:
+                      type: string
+                      description: Title. Required on create.
+                    details:
+                      type: string
+                      nullable: true
+                      description: Optional longer description.
+                    created_by:
+                      type: string
+                      nullable: true
+                      description: Discord user id of the author. Service only; a
+                        member is always the author.
+                    created_by_name:
+                      type: string
+                      nullable: true
+                      description: Author's display name. Service only; a member's
+                        comes from their record.
+                    where:
+                      type: string
+                      enum:
+                      - bot
+                      - website
+                      nullable: true
+                      description: 'Bug Reports: where it happened. Required for a
+                        Bug Report.'
+                    what_happened:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
+                      description: 'Bug Reports: what happened. Required for a Bug
+                        Report.'
+                    expected:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
+                      description: 'Bug Reports: what the member expected. Required
+                        for a Bug Report.'
+                    steps:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
+                      description: 'Bug Reports: steps to reproduce (optional).'
+                  required:
+                  - kind
+                  - title
+              required:
+              - data
+        required: true
+  "/api/v1/feedback/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    get:
+      summary: Show Feedback
+      tags:
+      - Feedback
+      responses:
+        '200':
+          description: Feedback detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    patch:
+      summary: Edit own Pending Feedback
+      tags:
+      - Feedback
+      description: The author only, while Pending (staff and the service are refused).
+        Changes `title`, `details` and, on a Bug Report, `where`, `what_happened`,
+        `expected` and `steps`; other fields, and bug fields on the other kinds, are
+        ignored. A Bug Report must keep `what_happened` and `expected`. The screenshot
+        has its own endpoint.
+      parameters: []
+      responses:
+        '200':
+          description: edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '422':
+          description: validation failed (e.g. blank title, or a Bug Report without
+            what happened or expected)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending, or `approval_in_progress` while an approval is
+            calling GitHub
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the author'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                      description: Title. Required on create.
+                    details:
+                      type: string
+                      nullable: true
+                      description: Optional longer description.
+                    where:
+                      type: string
+                      enum:
+                      - bot
+                      - website
+                      nullable: true
+                      description: 'Bug Reports: where it happened. Required for a
+                        Bug Report.'
+                    what_happened:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
+                      description: 'Bug Reports: what happened. Required for a Bug
+                        Report.'
+                    expected:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
+                      description: 'Bug Reports: what the member expected. Required
+                        for a Bug Report.'
+                    steps:
+                      type: string
+                      nullable: true
+                      maxLength: 2000
+                      description: 'Bug Reports: steps to reproduce (optional).'
+              required:
+              - data
+        required: true
+  "/api/v1/feedback/{feedback_id}/screenshot":
+    parameters:
+    - name: feedback_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id (a Bug Report).
+    put:
+      summary: Add or replace a Bug Report screenshot
+      tags:
+      - Feedback
+      description: 'The author only, while Pending; Bug Reports only (one screenshot
+        each). Replaces any earlier screenshot, whose file is removed. The type is
+        told by the file''s bytes. Send `multipart/form-data`. Returns the Feedback
+        with its `screenshot_url`. Files are kept in the Backblaze bucket the GameDB
+        game images use: 503 `backblaze_not_configured` when it is not set up, 502
+        `backblaze_request_failed` when Backblaze refuses an upload (nothing is changed).'
+      parameters: []
+      responses:
+        '200':
+          description: stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '422':
+          description: "`invalid_image` (no file, not PNG/JPEG/WebP, empty or over
+            5 MB) or `screenshot_not_allowed` (not a Bug Report)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: "`backblaze_not_configured`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the author'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: "`backblaze_request_failed`: nothing was changed"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data[file]:
+                  type: string
+                  format: binary
+                  description: PNG, JPEG or WebP, at most 5 MB.
+              required:
+              - data[file]
+        required: true
+    delete:
+      summary: Remove a Bug Report screenshot
+      tags:
+      - Feedback
+      description: The author only, while Pending. A no-op without a screenshot. The
+        file is removed after the screenshot is cleared; a storage failure only leaves
+        the file behind.
+      responses:
+        '200':
+          description: removed; returns the Feedback
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the author'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/feedback/{id}/approve":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Approve Feedback into a GitHub issue
+      tags:
+      - Feedback
+      description: 'Superadmin or the service, while Pending. Opens a GitHub issue
+        in `target_repo` (title = the Feedback title, body = "<author name>: <details>"
+        plus a hidden Feedback marker, label = the kind''s label in that repo; a Bug
+        Report''s body instead lays out where, what happened, expected, steps and
+        details, and links the Feedback on the Feedback Board (never the screenshot:
+        the repos are public)) through the GitHub App, stores its number and URL,
+        and sets status approved. The board link is the origin of DISCORD_OAUTH_SUCCESS_REDIRECT;
+        unset, it is named without a link. An issue that already carries the marker
+        (an earlier attempt whose response was lost) is reused instead of opening
+        a duplicate. Enqueues a `feedback_outcome` bot job (payload `{ feedback_id,
+        kind, outcome, created_by, title, github_issue_number, github_issue_url, rejection_reason
+        }`), the bot''s own reviews included; `meta.outcome_job_id` is that job, for
+        polling `GET /api/v1/bot_jobs/{id}`.'
+      parameters: []
+      responses:
+        '200':
+          description: approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+                  meta:
+                    "$ref": "#/components/schemas/FeedbackReviewMeta"
+        '422':
+          description: target_repo missing or not in the allowlist
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '502':
+          description: GitHub refused or failed (error github_issue_failed); nothing
+            changed
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: GitHub App not configured (error github_not_configured)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending, or `approval_in_progress` while another approval
+            is calling GitHub
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    target_repo:
+                      type: string
+                      enum:
+                      - TheRPGClub/TheRPGClub-bot
+                      - TheRPGClub/TheRPGClub-api
+                      - TheRPGClub/TheRPGClub-www
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - target_repo
+              required:
+              - data
+        required: true
+  "/api/v1/feedback/{id}/reject":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Reject Feedback
+      tags:
+      - Feedback
+      description: Superadmin or the service, while Pending. Sets status rejected
+        with the (trimmed) reason. Enqueues a `feedback_outcome` bot job (payload
+        `{ feedback_id, kind, outcome, created_by, title, github_issue_number, github_issue_url,
+        rejection_reason }`), the bot's own reviews included; `meta.outcome_job_id`
+        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
+      parameters: []
+      responses:
+        '200':
+          description: rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+                  meta:
+                    "$ref": "#/components/schemas/FeedbackReviewMeta"
+        '422':
+          description: blank or too long rejection_reason
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    rejection_reason:
+                      type: string
+                      maxLength: 2000
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - rejection_reason
+              required:
+              - data
+        required: true
+  "/api/v1/feedback/{id}/duplicate":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Mark Feedback a Duplicate
+      tags:
+      - Feedback
+      description: 'Superadmin or the service, while Pending (Approved Feedback is
+        refused: close its GitHub issue instead). Sets status duplicate with `duplicate_of_id`
+        = the original, resolved to its root when it is itself a Duplicate. The original
+        may be of any kind and must be Pending or Approved (Done included), not Rejected
+        or Withdrawn. The upvotes move to the original, each member counted once,
+        and Duplicates of this Feedback are repointed to the original. Enqueues a
+        `feedback_outcome` bot job (payload as for reject, plus `duplicate_of_id`
+        and `duplicate_of_title`); `meta.outcome_job_id` is that job.'
+      parameters: []
+      responses:
+        '200':
+          description: marked a Duplicate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+                  meta:
+                    "$ref": "#/components/schemas/FeedbackReviewMeta"
+        '422':
+          description: original missing, unknown, this Feedback itself, or Rejected/Withdrawn
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending, or `approval_in_progress` while an approval is
+            calling GitHub
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    original_id:
+                      type: integer
+                      description: The Feedback this one duplicates.
+                    reviewed_by:
+                      type: string
+                      description: 'Service only: the Discord id of the reviewer.
+                        A signed-in Superadmin is always the reviewer.'
+                  required:
+                  - original_id
+              required:
+              - data
+        required: true
+  "/api/v1/feedback/{id}/kind":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Change the kind of Feedback
+      tags:
+      - Feedback
+      description: Superadmin or the service, while Pending. Sets `kind`; a kind's
+        required fields (a Bug Report's) are not checked, since staff are reshaping
+        the Feedback, not filing it. A change away from Bug Report drops its screenshot
+        (the file is removed after). Enqueues nothing.
+      parameters: []
+      responses:
+        '200':
+          description: kind changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '422':
+          description: kind missing or unknown
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '409':
+          description: not pending, or `approval_in_progress` while an approval is
+            calling GitHub
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not a Superadmin or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing data envelope
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    kind:
+                      type: string
+                      enum:
+                      - feature_request
+                      - suggestion
+                      - bug_report
+                  required:
+                  - kind
+              required:
+              - data
+        required: true
+  "/api/v1/feedback/{id}/withdraw":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Withdraw Feedback
+      tags:
+      - Feedback
+      description: The author only, while Pending. Staff and the service are refused.
+      responses:
+        '200':
+          description: withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '409':
+          description: not pending
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the author'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/feedback/{id}/upvote":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: RpgClubFeedback id.
+    post:
+      summary: Upvote Feedback
+      tags:
+      - Feedback
+      description: Members role holders or staff, signed in (the service is refused).
+        One upvote per member; repeating it is a no-op. Only Pending and Approved
+        Feedback that is not Done takes upvotes.
+      responses:
+        '200':
+          description: upvoted; returns the updated Feedback
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '409':
+          description: 'upvotes frozen: Done, Rejected, Withdrawn or a Duplicate'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not a Members role holder or staff, or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Remove an upvote
+      tags:
+      - Feedback
+      description: 'Members role holders or staff, signed in (the service is refused).
+        Removes the caller''s upvote if any (a no-op otherwise). Upvotes are frozen
+        as for upvoting: refused unless Pending, or Approved and not Done.'
+      responses:
+        '200':
+          description: removed; returns the updated Feedback
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Feedback"
+        '409':
+          description: 'upvotes frozen: Done, Rejected, Withdrawn or a Duplicate'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: not a Members role holder or staff, or the service'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/games/{id}/franchise_suggestions":
     parameters:
     - name: id
@@ -27543,18 +28750,30 @@ paths:
         With `category`, exactly those News Categories are returned, switched off
         or not, so a preference never blocks anything. `q` searches the link title
         and the comment (case-insensitive substring) and combines with `category`.
-        `meta` adds, for the page''s category rail, `category_counts` (every News
-        Category''s count over the search alone) and `hidden_categories` (the switched-off
-        keys). Each item names its author by their current member name, or by the
-        name recorded with the message when they have no member record. An image whose
-        Discord address has expired comes back unavailable (`url` null) and queues
-        a `news_images_renew` bot job for its message: one at a time per message,
-        none within six hours of that message''s last renewal ending, and none for
-        the service token''s own reads; a later load serves it once the bot has recorded
-        fresh addresses. An image recorded with no expiry (`expires_at` null) is always
-        served. Belongs to the News Hub Feature: a member who cannot use it (Preview:
-        Admins and Superadmins only; Off: nobody) gets 404 `not_found`. The service
-        token is not gated; the bot runs its own feature gate.'
+        `since` and `until` bound `listed_at`, when the News Item was listed rather
+        than posted (after `since`, at or before `until`), and combine with `category`
+        and `q`; the order stays `posted_at`. The Catch-up view lists exactly the
+        new News Items with `since` set to the member''s News Mark and exactly the
+        seen ones with `until` set to it. `meta` adds, for the page''s category rail,
+        `category_counts` (every News Category''s count over the search alone) and
+        `hidden_categories` (the switched-off keys), and the member''s `news_mark`
+        with `new_count` and `new_category_counts`: the News Items in the same view
+        (the default view or the asked `category`, and `q`, but not `since`/`until`)
+        listed after the News Mark, all 0 without a News Mark. `mark` counts against
+        that instant instead of the stored News Mark, so a visit keeps its new/seen
+        split across reloads; it is never stored. The new counts are read only on
+        page one or with `mark`: past page one without `mark`, `new_count` and `new_category_counts`
+        are null. `since`, `until` and `mark` must name an offset (`Z` or `+hh:mm`).
+        Each item names its author by their current member name, or by the name recorded
+        with the message when they have no member record. An image whose Discord address
+        has expired comes back unavailable (`url` null) and queues a `news_images_renew`
+        bot job for its message: one at a time per message, none within six hours
+        of that message''s last renewal ending, and none for the service token''s
+        own reads; a later load serves it once the bot has recorded fresh addresses.
+        An image recorded with no expiry (`expires_at` null) is always served. Belongs
+        to the News Hub Feature: a member who cannot use it (Preview: Admins and Superadmins
+        only; Off: nobody) gets 404 `not_found`. The service token is not gated; the
+        bot runs its own feature gate.'
       parameters:
       - name: category
         in: query
@@ -27573,6 +28792,35 @@ paths:
           example: zelda
         description: Search text, matched case-insensitively anywhere in the link
           title or the comment. Blank means no search.
+      - name: since
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123Z'
+        description: Only News Items listed after this ISO 8601 instant (with `Z`
+          or an offset). Blank means no bound; anything else is a 400.
+      - name: until
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123Z'
+        description: Only News Items listed at or before this ISO 8601 instant (with
+          `Z` or an offset). Blank means no bound; anything else is a 400.
+      - name: mark
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123456Z'
+        description: 'Count `new_count` and `new_category_counts` (and answer `news_mark`)
+          against this ISO 8601 instant (with `Z` or an offset) instead of the member''s
+          stored News Mark. Read only: never stored. Blank means the stored News Mark;
+          anything else is a 400.'
       - name: page
         in: query
         schema:
@@ -27606,7 +28854,8 @@ paths:
                 - meta
         '400':
           description: 'an unknown News Category key, e.g. `{ "error": "unknown category:
-            piracy" }`'
+            piracy" }`, or a `since`/`until`/`mark` that is not an ISO 8601 instant
+            with an offset, e.g. `{ "error": "since must be an ISO 8601 instant" }`'
           content:
             application/json:
               schema:
@@ -27654,6 +28903,65 @@ paths:
                     - stamp
                 required:
                 - data
+  "/api/v1/news_items/shelves":
+    get:
+      summary: The News Hub shelves
+      tags:
+      - News Hub
+      description: 'The News page''s Shelves tab in one request: one shelf per News
+        Category in the member''s default view (every News Category except the ones
+        they switched off with a News Category Preference), in News Category order.
+        Each shelf holds that News Category''s newest `per` News Items, newest first
+        (`posted_at` descending, as the feed orders them), serialized as the feed
+        serializes them, and `today_count`: how many of its News Items were posted
+        since the start of the current UTC day, whatever `per` is. A News Category
+        with no News Items still has its shelf, empty. The switched-off News Categories
+        are listed in `meta.hidden_categories`. Imported News Items staff have not
+        sorted are never shown. An image whose Discord address has expired comes back
+        unavailable and queues its renewal exactly as the feed does (none for the
+        service token''s own reads). Belongs to the News Hub Feature: a member who
+        cannot use it (Preview: Admins and Superadmins only; Off: nobody) gets 404
+        `not_found`. The service token is not gated; the bot runs its own feature
+        gate.'
+      parameters:
+      - name: per
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 10
+          maximum: 20
+        description: News Items per shelf. Missing, zero or not a number means 10;
+          above 20 means 20.
+      responses:
+        '200':
+          description: the shelves
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsShelf"
+                  meta:
+                    "$ref": "#/components/schemas/NewsShelvesMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/news_items/uncopied":
     get:
       summary: News Items without a News Copy
@@ -28094,6 +29402,134 @@ paths:
                   required:
                   - acting_user_id
                   - category_key
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/news_mark":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's News Mark
+      tags:
+      - News Hub
+      description: 'The News Mark: the moment up to which the member has seen the
+        News Hub''s News Items. The News page counts News Items listed after it as
+        new. `news_mark` is null until the website first sets it. Only the member
+        themself may read it; another member, staff and the bot''s service token get
+        403. Belongs to the News Hub Feature: a member who cannot use it (Preview:
+        Admins and Superadmins only; Off: nobody) gets 404 `not_found`.'
+      responses:
+        '200':
+          description: News Mark
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsMark"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Move a member's News Mark forward
+      tags:
+      - News Hub
+      description: 'Moves the News Mark forward, either to an instant (`news_mark`,
+        the newest News Item the page showed: its greatest `listed_at`) or to now
+        (`all_seen: true`, Mark all seen). Give exactly one. The News Mark never moves
+        backwards: an instant before the stored mark keeps the stored one and still
+        returns 200 with it. An instant past now is clamped to now. Returns the stored
+        News Mark. Only the member themself may set it. Belongs to the News Hub Feature:
+        a member who cannot use it (Preview: Admins and Superadmins only; Off: nobody)
+        gets 404 `not_found`.'
+      parameters: []
+      responses:
+        '200':
+          description: the stored News Mark
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsMark"
+                required:
+                - data
+        '422':
+          description: neither or both of `news_mark` and `all_seen`, a `news_mark`
+            that is not an ISO 8601 instant with an offset, or an `all_seen` that
+            is not true
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    news_mark:
+                      type: string
+                      format: date-time
+                      example: '2026-11-24T21:40:00.000Z'
+                      description: ISO 8601 instant, with `Z` or an offset, to move
+                        the News Mark forward to.
+                    all_seen:
+                      type: boolean
+                      enum:
+                      - true
+                      description: 'Mark all seen: move the News Mark to now.'
               required:
               - data
         required: true
@@ -36954,940 +38390,6 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '409':
           description: import is not active (`import_not_active`)
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/suggestions/review_sessions":
-    get:
-      summary: List suggestion review sessions
-      tags:
-      - Suggestion Review Sessions
-      description: Lists review sessions, newest first. Pass `reviewer_id` to scope
-        the list to a single reviewer. `suggestion_ids` is returned verbatim as the
-        stored JSON string.
-      parameters:
-      - name: reviewer_id
-        in: query
-        schema:
-          type: string
-        required: false
-        description: Filter to one reviewer (Discord user id).
-      - name: page
-        in: query
-        schema:
-          type: integer
-          default: 1
-          minimum: 1
-        required: false
-      - name: per
-        in: query
-        schema:
-          type: integer
-          default: 50
-          maximum: 500
-        required: false
-      - name: limit
-        in: query
-        schema:
-          type: integer
-          maximum: 500
-        required: false
-        description: Deprecated alias for `per` (transitional, for the unaudited Discord
-          bot).
-      - name: offset
-        in: query
-        schema:
-          type: integer
-          minimum: 0
-        required: false
-        description: Deprecated; converted to a page number (transitional, for the
-          unaudited Discord bot).
-      responses:
-        '200':
-          description: review sessions list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      "$ref": "#/components/schemas/SuggestionReviewSession"
-                  meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-    post:
-      summary: Create a review session
-      tags:
-      - Suggestion Review Sessions
-      description: Admin/service-only. Creates a review session. The body carries
-        `session_id`, `reviewer_id`, `suggestion_ids` (a JSON string of suggestion
-        ids), `current_index`, and `total_count`.
-      parameters: []
-      responses:
-        '201':
-          description: review session created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/SuggestionReviewSession"
-        '403':
-          description: forbidden — caller is not an admin or service
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '422':
-          description: validation failed
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '400':
-          description: missing `data` parameter
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    session_id:
-                      type: string
-                      description: Client-supplied session id (primary key). Required
-                        on create.
-                    reviewer_id:
-                      type: string
-                      description: Reviewer (Discord user id). Required on create.
-                    suggestion_ids:
-                      type: string
-                      description: JSON-encoded array of suggestion ids under review,
-                        stored and returned verbatim. Required on create.
-                    current_index:
-                      type: integer
-                      description: Reviewer progress index. Optional; defaults to
-                        0.
-                    total_count:
-                      type: integer
-                      description: Total suggestions in the session. Optional; defaults
-                        to 0.
-                  required:
-                  - session_id
-                  - reviewer_id
-                  - suggestion_ids
-              required:
-              - data
-        required: true
-    delete:
-      summary: Delete all review sessions for a reviewer
-      tags:
-      - Suggestion Review Sessions
-      description: Admin/service-only. Deletes every review session belonging to a
-        reviewer. `reviewer_id` is required.
-      parameters:
-      - name: reviewer_id
-        in: query
-        schema:
-          type: string
-        required: true
-        description: The reviewer (Discord user id) whose sessions are removed.
-      responses:
-        '200':
-          description: deleted
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/DeletedCountResponse"
-        '403':
-          description: forbidden — caller is not an admin or service
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '400':
-          description: missing `reviewer_id`
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/suggestions/review_sessions/expired":
-    delete:
-      summary: Prune expired review sessions
-      tags:
-      - Suggestion Review Sessions
-      description: Service-only maintenance route. Deletes sessions created before
-        the cutoff. The cutoff is the optional `before` (ISO-8601) param; when absent
-        it defaults to the bot's 15-minute TTL.
-      parameters:
-      - name: before
-        in: query
-        schema:
-          type: string
-          format: date-time
-        required: false
-        description: ISO-8601 cutoff; sessions created before this are deleted. Defaults
-          to 15 minutes ago.
-      responses:
-        '200':
-          description: pruned
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/DeletedCountResponse"
-        '403':
-          description: forbidden — caller is not the service principal
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/suggestions/review_sessions/{id}":
-    parameters:
-    - name: id
-      in: path
-      schema:
-        type: string
-      required: true
-      description: RpgClubSuggestionReviewSession session_id.
-    get:
-      summary: Show a review session
-      tags:
-      - Suggestion Review Sessions
-      responses:
-        '200':
-          description: review session detail
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/SuggestionReviewSession"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-    patch:
-      summary: Update a review session
-      tags:
-      - Suggestion Review Sessions
-      description: Admin/service-only. Updates a review session — e.g. advances `current_index`
-        or rewrites `suggestion_ids` as the reviewer works through the queue.
-      parameters: []
-      responses:
-        '200':
-          description: updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/SuggestionReviewSession"
-        '403':
-          description: forbidden — caller is not an admin or service
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '422':
-          description: validation failed
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    session_id:
-                      type: string
-                      description: Client-supplied session id (primary key). Required
-                        on create.
-                    reviewer_id:
-                      type: string
-                      description: Reviewer (Discord user id). Required on create.
-                    suggestion_ids:
-                      type: string
-                      description: JSON-encoded array of suggestion ids under review,
-                        stored and returned verbatim. Required on create.
-                    current_index:
-                      type: integer
-                      description: Reviewer progress index. Optional; defaults to
-                        0.
-                    total_count:
-                      type: integer
-                      description: Total suggestions in the session. Optional; defaults
-                        to 0.
-              required:
-              - data
-        required: true
-    put:
-      summary: Replace a review session (alias)
-      tags:
-      - Suggestion Review Sessions
-      description: Admin/service-only. Alias for PATCH (applied as a partial assign).
-      parameters: []
-      responses:
-        '200':
-          description: updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/SuggestionReviewSession"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    session_id:
-                      type: string
-                      description: Client-supplied session id (primary key). Required
-                        on create.
-                    reviewer_id:
-                      type: string
-                      description: Reviewer (Discord user id). Required on create.
-                    suggestion_ids:
-                      type: string
-                      description: JSON-encoded array of suggestion ids under review,
-                        stored and returned verbatim. Required on create.
-                    current_index:
-                      type: integer
-                      description: Reviewer progress index. Optional; defaults to
-                        0.
-                    total_count:
-                      type: integer
-                      description: Total suggestions in the session. Optional; defaults
-                        to 0.
-        required: true
-    delete:
-      summary: Delete a review session
-      tags:
-      - Suggestion Review Sessions
-      description: Admin/service-only. Removes a single review session by `session_id`.
-      responses:
-        '200':
-          description: deleted
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/DeletedResponse"
-        '403':
-          description: forbidden — caller is not an admin or service
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/suggestions":
-    get:
-      summary: List suggestions
-      tags:
-      - Suggestions
-      description: Open to any authenticated caller. By default (`sort=board`) most
-        upvoted first, then newest; `sort=recent` lists the latest activity first
-        (`last_activity_at`, then newest suggestion_id), for the Suggestion Board
-        Dashboard Panel. Each row carries `upvote_count`, `viewer_upvoted` (always
-        false for the service) and `last_activity_at`.
-      parameters:
-      - name: status
-        in: query
-        schema:
-          type: string
-        required: false
-        description: Comma-separated statuses to include (pending, approved, rejected,
-          withdrawn). Absent = every status. The Suggestion Board default is `pending,approved`.
-      - name: sort
-        in: query
-        schema:
-          type: string
-          enum:
-          - board
-          - recent
-          default: board
-        required: false
-        description: "`board`: most upvoted, then newest. `recent`: latest activity
-          first."
-      - name: page
-        in: query
-        schema:
-          type: integer
-          default: 1
-          minimum: 1
-        required: false
-      - name: per
-        in: query
-        schema:
-          type: integer
-          default: 50
-          maximum: 500
-        required: false
-      - name: limit
-        in: query
-        schema:
-          type: integer
-          maximum: 500
-        required: false
-        description: Deprecated alias for `per` (transitional, for the unaudited Discord
-          bot).
-      - name: offset
-        in: query
-        schema:
-          type: integer
-          minimum: 0
-        required: false
-        description: Deprecated; converted to a page number (transitional, for the
-          unaudited Discord bot).
-      responses:
-        '200':
-          description: suggestions list
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      "$ref": "#/components/schemas/Suggestion"
-                  meta:
-                    "$ref": "#/components/schemas/PaginationMeta"
-        '400':
-          description: unknown status
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '422':
-          description: unknown sort (`invalid_sort`)
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-    post:
-      summary: Create a suggestion
-      tags:
-      - Suggestions
-      description: 'Members role holders, Moderator and above, or the service. `title`
-        is required; everything else is optional. Always created Pending. A member
-        is recorded as the author (body `created_by` and `created_by_name` are ignored)
-        and their submission enqueues a `suggestion_submitted` bot job (payload `{
-        suggestion_id, created_by, feature_key: "suggestions" }`) so the bot pings
-        the bot dev. A service create enqueues nothing: the bot pings inline for its
-        own submissions.'
-      parameters: []
-      responses:
-        '201':
-          description: suggestion created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/Suggestion"
-        '422':
-          description: validation failed
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: 'forbidden: caller lacks the Members role and is not staff'
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '400':
-          description: missing data envelope
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    title:
-                      type: string
-                      description: Suggestion title. Required on create.
-                    details:
-                      type: string
-                      nullable: true
-                      description: Optional longer description.
-                    labels:
-                      type: string
-                      nullable: true
-                      description: Optional labels (free-form string).
-                    created_by:
-                      type: string
-                      nullable: true
-                      description: Discord user id of the author. Service only; a
-                        member is always the author.
-                    created_by_name:
-                      type: string
-                      nullable: true
-                      description: Author's display name. Service only; a member's
-                        comes from their record.
-                  required:
-                  - title
-              required:
-              - data
-        required: true
-  "/api/v1/suggestions/{id}":
-    parameters:
-    - name: id
-      in: path
-      schema:
-        type: string
-      required: true
-      description: RpgClubSuggestion id.
-    get:
-      summary: Show a suggestion
-      tags:
-      - Suggestions
-      responses:
-        '200':
-          description: suggestion detail
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/Suggestion"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/suggestions/{id}/approve":
-    parameters:
-    - name: id
-      in: path
-      schema:
-        type: string
-      required: true
-      description: RpgClubSuggestion id.
-    post:
-      summary: Approve a suggestion into a GitHub issue
-      tags:
-      - Suggestions
-      description: 'Superadmin or the service, while Pending. Opens a GitHub issue
-        in `target_repo` (title = the Suggestion title, body = "<author name>: <details>"
-        plus a hidden Suggestion marker, labels = the comma-separated `labels`) through
-        the GitHub App, stores its number and URL, and sets status approved. An issue
-        that already carries the marker (an earlier attempt whose response was lost)
-        is reused instead of opening a duplicate. Enqueues a `suggestion_outcome`
-        bot job (payload `{ suggestion_id, outcome, created_by, title, github_issue_number,
-        github_issue_url, rejection_reason }`), the bot''s own reviews included; `meta.outcome_job_id`
-        is that job, for polling `GET /api/v1/bot_jobs/{id}`.'
-      parameters: []
-      responses:
-        '200':
-          description: approved
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/Suggestion"
-                  meta:
-                    "$ref": "#/components/schemas/SuggestionReviewMeta"
-        '422':
-          description: target_repo missing or not in the allowlist
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '502':
-          description: GitHub refused or failed (error github_issue_failed); nothing
-            changed
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '503':
-          description: GitHub App not configured (error github_not_configured)
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '409':
-          description: not pending, or `approval_in_progress` while another approval
-            is calling GitHub
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: 'forbidden: caller is not a Superadmin or the service'
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '400':
-          description: missing data envelope
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    target_repo:
-                      type: string
-                      enum:
-                      - TheRPGClub/TheRPGClub-bot
-                      - TheRPGClub/TheRPGClub-api
-                      - TheRPGClub/TheRPGClub-www
-                    reviewed_by:
-                      type: string
-                      description: 'Service only: the Discord id of the reviewer.
-                        A signed-in Superadmin is always the reviewer.'
-                  required:
-                  - target_repo
-              required:
-              - data
-        required: true
-  "/api/v1/suggestions/{id}/reject":
-    parameters:
-    - name: id
-      in: path
-      schema:
-        type: string
-      required: true
-      description: RpgClubSuggestion id.
-    post:
-      summary: Reject a suggestion
-      tags:
-      - Suggestions
-      description: Superadmin or the service, while Pending. Sets status rejected
-        with the (trimmed) reason. Enqueues a `suggestion_outcome` bot job (payload
-        `{ suggestion_id, outcome, created_by, title, github_issue_number, github_issue_url,
-        rejection_reason }`), the bot's own reviews included; `meta.outcome_job_id`
-        is that job, for polling `GET /api/v1/bot_jobs/{id}`.
-      parameters: []
-      responses:
-        '200':
-          description: rejected
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/Suggestion"
-                  meta:
-                    "$ref": "#/components/schemas/SuggestionReviewMeta"
-        '422':
-          description: blank or too long rejection_reason
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '409':
-          description: not pending
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: 'forbidden: caller is not a Superadmin or the service'
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '400':
-          description: missing data envelope
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                data:
-                  type: object
-                  properties:
-                    rejection_reason:
-                      type: string
-                      maxLength: 2000
-                    reviewed_by:
-                      type: string
-                      description: 'Service only: the Discord id of the reviewer.
-                        A signed-in Superadmin is always the reviewer.'
-                  required:
-                  - rejection_reason
-              required:
-              - data
-        required: true
-  "/api/v1/suggestions/{id}/withdraw":
-    parameters:
-    - name: id
-      in: path
-      schema:
-        type: string
-      required: true
-      description: RpgClubSuggestion id.
-    post:
-      summary: Withdraw a suggestion
-      tags:
-      - Suggestions
-      description: The author only, while Pending. Staff and the service are refused.
-      responses:
-        '200':
-          description: withdrawn
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/Suggestion"
-        '409':
-          description: not pending
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: 'forbidden: caller is not the author'
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-  "/api/v1/suggestions/{id}/upvote":
-    parameters:
-    - name: id
-      in: path
-      schema:
-        type: string
-      required: true
-      description: RpgClubSuggestion id.
-    post:
-      summary: Upvote a suggestion
-      tags:
-      - Suggestions
-      description: Members role holders or staff, signed in (the service is refused).
-        One upvote per member; repeating it is a no-op. Only Pending and Approved
-        suggestions take upvotes.
-      responses:
-        '200':
-          description: upvoted; returns the updated suggestion
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/Suggestion"
-        '409':
-          description: rejected or withdrawn
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: 'forbidden: not a Members role holder or staff, or the service'
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-    delete:
-      summary: Remove an upvote
-      tags:
-      - Suggestions
-      description: Members role holders or staff, signed in (the service is refused).
-        Removes the caller's upvote if any (a no-op otherwise), whatever the status.
-      responses:
-        '200':
-          description: removed; returns the updated suggestion
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    "$ref": "#/components/schemas/Suggestion"
-        '404':
-          description: not found
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '403':
-          description: 'forbidden: not a Members role holder or staff, or the service'
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/Error"
-        '401':
-          description: unauthenticated
           content:
             application/json:
               schema:

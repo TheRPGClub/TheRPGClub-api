@@ -179,7 +179,7 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
   end
 
   describe "staff pages" do
-    let(:staff_pages) { %w[staff_desk voting_console synonyms live_events public_reminders suggestion_review] }
+    let(:staff_pages) { %w[staff_desk voting_console synonyms live_events public_reminders feedback_review] }
 
     def staff_pinned_for(user, **token)
       headers = auth_headers_for(user, **token)

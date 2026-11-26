@@ -185,13 +185,29 @@ _Avoid_: Other, side game, non-mainline
 
 ## Community
 
-**Suggestion**:
-A member's proposal for the club's bot or website. Pending until staff approve it (it becomes a GitHub issue) or reject it with a reason, or until its author withdraws it.
-_Avoid_: Request, idea, ticket
+**Feedback**:
+Something a member tells the club about its bot or website. Each piece of Feedback is exactly one kind: a Feature Request, a Suggestion or a Bug Report. Staff can change the kind on review. Pending until staff approve it (it becomes a GitHub issue), reject it with a reason, or mark it a Duplicate, or until its author withdraws it. Approved Feedback is Done once its GitHub issue is closed.
+_Avoid_: Ticket, report (when meaning any kind), request (when meaning any kind)
 
-**Suggestion Board**:
-The members-only list of Suggestions, ranked by member upvotes.
-_Avoid_: Roadmap, feedback board
+**Feature Request**:
+Feedback asking for something the bot or website does not do yet.
+_Avoid_: New feature, idea
+
+**Suggestion**:
+Feedback asking to change something the bot or website already does.
+_Avoid_: Improvement, idea, request
+
+**Bug Report**:
+Feedback saying something in the bot or website is broken: it does not do what it is meant to.
+_Avoid_: Issue (that is GitHub's), bug ticket
+
+**Duplicate**:
+Feedback that staff close because it says the same thing as earlier Feedback, the original. Its upvotes move to the original, each member counted once.
+_Avoid_: Merge, dupe
+
+**Feedback Board**:
+The members-only list of Feedback, ranked by member upvotes. On a Bug Report an upvote reads "I hit this too".
+_Avoid_: Suggestion Board, roadmap
 
 ## Members
 
@@ -288,6 +304,10 @@ _Avoid_: Repost, mirror, crosspost
 **News Category Preference**:
 A member's choice to leave a News Category out of their own default view of the News Hub. It affects only the website, and never stops the member from viewing that category when they ask for it.
 _Avoid_: Mute, unfollow, filter (when meaning the saved choice)
+
+**News Mark**:
+The moment up to which a member has seen the News Hub's News Items: those listed after it (given a News Category, so members could first see them; not when they were posted, so one recorded late is still new) are new to them. It is per member, on the website only, and set by the website when the member leaves the News page or chooses Mark all seen; it only moves forward. It is never per-item read state.
+_Avoid_: Unread, read state, last visit
 
 **News Import**:
 The one-time move of the messages posted in the News Channel before the News Hub launched into the News Hub as News Items, each keeping its original author and date. An imported News Item stays hidden until staff assign its News Category.

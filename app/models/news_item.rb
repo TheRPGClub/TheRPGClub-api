@@ -45,6 +45,14 @@ class NewsItem < ApplicationRecord
   validate :images_are_addresses_with_expiry
   validate :has_link_or_image
 
+  # `listed_at` is when the News Item first had a News Category, so members
+  # could first see it: on recording for a live item. An imported item never
+  # counts as new, so when staff first sort it (here through
+  # change_category!, or NewsImport::Assign, which sets it itself) it takes
+  # its posting time. It never changes after that. The News Mark counts News
+  # Items listed after it as new.
+  before_save { self.listed_at ||= imported? ? posted_at : Time.current if category_key.present? }
+
   # Any change to a News Item may change what the feed shows: an open News
   # page polls the stamp (NewsItem::FeedStamp). remove! bumps it itself.
   after_commit { FeedStamp.bump! }
@@ -61,6 +69,26 @@ class NewsItem < ApplicationRecord
   # yet: the bot's history copy and retries work through `uncopied`.
   scope :copied, -> { where.not(news_copy_message_id: nil) }
   scope :uncopied, -> { listed.where(news_copy_message_id: nil) }
+
+  # The newest `per` News Items of each of the News Categories `keys`, as
+  # { key => [items newest first] } with every key present (ticket api#497,
+  # the Shelves tab). One query: a window function ranks each category's
+  # items in the feed's order (posted_at, then id, descending).
+  def self.newest_by_category(keys, per:)
+    ranked = listed.where(category_key: keys)
+      .select("news_items.*, ROW_NUMBER() OVER (PARTITION BY category_key ORDER BY posted_at DESC, id DESC) " \
+              "AS shelf_rank")
+    items = from(ranked, :news_items).where(shelf_rank: ..per).order(posted_at: :desc, id: :desc).to_a
+    grouped = items.group_by(&:category_key)
+    keys.index_with { |key| grouped.fetch(key, []) }
+  end
+
+  # How many News Items each of the News Categories `keys` holds posted since
+  # the start of `now`'s UTC day, as { key => count } with every key present.
+  def self.posted_today_by_category(keys, now: Time.current)
+    counts = listed.where(category_key: keys, posted_at: now.utc.beginning_of_day..).group(:category_key).count
+    keys.index_with { |key| counts.fetch(key, 0) }
+  end
 
   # Records the message `message_id` from the bot's payload, creating the
   # News Item or updating the one already recorded. Returns [item, created].

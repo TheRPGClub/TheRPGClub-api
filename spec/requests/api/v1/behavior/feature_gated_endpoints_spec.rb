@@ -20,7 +20,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "achievement_hub" => ->(_user) { "/api/v1/achievements/feed" },
     "giveaways" => ->(user) { "/api/v1/users/#{user.user_id}/giveaway_settings" },
     "journals" => ->(user) { "/api/v1/users/#{user.user_id}/journal" },
-    "suggestions" => ->(_user) { "/api/v1/suggestions" },
+    "feedback" => ->(_user) { "/api/v1/feedback" },
     "news_hub" => ->(_user) { "/api/v1/news_items" },
     "challenges" => ->(_user) { "/api/v1/challenges" },
     "release_calendar" => ->(_user) { "/api/v1/upcoming_releases" },
@@ -262,9 +262,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     # Journals
     "api/v1/journal" => "journals",
     "api/v1/journal_message_contexts" => "journals",
-    # Suggestions
-    "api/v1/suggestions" => "suggestions",
-    "api/v1/suggestion_review_sessions" => "suggestions",
+    # Feedback
+    "api/v1/feedback" => "feedback",
+    "api/v1/feedback_screenshots" => "feedback",
     # News Hub
     "api/v1/news_items" => "news_hub",
     "api/v1/challenges" => "challenges",
@@ -276,6 +276,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/news_categories" => "news_hub",
     "api/v1/news_import" => "news_hub",
     "api/v1/news_category_preferences" => "news_hub",
+    "api/v1/news_marks" => "news_hub",
     # Release Calendar
     "api/v1/upcoming_releases" => "release_calendar",
     "api/v1/hidden_platforms" => "release_calendar",

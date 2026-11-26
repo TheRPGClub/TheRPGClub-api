@@ -62,8 +62,8 @@ RSpec.describe FeatureFlag do
     self.use_transactional_tests = false
 
     after do
-      FeatureFlagChange.where(feature_key: "suggestions").delete_all
-      described_class.where(key: "suggestions").delete_all
+      FeatureFlagChange.where(feature_key: "feedback").delete_all
+      described_class.where(key: "feedback").delete_all
     end
 
     it "stores one row and logs each real change" do
@@ -74,7 +74,7 @@ RSpec.describe FeatureFlag do
           ActiveRecord::Base.connection_pool.with_connection do
             ready << true
             go.pop
-            described_class.change!("suggestions", state, by: "1")
+            described_class.change!("feedback", state, by: "1")
           end
         end
       end
@@ -82,10 +82,10 @@ RSpec.describe FeatureFlag do
       4.times { go << true }
 
       expect { threads.each(&:join) }.not_to raise_error
-      expect(described_class.where(key: "suggestions").count).to eq(1)
-      expect(FeatureFlagChange.where(feature_key: "suggestions").order(:id).pluck(:to_state).last)
-        .to eq(Features.state("suggestions"))
-      expect(FeatureFlagChange.where(feature_key: "suggestions", from_state: nil).count).to eq(1)
+      expect(described_class.where(key: "feedback").count).to eq(1)
+      expect(FeatureFlagChange.where(feature_key: "feedback").order(:id).pluck(:to_state).last)
+        .to eq(Features.state("feedback"))
+      expect(FeatureFlagChange.where(feature_key: "feedback", from_state: nil).count).to eq(1)
     end
   end
 
@@ -100,7 +100,7 @@ RSpec.describe FeatureFlag do
   end
 
   it "reads a registered Feature with no stored state as Preview" do
-    expect(Features.state("suggestions")).to eq("preview")
+    expect(Features.state("feedback")).to eq("preview")
     expect(Features.states.values.uniq).to eq([ "preview" ])
   end
 end

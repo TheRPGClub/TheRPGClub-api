@@ -58,6 +58,7 @@ RSpec.describe "api/v1/news_items behavior", type: :request do
         "origin" => "live",
         "comment" => "Finally!",
         "posted_at" => "2026-11-09T18:30:00.000Z",
+        "listed_at" => NewsItem.find_by!(message_id: "3300000000000000003").listed_at.utc.iso8601(6),
         "edited_at" => nil,
         "link" => {
           "url" => "https://example.test/news/elden-ring-2",

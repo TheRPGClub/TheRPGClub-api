@@ -21,7 +21,7 @@ RSpec.describe Features do
     expect(described_class.all.select(&:core?).map(&:key))
       .to eq(%w[game_index voting_gotm backlog collection now_playing game_completions goty_vote])
     expect(described_class.all.select(&:hideable?).map(&:key))
-      .to eq(%w[reviews achievement_hub giveaways journals suggestions news_hub challenges release_calendar club_codex
+      .to eq(%w[reviews achievement_hub giveaways journals feedback news_hub challenges release_calendar club_codex
                      game_lists franchise_progress roadmap])
   end
 

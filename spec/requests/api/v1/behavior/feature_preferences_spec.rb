@@ -35,8 +35,8 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
             "website" => [ "Giveaways", "Donate", "Your claimed keys" ] },
           { "key" => "journals", "name" => "Journals", "state" => "live", "preview" => false, "hidden" => false,
             "website" => [ "Game Journals", "Game page Journals", "Profile Game Journal" ] },
-          { "key" => "suggestions", "name" => "Suggestions", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Suggestion Board" ] },
+          { "key" => "feedback", "name" => "Feedback", "state" => "live", "preview" => false,
+            "hidden" => false, "website" => [ "Feedback Board" ] },
           { "key" => "news_hub", "name" => "News Hub", "state" => "live", "preview" => false,
             "hidden" => false, "website" => [ "News" ] },
           { "key" => "challenges", "name" => "Challenges", "state" => "live", "preview" => false,
@@ -68,7 +68,7 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
         [ "reviews", "live", false ],
         [ "achievement_hub", "live", false ],
         [ "journals", "preview", true ],
-        [ "suggestions", "live", false ],
+        [ "feedback", "live", false ],
         [ "news_hub", "live", false ],
         [ "challenges", "live", false ],
         [ "release_calendar", "live", false ],
@@ -82,7 +82,7 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
     it "lists a member no Features when no hideable Feature is Live" do
       set_all_feature_flags("live")
       %w[reviews achievement_hub giveaways].each { |key| set_feature_flag(key, "off") }
-      %w[journals suggestions news_hub challenges release_calendar club_codex game_lists franchise_progress roadmap].each do |key|
+      %w[journals feedback news_hub challenges release_calendar club_codex game_lists franchise_progress roadmap].each do |key|
         set_feature_flag(key, "preview")
       end
 
@@ -149,9 +149,9 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
     it "changes only the Features named, leaving the others as they were" do
       patch_preferences(member, { hidden: { giveaways: true } })
 
-      patch_preferences(member, { hidden: { suggestions: true } })
+      patch_preferences(member, { hidden: { feedback: true } })
 
-      expect(preferences_for(member)["hidden"]).to eq([ "giveaways", "suggestions" ])
+      expect(preferences_for(member)["hidden"]).to eq([ "giveaways", "feedback" ])
     end
 
     it "treats hiding an already hidden Feature as a no-op" do

@@ -256,7 +256,7 @@ RSpec.describe "api/v1/dashboard_panels behavior", type: :request do
       expect(catalogue.pluck("key")).to eq(%w[
         news now_playing_club releases achievements_club challenges_club now_playing_mine achievements_mine
         challenge_runs_mine completions_club completions_mine backlog_pick reviews journals giveaways
-        suggestions codex birthdays
+        feedback codex birthdays
       ])
       expect(catalogue.first).to eq("key" => "news", "scope" => "club", "new" => false)
       expect(catalogue.find { |panel| panel["key"] == "backlog_pick" }["scope"]).to eq("mine")

@@ -80,10 +80,12 @@ module Features
     define("journals", "Journals", core: false,
       website: [ "Game Journals", "Game page Journals", "Profile Game Journal" ],
       bot: [ "/game-journal" ]),
-    define("suggestions", "Suggestions", core: false,
-      website: [ "Suggestion Board" ],
-      bot: [ "/suggestion" ],
-      posts: [ "Suggestion posts" ]),
+    # Was `suggestions` until the Feedback Board (spec api#498); its stored
+    # state moved with the key.
+    define("feedback", "Feedback", core: false,
+      website: [ "Feedback Board" ],
+      bot: [ "/feedback" ],
+      posts: [ "Feedback posts" ]),
     # Spec #355. Registered after Feature Flags shipped, so it has no stored
     # state and starts in Preview. The News Channel's commands (spec #367,
     # ticket #369) share it.

@@ -6,7 +6,8 @@ module NewsImport
   # Category, which makes the item visible to members, and records the
   # acting staff member and the time on each item whose News Category this
   # changed (`category_changed_by`, `category_changed_at`; a row repeating
-  # the stored category changes nothing); `skip` deletes the item and
+  # the stored category changes nothing), and `listed_at` on its first
+  # sorting, to its posting time, so an imported item never counts as new; `skip` deletes the item and
   # remembers the removal (NewsImportRemoval). Values ignore case and
   # surrounding spaces. Assigning again changes the News Category, and
   # `skip` for an item already removed counts as removed again, so the same
@@ -98,7 +99,8 @@ module NewsImport
       NewsItem.transaction do
         assigned.group_by(&:last).transform_values { |rows| rows.map(&:first) }.each do |key, ids|
           NewsItem.imported.where(message_id: ids).where("category_key IS DISTINCT FROM ?", key)
-            .update_all(category_key: key, category_changed_by: @by, category_changed_at: now, updated_at: now)
+            .update_all([ "category_key = :key, category_changed_by = :by, category_changed_at = :now, " \
+                          "updated_at = :now, listed_at = COALESCE(listed_at, posted_at)", { key: key, by: @by, now: now } ])
         end
         fresh = removals - removed_ids.to_a
         if fresh.any?
