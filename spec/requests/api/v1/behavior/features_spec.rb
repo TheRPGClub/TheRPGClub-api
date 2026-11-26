@@ -79,7 +79,7 @@ RSpec.describe "staff flag control", type: :request do
         [ admin, superadmin ].each do |user|
           get "/api/v1/features", params: { acting_user_id: user.user_id }, headers: service_headers
           expect(response).to have_http_status(:ok)
-          expect(json.fetch("data").size).to eq(19)
+          expect(json.fetch("data").size).to eq(20)
         end
       end
 
