@@ -18,8 +18,8 @@ module RoadmapRendering
   def render_roadmap
     render json: {
       data: {
-        milestones: RoadmapMilestoneResource.new(RoadmapMilestone.open.includes(:items)).serializable_hash,
-        reached: RoadmapMilestoneResource.new(RoadmapMilestone.reached.includes(:items)).serializable_hash
+        milestones: RoadmapMilestoneResource.new(RoadmapMilestone.open.includes(items: :feedback)).serializable_hash,
+        reached: RoadmapMilestoneResource.new(RoadmapMilestone.reached.includes(items: :feedback)).serializable_hash
       }
     }
   end

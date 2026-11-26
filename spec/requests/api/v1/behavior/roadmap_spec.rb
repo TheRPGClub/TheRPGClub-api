@@ -35,9 +35,10 @@ RSpec.describe "api/v1/roadmap behavior", type: :request do
     expect(data["milestones"].first["items"]).to eq([
       { "id" => first.id, "milestone_id" => launch.id, "title" => "Feedback Board", "blurb" => first.blurb,
         "area" => "both", "github_issue_url" => "https://github.com/TheRPGClub/TheRPGClub-api/issues/498",
-        "position" => 1, "shipped_at" => "2026-11-20T00:00:00.000Z" },
+        "position" => 1, "shipped_at" => "2026-11-20T00:00:00.000Z", "feedback" => [] },
       { "id" => second.id, "milestone_id" => launch.id, "title" => "Roadmap page", "blurb" => second.blurb,
-        "area" => "website", "github_issue_url" => nil, "position" => 2, "shipped_at" => nil }
+        "area" => "website", "github_issue_url" => nil, "position" => 2, "shipped_at" => nil,
+        "feedback" => [] }
     ])
     expect(data["milestones"].last).to include("id" => future.id, "target_date" => nil, "date_precision" => "tba",
       "items" => [])

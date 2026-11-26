@@ -10,19 +10,53 @@ module Roadmap
 
     module_function
 
-    # A new item, last in its open Milestone.
+    # A new item, last in its open Milestone, linked to `feedback_ids` when
+    # given.
     def create!(attributes)
       Roadmap.write do
         milestone = open_milestone!(attributes["milestone_id"])
         position = (milestone.items.maximum(:position) || 0) + 1
-        RoadmapItem.create!(attributes.slice(*FIELDS).merge("milestone" => milestone, "position" => position))
+        item = RoadmapItem.create!(attributes.slice(*FIELDS).merge("milestone" => milestone, "position" => position))
+        link_feedback!(item, attributes["feedback_ids"]) if attributes.key?("feedback_ids")
+        item
       end
     end
 
+    # Its fields, and its linked Feedback when `feedback_ids` is sent.
     def update!(item, attributes)
-      item.update!(attributes.slice(*FIELDS))
+      Roadmap.write do
+        item.update!(attributes.slice(*FIELDS))
+        link_feedback!(item, attributes["feedback_ids"]) if attributes.key?("feedback_ids")
+      end
       item
     end
+
+    # Sets the item's linked Feedback to exactly `ids` (ticket api#508). A
+    # Feedback linked to another item moves here, as a Feedback sits on at
+    # most one. Sends no notices. Call inside Roadmap.write.
+    def link_feedback!(item, ids)
+      ids = feedback_ids!(ids)
+      found = RpgClubFeedback.where(feedback_id: ids).pluck(:feedback_id)
+      unless found.size == ids.size
+        raise Refused.new("feedback_not_found", "Some of that Feedback doesn't exist: #{(ids - found).join(', ')}.")
+      end
+
+      item.feedback_links.where.not(feedback_id: ids).delete_all
+      unless ids.empty?
+        RoadmapItemFeedback.upsert_all(ids.map { |id| { item_id: item.id, feedback_id: id } },
+          unique_by: :ux_roadmap_item_feedback_feedback, update_only: %i[item_id])
+      end
+      item.feedback_links.reset
+      item.feedback.reset
+    end
+
+    def feedback_ids!(ids)
+      list = ids.is_a?(Array) ? ids.map { |id| id.is_a?(Integer) ? id : Integer(id.to_s, 10, exception: false) } : nil
+      return list.uniq if list&.none?(&:nil?)
+
+      raise Refused.new("invalid_feedback_ids", "feedback_ids must be a list of Feedback ids.")
+    end
+    private_class_method :feedback_ids!
 
     def destroy!(item)
       Roadmap.write { item.destroy! }

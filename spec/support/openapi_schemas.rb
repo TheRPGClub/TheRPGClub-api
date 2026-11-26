@@ -341,7 +341,22 @@ module OpenapiSchemas
           description: "Whether it touches the bot, the website or both; null when not said."),
         github_issue_url: str(nullable: true, description: "A GitHub issue it is tracked by, if any."),
         position: int,
-        shipped_at: ts(nullable: true).merge(description: "When staff marked it Shipped; null until then.")
+        shipped_at: ts(nullable: true).merge(description: "When staff marked it Shipped; null until then."),
+        feedback: array_of("RoadmapItemFeedback").merge(description: "Its linked Feedback, oldest first.")
+      ),
+      # A Feedback linked to a Roadmap Item (ticket api#508).
+      RoadmapItemFeedback: obj(
+        id: int.merge(description: "The Feedback's feedback_id."),
+        title: str,
+        kind: str(enum: RpgClubFeedback::KINDS),
+        status: str(enum: RpgClubFeedback::STATUSES),
+        done: bool.merge(description: "Approved and its GitHub issue was last seen closed.")
+      ),
+      # A Feedback's Roadmap badge (ticket api#508).
+      FeedbackRoadmapBadge: obj(
+        item_id: int.merge(description: "The Roadmap Item it is linked to."),
+        milestone_name: str(description: "The item's current Milestone."),
+        shipped: bool.merge(description: "The item is Shipped: the badge reads \"Shipped\" instead.")
       ),
       # A Milestone with its Roadmap Items (RoadmapMilestoneResource, spec api#505).
       RoadmapMilestone: obj(
@@ -365,7 +380,7 @@ module OpenapiSchemas
       # A Roadmap edit the rules refuse (Roadmap::Refused, ticket api#507).
       RoadmapRefusal: obj(
         error: str(enum: %w[milestone_has_items invalid_order milestone_not_found milestone_reached invalid_position
-          invalid_destination no_destination already_reached not_reached]),
+          invalid_destination no_destination already_reached not_reached feedback_not_found invalid_feedback_ids]),
         message: str(description: "Written for staff, as the website shows it."),
         _required: %w[error message]
       ),
@@ -940,6 +955,11 @@ module OpenapiSchemas
         last_activity_at: ts.merge(
           description: "The latest activity: the newest of its last change (submitted, reviewed or " \
                        "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
+        ),
+        roadmap: ref("FeedbackRoadmapBadge", nullable: true).merge(
+          description: "On the Roadmap: the linked Roadmap Item's id, current Milestone and whether it is " \
+                       "Shipped. Null when not linked, and for everything when the Roadmap Feature is Off, " \
+                       "Preview for a non-staff viewer, or hidden by the viewer."
         )
       ),
       # FeedbackController#index meta.totals: one entry per kind, unfiltered.

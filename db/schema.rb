@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_220000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -946,6 +946,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_210000) do
     t.datetime "voted_at", default: -> { "CURRENT_TIMESTAMP" }, null: false
     t.index ["round_number", "nomination_id"], name: "ix_nr_gotm_votes_round_nomination"
     t.index ["round_number", "runoff", "user_id", "gamedb_game_id"], name: "ux_nr_gotm_votes_round_runoff_user_game", unique: true
+  end
+
+  create_table "roadmap_item_feedback", force: :cascade do |t|
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.bigint "feedback_id", null: false
+    t.bigint "item_id", null: false
+    t.index ["feedback_id"], name: "ux_roadmap_item_feedback_feedback", unique: true
+    t.index ["item_id"], name: "ix_roadmap_item_feedback_item"
   end
 
   create_table "roadmap_items", force: :cascade do |t|
@@ -1889,6 +1897,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_210000) do
   add_foreign_key "member_hidden_platforms", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
+  add_foreign_key "roadmap_item_feedback", "roadmap_items", column: "item_id", name: "fk_roadmap_item_feedback_item", on_delete: :cascade
+  add_foreign_key "roadmap_item_feedback", "rpg_club_feedback", column: "feedback_id", primary_key: "feedback_id", name: "fk_roadmap_item_feedback_feedback", on_delete: :cascade
   add_foreign_key "roadmap_items", "roadmap_milestones", column: "milestone_id", name: "fk_roadmap_items_milestone", on_delete: :restrict
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"

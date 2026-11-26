@@ -32,7 +32,11 @@ RSpec.describe 'api/v1/roadmap editing', type: :request do
     blurb: { type: :string, maxLength: RoadmapItem::BLURB_MAX },
     area: { type: :string, nullable: true, enum: [ *RoadmapItem::AREAS, nil ] },
     github_issue_url: { type: :string, nullable: true, maxLength: RoadmapItem::GITHUB_ISSUE_URL_MAX,
-                        description: 'A GitHub issue URL (https://github.com/<owner>/<repo>/issues/<n>).' }
+                        description: 'A GitHub issue URL (https://github.com/<owner>/<repo>/issues/<n>).' },
+    feedback_ids: { type: :array, items: { type: :integer },
+                    description: 'Sets its linked Feedback to exactly these (left alone when not sent; [] clears ' \
+                                 'them). A Feedback linked to another item moves here. Refused with ' \
+                                 '`feedback_not_found` or `invalid_feedback_ids`. Sends no notices.' }
   }
   refused = lambda do |group, what|
     group.response '403', 'not an Admin or Superadmin' do
@@ -176,7 +180,8 @@ RSpec.describe 'api/v1/roadmap editing', type: :request do
       response '201', 'the new Roadmap Item' do
         schema one_item
       end
-      refused.call(self, '`milestone_not_found`, `milestone_reached`, or invalid fields')
+      refused.call(self, '`milestone_not_found`, `milestone_reached`, `feedback_not_found`, ' \
+                           '`invalid_feedback_ids`, or invalid fields')
     end
   end
 
@@ -185,8 +190,8 @@ RSpec.describe 'api/v1/roadmap editing', type: :request do
 
     patch 'Edit a Roadmap Item' do
       tags 'Roadmap'
-      description 'Changes its title, blurb, area and GitHub issue; its Milestone, place and Shipped date change ' \
-                  "only through the move and ship endpoints. #{gate}"
+      description 'Changes its title, blurb, area, GitHub issue and linked Feedback; its Milestone, place and ' \
+                  "Shipped date change only through the move and ship endpoints. #{gate}"
       consumes 'application/json'
       produces 'application/json'
       parameter name: :body, in: :body, required: true, schema: body.call(item_fields)
@@ -194,12 +199,12 @@ RSpec.describe 'api/v1/roadmap editing', type: :request do
       response '200', 'the Roadmap Item' do
         schema one_item
       end
-      refused.call(self, 'invalid fields (`{ error }` listing them)')
+      refused.call(self, '`feedback_not_found`, `invalid_feedback_ids`, or invalid fields')
     end
 
     delete 'Delete a Roadmap Item' do
       tags 'Roadmap'
-      description gate
+      description "Its Feedback links go with it. #{gate}"
       produces 'application/json'
 
       response '200', 'deleted' do
