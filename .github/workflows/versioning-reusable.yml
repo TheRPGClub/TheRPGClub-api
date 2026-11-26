@@ -1,0 +1,95 @@
+# The shared versioning job (spec api#510, ticket api#515; ADR 0016).
+#
+# The api, bot and www repos each call it on push to main. For the pushed
+# merge commit it finds the merged pull request, computes the next version from
+# the repo's latest vX.Y.Z tag and the typed title (script/versioning in the
+# api repo), tags it, creates a GitHub Release and reports a Pending Change to
+# the API. While the calling repo has no v* tag it does nothing, so callers can
+# merge it before versioning launches (api#516).
+#
+# A caller:
+#
+#   on:
+#     push:
+#       branches: [main]
+#   jobs:
+#     version:
+#       permissions:
+#         contents: write       # tag and Release
+#         pull-requests: read   # find the merged pull request
+#       uses: TheRPGClub/TheRPGClub-api/.github/workflows/versioning-reusable.yml@main
+#       with:
+#         repo_key: bot
+#       secrets:
+#         release_api_token: ${{ secrets.RPGCLUB_RELEASE_API_TOKEN }}
+name: Versioning (shared)
+
+on:
+  workflow_call:
+    inputs:
+      repo_key:
+        description: "The calling repo's key in the API: api, bot or www"
+        required: true
+        type: string
+      api_base_url:
+        description: "Base URL of the club API that takes Pending Changes"
+        required: false
+        type: string
+        default: https://therpgclub-api.fly.dev
+      tools_ref:
+        description: "TheRPGClub-api ref to take script/versioning from"
+        required: false
+        type: string
+        default: main
+      dry_run:
+        description: "Print the tag, Release and intake instead of making them"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      release_api_token:
+        description: "RPGCLUB_RELEASE_API_TOKEN (only needed once the repo has a v* tag)"
+        required: false
+    outputs:
+      action:
+        description: "release (new version), report (re-run of a tagged commit) or none"
+        value: ${{ jobs.version.outputs.action }}
+      version:
+        description: "The version reported, as x.y.z (empty for none)"
+        value: ${{ jobs.version.outputs.version }}
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    outputs:
+      action: ${{ steps.release.outputs.action }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Check out the versioning scripts
+        uses: actions/checkout@v7
+        with:
+          repository: TheRPGClub/TheRPGClub-api
+          ref: ${{ inputs.tools_ref }}
+          path: .versioning
+          sparse-checkout: script/versioning
+          persist-credentials: false
+
+      - name: Tag, release and report the merged pull request
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          REPO_KEY: ${{ inputs.repo_key }}
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          RELEASE_API_TOKEN: ${{ secrets.release_api_token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        # The runner image's own Ruby runs the stdlib-only versioning.rb.
+        run: .versioning/script/versioning/release.sh
