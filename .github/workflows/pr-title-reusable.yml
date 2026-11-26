@@ -1,0 +1,58 @@
+# The shared PR title check (spec api#510, ticket api#515). The api, bot and
+# www repos call it on their pull requests; branch protection requires it, so
+# every merge carries the typed title versioning reads:
+#
+#   type(scope)!: description
+#
+# type is feat, fix, perf, refactor, chore, docs, test or ci; (scope) and !
+# (a breaking change) are optional. It runs the same parser as the versioning
+# job (script/versioning/versioning.rb in the api repo).
+#
+# A caller:
+#
+#   on:
+#     pull_request:
+#       types: [opened, edited, reopened, synchronize, ready_for_review]
+#   jobs:
+#     pr-title:
+#       name: PR title
+#       permissions:
+#         contents: read
+#       uses: TheRPGClub/TheRPGClub-api/.github/workflows/pr-title-reusable.yml@main
+name: PR title (shared)
+
+on:
+  workflow_call:
+    inputs:
+      tools_ref:
+        description: "TheRPGClub-api ref to take script/versioning from"
+        required: false
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Title check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the versioning scripts
+        uses: actions/checkout@v7
+        with:
+          repository: TheRPGClub/TheRPGClub-api
+          ref: ${{ inputs.tools_ref }}
+          path: .versioning
+          sparse-checkout: script/versioning
+          persist-credentials: false
+
+      - name: Check the pull request title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! ruby .versioning/script/versioning/versioning.rb check-title "$TITLE" 2> "$RUNNER_TEMP/title.err"; then
+            echo "::error title=PR title::$(cat "$RUNNER_TEMP/title.err")"
+            exit 1
+          fi
+          echo "PR title OK: $TITLE"
