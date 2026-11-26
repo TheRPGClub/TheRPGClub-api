@@ -312,6 +312,24 @@ RSpec.describe "api/v1/roadmap editing behavior", type: :request do
       expect(launch.reload.reached_at).to be_nil
     end
 
+    it "refuses a bad destination even when nothing would move" do
+      create(:roadmap_item, milestone: launch, shipped_at: 1.day.ago)
+
+      call :post, "/milestones/#{launch.id}/reach", { destination_milestone_id: 0 }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("invalid_destination")
+      expect(launch.reload.reached_at).to be_nil
+    end
+
+    it "refuses a body whose data isn't an object" do
+      call :post, "/milestones/#{launch.id}/reach", "soon"
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json["error"]).to eq("invalid_data")
+      expect(launch.reload.reached_at).to be_nil
+    end
+
     it "refuses when unshipped items have no open Milestone to go to" do
       later.destroy!
       future.destroy!

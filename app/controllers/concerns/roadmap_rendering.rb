@@ -18,9 +18,17 @@ module RoadmapRendering
   def render_roadmap
     render json: {
       data: {
-        milestones: RoadmapMilestoneResource.new(RoadmapMilestone.open.includes(items: :feedback)).serializable_hash,
-        reached: RoadmapMilestoneResource.new(RoadmapMilestone.reached.includes(items: :feedback)).serializable_hash
+        milestones: RoadmapMilestoneResource.new(RoadmapMilestone.open.includes(items: :feedback),
+          params: roadmap_params).serializable_hash,
+        reached: RoadmapMilestoneResource.new(RoadmapMilestone.reached.includes(items: :feedback),
+          params: roadmap_params).serializable_hash
       }
     }
+  end
+
+  # Serializer params for Milestones and Roadmap Items: their linked Feedback
+  # shows only to a viewer who can use the Feedback Feature (the bot always).
+  def roadmap_params
+    @roadmap_params ||= { feedback_usable: can_use_feature?(:feedback) }
   end
 end

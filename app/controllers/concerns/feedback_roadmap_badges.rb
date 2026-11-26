@@ -18,13 +18,21 @@ module FeedbackRoadmapBadges
     { roadmap_badges: FeedbackResource.roadmap_badges(Array(records).map(&:feedback_id)) }
   end
 
+  # Decided once per request. Reads no member data when the Feature Flag
+  # alone decides; otherwise reuses the member row auth already read.
   def roadmap_badge_shown?
-    states = Features.cached_states
-    if current_principal.service?
-      states.fetch("roadmap") != "off"
-    else
-      user = RpgClubUser.find_by(user_id: current_principal.id)
-      Features::Access.for_viewer(user, staff: admin_or_above?, states: states).shown?("roadmap")
+    return @roadmap_badge_shown if defined?(@roadmap_badge_shown)
+
+    @roadmap_badge_shown = begin
+      states = Features.cached_states
+      if current_principal.service?
+        states.fetch("roadmap") != "off"
+      elsif !can_use_feature?(:roadmap)
+        false
+      else
+        user = current_principal.user || RpgClubUser.find_by(user_id: current_principal.id)
+        Features::Access.for_viewer(user, staff: admin_or_above?, states: states).shown?("roadmap")
+      end
     end
   end
 end

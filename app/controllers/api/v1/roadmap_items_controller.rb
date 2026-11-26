@@ -51,7 +51,7 @@ module Api
       end
 
       def render_item(record, status: :ok)
-        render json: { data: RoadmapItemResource.new(record).serializable_hash }, status: status
+        render json: { data: RoadmapItemResource.new(record, params: roadmap_params).serializable_hash }, status: status
       end
     end
   end

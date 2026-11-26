@@ -38,8 +38,10 @@ module Roadmap
   def self.set_positions!(model, positions)
     return if positions.empty?
 
-    sql = ActiveRecord::Base.sanitize_sql_array([ <<~SQL.squish, positions.keys, positions.values ])
-      UPDATE #{model.table_name} SET position = ordered.position, updated_at = now()
+    # updated_at is a timestamp without time zone holding UTC: bind the time
+    # rather than use now(), which would follow the session's time zone.
+    sql = ActiveRecord::Base.sanitize_sql_array([ <<~SQL.squish, Time.current.utc, positions.keys, positions.values ])
+      UPDATE #{model.table_name} SET position = ordered.position, updated_at = ?
       FROM unnest(ARRAY[?]::bigint[], ARRAY[?]::int[]) AS ordered(id, position)
       WHERE #{model.table_name}.id = ordered.id
     SQL
