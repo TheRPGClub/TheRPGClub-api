@@ -323,6 +323,36 @@ module OpenapiSchemas
         releases: array_of("UpcomingReleaseRelease"),
         _required: %w[game date date_precision section first_released_on first_released_precision releases]
       ),
+      # A Roadmap Item (RoadmapItemResource, spec api#505).
+      RoadmapItem: obj(
+        id: int, milestone_id: int,
+        title: str(maxLength: RoadmapItem::TITLE_MAX),
+        blurb: str(maxLength: RoadmapItem::BLURB_MAX, description: "One or two sentences members understand."),
+        area: str(nullable: true, enum: [ *RoadmapItem::AREAS, nil ],
+          description: "Whether it touches the bot, the website or both; null when not said."),
+        github_issue_url: str(nullable: true, description: "A GitHub issue it is tracked by, if any."),
+        position: int,
+        shipped_at: ts(nullable: true).merge(description: "When staff marked it Shipped; null until then.")
+      ),
+      # A Milestone with its Roadmap Items (RoadmapMilestoneResource, spec api#505).
+      RoadmapMilestone: obj(
+        id: int,
+        name: str(maxLength: RoadmapMilestone::NAME_MAX),
+        blurb: str(nullable: true, maxLength: RoadmapMilestone::BLURB_MAX),
+        target_date: date(nullable: true, description: "Plain calendar date (YYYY-MM-DD) at its Date Precision: " \
+          "the first day of the month or quarter, 1 January of the year, null when TBA."),
+        date_precision: str(enum: RoadmapMilestone::DATE_PRECISIONS),
+        position: int,
+        reached_at: ts(nullable: true).merge(description: "When staff marked it Reached; null while it is open."),
+        items: array_of("RoadmapItem"),
+        _required: %w[id name blurb target_date date_precision position reached_at items]
+      ),
+      # GET /roadmap's `data` (spec api#505).
+      Roadmap: obj(
+        milestones: array_of("RoadmapMilestone").merge(description: "Open Milestones in staff order."),
+        reached: array_of("RoadmapMilestone").merge(description: "Reached Milestones, newest Reached first."),
+        _required: %w[milestones reached]
+      ),
       # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.
       ReleaseRefreshMeta: obj(
         added: int, total: int,
@@ -2078,7 +2108,7 @@ module OpenapiSchemas
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
                               "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
-                              "journals, members, news, codex, lists, giveaways, suggestions, staff_desk, " \
+                              "journals, members, news, codex, lists, giveaways, suggestions, roadmap, staff_desk, " \
                               "voting_console, synonyms, live_events, public_reminders, suggestion_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),

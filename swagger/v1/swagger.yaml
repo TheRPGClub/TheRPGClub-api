@@ -924,6 +924,109 @@ components:
       - first_released_on
       - first_released_precision
       - releases
+    RoadmapItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        milestone_id:
+          type: integer
+        title:
+          type: string
+          maxLength: 120
+        blurb:
+          type: string
+          maxLength: 500
+          description: One or two sentences members understand.
+        area:
+          type: string
+          nullable: true
+          enum:
+          - bot
+          - website
+          - both
+          -
+          description: Whether it touches the bot, the website or both; null when
+            not said.
+        github_issue_url:
+          type: string
+          nullable: true
+          description: A GitHub issue it is tracked by, if any.
+        position:
+          type: integer
+        shipped_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When staff marked it Shipped; null until then.
+      required:
+      - id
+      - milestone_id
+      - title
+      - blurb
+      - position
+    RoadmapMilestone:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          maxLength: 100
+        blurb:
+          type: string
+          nullable: true
+          maxLength: 280
+        target_date:
+          type: string
+          format: date
+          nullable: true
+          description: 'Plain calendar date (YYYY-MM-DD) at its Date Precision: the
+            first day of the month or quarter, 1 January of the year, null when TBA.'
+        date_precision:
+          type: string
+          enum:
+          - day
+          - month
+          - quarter
+          - year
+          - tba
+        position:
+          type: integer
+        reached_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When staff marked it Reached; null while it is open.
+        items:
+          type: array
+          items:
+            "$ref": "#/components/schemas/RoadmapItem"
+      required:
+      - id
+      - name
+      - blurb
+      - target_date
+      - date_precision
+      - position
+      - reached_at
+      - items
+    Roadmap:
+      type: object
+      properties:
+        milestones:
+          type: array
+          items:
+            "$ref": "#/components/schemas/RoadmapMilestone"
+          description: Open Milestones in staff order.
+        reached:
+          type: array
+          items:
+            "$ref": "#/components/schemas/RoadmapMilestone"
+          description: Reached Milestones, newest Reached first.
+      required:
+      - milestones
+      - reached
     ReleaseRefreshMeta:
       type: object
       properties:
@@ -6665,8 +6768,8 @@ components:
             the club default (voting, games, members, news) until they save their
             own list. Keys: voting, gotm_history, goty, challenges, games, franchises,
             reviews, releases, achievements, journals, members, news, codex, lists,
-            giveaways, suggestions, staff_desk, voting_console, synonyms, live_events,
-            public_reminders, suggestion_review.'
+            giveaways, suggestions, roadmap, staff_desk, voting_console, synonyms,
+            live_events, public_reminders, suggestion_review.'
         customised:
           type: boolean
           description: Whether the member saved their own list. False while they follow
@@ -19279,6 +19382,7 @@ paths:
         - game_lists
         - franchise_progress
         - goty_vote
+        - roadmap
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -32808,6 +32912,42 @@ paths:
                 "$ref": "#/components/schemas/Error"
         '401':
           description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/roadmap":
+    get:
+      summary: Read the Roadmap
+      tags:
+      - Roadmap
+      description: 'The Roadmap (spec api#505): `milestones` are the open Milestones
+        in staff order, each with its Roadmap Items in staff order (Shipped ones included,
+        ticked as ready); `reached` are the Reached Milestones, newest Reached first,
+        each with the Roadmap Items that Shipped with it. Members (any signed-in caller).
+        Belongs to the Roadmap Feature, so a member who cannot use it gets 404 `not_found`
+        (non-staff in Preview, everyone when Off); the service token is not gated.'
+      responses:
+        '200':
+          description: the Roadmap
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Roadmap"
+                required:
+                - data
+        '401':
+          description: not signed in
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the Feature is Off, or Preview and the caller is not an Admin
+            or Superadmin
           content:
             application/json:
               schema:
