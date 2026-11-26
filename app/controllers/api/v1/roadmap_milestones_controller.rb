@@ -67,7 +67,7 @@ module Api
 
       def render_milestone(record, status: :ok)
         record = RoadmapMilestone.includes(items: :feedback).find(record.id)
-        render json: { data: RoadmapMilestoneResource.new(record).serializable_hash }, status: status
+        render json: { data: RoadmapMilestoneResource.new(record, params: roadmap_params).serializable_hash }, status: status
       end
     end
   end

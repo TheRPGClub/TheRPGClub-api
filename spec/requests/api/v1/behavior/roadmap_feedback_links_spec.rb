@@ -58,6 +58,22 @@ RSpec.describe "api/v1/roadmap feedback links behavior", type: :request do
       expect(json.dig("data", "feedback")).to eq([])
     end
 
+    it "lists no Feedback to a viewer who can't use the Feedback Feature" do
+      feedback = create(:feedback, title: "Secret plan")
+      link(item, [ feedback.feedback_id ])
+
+      set_feature_flag("feedback", "preview")
+      expect(roadmap_items(member).find { |i| i["id"] == item.id }["feedback"]).to eq([])
+      expect(roadmap_items(admin).find { |i| i["id"] == item.id }["feedback"].map { |f| f["id"] })
+        .to eq([ feedback.feedback_id ])
+
+      set_feature_flag("feedback", "off")
+      expect(roadmap_items(admin).find { |i| i["id"] == item.id }["feedback"]).to eq([])
+      patch "/api/v1/roadmap/items/#{item.id}", params: { data: { title: "Renamed" } }, as: :json,
+        headers: auth_headers_for(admin)
+      expect(json.dig("data", "feedback")).to eq([])
+    end
+
     it "leaves the links alone when feedback_ids isn't sent" do
       feedback = create(:feedback)
       link(item, [ feedback.feedback_id ])
