@@ -162,6 +162,17 @@ RSpec.describe Versioning do
       expect(described_class.patch_note("Patch note:\nPatch note: second\nPatch note: third")).to eq("second")
     end
 
+    it "reads the first non-empty line after an empty Patch note line" do
+      expect(described_class.patch_note("Patch note:\n\nFaster lists.\n\n## Testing")).to eq("Faster lists.")
+      expect(described_class.patch_note("Patch note:\r\n<!-- hint -->\r\n  Faster lists.  \r\n")).to eq("Faster lists.")
+    end
+
+    it "is nil when the template's Patch note line is left empty, with the inline placeholder or not" do
+      template = "## Summary\n\n- x\n\nPatch note: <!-- one sentence, or leave empty -->\n\n<!--\nhint\n-->\n\n## Testing\n\n- y\n"
+      expect(described_class.patch_note(template)).to be_nil
+      expect(described_class.patch_note("Patch note:\n\n<!-- hint -->\n\n## Testing\n\n- y")).to be_nil
+    end
+
     it "is nil when the line is left empty, missing or only in a comment" do
       expect(described_class.patch_note("Patch note:   \n")).to be_nil
       expect(described_class.patch_note("Summary only")).to be_nil
