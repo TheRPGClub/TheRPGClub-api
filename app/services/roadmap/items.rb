@@ -81,6 +81,7 @@ module Roadmap
       end
 
       Roadmap.write do
+        item.lock!
         milestone = open_milestone!(milestone_id)
         ids = milestone.items.where.not(id: item.id).pluck(:id)
         ids.insert([ position - 1, ids.size ].min, item.id)
@@ -91,7 +92,10 @@ module Roadmap
 
     # Marks it Shipped now; an item already Shipped keeps its date.
     def ship!(item)
-      item.update!(shipped_at: Time.current) unless item.shipped?
+      Roadmap.write do
+        item.lock!
+        item.update!(shipped_at: Time.current) unless item.shipped?
+      end
       item
     end
 
@@ -99,6 +103,7 @@ module Roadmap
     # only Shipped items: staff move it out or un-reach the Milestone first.
     def unship!(item)
       Roadmap.write do
+        item.lock!
         if item.milestone.reached?
           raise Refused.new("milestone_reached",
             "Only Shipped items stay with a Reached Milestone: move it to an open one or un-reach the Milestone first.")
