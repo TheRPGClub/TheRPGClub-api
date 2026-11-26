@@ -5,7 +5,10 @@ module ShareCard
   # Card (GLOSSARY.md, "Share Card"; spec #518): a POST to the website's
   # /api/revalidate with `Authorization: Bearer $REVALIDATE_SECRET`, which
   # revalidates the website's `gotm` reads. Queued by ShareCard.refresh_later
-  # once a round's decision commits.
+  # once a round's decision commits. It first clears the API's own cached
+  # winners payload (Api::V1::Public::WinnersController.expire_cache), so the
+  # website's refetch sees the new winners rather than a payload cached
+  # before them.
   #
   # A failed POST (a network error or a non-2xx answer) is retried with
   # backoff, then given up and logged: the website re-checks the winners once
@@ -24,6 +27,7 @@ module ShareCard
     end
 
     def perform
+      Api::V1::Public::WinnersController.expire_cache
       secret = ENV["REVALIDATE_SECRET"].presence
       url = Website.url(PATH)
       if secret.nil? || url.nil?

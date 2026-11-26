@@ -34,6 +34,22 @@ RSpec.describe ShareCard::RefreshJob do
     stubs.verify_stubbed_calls
   end
 
+  it "clears the API's cached winners payload before the POST, so the website refetches the new winners" do
+    memory_cache = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(memory_cache)
+    key = Api::V1::Public::WinnersController.cache_key
+    memory_cache.write(key, { data: [] })
+    cached_at_post = :unset
+    stubs.post("https://therpg.club/api/revalidate") do
+      cached_at_post = memory_cache.exist?(key)
+      [ 200, {}, "" ]
+    end
+
+    described_class.perform_now
+
+    expect(cached_at_post).to be(false)
+  end
+
   it "retries a non-2xx answer later" do
     stubs.post("https://therpg.club/api/revalidate") { [ 503, {}, "" ] }
 
