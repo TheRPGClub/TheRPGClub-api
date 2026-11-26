@@ -53,7 +53,9 @@ module Roadmap
         raise Refused.new("already_reached", "This Milestone is already Reached.") if milestone.reached?
 
         unshipped = milestone.items.where(shipped_at: nil).to_a
-        move_to!(unshipped, destination(milestone, destination_id)) if unshipped.any?
+        # A destination sent is checked even when nothing moves to it.
+        target = destination(milestone, destination_id) if unshipped.any? || destination_id.present?
+        move_to!(unshipped, target) if unshipped.any?
         milestone.update!(reached_at: Time.current)
       end
     end
