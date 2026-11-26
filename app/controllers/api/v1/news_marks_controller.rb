@@ -21,7 +21,7 @@ module Api
       end
 
       # PUT /api/v1/users/:user_id/news_mark
-      # Body: { "data": { "news_mark": "<ISO 8601 instant>" } }
+      # Body: { "data": { "news_mark": "<ISO 8601 instant with Z or an offset>" } }
       #    or { "data": { "all_seen": true } } (Mark all seen: now)
       # Moves the News Mark forward. An instant before the stored mark keeps
       # the stored one; an instant past now is clamped to now. Returns the
@@ -50,7 +50,7 @@ module Api
         return [ nil, "all_seen must be true" ] if data.key?("all_seen")
         return [ nil, "news_mark or all_seen required" ] if mark.nil?
 
-        [ Time.iso8601(mark.to_s), nil ]
+        [ NewsMark.parse_instant(mark), nil ]
       rescue ArgumentError
         [ nil, "news_mark must be an ISO 8601 instant" ]
       end

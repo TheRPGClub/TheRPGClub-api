@@ -290,7 +290,7 @@ A member's choice to leave a News Category out of their own default view of the 
 _Avoid_: Mute, unfollow, filter (when meaning the saved choice)
 
 **News Mark**:
-The moment up to which a member has seen the News Hub's News Items: those posted after it are new to them. It is per member, on the website only, and set by the website when the member leaves the News page or chooses Mark all seen; it only moves forward. It is never per-item read state.
+The moment up to which a member has seen the News Hub's News Items: those listed after it (given a News Category, so members could first see them; not when they were posted, so one recorded late is still new) are new to them. It is per member, on the website only, and set by the website when the member leaves the News page or chooses Mark all seen; it only moves forward. It is never per-item read state.
 _Avoid_: Unread, read state, last visit
 
 **News Import**:

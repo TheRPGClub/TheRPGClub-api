@@ -18,14 +18,19 @@ RSpec.describe 'api/v1/news_items', type: :request do
                   'Category Preference. With `category`, exactly those News Categories are returned, switched ' \
                   'off or not, so a preference never blocks anything. `q` searches the link title and the ' \
                   'comment (case-insensitive substring) and combines with `category`. `since` and `until` ' \
-                  'bound `posted_at` (after `since`, at or before `until`) and combine with `category` and `q`; ' \
-                  "the Catch-up view lists the new News Items with `since` set to the member's News Mark and the " \
-                  'seen ones with `until` set to it. `meta` adds, for the ' \
+                  'bound `listed_at`, when the News Item was listed rather than posted (after `since`, at or ' \
+                  'before `until`), and combine with `category` and `q`; the order stays `posted_at`. The ' \
+                  "Catch-up view lists exactly the new News Items with `since` set to the member's News Mark " \
+                  'and exactly the seen ones with `until` set to it. `meta` adds, for the ' \
                   "page's category rail, `category_counts` (every News Category's count over the search alone) " \
                   "and `hidden_categories` (the switched-off keys), and the member's `news_mark` with " \
                   '`new_count` and `new_category_counts`: the News Items in the same view (the default view or ' \
-                  'the asked `category`, and `q`, but not `since`/`until`) posted after the News Mark, all 0 ' \
-                  'without a News Mark. Each item names its author by their current ' \
+                  'the asked `category`, and `q`, but not `since`/`until`) listed after the News Mark, all 0 ' \
+                  'without a News Mark. `mark` counts against that instant instead of the stored News Mark, ' \
+                  'so a visit keeps its new/seen split across reloads; it is never stored. The new counts are ' \
+                  'read only on page one or with `mark`: past page one without `mark`, `new_count` and ' \
+                  '`new_category_counts` are null. `since`, `until` and `mark` must name an offset (`Z` or ' \
+                  '`+hh:mm`). Each item names its author by their current ' \
                   'member name, or by the name recorded with the message when they have no member record. ' \
                   'An image whose Discord address has expired comes back unavailable (`url` null) and queues ' \
                   'a `news_images_renew` bot job for its message: one at a time per message, none within six ' \
@@ -43,12 +48,17 @@ RSpec.describe 'api/v1/news_items', type: :request do
                      'Blank means no search.'
       parameter name: :since, in: :query, required: false,
         schema: { type: :string, format: 'date-time', example: '2026-11-24T21:40:00.123Z' },
-        description: 'Only News Items posted after this ISO 8601 instant. Blank means no bound; anything ' \
-                     'else that is not an ISO 8601 instant is a 400.'
+        description: 'Only News Items listed after this ISO 8601 instant (with `Z` or an offset). Blank ' \
+                     'means no bound; anything else is a 400.'
       parameter name: :until, in: :query, required: false,
         schema: { type: :string, format: 'date-time', example: '2026-11-24T21:40:00.123Z' },
-        description: 'Only News Items posted at or before this ISO 8601 instant. Blank means no bound; ' \
-                     'anything else that is not an ISO 8601 instant is a 400.'
+        description: 'Only News Items listed at or before this ISO 8601 instant (with `Z` or an offset). ' \
+                     'Blank means no bound; anything else is a 400.'
+      parameter name: :mark, in: :query, required: false,
+        schema: { type: :string, format: 'date-time', example: '2026-11-24T21:40:00.123456Z' },
+        description: "Count `new_count` and `new_category_counts` (and answer `news_mark`) against this ISO " \
+                     "8601 instant (with `Z` or an offset) instead of the member's stored News Mark. Read " \
+                     'only: never stored. Blank means the stored News Mark; anything else is a 400.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
 
@@ -60,7 +70,7 @@ RSpec.describe 'api/v1/news_items', type: :request do
       end
 
       response '400', 'an unknown News Category key, e.g. `{ "error": "unknown category: piracy" }`, or a ' \
-                      '`since`/`until` that is not an ISO 8601 instant, e.g. ' \
+                      '`since`/`until`/`mark` that is not an ISO 8601 instant with an offset, e.g. ' \
                       '`{ "error": "since must be an ISO 8601 instant" }`' do
         schema '$ref' => '#/components/schemas/Error'
       end

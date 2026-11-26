@@ -13,7 +13,7 @@ RSpec.describe 'api/v1/news_mark', type: :request do
     get 'Show a member\'s News Mark' do
       tags 'News Hub'
       description 'The News Mark: the moment up to which the member has seen the News Hub\'s News Items. The ' \
-                  'News page counts News Items posted after it as new. `news_mark` is null until the website ' \
+                  'News page counts News Items listed after it as new. `news_mark` is null until the website ' \
                   'first sets it. Only the member themself may read it; another member, staff and the bot\'s ' \
                   'service token get 403. ' \
                   "#{gate}"
@@ -40,7 +40,7 @@ RSpec.describe 'api/v1/news_mark', type: :request do
     put 'Move a member\'s News Mark forward' do
       tags 'News Hub'
       description 'Moves the News Mark forward, either to an instant (`news_mark`, the newest News Item the ' \
-                  'page showed) or to now (`all_seen: true`, Mark all seen). Give exactly one. The News Mark ' \
+                  'page showed: its greatest `listed_at`) or to now (`all_seen: true`, Mark all seen). Give exactly one. The News Mark ' \
                   'never moves backwards: an instant before the stored mark keeps the stored one and still ' \
                   'returns 200 with it. An instant past now is clamped to now. Returns the stored News Mark. ' \
                   'Only the member themself may set it. ' \
@@ -55,7 +55,7 @@ RSpec.describe 'api/v1/news_mark', type: :request do
             type: :object,
             properties: {
               news_mark: { type: :string, format: 'date-time', example: '2026-11-24T21:40:00.000Z',
-                           description: 'ISO 8601 instant to move the News Mark forward to.' },
+                           description: 'ISO 8601 instant, with `Z` or an offset, to move the News Mark forward to.' },
               all_seen: { type: :boolean, enum: [ true ], description: 'Mark all seen: move the News Mark to now.' }
             }
           }
@@ -69,7 +69,7 @@ RSpec.describe 'api/v1/news_mark', type: :request do
       end
 
       response '422', 'neither or both of `news_mark` and `all_seen`, a `news_mark` that is not an ISO 8601 ' \
-                      'instant, or an `all_seen` that is not true' do
+                      'instant with an offset, or an `all_seen` that is not true' do
         schema '$ref' => '#/components/schemas/Error'
       end
 

@@ -31,14 +31,20 @@ module Api
       # `category[]`); an unknown key is a 400. Without it, the member's
       # default view: every News Category but the ones they switched off
       # (News Category Preferences, ticket #357). `q` searches link title and
-      # comment. `since` and `until` (ISO 8601; a bad value is a 400) bound
-      # posted_at: after `since`, at or before `until` (ticket api#496), so
-      # the Catch-up view lists the new News Items with `since` set to the
-      # News Mark and the seen ones with `until`. `meta` adds
-      # `category_counts` and `hidden_categories` for the page's category
-      # rail, and the member's `news_mark` with `new_count` and
-      # `new_category_counts`: the News Items in the same view (categories
-      # and `q`, not `since`/`until`) posted after the News Mark.
+      # comment. `since` and `until` bound listed_at (when the News Item was
+      # listed, not posted): after `since`, at or before `until` (ticket
+      # api#496, fix pass), so the Catch-up view lists exactly the new News
+      # Items with `since` set to the News Mark and exactly the seen ones with
+      # `until`. The order stays posted_at. `meta` adds `category_counts` and
+      # `hidden_categories` for the page's category rail, and the member's
+      # `news_mark` with `new_count` and `new_category_counts`: the News Items
+      # in the same view (categories and `q`, not `since`/`until`) listed
+      # after the News Mark. `mark` counts against that instant instead of
+      # the stored News Mark (read only, never stored), so a visit keeps its
+      # split. The new counts are only read on page one or with `mark`; past
+      # page one without `mark` they are null. `since`, `until` and `mark`
+      # must be ISO 8601 instants with `Z` or an offset; anything else is a
+      # 400.
       #
       # An image whose Discord address has expired is served as unavailable,
       # and the bot is asked to renew it (NewsHub::BotJobs). The bot's own
@@ -48,7 +54,7 @@ module Api
         categories = category_filter
         return if performed?
 
-        bounds = posted_bounds
+        bounds = instant_params
         return if performed?
 
         searched = search(NewsItem.listed)
@@ -57,8 +63,8 @@ module Api
         view = view.where(category_key: categories) if categories.any?
         view = view.where.not(category_key: hidden) if categories.empty? && hidden.any?
         scope = view
-        scope = scope.where("news_items.posted_at > ?", bounds[:since]) if bounds[:since]
-        scope = scope.where(posted_at: ..bounds[:until]) if bounds[:until]
+        scope = scope.where("news_items.listed_at > ?", bounds[:since]) if bounds[:since]
+        scope = scope.where(listed_at: ..bounds[:until]) if bounds[:until]
         pagy, items = pagy(scope.order(posted_at: :desc, id: :desc), **pagy_options)
         items = items.to_a
         now = Time.current
@@ -67,7 +73,7 @@ module Api
         render json: {
           data: news_item_json(items, now: now),
           meta: pagy_meta(pagy).merge(category_counts: category_counts(searched), hidden_categories: hidden,
-            **new_counts(view))
+            **new_counts(view, mark: bounds[:mark], counted: pagy.page == 1 || bounds.key?(:mark)))
         }
       end
 
@@ -229,24 +235,31 @@ module Api
         NewsCategory.keys.index_with { |key| counts.fetch(key, 0) }
       end
 
-      # The signed-in member's News Mark and how many News Items in `view`
-      # were posted after it, per News Category (every key, in order) in one
-      # grouped query. No News Mark (and the service token) counts nothing.
-      def new_counts(view)
-        mark = current_principal.discord_user? ? NewsMark.for(current_principal.id) : nil
-        counts = mark ? view.where("news_items.posted_at > ?", mark).group(:category_key).count : {}
+      # The News Mark (`mark` when the page asked with one, else the
+      # signed-in member's stored one) and how many News Items in `view` were
+      # listed after it, per News Category (every key, in order) in one
+      # grouped query. No News Mark (and the service token without `mark`)
+      # counts nothing. Unless `counted`, the counts are null and not read.
+      def new_counts(view, mark:, counted:)
+        mark ||= NewsMark.for(current_principal.id) if current_principal.discord_user?
+        news_mark = mark&.utc&.iso8601(6)
+        return { news_mark: news_mark, new_count: nil, new_category_counts: nil } unless counted
+
+        counts = mark ? view.where("news_items.listed_at > ?", mark).group(:category_key).count : {}
         by_category = NewsCategory.keys.index_with { |key| counts.fetch(key, 0) }
-        { news_mark: mark&.utc&.iso8601(6), new_count: by_category.values.sum, new_category_counts: by_category }
+        { news_mark: news_mark, new_count: by_category.values.sum, new_category_counts: by_category }
       end
 
-      # The `since` and `until` instants (nil when blank). Renders 400 for a
-      # value that is not an ISO 8601 instant.
-      def posted_bounds
-        %i[since until].index_with do |name|
-          value = params[name].to_s.strip
-          next if value.empty?
+      # The `since`, `until` and `mark` instants given (blank ones left
+      # out). Renders 400 for a value that is not an ISO 8601 instant with
+      # an offset (NewsMark.parse_instant).
+      def instant_params
+        %i[since until mark].each_with_object({}) do |name, found|
+          value = params[name]
+          next if value.is_a?(String) && value.strip.empty?
+          next if value.nil?
 
-          Time.iso8601(value)
+          found[name] = NewsMark.parse_instant(value)
         rescue ArgumentError
           render(json: { error: "#{name} must be an ISO 8601 instant" }, status: :bad_request)
           return {}

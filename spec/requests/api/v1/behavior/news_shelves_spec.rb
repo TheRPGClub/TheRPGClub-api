@@ -76,6 +76,7 @@ RSpec.describe "api/v1/news_items/shelves", type: :request do
       get "/api/v1/news_items", headers: auth_headers_for(member)
       expect(served).to eq(json.fetch("data").find { |entry| entry["message_id"] == item.message_id })
       expect(served.dig("author", "name")).to eq("Ada")
+      expect(served.fetch("listed_at")).to eq(item.reload.listed_at.utc.iso8601(6))
     end
 
     it "keeps an empty News Category, with no items and nothing today" do

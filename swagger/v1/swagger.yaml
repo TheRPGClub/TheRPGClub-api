@@ -7500,17 +7500,21 @@ components:
             format: date-time
             nullable: true
             description: The member's News Mark (UTC, microseconds), as `GET /api/v1/users/{user_id}/news_mark`
-              serves it. Null without one (a first visit) and for the service token.
+              serves it, or `mark` when the request gave one. Null without either
+              (a first visit) and for the service token without `mark`.
           new_count:
             type: integer
-            description: 'How many News Items in this view were posted after the News
-              Mark: the default view (switched-off News Categories left out) or the
-              asked `category`, and `q`, but not `since`/`until`. 0 without a News
-              Mark.'
+            nullable: true
+            description: 'How many News Items in this view were listed after the News
+              Mark (or `mark`): the default view (switched-off News Categories left
+              out) or the asked `category`, and `q`, but not `since`/`until`. 0 without
+              a News Mark. Null past page one unless `mark` is given.'
           new_category_counts:
             type: object
+            nullable: true
             description: "`new_count` per News Category, keyed by every News Category
-              key in order, 0 for none (and for every News Category outside this view)."
+              key in order, 0 for none (and for every News Category outside this view).
+              Null past page one unless `mark` is given."
             properties:
               announcements:
                 type: integer
@@ -7662,6 +7666,15 @@ components:
           type: string
           format: date-time
           description: When the message was posted in Discord.
+        listed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the News Item was listed (first had a News Category, so
+            members could see it), UTC with microseconds. The News Mark counts News
+            Items listed after it as new, so one recorded late is still new. An imported
+            News Item is listed at its posting time, so it never counts as new. Null
+            only for an unsorted imported News Item.
         edited_at:
           type: string
           format: date-time
@@ -7687,6 +7700,7 @@ components:
       - origin
       - comment
       - posted_at
+      - listed_at
       - edited_at
       - link
       - images
@@ -27540,24 +27554,30 @@ paths:
         With `category`, exactly those News Categories are returned, switched off
         or not, so a preference never blocks anything. `q` searches the link title
         and the comment (case-insensitive substring) and combines with `category`.
-        `since` and `until` bound `posted_at` (after `since`, at or before `until`)
-        and combine with `category` and `q`; the Catch-up view lists the new News
-        Items with `since` set to the member''s News Mark and the seen ones with `until`
-        set to it. `meta` adds, for the page''s category rail, `category_counts` (every
-        News Category''s count over the search alone) and `hidden_categories` (the
-        switched-off keys), and the member''s `news_mark` with `new_count` and `new_category_counts`:
-        the News Items in the same view (the default view or the asked `category`,
-        and `q`, but not `since`/`until`) posted after the News Mark, all 0 without
-        a News Mark. Each item names its author by their current member name, or by
-        the name recorded with the message when they have no member record. An image
-        whose Discord address has expired comes back unavailable (`url` null) and
-        queues a `news_images_renew` bot job for its message: one at a time per message,
-        none within six hours of that message''s last renewal ending, and none for
-        the service token''s own reads; a later load serves it once the bot has recorded
-        fresh addresses. An image recorded with no expiry (`expires_at` null) is always
-        served. Belongs to the News Hub Feature: a member who cannot use it (Preview:
-        Admins and Superadmins only; Off: nobody) gets 404 `not_found`. The service
-        token is not gated; the bot runs its own feature gate.'
+        `since` and `until` bound `listed_at`, when the News Item was listed rather
+        than posted (after `since`, at or before `until`), and combine with `category`
+        and `q`; the order stays `posted_at`. The Catch-up view lists exactly the
+        new News Items with `since` set to the member''s News Mark and exactly the
+        seen ones with `until` set to it. `meta` adds, for the page''s category rail,
+        `category_counts` (every News Category''s count over the search alone) and
+        `hidden_categories` (the switched-off keys), and the member''s `news_mark`
+        with `new_count` and `new_category_counts`: the News Items in the same view
+        (the default view or the asked `category`, and `q`, but not `since`/`until`)
+        listed after the News Mark, all 0 without a News Mark. `mark` counts against
+        that instant instead of the stored News Mark, so a visit keeps its new/seen
+        split across reloads; it is never stored. The new counts are read only on
+        page one or with `mark`: past page one without `mark`, `new_count` and `new_category_counts`
+        are null. `since`, `until` and `mark` must name an offset (`Z` or `+hh:mm`).
+        Each item names its author by their current member name, or by the name recorded
+        with the message when they have no member record. An image whose Discord address
+        has expired comes back unavailable (`url` null) and queues a `news_images_renew`
+        bot job for its message: one at a time per message, none within six hours
+        of that message''s last renewal ending, and none for the service token''s
+        own reads; a later load serves it once the bot has recorded fresh addresses.
+        An image recorded with no expiry (`expires_at` null) is always served. Belongs
+        to the News Hub Feature: a member who cannot use it (Preview: Admins and Superadmins
+        only; Off: nobody) gets 404 `not_found`. The service token is not gated; the
+        bot runs its own feature gate.'
       parameters:
       - name: category
         in: query
@@ -27583,8 +27603,8 @@ paths:
           type: string
           format: date-time
           example: '2026-11-24T21:40:00.123Z'
-        description: Only News Items posted after this ISO 8601 instant. Blank means
-          no bound; anything else that is not an ISO 8601 instant is a 400.
+        description: Only News Items listed after this ISO 8601 instant (with `Z`
+          or an offset). Blank means no bound; anything else is a 400.
       - name: until
         in: query
         required: false
@@ -27592,8 +27612,19 @@ paths:
           type: string
           format: date-time
           example: '2026-11-24T21:40:00.123Z'
-        description: Only News Items posted at or before this ISO 8601 instant. Blank
-          means no bound; anything else that is not an ISO 8601 instant is a 400.
+        description: Only News Items listed at or before this ISO 8601 instant (with
+          `Z` or an offset). Blank means no bound; anything else is a 400.
+      - name: mark
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123456Z'
+        description: 'Count `new_count` and `new_category_counts` (and answer `news_mark`)
+          against this ISO 8601 instant (with `Z` or an offset) instead of the member''s
+          stored News Mark. Read only: never stored. Blank means the stored News Mark;
+          anything else is a 400.'
       - name: page
         in: query
         schema:
@@ -27627,8 +27658,8 @@ paths:
                 - meta
         '400':
           description: 'an unknown News Category key, e.g. `{ "error": "unknown category:
-            piracy" }`, or a `since`/`until` that is not an ISO 8601 instant, e.g.
-            `{ "error": "since must be an ISO 8601 instant" }`'
+            piracy" }`, or a `since`/`until`/`mark` that is not an ISO 8601 instant
+            with an offset, e.g. `{ "error": "since must be an ISO 8601 instant" }`'
           content:
             application/json:
               schema:
@@ -28191,7 +28222,7 @@ paths:
       tags:
       - News Hub
       description: 'The News Mark: the moment up to which the member has seen the
-        News Hub''s News Items. The News page counts News Items posted after it as
+        News Hub''s News Items. The News page counts News Items listed after it as
         new. `news_mark` is null until the website first sets it. Only the member
         themself may read it; another member, staff and the bot''s service token get
         403. Belongs to the News Hub Feature: a member who cannot use it (Preview:
@@ -28231,12 +28262,13 @@ paths:
       tags:
       - News Hub
       description: 'Moves the News Mark forward, either to an instant (`news_mark`,
-        the newest News Item the page showed) or to now (`all_seen: true`, Mark all
-        seen). Give exactly one. The News Mark never moves backwards: an instant before
-        the stored mark keeps the stored one and still returns 200 with it. An instant
-        past now is clamped to now. Returns the stored News Mark. Only the member
-        themself may set it. Belongs to the News Hub Feature: a member who cannot
-        use it (Preview: Admins and Superadmins only; Off: nobody) gets 404 `not_found`.'
+        the newest News Item the page showed: its greatest `listed_at`) or to now
+        (`all_seen: true`, Mark all seen). Give exactly one. The News Mark never moves
+        backwards: an instant before the stored mark keeps the stored one and still
+        returns 200 with it. An instant past now is clamped to now. Returns the stored
+        News Mark. Only the member themself may set it. Belongs to the News Hub Feature:
+        a member who cannot use it (Preview: Admins and Superadmins only; Off: nobody)
+        gets 404 `not_found`.'
       parameters: []
       responses:
         '200':
@@ -28252,7 +28284,8 @@ paths:
                 - data
         '422':
           description: neither or both of `news_mark` and `all_seen`, a `news_mark`
-            that is not an ISO 8601 instant, or an `all_seen` that is not true
+            that is not an ISO 8601 instant with an offset, or an `all_seen` that
+            is not true
           content:
             application/json:
               schema:
@@ -28294,8 +28327,8 @@ paths:
                       type: string
                       format: date-time
                       example: '2026-11-24T21:40:00.000Z'
-                      description: ISO 8601 instant to move the News Mark forward
-                        to.
+                      description: ISO 8601 instant, with `Z` or an offset, to move
+                        the News Mark forward to.
                     all_seen:
                       type: boolean
                       enum:

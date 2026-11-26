@@ -10,6 +10,19 @@
 module NewsMark
   module_function
 
+  # An ISO 8601 date and time that names its offset (`Z` or `+hh:mm`).
+  INSTANT = /\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})\z/i
+
+  # The instant `value` names, from an ISO 8601 string with an offset.
+  # Raises ArgumentError for anything else, including a time without an
+  # offset, which would otherwise be read in the server's zone.
+  def parse_instant(value)
+    text = value.is_a?(String) ? value.strip : ""
+    raise ArgumentError, "not an ISO 8601 instant with an offset" unless text.match?(INSTANT)
+
+    Time.iso8601(text)
+  end
+
   # The member's News Mark, or nil when they have none yet.
   def for(user_id)
     RpgClubUser.where(user_id: user_id).pick(:news_mark_at)
