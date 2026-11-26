@@ -7495,9 +7495,59 @@ components:
             description: 'The News Category keys the member switched off, in order,
               whatever this request filters by: the default view leaves these out.
               Empty for the service token.'
+          news_mark:
+            type: string
+            format: date-time
+            nullable: true
+            description: The member's News Mark (UTC, microseconds), as `GET /api/v1/users/{user_id}/news_mark`
+              serves it. Null without one (a first visit) and for the service token.
+          new_count:
+            type: integer
+            description: 'How many News Items in this view were posted after the News
+              Mark: the default view (switched-off News Categories left out) or the
+              asked `category`, and `q`, but not `since`/`until`. 0 without a News
+              Mark.'
+          new_category_counts:
+            type: object
+            description: "`new_count` per News Category, keyed by every News Category
+              key in order, 0 for none (and for every News Category outside this view)."
+            properties:
+              announcements:
+                type: integer
+              releases:
+                type: integer
+              emulation:
+                type: integer
+              industry:
+                type: integer
+              hardware:
+                type: integer
+              rumours:
+                type: integer
+              general:
+                type: integer
+            required:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+            example:
+              announcements: 0
+              releases: 4
+              emulation: 0
+              industry: 0
+              hardware: 0
+              rumours: 1
+              general: 0
         required:
         - category_counts
         - hidden_categories
+        - news_mark
+        - new_count
+        - new_category_counts
     NewsShelf:
       type: object
       properties:
@@ -27490,12 +27540,18 @@ paths:
         With `category`, exactly those News Categories are returned, switched off
         or not, so a preference never blocks anything. `q` searches the link title
         and the comment (case-insensitive substring) and combines with `category`.
-        `meta` adds, for the page''s category rail, `category_counts` (every News
-        Category''s count over the search alone) and `hidden_categories` (the switched-off
-        keys). Each item names its author by their current member name, or by the
-        name recorded with the message when they have no member record. An image whose
-        Discord address has expired comes back unavailable (`url` null) and queues
-        a `news_images_renew` bot job for its message: one at a time per message,
+        `since` and `until` bound `posted_at` (after `since`, at or before `until`)
+        and combine with `category` and `q`; the Catch-up view lists the new News
+        Items with `since` set to the member''s News Mark and the seen ones with `until`
+        set to it. `meta` adds, for the page''s category rail, `category_counts` (every
+        News Category''s count over the search alone) and `hidden_categories` (the
+        switched-off keys), and the member''s `news_mark` with `new_count` and `new_category_counts`:
+        the News Items in the same view (the default view or the asked `category`,
+        and `q`, but not `since`/`until`) posted after the News Mark, all 0 without
+        a News Mark. Each item names its author by their current member name, or by
+        the name recorded with the message when they have no member record. An image
+        whose Discord address has expired comes back unavailable (`url` null) and
+        queues a `news_images_renew` bot job for its message: one at a time per message,
         none within six hours of that message''s last renewal ending, and none for
         the service token''s own reads; a later load serves it once the bot has recorded
         fresh addresses. An image recorded with no expiry (`expires_at` null) is always
@@ -27520,6 +27576,24 @@ paths:
           example: zelda
         description: Search text, matched case-insensitively anywhere in the link
           title or the comment. Blank means no search.
+      - name: since
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123Z'
+        description: Only News Items posted after this ISO 8601 instant. Blank means
+          no bound; anything else that is not an ISO 8601 instant is a 400.
+      - name: until
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123Z'
+        description: Only News Items posted at or before this ISO 8601 instant. Blank
+          means no bound; anything else that is not an ISO 8601 instant is a 400.
       - name: page
         in: query
         schema:
@@ -27553,7 +27627,8 @@ paths:
                 - meta
         '400':
           description: 'an unknown News Category key, e.g. `{ "error": "unknown category:
-            piracy" }`'
+            piracy" }`, or a `since`/`until` that is not an ISO 8601 instant, e.g.
+            `{ "error": "since must be an ISO 8601 instant" }`'
           content:
             application/json:
               schema:
