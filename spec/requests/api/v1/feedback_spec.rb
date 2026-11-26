@@ -32,8 +32,9 @@ RSpec.describe 'api/v1/feedback', type: :request do
       description 'Open to any authenticated caller. The Feedback Board shows one kind at a time (`kind`) with an ' \
                   'Open / Closed filter (`status=open|closed`); `meta.totals` counts each kind\'s Open, Closed ' \
                   'and Done Feedback, whatever the filters, for the tabs. ' \
-                  'By default (`sort=board`) most upvoted first, then ' \
-                  'newest; `sort=recent` lists the latest activity first (`last_activity_at`, then newest ' \
+                  'By default (`sort=board`) Approved (not Done) first, then Pending, then Done, then ' \
+                  'Rejected, Duplicate and Withdrawn; most upvoted first, then newest, within each; ' \
+                  '`sort=recent` lists the latest activity first (`last_activity_at`, then newest ' \
                   'feedback_id), for the Feedback Board Dashboard Panel. Each row carries ' \
                   '`upvote_count`, `viewer_upvoted` (always false for the service) and `last_activity_at`.'
       produces 'application/json'
@@ -45,7 +46,8 @@ RSpec.describe 'api/v1/feedback', type: :request do
                      '(pending, approved, rejected, withdrawn, duplicate). Absent = every status.'
       parameter name: :sort, in: :query, schema: { type: :string, enum: %w[board recent], default: 'board' },
         required: false,
-        description: '`board`: most upvoted, then newest. `recent`: latest activity first.'
+        description: '`board`: Approved (not Done), Pending, Done, then closed; most upvoted, then newest, ' \
+                     'within each. `recent`: latest activity first.'
       parameter name: :page, in: :query, schema: { type: :integer, default: 1, minimum: 1 }, required: false
       parameter name: :per, in: :query, schema: { type: :integer, default: 50, maximum: 500 }, required: false
       parameter name: :limit, in: :query, schema: { type: :integer, maximum: 500 }, required: false,

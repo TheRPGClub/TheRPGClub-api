@@ -43,10 +43,18 @@ class RpgClubFeedback < ApplicationRecord
   CLOSED_STATUSES = %w[rejected duplicate withdrawn].freeze
   # Statuses members can still upvote; Done Feedback is frozen too (upvotable?).
   UPVOTABLE_STATUSES = OPEN_STATUSES
-  # Most upvoted first, then newest.
-  BOARD_ORDER = Arel.sql(
-    "upvote_count DESC, rpg_club_feedback.created_at DESC, rpg_club_feedback.feedback_id DESC"
-  )
+  # The Feedback Board's order: Approved (not Done) first, then Pending, then
+  # Done, then the closed statuses; within each group most upvoted first,
+  # then newest.
+  BOARD_ORDER = Arel.sql(<<~SQL.squish)
+    CASE
+      WHEN rpg_club_feedback.status = 'approved' AND rpg_club_feedback.done_at IS NULL THEN 0
+      WHEN rpg_club_feedback.status = 'pending' THEN 1
+      WHEN rpg_club_feedback.status = 'approved' THEN 2
+      ELSE 3
+    END,
+    upvote_count DESC, rpg_club_feedback.created_at DESC, rpg_club_feedback.feedback_id DESC
+  SQL
 
   # Latest activity first (the Feedback Board Dashboard Panel): see
   # with_upvotes' `last_activity_at`.

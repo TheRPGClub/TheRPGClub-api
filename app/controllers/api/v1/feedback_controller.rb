@@ -21,7 +21,8 @@ module Api
       # alongside `done` (Approved and Done) and single statuses.
       STATUS_GROUPS = { "open" => RpgClubFeedback::OPEN_STATUSES,
                         "closed" => RpgClubFeedback::CLOSED_STATUSES }.freeze
-      # The index's orders: `board` (the default: most upvoted, then newest)
+      # The index's orders: `board` (the default: Approved, Pending, Done,
+      # then closed; most upvoted, then newest within each)
       # and `recent` (latest activity first, for the Feedback Board
       # Dashboard Panel).
       SORTS = { "board" => RpgClubFeedback::BOARD_ORDER, "recent" => RpgClubFeedback::RECENT_ORDER }.freeze

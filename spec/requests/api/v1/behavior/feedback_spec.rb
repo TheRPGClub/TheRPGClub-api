@@ -143,6 +143,41 @@ RSpec.describe "api/v1/feedback behavior", type: :request do
       expect(json.dig("meta", "count")).to eq(4)
     end
 
+    it "groups the board Approved (not Done), Pending, Done, then closed, most upvoted first within each" do
+      viewer = create(:user)
+      approved_quiet = create(:feedback, status: "approved")
+      approved_liked = create(:feedback, status: "approved")
+      pending_old = create(:feedback)
+      pending_new = create(:feedback)
+      pending_liked = create(:feedback)
+      done_liked = create(:feedback, status: "approved", done_at: 1.hour.ago)
+      done_quiet = create(:feedback, status: "approved", done_at: 2.hours.ago)
+      rejected_liked = create(:feedback, status: "rejected", rejection_reason: "No")
+      withdrawn = create(:feedback, status: "withdrawn")
+      pending_old.update_column(:created_at, 3.days.ago)
+      pending_new.update_column(:created_at, 1.day.ago)
+      # Upvotes added before closing/finishing (frozen afterwards) still count.
+      3.times { create(:feedback_upvote, feedback: pending_liked) }
+      3.times { create(:feedback_upvote, feedback: done_liked) }
+      5.times { create(:feedback_upvote, feedback: rejected_liked) }
+      create(:feedback_upvote, feedback: approved_liked)
+      withdrawn.update_column(:created_at, 1.minute.from_now)
+
+      get "/api/v1/feedback", params: { per: 500 }, headers: auth_headers_for(viewer)
+      all_ids = json.fetch("data").map { |r| r.fetch("feedback_id") }
+
+      expect(all_ids).to eq(
+        [ approved_liked, approved_quiet, pending_liked, pending_new, pending_old, done_liked, done_quiet,
+          rejected_liked, withdrawn ].map(&:feedback_id)
+      )
+
+      get "/api/v1/feedback", params: { status: "open", per: 500 }, headers: auth_headers_for(viewer)
+      expect(json.fetch("data").map { |r| r.fetch("feedback_id") }).to eq(
+        [ approved_liked, approved_quiet, pending_liked, pending_new, pending_old, done_liked, done_quiet ]
+          .map(&:feedback_id)
+      )
+    end
+
     it "pages the sorted list" do
       top = create(:feedback)
       create(:feedback_upvote, feedback: top)
