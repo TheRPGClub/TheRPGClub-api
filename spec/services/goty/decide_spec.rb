@@ -33,7 +33,8 @@ RSpec.describe Goty::Decide do
       votes!("gotm", gotm[0], 1)
       only = candidates!("game_of_the_year", 1).first
 
-      expect(described_class.close!(vote, now: after_close)).to be(true)
+      expect { expect(described_class.close!(vote, now: after_close)).to be(true) }
+        .not_to have_enqueued_job(ShareCard::RefreshJob)
 
       expect(winners).to eq([ [ "game_of_the_year", only, "uncontested" ], [ "gotm", gotm[1], "vote" ] ])
       expect(vote.reload.phase(after_close)).to eq("decided")
@@ -122,8 +123,11 @@ RSpec.describe Goty::Decide do
       expect(vote.reload.pending_ties).to eq("game_of_the_year" => goty.first(2).sort)
       expect(vote.phase(after_runoff)).to eq("tie")
 
-      decided = described_class.resolve_tie!(vote, award: "game_of_the_year", gamedb_game_id: goty[1],
-        now: after_runoff + 1.hour)
+      decided = nil
+      expect do
+        decided = described_class.resolve_tie!(vote, award: "game_of_the_year", gamedb_game_id: goty[1],
+          now: after_runoff + 1.hour)
+      end.not_to have_enqueued_job(ShareCard::RefreshJob)
 
       expect(decided).to be(true)
       expect(winners).to eq([ [ "game_of_the_year", goty[1], "admin" ], [ "gotm", gotm[1], "runoff" ] ])

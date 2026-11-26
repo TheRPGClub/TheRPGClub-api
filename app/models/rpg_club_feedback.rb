@@ -193,20 +193,8 @@ class RpgClubFeedback < ApplicationRecord
   def screenshot_url = Backblaze::Client.public_url_for(screenshot_key)
 
   # This Feedback on the website's Feedback Board, pinned to the top; nil
-  # when the website's address is not configured. The website is the origin
-  # of DISCORD_OAUTH_SUCCESS_REDIRECT (its sign-in callback), as for the
-  # sign-in redirects.
-  def board_url
-    uri = URI.parse(ENV.fetch("DISCORD_OAUTH_SUCCESS_REDIRECT", ""))
-    return unless uri.is_a?(URI::HTTP) && uri.host.present?
-
-    uri.path = "/feedback"
-    uri.query = { pinned: feedback_id }.to_query
-    uri.fragment = nil
-    uri.to_s
-  rescue URI::InvalidURIError
-    nil
-  end
+  # when the website's address is not configured (Website).
+  def board_url = Website.url("/feedback", pinned: feedback_id)
 
   # The body of the GitHub issue an approval opens (before its marker). A
   # Bug Report lays out its fields; the others are "<author>: <details>" as

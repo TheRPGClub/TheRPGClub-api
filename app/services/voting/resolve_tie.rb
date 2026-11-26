@@ -5,7 +5,8 @@ module Voting
   # (a round may legitimately have two winners): the last resort once a
   # runoff has tied again, or a shortcut that settles a category while its
   # runoff is still open. Once no category is left tied, the round is decided,
-  # the next one scheduled and the round_decided post queued. The steps are
+  # the next one scheduled, the round_decided post queued and the website's
+  # Share Card refresh queued once it commits (ShareCard). The steps are
   # Voting::Decide's, shared with the GOTY Vote.
   class ResolveTie
     NoTieError = Decide::NoTieError
@@ -20,6 +21,7 @@ module Voting
 
     def call
       Decide.resolve_tie!(RoundContest.new(@round), @category, @picks, now: @now) do
+        ShareCard.refresh_later
         VotingEvent.emit!(
           round_number: @round.round_number, kind: "round_decided",
           payload: { winners: Winners.for_round(@round.round_number) }

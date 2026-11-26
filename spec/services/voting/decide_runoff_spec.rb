@@ -88,4 +88,19 @@ RSpec.describe Voting::DecideRunoff do
   it "refuses to decide while the runoff is open" do
     expect { decide(runoff_closes_at - 1.minute) }.to raise_error(described_class::RunoffNotClosedError)
   end
+
+  describe "the Share Card refresh" do
+    it "queues one refresh when the runoff settles the round" do
+      runoff_votes("gotm", ids[0], 1)
+      runoff_votes("nr_gotm", ids[2], 1)
+
+      expect { decide }.to have_enqueued_job(ShareCard::RefreshJob).exactly(:once)
+    end
+
+    it "queues nothing when the runoff ties again" do
+      runoff_votes("gotm", ids[0], 1)
+
+      expect { decide }.not_to have_enqueued_job(ShareCard::RefreshJob)
+    end
+  end
 end
