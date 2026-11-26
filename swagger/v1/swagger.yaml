@@ -19739,7 +19739,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '409':
-          description: not pending
+          description: not pending, or `approval_in_progress` while an approval is
+            calling GitHub
           content:
             application/json:
               schema:
@@ -19828,7 +19829,7 @@ paths:
         each). Replaces any earlier screenshot, whose file is removed. The type is
         told by the file''s bytes. Send `multipart/form-data`. Returns the Feedback
         with its `screenshot_url`. Files are kept in the Backblaze bucket the GameDB
-        game images use: 422 `backblaze_not_configured` when it is not set up, 502
+        game images use: 503 `backblaze_not_configured` when it is not set up, 502
         `backblaze_request_failed` when Backblaze refuses an upload (nothing is changed).'
       parameters: []
       responses:
@@ -19843,7 +19844,13 @@ paths:
                     "$ref": "#/components/schemas/Feedback"
         '422':
           description: "`invalid_image` (no file, not PNG/JPEG/WebP, empty or over
-            5 MB), `screenshot_not_allowed` (not a Bug Report) or `backblaze_not_configured`"
+            5 MB) or `screenshot_not_allowed` (not a Bug Report)"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '503':
+          description: "`backblaze_not_configured`"
           content:
             application/json:
               schema:
@@ -20171,7 +20178,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '409':
-          description: not pending
+          description: not pending, or `approval_in_progress` while an approval is
+            calling GitHub
           content:
             application/json:
               schema:
@@ -20235,7 +20243,8 @@ paths:
       - Feedback
       description: Superadmin or the service, while Pending. Sets `kind`; a kind's
         required fields (a Bug Report's) are not checked, since staff are reshaping
-        the Feedback, not filing it. Enqueues nothing.
+        the Feedback, not filing it. A change away from Bug Report drops its screenshot
+        (the file is removed after). Enqueues nothing.
       parameters: []
       responses:
         '200':
@@ -20254,7 +20263,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '409':
-          description: not pending
+          description: not pending, or `approval_in_progress` while an approval is
+            calling GitHub
           content:
             application/json:
               schema:

@@ -125,6 +125,16 @@ RSpec.describe "api/v1/feedback duplicate and kind behavior", type: :request do
       end
     end
 
+    it "409s approval_in_progress while an approval is calling GitHub, changing nothing" do
+      feedback.update_column(:approval_started_at, 10.seconds.ago)
+
+      expect { duplicate }.not_to change(BotJob, :count)
+
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("approval_in_progress")
+      expect(feedback.reload.status).to eq("pending")
+    end
+
     it "422s onto itself, directly or through a chain" do
       duplicate(original_id: feedback.feedback_id)
       expect(response).to have_http_status(:unprocessable_content)
@@ -208,6 +218,50 @@ RSpec.describe "api/v1/feedback duplicate and kind behavior", type: :request do
 
         expect(response).to have_http_status(:conflict)
         expect(feedback.reload.kind).to eq("bug_report")
+      end
+    end
+
+    it "409s approval_in_progress while an approval is calling GitHub" do
+      feedback.update_column(:approval_started_at, 10.seconds.ago)
+
+      change_kind("suggestion")
+
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("approval_in_progress")
+      expect(feedback.reload.kind).to eq("bug_report")
+    end
+
+    describe "a Bug Report's screenshot" do
+      let(:storage) { instance_double(Backblaze::Client) }
+
+      before do
+        allow(Backblaze::Client).to receive(:new).and_return(storage)
+        allow(storage).to receive(:delete_file)
+        feedback.update_column(:screenshot_key, "feedback/1/shot.png")
+      end
+
+      it "is dropped, and its file removed, when the kind changes away from Bug Report" do
+        change_kind("suggestion")
+
+        expect(response).to have_http_status(:ok)
+        expect(feedback.reload.screenshot_key).to be_nil
+        expect(storage).to have_received(:delete_file).with(object_key: "feedback/1/shot.png")
+      end
+
+      it "is still dropped when Backblaze refuses to delete the file" do
+        allow(storage).to receive(:delete_file).and_raise(Backblaze::Client::RequestError, "B2 down")
+
+        change_kind("suggestion")
+
+        expect(response).to have_http_status(:ok)
+        expect(feedback.reload.screenshot_key).to be_nil
+      end
+
+      it "is kept when the kind stays Bug Report" do
+        change_kind("bug_report")
+
+        expect(feedback.reload.screenshot_key).to eq("feedback/1/shot.png")
+        expect(storage).not_to have_received(:delete_file)
       end
     end
 

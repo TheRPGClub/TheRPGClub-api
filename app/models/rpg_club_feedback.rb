@@ -98,8 +98,8 @@ class RpgClubFeedback < ApplicationRecord
 
   def kind_name = KIND_NAMES.fetch(kind)
 
-  # Approved, and its GitHub issue was last seen closed (`done_at`, kept by
-  # record_issue_state).
+  # Approved, and its GitHub issue was last seen closed as completed
+  # (`done_at`, kept by record_issue_state).
   def done? = status == "approved" && done_at.present?
 
   # Upvotes are frozen once Feedback is Done, Rejected, a Duplicate or
@@ -122,18 +122,22 @@ class RpgClubFeedback < ApplicationRecord
     totals
   end
 
-  # Called with each issue state Github::IssueStateRefreshJob reads. Approved
-  # Feedback on that issue becomes Done when it is closed (and its author is
-  # told, once ever: notify_done!) and Open again when it is reopened.
-  # nil (unknown) changes nothing.
-  def self.record_issue_state(repo, number, state)
+  # Called with each issue state (and GitHub's `reason` for it) that
+  # Github::IssueStateRefreshJob reads, and by approve. Approved Feedback on
+  # that issue becomes Done only when the issue is closed as completed (and
+  # its author is told, once ever: notify_done!). Any other state, reopened
+  # or closed as not planned (or closed with no reason, as GitHub reports
+  # some old issues), leaves it Open, clearing a Done it had. A nil state
+  # (unknown) changes nothing.
+  def self.record_issue_state(repo, number, state, reason = nil)
+    return if state.nil?
+
     on_issue = where(status: "approved", target_repo: repo, github_issue_number: number)
-    case state
-    when "open"
-      on_issue.where.not(done_at: nil).update_all(done_at: nil)
-    when "closed"
+    if state == "closed" && reason == "completed"
       on_issue.where(done_at: nil).update_all(done_at: Time.current)
       on_issue.where(done_notified_at: nil).find_each(&:notify_done!)
+    else
+      on_issue.where.not(done_at: nil).update_all(done_at: nil)
     end
   end
 

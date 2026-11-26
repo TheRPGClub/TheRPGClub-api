@@ -138,6 +138,16 @@ RSpec.describe "api/v1/feedback Bug Reports behavior", type: :request do
       expect(bug_report.reload.title).to eq("Blank page")
     end
 
+    it "409s approval_in_progress while an approval is calling GitHub" do
+      bug_report.update_column(:approval_started_at, 10.seconds.ago)
+
+      edit(data: { title: "Too late" })
+
+      expect(response).to have_http_status(:conflict)
+      expect(json.fetch("error")).to eq("approval_in_progress")
+      expect(bug_report.reload.title).to eq("Blank page")
+    end
+
     it "refuses once reviewed or withdrawn" do
       %w[approved rejected withdrawn].each do |status|
         bug_report.update_columns(status: status)
@@ -258,12 +268,12 @@ RSpec.describe "api/v1/feedback Bug Reports behavior", type: :request do
       expect(bug_report.reload.screenshot_key).to be_nil
     end
 
-    it "422s when Backblaze has no public URL configured, uploading nothing" do
+    it "503s when Backblaze has no public URL configured, uploading nothing" do
       ENV.delete("BACKBLAZE_PUBLIC_BASE_URL")
 
       upload
 
-      expect(response).to have_http_status(:unprocessable_content)
+      expect(response).to have_http_status(:service_unavailable)
       expect(json.fetch("error")).to eq("backblaze_not_configured")
       expect(stored).to be_empty
     end

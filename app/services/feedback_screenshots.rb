@@ -64,6 +64,17 @@ class FeedbackScreenshots
     discard(previous)
   end
 
+  # Deletes a file no longer used (a replaced screenshot, or one dropped by
+  # a kind change); a failure only leaves it behind, logged.
+  def discard(object_key)
+    return if object_key.blank?
+
+    @client.delete_file(object_key: object_key)
+  rescue Backblaze::Client::ConfigurationError, Backblaze::Client::RequestError => error
+    Rails.logger.warn({ event: "feedback_screenshot.discard_failed", object_key: object_key,
+                        error: error.message }.to_json)
+  end
+
   private
 
   # Sets the screenshot under the row lock while Pending and returns the
@@ -96,14 +107,4 @@ class FeedbackScreenshots
   end
 
   def not_pending(feedback) = NotPending.new("feedback is #{feedback.status}, not pending")
-
-  # Deletes a file no longer used; a failure only leaves it behind.
-  def discard(object_key)
-    return if object_key.blank?
-
-    @client.delete_file(object_key: object_key)
-  rescue Backblaze::Client::ConfigurationError, Backblaze::Client::RequestError => error
-    Rails.logger.warn({ event: "feedback_screenshot.discard_failed", object_key: object_key,
-                        error: error.message }.to_json)
-  end
 end

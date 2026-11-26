@@ -484,6 +484,19 @@ RSpec.describe "api/v1/feedback behavior", type: :request do
         "upvote_count" => 2, "viewer_upvoted" => true)
     end
 
+    it "re-checks under the row lock, refusing Feedback closed after it was read" do
+      allow(RpgClubFeedback).to receive(:find).and_wrap_original do |original, *args|
+        original.call(*args).tap do |record|
+          RpgClubFeedback.where(feedback_id: record.feedback_id).update_all(status: "rejected")
+        end
+      end
+
+      post "/api/v1/feedback/#{feedback.feedback_id}/upvote", headers: auth_headers_for(member)
+
+      expect(response).to have_http_status(:conflict)
+      expect(feedback.upvotes.count).to eq(0)
+    end
+
     it "accepts upvotes on approved feedback" do
       feedback.update!(status: "approved")
 

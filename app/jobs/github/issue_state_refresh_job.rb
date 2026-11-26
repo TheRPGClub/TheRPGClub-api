@@ -20,15 +20,24 @@ module Github
         next if IssueStateCache.fresh?(repo, number)
 
         begin
-          state = client.issue_state(repo: repo, number: number)
-          IssueStateCache.store(repo, number, state)
+          issue = client.issue(repo: repo, number: number)
+          IssueStateCache.store(repo, number, issue&.state, reason: issue&.state_reason)
         rescue Client::RequestError, Client::ConfigurationError => error
           Rails.logger.warn("GitHub issue state for #{repo}##{number} failed: #{error.message}")
           IssueStateCache.failed(repo, number)
           break
         end
-        RpgClubFeedback.record_issue_state(repo, number, state)
+        record(repo, number, issue)
       end
+    end
+
+    private
+
+    # A failure here is this pair's alone: it is logged and the run goes on.
+    def record(repo, number, issue)
+      RpgClubFeedback.record_issue_state(repo, number, issue&.state, issue&.state_reason)
+    rescue StandardError => error
+      Rails.logger.error("Recording GitHub issue state for #{repo}##{number} failed: #{error.class}: #{error.message}")
     end
   end
 end

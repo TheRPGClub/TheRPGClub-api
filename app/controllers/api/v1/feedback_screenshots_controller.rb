@@ -20,7 +20,7 @@ module Api
         render json: { error: error.message }, status: :conflict
       end
       rescue_from Backblaze::Client::ConfigurationError do |error|
-        render json: { error: "backblaze_not_configured", message: error.message }, status: :unprocessable_content
+        render json: { error: "backblaze_not_configured", message: error.message }, status: :service_unavailable
       end
       rescue_from Backblaze::Client::RequestError do |error|
         render json: { error: "backblaze_request_failed", message: error.message }, status: :bad_gateway

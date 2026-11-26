@@ -80,7 +80,8 @@ module Api
       # The author changes their own Pending Feedback (api#500): title,
       # details and, on a Bug Report, its bug fields (the screenshot has its
       # own endpoint). Anyone else is refused; reviewed or withdrawn Feedback
-      # is a 409.
+      # is a 409, as is Feedback being approved (`approval_in_progress`: its
+      # issue is being opened from what it says now).
       def update
         feedback = RpgClubFeedback.find(params[:id])
         return render json: { error: "forbidden" }, status: :forbidden unless own?(feedback)
@@ -90,6 +91,7 @@ module Api
           unless feedback.pending?
             return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
           end
+          return render_approval_in_progress if approval_in_progress?(feedback)
 
           attrs.except!(*RpgClubFeedback::BUG_FIELDS) unless feedback.bug_report?
           feedback.assign_attributes(attrs)
@@ -123,11 +125,13 @@ module Api
 
         begin
           issue = find_or_open_issue(feedback, repo)
-          Github::IssueStateCache.store(repo, issue.number, issue.state)
+          Github::IssueStateCache.store(repo, issue.number, issue.state, reason: issue.state_reason)
           review(data) do
             { status: "approved", target_repo: repo, github_issue_number: issue.number, github_issue_url: issue.url,
               approval_started_at: nil }
           end
+          # A reused issue may already be closed as completed: Done at once.
+          RpgClubFeedback.record_issue_state(repo, issue.number, issue.state, issue.state_reason)
         ensure
           release_approval(feedback, mark)
         end
@@ -151,7 +155,8 @@ module Api
       # be Pending or Approved (Done included) and of any kind. Its upvotes
       # move to the original, one per member, and Duplicates of it are
       # repointed to the original. Approved Feedback is refused (409): close
-      # its GitHub issue instead. Renders as reject does.
+      # its GitHub issue instead; so is Feedback being approved
+      # (`approval_in_progress`). Renders as reject does.
       def duplicate
         data = request_data
         feedback = RpgClubFeedback.find(params[:id])
@@ -172,6 +177,7 @@ module Api
           unless feedback.status == "pending"
             return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
           end
+          return render_approval_in_progress if approval_in_progress?(feedback)
           unless RpgClubFeedback::ORIGINAL_STATUSES.include?(original.status)
             return render json: { error: "the original is #{original.status}; it must be pending or approved" },
               status: :unprocessable_content
@@ -191,7 +197,10 @@ module Api
 
       # Superadmin (or the bot). Sets Pending Feedback's `kind`. Staff are
       # reshaping it, not filing it, so a kind's required fields (a Bug
-      # Report's) are not checked.
+      # Report's) are not checked. Only Bug Reports keep a screenshot: a
+      # change to another kind drops it, and its file goes after (a storage
+      # failure only leaves the file behind). 409 `approval_in_progress` while
+      # it is being approved.
       def change_kind
         kind = request_data["kind"].to_s
         unless RpgClubFeedback::KINDS.include?(kind)
@@ -200,14 +209,21 @@ module Api
         end
 
         feedback = RpgClubFeedback.find(params[:id])
+        dropped_screenshot = nil
         feedback.with_lock do
           unless feedback.status == "pending"
             return render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
           end
+          return render_approval_in_progress if approval_in_progress?(feedback)
 
           feedback.kind = kind
+          unless feedback.bug_report?
+            dropped_screenshot = feedback.screenshot_key
+            feedback.screenshot_key = nil
+          end
           feedback.save!(validate: false)
         end
+        FeedbackScreenshots.new.discard(dropped_screenshot) if dropped_screenshot
         render_feedback(feedback.feedback_id)
       end
 
@@ -230,14 +246,19 @@ module Api
 
       # A member's upvote, at most one each (repeating it is a no-op). Only
       # Pending and Approved Feedback that is not Done takes upvotes.
+      #
+      # The check and the change hold the row lock, so a concurrent Duplicate
+      # (which moves upvotes under the same lock) or Done cannot slip between.
       def upvote
         feedback = RpgClubFeedback.find(params[:id])
-        return render_frozen(feedback) unless feedback.upvotable?
+        feedback.with_lock do
+          return render_frozen(feedback) unless feedback.upvotable?
 
-        RpgClubFeedbackUpvote.insert(
-          { feedback_id: feedback.feedback_id, user_id: current_principal.id },
-          unique_by: :ux_rpg_club_feedback_upvotes_feedback_user
-        )
+          RpgClubFeedbackUpvote.insert(
+            { feedback_id: feedback.feedback_id, user_id: current_principal.id },
+            unique_by: :ux_rpg_club_feedback_upvotes_feedback_user
+          )
+        end
         render_feedback(feedback.feedback_id)
       end
 
@@ -245,9 +266,11 @@ module Api
       # are: Done, Rejected, Duplicate and Withdrawn Feedback keeps them.
       def remove_upvote
         feedback = RpgClubFeedback.find(params[:id])
-        return render_frozen(feedback) unless feedback.upvotable?
+        feedback.with_lock do
+          return render_frozen(feedback) unless feedback.upvotable?
 
-        feedback.upvotes.where(user_id: current_principal.id).delete_all
+          feedback.upvotes.where(user_id: current_principal.id).delete_all
+        end
         render_feedback(feedback.feedback_id)
       end
 
@@ -284,15 +307,26 @@ module Api
             render json: { error: "feedback is #{feedback.status}, not pending" }, status: :conflict
             return nil
           end
-          if feedback.approval_started_at&.after?(APPROVAL_WINDOW.ago)
-            render json: { error: "approval_in_progress", message: "this feedback is already being approved" },
-              status: :conflict
+          if approval_in_progress?(feedback)
+            render_approval_in_progress
             return nil
           end
 
           feedback.update_columns(approval_started_at: Time.current.floor(6))
           feedback.approval_started_at
         end
+      end
+
+      # Whether an approval started within APPROVAL_WINDOW is still calling
+      # GitHub. Changing the Feedback meanwhile would leave its issue built
+      # from stale data (or, for a Duplicate, orphaned).
+      def approval_in_progress?(feedback)
+        feedback.approval_started_at&.after?(APPROVAL_WINDOW.ago) || false
+      end
+
+      def render_approval_in_progress
+        render json: { error: "approval_in_progress", message: "this feedback is already being approved" },
+          status: :conflict
       end
 
       # Clears this request's mark if it is still there (a finished approval
@@ -305,7 +339,8 @@ module Api
       def find_or_open_issue(feedback, repo)
         client = Github::Client.new
         marker = issue_marker(feedback)
-        client.find_issue_by_marker(repo: repo, marker: marker, since: feedback.created_at) ||
+        client.find_issue_by_marker(repo: repo, marker: [ marker, legacy_issue_marker(feedback) ],
+          since: feedback.created_at) ||
           client.create_issue(repo: repo, title: feedback.title, body: "#{issue_body(feedback)}\n\n#{marker}",
             labels: [ feedback.issue_label(repo) ])
       end
@@ -313,6 +348,12 @@ module Api
       # Hidden in the rendered issue; identifies the Feedback an issue is for.
       def issue_marker(feedback)
         "<!-- rpgclub-feedback:#{feedback.feedback_id} -->"
+      end
+
+      # The marker issues carried before Suggestions became Feedback (the id
+      # was kept), so a retry still finds an issue opened then.
+      def legacy_issue_marker(feedback)
+        "<!-- rpgclub-suggestion:#{feedback.feedback_id} -->"
       end
 
       # A member reviews as themselves; the bot names the Discord reviewer.

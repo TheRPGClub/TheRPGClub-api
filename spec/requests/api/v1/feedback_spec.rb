@@ -160,7 +160,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '409', 'not pending' do
+      response '409', 'not pending, or `approval_in_progress` while an approval is calling GitHub' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -185,7 +185,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
   path '/api/v1/feedback/{feedback_id}/screenshot' do
     parameter name: :feedback_id, in: :path, schema: { type: :string }, required: true,
       description: 'RpgClubFeedback id (a Bug Report).'
-    storage = 'Files are kept in the Backblaze bucket the GameDB game images use: 422 `backblaze_not_configured` ' \
+    storage = 'Files are kept in the Backblaze bucket the GameDB game images use: 503 `backblaze_not_configured` ' \
               'when it is not set up, 502 `backblaze_request_failed` when Backblaze refuses an upload (nothing ' \
               'is changed).'
 
@@ -208,8 +208,12 @@ RSpec.describe 'api/v1/feedback', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
-      response '422', '`invalid_image` (no file, not PNG/JPEG/WebP, empty or over 5 MB), `screenshot_not_allowed` ' \
-                      '(not a Bug Report) or `backblaze_not_configured`' do
+      response '422', '`invalid_image` (no file, not PNG/JPEG/WebP, empty or over 5 MB) or `screenshot_not_allowed` ' \
+                      '(not a Bug Report)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '503', '`backblaze_not_configured`' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -439,7 +443,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '409', 'not pending' do
+      response '409', 'not pending, or `approval_in_progress` while an approval is calling GitHub' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -467,7 +471,8 @@ RSpec.describe 'api/v1/feedback', type: :request do
     post 'Change the kind of Feedback' do
       tags 'Feedback'
       description 'Superadmin or the service, while Pending. Sets `kind`; a kind\'s required fields (a Bug ' \
-                  'Report\'s) are not checked, since staff are reshaping the Feedback, not filing it. Enqueues nothing.'
+                  'Report\'s) are not checked, since staff are reshaping the Feedback, not filing it. A change away ' \
+                  'from Bug Report drops its screenshot (the file is removed after). Enqueues nothing.'
       consumes 'application/json'
       produces 'application/json'
 
@@ -491,7 +496,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '409', 'not pending' do
+      response '409', 'not pending, or `approval_in_progress` while an approval is calling GitHub' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
