@@ -1035,6 +1035,12 @@ components:
           type: boolean
         role_regular:
           type: boolean
+        role_dev:
+          type: boolean
+        role_member:
+          type: boolean
+        role_newcomer:
+          type: boolean
         server_left_at:
           type: string
           format: date-time
@@ -1045,6 +1051,9 @@ components:
       - role_admin
       - role_moderator
       - role_regular
+      - role_dev
+      - role_member
+      - role_newcomer
     Membership:
       type: object
       properties:
