@@ -7496,6 +7496,21 @@ components:
       - user_id
       - hidden
       - categories
+    NewsMark:
+      type: object
+      properties:
+        user_id:
+          type: string
+        news_mark:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'The moment up to which the member has seen the News Hub''s
+            News Items (UTC, microseconds). Null until the website first sets it:
+            a first visit.'
+      required:
+      - user_id
+      - news_mark
     NewsFeedMeta:
       allOf:
       - "$ref": "#/components/schemas/PaginationMeta"
@@ -7553,9 +7568,120 @@ components:
             description: 'The News Category keys the member switched off, in order,
               whatever this request filters by: the default view leaves these out.
               Empty for the service token.'
+          news_mark:
+            type: string
+            format: date-time
+            nullable: true
+            description: The member's News Mark (UTC, microseconds), as `GET /api/v1/users/{user_id}/news_mark`
+              serves it, or `mark` when the request gave one. Null without either
+              (a first visit) and for the service token without `mark`.
+          new_count:
+            type: integer
+            nullable: true
+            description: 'How many News Items in this view were listed after the News
+              Mark (or `mark`): the default view (switched-off News Categories left
+              out) or the asked `category`, and `q`, but not `since`/`until`. 0 without
+              a News Mark. Null past page one unless `mark` is given.'
+          new_category_counts:
+            type: object
+            nullable: true
+            description: "`new_count` per News Category, keyed by every News Category
+              key in order, 0 for none (and for every News Category outside this view).
+              Null past page one unless `mark` is given."
+            properties:
+              announcements:
+                type: integer
+              releases:
+                type: integer
+              emulation:
+                type: integer
+              industry:
+                type: integer
+              hardware:
+                type: integer
+              rumours:
+                type: integer
+              general:
+                type: integer
+            required:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+            example:
+              announcements: 0
+              releases: 4
+              emulation: 0
+              industry: 0
+              hardware: 0
+              rumours: 1
+              general: 0
         required:
         - category_counts
         - hidden_categories
+        - news_mark
+        - new_count
+        - new_category_counts
+    NewsShelf:
+      type: object
+      properties:
+        category_key:
+          type: string
+          enum:
+          - announcements
+          - releases
+          - emulation
+          - industry
+          - hardware
+          - rumours
+          - general
+          description: The shelf's News Category.
+        name:
+          type: string
+          example: Releases & Updates
+          description: The News Category's display name.
+        today_count:
+          type: integer
+          description: How many of the News Category's News Items were posted since
+            the start of the current UTC day, whatever `per` is.
+        items:
+          type: array
+          items:
+            "$ref": "#/components/schemas/NewsItem"
+          description: The News Category's newest News Items, newest first, at most
+            `per`; empty for none.
+      required:
+      - category_key
+      - name
+      - today_count
+      - items
+    NewsShelvesMeta:
+      type: object
+      properties:
+        per:
+          type: integer
+          description: The most News Items a shelf holds in this answer (`per`, clamped
+            to 1-20).
+        hidden_categories:
+          type: array
+          items:
+            type: string
+            enum:
+            - announcements
+            - releases
+            - emulation
+            - industry
+            - hardware
+            - rumours
+            - general
+          description: 'The News Category keys the member switched off, in order:
+            they have no shelf. Empty for the service token.'
+      required:
+      - per
+      - hidden_categories
     NewsItem:
       type: object
       properties:
@@ -7613,6 +7739,15 @@ components:
           type: string
           format: date-time
           description: When the message was posted in Discord.
+        listed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the News Item was listed (first had a News Category, so
+            members could see it), UTC with microseconds. The News Mark counts News
+            Items listed after it as new, so one recorded late is still new. An imported
+            News Item is listed at its posting time, so it never counts as new. Null
+            only for an unsorted imported News Item.
         edited_at:
           type: string
           format: date-time
@@ -7638,6 +7773,7 @@ components:
       - origin
       - comment
       - posted_at
+      - listed_at
       - edited_at
       - link
       - images
@@ -28489,18 +28625,30 @@ paths:
         With `category`, exactly those News Categories are returned, switched off
         or not, so a preference never blocks anything. `q` searches the link title
         and the comment (case-insensitive substring) and combines with `category`.
-        `meta` adds, for the page''s category rail, `category_counts` (every News
-        Category''s count over the search alone) and `hidden_categories` (the switched-off
-        keys). Each item names its author by their current member name, or by the
-        name recorded with the message when they have no member record. An image whose
-        Discord address has expired comes back unavailable (`url` null) and queues
-        a `news_images_renew` bot job for its message: one at a time per message,
-        none within six hours of that message''s last renewal ending, and none for
-        the service token''s own reads; a later load serves it once the bot has recorded
-        fresh addresses. An image recorded with no expiry (`expires_at` null) is always
-        served. Belongs to the News Hub Feature: a member who cannot use it (Preview:
-        Admins and Superadmins only; Off: nobody) gets 404 `not_found`. The service
-        token is not gated; the bot runs its own feature gate.'
+        `since` and `until` bound `listed_at`, when the News Item was listed rather
+        than posted (after `since`, at or before `until`), and combine with `category`
+        and `q`; the order stays `posted_at`. The Catch-up view lists exactly the
+        new News Items with `since` set to the member''s News Mark and exactly the
+        seen ones with `until` set to it. `meta` adds, for the page''s category rail,
+        `category_counts` (every News Category''s count over the search alone) and
+        `hidden_categories` (the switched-off keys), and the member''s `news_mark`
+        with `new_count` and `new_category_counts`: the News Items in the same view
+        (the default view or the asked `category`, and `q`, but not `since`/`until`)
+        listed after the News Mark, all 0 without a News Mark. `mark` counts against
+        that instant instead of the stored News Mark, so a visit keeps its new/seen
+        split across reloads; it is never stored. The new counts are read only on
+        page one or with `mark`: past page one without `mark`, `new_count` and `new_category_counts`
+        are null. `since`, `until` and `mark` must name an offset (`Z` or `+hh:mm`).
+        Each item names its author by their current member name, or by the name recorded
+        with the message when they have no member record. An image whose Discord address
+        has expired comes back unavailable (`url` null) and queues a `news_images_renew`
+        bot job for its message: one at a time per message, none within six hours
+        of that message''s last renewal ending, and none for the service token''s
+        own reads; a later load serves it once the bot has recorded fresh addresses.
+        An image recorded with no expiry (`expires_at` null) is always served. Belongs
+        to the News Hub Feature: a member who cannot use it (Preview: Admins and Superadmins
+        only; Off: nobody) gets 404 `not_found`. The service token is not gated; the
+        bot runs its own feature gate.'
       parameters:
       - name: category
         in: query
@@ -28519,6 +28667,35 @@ paths:
           example: zelda
         description: Search text, matched case-insensitively anywhere in the link
           title or the comment. Blank means no search.
+      - name: since
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123Z'
+        description: Only News Items listed after this ISO 8601 instant (with `Z`
+          or an offset). Blank means no bound; anything else is a 400.
+      - name: until
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123Z'
+        description: Only News Items listed at or before this ISO 8601 instant (with
+          `Z` or an offset). Blank means no bound; anything else is a 400.
+      - name: mark
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+          example: '2026-11-24T21:40:00.123456Z'
+        description: 'Count `new_count` and `new_category_counts` (and answer `news_mark`)
+          against this ISO 8601 instant (with `Z` or an offset) instead of the member''s
+          stored News Mark. Read only: never stored. Blank means the stored News Mark;
+          anything else is a 400.'
       - name: page
         in: query
         schema:
@@ -28552,7 +28729,8 @@ paths:
                 - meta
         '400':
           description: 'an unknown News Category key, e.g. `{ "error": "unknown category:
-            piracy" }`'
+            piracy" }`, or a `since`/`until`/`mark` that is not an ISO 8601 instant
+            with an offset, e.g. `{ "error": "since must be an ISO 8601 instant" }`'
           content:
             application/json:
               schema:
@@ -28600,6 +28778,65 @@ paths:
                     - stamp
                 required:
                 - data
+  "/api/v1/news_items/shelves":
+    get:
+      summary: The News Hub shelves
+      tags:
+      - News Hub
+      description: 'The News page''s Shelves tab in one request: one shelf per News
+        Category in the member''s default view (every News Category except the ones
+        they switched off with a News Category Preference), in News Category order.
+        Each shelf holds that News Category''s newest `per` News Items, newest first
+        (`posted_at` descending, as the feed orders them), serialized as the feed
+        serializes them, and `today_count`: how many of its News Items were posted
+        since the start of the current UTC day, whatever `per` is. A News Category
+        with no News Items still has its shelf, empty. The switched-off News Categories
+        are listed in `meta.hidden_categories`. Imported News Items staff have not
+        sorted are never shown. An image whose Discord address has expired comes back
+        unavailable and queues its renewal exactly as the feed does (none for the
+        service token''s own reads). Belongs to the News Hub Feature: a member who
+        cannot use it (Preview: Admins and Superadmins only; Off: nobody) gets 404
+        `not_found`. The service token is not gated; the bot runs its own feature
+        gate.'
+      parameters:
+      - name: per
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 10
+          maximum: 20
+        description: News Items per shelf. Missing, zero or not a number means 10;
+          above 20 means 20.
+      responses:
+        '200':
+          description: the shelves
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/NewsShelf"
+                  meta:
+                    "$ref": "#/components/schemas/NewsShelvesMeta"
+                required:
+                - data
+                - meta
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the viewer cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
   "/api/v1/news_items/uncopied":
     get:
       summary: News Items without a News Copy
@@ -29040,6 +29277,134 @@ paths:
                   required:
                   - acting_user_id
                   - category_key
+              required:
+              - data
+        required: true
+  "/api/v1/users/{user_id}/news_mark":
+    parameters:
+    - name: user_id
+      in: path
+      schema:
+        type: string
+      required: true
+      description: Discord user id of the member. Must be the signed-in member.
+    get:
+      summary: Show a member's News Mark
+      tags:
+      - News Hub
+      description: 'The News Mark: the moment up to which the member has seen the
+        News Hub''s News Items. The News page counts News Items listed after it as
+        new. `news_mark` is null until the website first sets it. Only the member
+        themself may read it; another member, staff and the bot''s service token get
+        403. Belongs to the News Hub Feature: a member who cannot use it (Preview:
+        Admins and Superadmins only; Off: nobody) gets 404 `not_found`.'
+      responses:
+        '200':
+          description: News Mark
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsMark"
+                required:
+                - data
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    put:
+      summary: Move a member's News Mark forward
+      tags:
+      - News Hub
+      description: 'Moves the News Mark forward, either to an instant (`news_mark`,
+        the newest News Item the page showed: its greatest `listed_at`) or to now
+        (`all_seen: true`, Mark all seen). Give exactly one. The News Mark never moves
+        backwards: an instant before the stored mark keeps the stored one and still
+        returns 200 with it. An instant past now is clamped to now. Returns the stored
+        News Mark. Only the member themself may set it. Belongs to the News Hub Feature:
+        a member who cannot use it (Preview: Admins and Superadmins only; Off: nobody)
+        gets 404 `not_found`.'
+      parameters: []
+      responses:
+        '200':
+          description: the stored News Mark
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/NewsMark"
+                required:
+                - data
+        '422':
+          description: neither or both of `news_mark` and `all_seen`, a `news_mark`
+            that is not an ISO 8601 instant with an offset, or an `all_seen` that
+            is not true
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `data` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: 'forbidden: caller is not the member'
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the member cannot use the News Hub Feature
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    news_mark:
+                      type: string
+                      format: date-time
+                      example: '2026-11-24T21:40:00.000Z'
+                      description: ISO 8601 instant, with `Z` or an offset, to move
+                        the News Mark forward to.
+                    all_seen:
+                      type: boolean
+                      enum:
+                      - true
+                      description: 'Mark all seen: move the News Mark to now.'
               required:
               - data
         required: true

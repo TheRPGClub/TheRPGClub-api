@@ -18,6 +18,13 @@ class NewsItemResource
   attributes :message_id, :category_key, :origin, :comment, :posted_at, :edited_at, :link,
     :picked_category_key, :news_copy
 
+  # When the News Item was listed (first had a News Category), in UTC with
+  # microseconds so the website can send it back as a News Mark exactly.
+  # The News Mark counts News Items listed after it as new.
+  attribute :listed_at do |item|
+    item.listed_at&.utc&.iso8601(6)
+  end
+
   attribute :images do |item|
     now = params[:now] || Time.current
     item.images.map do |image|

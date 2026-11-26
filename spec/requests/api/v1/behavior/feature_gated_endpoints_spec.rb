@@ -275,6 +275,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/news_categories" => "news_hub",
     "api/v1/news_import" => "news_hub",
     "api/v1/news_category_preferences" => "news_hub",
+    "api/v1/news_marks" => "news_hub",
     # Release Calendar
     "api/v1/upcoming_releases" => "release_calendar",
     "api/v1/hidden_platforms" => "release_calendar",

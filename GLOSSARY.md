@@ -305,6 +305,10 @@ _Avoid_: Repost, mirror, crosspost
 A member's choice to leave a News Category out of their own default view of the News Hub. It affects only the website, and never stops the member from viewing that category when they ask for it.
 _Avoid_: Mute, unfollow, filter (when meaning the saved choice)
 
+**News Mark**:
+The moment up to which a member has seen the News Hub's News Items: those listed after it (given a News Category, so members could first see them; not when they were posted, so one recorded late is still new) are new to them. It is per member, on the website only, and set by the website when the member leaves the News page or chooses Mark all seen; it only moves forward. It is never per-item read state.
+_Avoid_: Unread, read state, last visit
+
 **News Import**:
 The one-time move of the messages posted in the News Channel before the News Hub launched into the News Hub as News Items, each keeping its original author and date. An imported News Item stays hidden until staff assign its News Category.
 _Avoid_: Backfill (that is the Achievement Hub's term), migration, re-post
