@@ -19,6 +19,9 @@ module Api
       # endpoint into an open redirect.
       TRUSTED_IMAGE_HOSTS = %w[cdn.discordapp.com media.discordapp.net].freeze
       TRUSTED_IMAGE_HOST_SUFFIX = ".backblazeb2.com"
+      # A Discord avatar hash ("a_" marks an animated one) as Discord login
+      # stores it in `discord_avatar`; anything else is never built into a URL.
+      DISCORD_AVATAR_HASH = /\A(a_)?\h{32}\z/
 
       # Canonical `has_platform` tokens mapped to the `social_platforms.label`
       # substrings they match (case-insensitively). This mirrors the Discord
@@ -163,8 +166,12 @@ module Api
       # CDN) and stream the blob only for members with no URL on record. The
       # redirect is cached for an hour, not a day, so a changed avatar shows
       # up on the website soon after the bot logs it.
+      #
+      # A member with a Discord avatar hash from a website login goes to
+      # Discord's own image server first, as the website's sidebar draws them
+      # (many members have no stored copy, and this endpoint 404'd for them).
       def avatar
-        url = RpgClubUserAvatarHistory
+        url = discord_avatar_url || RpgClubUserAvatarHistory
           .where(user_id: params[:user_id])
           .where.not(avatar_url: [ nil, "" ])
           .order(changed_at: :desc, event_id: :desc)
@@ -284,6 +291,15 @@ module Api
 
       # Whether `url` is an https URL on a host the bot stores avatars on (see
       # TRUSTED_IMAGE_HOSTS).
+      # https://cdn.discordapp.com/avatars/{id}/{hash}.png for a member whose
+      # stored hash looks like one Discord issued; nil otherwise.
+      def discord_avatar_url
+        hash = RpgClubUser.where(user_id: params[:user_id].to_s).pick(:discord_avatar).to_s
+        return unless DISCORD_AVATAR_HASH.match?(hash) && params[:user_id].to_s.match?(/\A\d+\z/)
+
+        "https://cdn.discordapp.com/avatars/#{params[:user_id]}/#{hash}.png?size=256"
+      end
+
       def trusted_image_url?(url)
         return false if url.blank?
 

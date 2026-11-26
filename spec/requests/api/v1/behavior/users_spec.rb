@@ -431,6 +431,29 @@ RSpec.describe "api/v1/users behavior", type: :request do
   end
 
   describe "GET /api/v1/users/:user_id/avatar" do
+    it "redirects to Discord's image server for a member with a Discord avatar hash, over stored copies" do
+      user = create(:user, discord_avatar: "a_0123456789abcdef0123456789abcdef")
+      create(:avatar_history_event, user: user, avatar_url: "https://f005.backblazeb2.com/file/b/avatars/1/x.png",
+        changed_at: 1.hour.ago)
+
+      get "/api/v1/users/#{user.user_id}/avatar"
+
+      expect(response).to redirect_to(
+        "https://cdn.discordapp.com/avatars/#{user.user_id}/a_0123456789abcdef0123456789abcdef.png?size=256"
+      )
+      expect(response.headers["Cache-Control"]).to include("max-age=3600")
+    end
+
+    it "ignores a Discord avatar hash that isn't one Discord issues" do
+      user = create(:user, discord_avatar: "../evil")
+      user.update_column(:avatar_blob, "fake-avatar-bytes")
+
+      get "/api/v1/users/#{user.user_id}/avatar"
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to eq("fake-avatar-bytes")
+    end
+
     it "redirects to the latest avatar-history URL over the legacy blob" do
       user = create(:user)
       user.update_column(:avatar_blob, "stale-avatar-bytes")
