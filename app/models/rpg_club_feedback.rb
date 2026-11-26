@@ -26,6 +26,12 @@ class RpgClubFeedback < ApplicationRecord
     "TheRPGClub/TheRPGClub-www" => { "feature_request" => "enhancement", "suggestion" => "enhancement",
                                      "bug_report" => "bug" }
   }.freeze
+  # Where a Bug Report happened (`where`); the approval's repo is pre-filled
+  # from it on the website.
+  WHERES = %w[bot website].freeze
+  WHERE_NAMES = { "bot" => "Bot", "website" => "Website" }.freeze
+  # A Bug Report's own fields (ticket api#500). Other kinds leave them empty.
+  BUG_FIELDS = %w[where what_happened expected steps].freeze
   # Statuses members can still upvote (the Feedback Board's default view).
   UPVOTABLE_STATUSES = %w[pending approved].freeze
   # Most upvoted first, then newest.
@@ -43,6 +49,13 @@ class RpgClubFeedback < ApplicationRecord
   validates :title, presence: true
   validates :kind, inclusion: { in: KINDS }
   validates :status, inclusion: { in: STATUSES }
+  validates :where, inclusion: { in: WHERES }, allow_nil: true
+  # Filing (a create, or the author's edit) a Bug Report needs what happened
+  # and what was expected. Staff changing the kind on review is reshaping,
+  # not filing, so it saves without this context.
+  validates :what_happened, :expected, presence: true, on: :filing, if: :bug_report?
+
+  normalizes :where, :what_happened, :expected, :steps, with: ->(value) { value.to_s.strip.presence }
 
   # Adds `upvote_count`, `viewer_upvoted` (whether `viewer_id` upvoted;
   # false when nil) and `last_activity_at` to each row, for FeedbackResource.
@@ -63,6 +76,50 @@ class RpgClubFeedback < ApplicationRecord
   end
 
   def kind_name = KIND_NAMES.fetch(kind)
+
+  def bug_report? = kind == "bug_report"
+
+  def pending? = status == "pending"
+
+  # The screenshot's public B2 address, or nil without one.
+  def screenshot_url = Backblaze::Client.public_url_for(screenshot_key)
+
+  # This Feedback on the website's Feedback Board, pinned to the top; nil
+  # when the website's address is not configured. The website is the origin
+  # of DISCORD_OAUTH_SUCCESS_REDIRECT (its sign-in callback), as for the
+  # sign-in redirects.
+  def board_url
+    uri = URI.parse(ENV.fetch("DISCORD_OAUTH_SUCCESS_REDIRECT", ""))
+    return unless uri.is_a?(URI::HTTP) && uri.host.present?
+
+    uri.path = "/feedback"
+    uri.query = { pinned: feedback_id }.to_query
+    uri.fragment = nil
+    uri.to_s
+  rescue URI::InvalidURIError
+    nil
+  end
+
+  # The body of the GitHub issue an approval opens (before its marker). A
+  # Bug Report lays out its fields; the others are "<author>: <details>" as
+  # the bot's review wrote them. The repos are public, so a screenshot is
+  # never embedded: a Bug Report links to the Feedback on the board instead.
+  def issue_body
+    author = created_by_name.presence || "Unknown"
+    return "#{author}: #{details.presence || 'No details provided.'}" unless bug_report?
+
+    sections = [
+      "Reported by #{author}.",
+      "**Where:** #{WHERE_NAMES.fetch(where, 'Not given')}",
+      "### What happened\n\n#{what_happened.presence || 'Not given.'}",
+      "### Expected\n\n#{expected.presence || 'Not given.'}",
+      "### Steps to reproduce\n\n#{steps.presence || 'Not given.'}"
+    ]
+    sections << "### Details\n\n#{details}" if details.present?
+    url = board_url
+    sections << (url ? "[Feedback ##{feedback_id} on the Feedback Board](#{url})" : "Feedback ##{feedback_id} on the Feedback Board")
+    sections.join("\n\n")
+  end
 
   # The label its GitHub issue gets in `repo`.
   def issue_label(repo) = ISSUE_LABELS.fetch(repo).fetch(kind)

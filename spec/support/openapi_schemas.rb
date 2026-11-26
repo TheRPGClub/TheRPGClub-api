@@ -868,6 +868,13 @@ module OpenapiSchemas
         rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
         target_repo: str(nullable: true).merge(description: "Repo the approval opened its GitHub issue in."),
         github_issue_number: int(nullable: true), github_issue_url: str(nullable: true),
+        where: str(nullable: true, enum: [ *RpgClubFeedback::WHERES, nil ]).merge(
+          description: "Bug Reports: where it happened."
+        ),
+        what_happened: str(nullable: true).merge(description: "Bug Reports: what happened."),
+        expected: str(nullable: true).merge(description: "Bug Reports: what the member expected."),
+        steps: str(nullable: true).merge(description: "Bug Reports: steps to reproduce, if given."),
+        screenshot_url: str(nullable: true).merge(description: "Bug Reports: the screenshot's address, if one."),
         github_issue_state: str(nullable: true, enum: [ "open", "closed", nil ]).merge(
           description: "Approved only: the GitHub issue's state, cached about ten minutes. " \
                        "Null otherwise, or when GitHub cannot say."

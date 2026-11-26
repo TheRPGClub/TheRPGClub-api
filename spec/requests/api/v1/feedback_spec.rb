@@ -13,8 +13,17 @@ RSpec.describe 'api/v1/feedback', type: :request do
     created_by: { type: :string, nullable: true,
                   description: 'Discord user id of the author. Service only; a member is always the author.' },
     created_by_name: { type: :string, nullable: true,
-                       description: "Author's display name. Service only; a member's comes from their record." }
+                       description: "Author's display name. Service only; a member's comes from their record." },
+    where: { type: :string, enum: RpgClubFeedback::WHERES, nullable: true,
+             description: 'Bug Reports: where it happened (optional).' },
+    what_happened: { type: :string, nullable: true, maxLength: 2000,
+                     description: 'Bug Reports: what happened. Required for a Bug Report.' },
+    expected: { type: :string, nullable: true, maxLength: 2000,
+                description: 'Bug Reports: what the member expected. Required for a Bug Report.' },
+    steps: { type: :string, nullable: true, maxLength: 2000, description: 'Bug Reports: steps to reproduce (optional).' }
   }
+  # What the author may change while Pending (PATCH); bug fields only on a Bug Report.
+  editable = writable.slice(:title, :details, :where, :what_happened, :expected, :steps)
   # Status and the review columns are server-managed and ignored on create.
 
   path '/api/v1/feedback' do
@@ -60,7 +69,9 @@ RSpec.describe 'api/v1/feedback', type: :request do
 
     post 'Create Feedback' do
       tags 'Feedback'
-      description 'Members role holders, Moderator and above, or the service. `kind` and `title` are required; everything else is optional. ' \
+      description 'Members role holders, Moderator and above, or the service. `kind` and `title` are required; a Bug Report also needs `what_happened` and `expected`. ' \
+                  'The bug fields (`where`, `what_happened`, `expected`, `steps`) are dropped for the other kinds; ' \
+                  'a screenshot is added afterwards with `PUT /api/v1/feedback/{id}/screenshot`. ' \
                   'Always created Pending. A member is recorded as the author (body `created_by` and ' \
                   '`created_by_name` are ignored) and their submission enqueues a `feedback_submitted` ' \
                   'bot job (payload `{ feedback_id, kind, created_by, feature_key: "feedback" }`) so the bot pings the bot dev. ' \
@@ -78,7 +89,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
         schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
       end
 
-      response '422', 'validation failed (e.g. missing or unknown kind)' do
+      response '422', 'validation failed (e.g. missing or unknown kind, or a Bug Report without what happened or expected)' do
         schema '$ref' => '#/components/schemas/Error'
       end
 
@@ -115,6 +126,130 @@ RSpec.describe 'api/v1/feedback', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
+
+    patch 'Edit own Pending Feedback' do
+      tags 'Feedback'
+      description 'The author only, while Pending (staff and the service are refused). Changes `title`, ' \
+                  '`details` and, on a Bug Report, `where`, `what_happened`, `expected` and `steps`; other fields, ' \
+                  'and bug fields on the other kinds, are ignored. A Bug Report must keep `what_happened` and ' \
+                  '`expected`. The screenshot has its own endpoint.'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :body, in: :body, required: true, schema: {
+        type: :object,
+        properties: { data: { type: :object, properties: editable } },
+        required: %w[data]
+      }
+
+      response '200', 'edited' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
+      end
+
+      response '422', 'validation failed (e.g. blank title, or a Bug Report without what happened or expected)' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'not pending' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not the author' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '400', 'missing data envelope' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+  end
+
+  path '/api/v1/feedback/{feedback_id}/screenshot' do
+    parameter name: :feedback_id, in: :path, schema: { type: :string }, required: true,
+      description: 'RpgClubFeedback id (a Bug Report).'
+    storage = 'Files are kept in the Backblaze bucket the GameDB game images use: 422 `backblaze_not_configured` ' \
+              'when it is not set up, 502 `backblaze_request_failed` when Backblaze refuses an upload (nothing ' \
+              'is changed).'
+
+    put 'Add or replace a Bug Report screenshot' do
+      tags 'Feedback'
+      description 'The author only, while Pending; Bug Reports only (one screenshot each). Replaces any earlier ' \
+                  'screenshot, whose file is removed. The type is told by the file\'s bytes. Send ' \
+                  "`multipart/form-data`. Returns the Feedback with its `screenshot_url`. #{storage}"
+      consumes 'multipart/form-data'
+      produces 'application/json'
+      parameter name: :data, in: :formData, required: true, schema: {
+        type: :object,
+        properties: {
+          'data[file]' => { type: :string, format: :binary, description: 'PNG, JPEG or WebP, at most 5 MB.' }
+        },
+        required: [ 'data[file]' ]
+      }
+
+      response '200', 'stored' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
+      end
+
+      response '422', '`invalid_image` (no file, not PNG/JPEG/WebP, empty or over 5 MB), `screenshot_not_allowed` ' \
+                      '(not a Bug Report) or `backblaze_not_configured`' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '409', 'not pending' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found, or the Feature is hidden from the caller' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not the author' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '502', '`backblaze_request_failed`: nothing was changed' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
+
+    delete 'Remove a Bug Report screenshot' do
+      tags 'Feedback'
+      description 'The author only, while Pending. A no-op without a screenshot. The file is removed after the ' \
+                  'screenshot is cleared; a storage failure only leaves the file behind.'
+      produces 'application/json'
+
+      response '200', 'removed; returns the Feedback' do
+        schema type: :object, properties: { data: { '$ref' => '#/components/schemas/Feedback' } }
+      end
+
+      response '409', 'not pending' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '404', 'not found, or the Feature is hidden from the caller' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '403', 'forbidden: caller is not the author' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+
+      response '401', 'unauthenticated' do
+        schema '$ref' => '#/components/schemas/Error'
+      end
+    end
   end
 
   path '/api/v1/feedback/{id}/approve' do
@@ -124,8 +259,12 @@ RSpec.describe 'api/v1/feedback', type: :request do
       tags 'Feedback'
       description 'Superadmin or the service, while Pending. Opens a GitHub issue in `target_repo` (title = the ' \
                   'Feedback title, body = "<author name>: <details>" plus a hidden Feedback marker, label = the ' \
-                  'kind\'s label in that repo) through the GitHub App, stores its number and URL, and sets ' \
-                  'status approved. An issue that already carries the marker (an earlier attempt whose response ' \
+                  'kind\'s label in that repo; a Bug Report\'s body instead lays out where, what happened, expected, ' \
+                  'steps and details, and links the Feedback on the Feedback Board (never the screenshot: the repos ' \
+                  'are public)) through the GitHub App, stores its number and URL, and sets ' \
+                  'status approved. The board link is the origin of DISCORD_OAUTH_SUCCESS_REDIRECT; unset, it is ' \
+                  'named without a link. ' \
+                  'An issue that already carries the marker (an earlier attempt whose response ' \
                   'was lost) is reused instead of opening a duplicate. ' \
                   'Enqueues a `feedback_outcome` bot job (payload `{ feedback_id, kind, outcome, created_by, title, ' \
                   'github_issue_number, github_issue_url, rejection_reason }`), the bot\'s own reviews included; ' \
