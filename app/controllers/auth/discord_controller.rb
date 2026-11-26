@@ -75,22 +75,18 @@ module Auth
     end
 
     # The success destination, DISCORD_OAUTH_SUCCESS_REDIRECT, is the website's
-    # sign-in callback and its origin is the website. It must be an absolute
+    # sign-in callback and its origin is the website (Website). It must be an absolute
     # http(s) URL: a missing or relative setting would land the other outcomes
     # on the API's own host. Checked before each step (see
     # require_website_address), so the URL helpers below never raise, even
     # from the callback's rescue clauses.
     def website_address
-      @website_address ||= begin
-        uri = URI.parse(ENV.fetch("DISCORD_OAUTH_SUCCESS_REDIRECT", ""))
-        raise URI::InvalidURIError unless uri.is_a?(URI::HTTP) && uri.host.present?
+      @website_address ||= Website.address
+      return @website_address if @website_address
 
-        uri
-      rescue URI::InvalidURIError
-        raise Auth::DiscordOauthClient::ConfigurationError,
-          "DISCORD_OAUTH_SUCCESS_REDIRECT must be the website's absolute sign-in callback URL, " \
-          "for example http://localhost:3001/auth/callback"
-      end
+      raise Auth::DiscordOauthClient::ConfigurationError,
+        "#{Website::ADDRESS_VARIABLE} must be the website's absolute sign-in callback URL, " \
+        "for example http://localhost:3001/auth/callback"
     end
 
     # A return-to is only ever a same-origin path on the website. A single
@@ -120,13 +116,7 @@ module Auth
 
     # Pages on the website live at the origin of the success destination, which
     # is the website's front page or its sign-in callback.
-    def website_url(path, **query)
-      uri = website_address.dup
-      uri.path = path
-      uri.query = query.compact.to_query.presence
-      uri.fragment = nil
-      uri.to_s
-    end
+    def website_url(path, **query) = Website.url(path, **query)
 
     # Every sign-in failure lands back on the website's front page, which shows
     # a plain message and a way to try again. The detail stays in the log.

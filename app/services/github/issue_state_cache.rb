@@ -1,13 +1,14 @@
 # frozen_string_literal: true
 
 module Github
-  # An issue's state ("open" or "closed") for the Suggestion Board, kept in
+  # An issue's state ("open" or "closed", with GitHub's reason for it) for
+  # the Feedback Board, kept in
   # the Rails cache. nil when the GitHub App is not configured, the issue is
   # gone, GitHub fails, or the state hasn't been read yet.
   #
   # Reads never call GitHub. They read every state a page needs in one cache
   # read (`states_for`; in production the cache is a database, so this is one
-  # round trip, not one per suggestion), and queue Github::IssueStateRefreshJob
+  # round trip, not one per Feedback), and queue Github::IssueStateRefreshJob
   # for any state that is missing or older than TTL. A stale state keeps being
   # served (for up to KEEP) while it refreshes, so the board doesn't blank out
   # every TTL.
@@ -41,20 +42,28 @@ module Github
       fresh_entry?(Rails.cache.read(key_for(repo, number)))
     end
 
-    # Records a state just read (or already known: a just-created issue is open).
-    def self.store(repo, number, state, fresh_for: TTL)
-      Rails.cache.write(key_for(repo, number), { state: state, fresh_until: fresh_for.from_now }, expires_in: KEEP)
+    # Records a state just read (or already known: a just-created issue is
+    # open), with GitHub's `reason` for it (a closed issue's "completed" or
+    # "not_planned"; see Github::Client::Issue).
+    def self.store(repo, number, state, reason: nil, fresh_for: TTL)
+      Rails.cache.write(key_for(repo, number), { state: state, reason: reason, fresh_until: fresh_for.from_now },
+        expires_in: KEEP)
     end
 
-    # Records a failed lookup: keeps whatever state was known, and waits
-    # FAILURE_TTL before the next try.
+    # Records a failed lookup: keeps whatever state (and reason) was known,
+    # and waits FAILURE_TTL before the next try.
     def self.failed(repo, number)
-      known = Rails.cache.read(key_for(repo, number))&.dig(:state)
-      store(repo, number, known, fresh_for: FAILURE_TTL)
+      known = Rails.cache.read(key_for(repo, number))
+      store(repo, number, known&.dig(:state), reason: known&.dig(:reason), fresh_for: FAILURE_TTL)
     end
 
+    # A closed state cached before reasons were kept (no `:reason` key) is
+    # stale, so the refresh reads its reason and settles whether its
+    # Feedback is Done (RpgClubFeedback.record_issue_state).
     def self.fresh_entry?(entry)
-      entry.is_a?(Hash) && entry[:fresh_until].present? && entry[:fresh_until] > Time.current
+      return false unless entry.is_a?(Hash) && entry[:fresh_until].present? && entry[:fresh_until] > Time.current
+
+      entry[:state] != "closed" || entry.key?(:reason)
     end
     private_class_method :fresh_entry?
 

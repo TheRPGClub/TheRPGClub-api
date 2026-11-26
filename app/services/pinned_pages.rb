@@ -39,14 +39,15 @@ module PinnedPages
     page("codex", feature: "club_codex"),
     page("lists", feature: "game_lists"),
     page("giveaways", feature: "giveaways"),
-    page("suggestions", feature: "suggestions"),
+    page("feedback", feature: "feedback"),
     page("patch_notes", feature: "patch_notes"),
+    page("roadmap", feature: "roadmap"),
     page("staff_desk", staff: :moderator),
     page("voting_console", staff: :admin),
     page("synonyms", staff: :admin),
     page("live_events", staff: :moderator),
     page("public_reminders", staff: :admin),
-    page("suggestion_review", staff: :superadmin)
+    page("feedback_review", staff: :superadmin)
   ].freeze
 
   BY_KEY = PAGES.index_by(&:key).freeze

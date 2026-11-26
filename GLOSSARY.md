@@ -24,6 +24,10 @@ _Avoid_: Favourite, shortcut, bookmark
 One block of recent club or personal activity that a Member chooses to show on their own dashboard, below the current issue, in the order they choose. Members who have changed nothing see the club's default Dashboard Panels. A Dashboard Panel belonging to a Feature the Member cannot currently see stays chosen and returns when they can. A Dashboard Panel is not a Pinned Page: pins decide where a Member can go, panels show what is happening.
 _Avoid_: Widget, card, tile, module
 
+**Share Card**:
+The image, title and description a chat app or social site shows when someone posts a link to the website. It looks like the public front page and shows the GOTM and NR-GOTM winners of the latest decided round; it changes only when a round is decided. Every link to the website shares the same Share Card.
+_Avoid_: Embed, OG image, link preview, thumbnail
+
 ## Achievement Hub
 
 **Provider**:
@@ -96,7 +100,7 @@ A GameDB game coming out on one platform in one region. Its date is known to a D
 _Avoid_: Launch, release date (when meaning the whole record)
 
 **Date Precision**:
-How exactly a Release's date is known: an exact day, a month, a quarter, a year, or not yet announced (TBA).
+How exactly a Release's or a Milestone's date is known: an exact day, a month, a quarter, a year, or not yet announced (TBA).
 _Avoid_: Date format, accuracy
 
 **IGDB Release**:
@@ -185,13 +189,29 @@ _Avoid_: Other, side game, non-mainline
 
 ## Community
 
-**Suggestion**:
-A member's proposal for the club's bot or website. Pending until staff approve it (it becomes a GitHub issue) or reject it with a reason, or until its author withdraws it.
-_Avoid_: Request, idea, ticket
+**Feedback**:
+Something a member tells the club about its bot or website. Each piece of Feedback is exactly one kind: a Feature Request, a Suggestion or a Bug Report. Staff can change the kind on review. Pending until staff approve it (it becomes a GitHub issue), reject it with a reason, or mark it a Duplicate, or until its author withdraws it. Approved Feedback is Done once its GitHub issue is closed.
+_Avoid_: Ticket, report (when meaning any kind), request (when meaning any kind)
 
-**Suggestion Board**:
-The members-only list of Suggestions, ranked by member upvotes.
-_Avoid_: Roadmap, feedback board
+**Feature Request**:
+Feedback asking for something the bot or website does not do yet.
+_Avoid_: New feature, idea
+
+**Suggestion**:
+Feedback asking to change something the bot or website already does.
+_Avoid_: Improvement, idea, request
+
+**Bug Report**:
+Feedback saying something in the bot or website is broken: it does not do what it is meant to.
+_Avoid_: Issue (that is GitHub's), bug ticket
+
+**Duplicate**:
+Feedback that staff close because it says the same thing as earlier Feedback, the original. Its upvotes move to the original, each member counted once.
+_Avoid_: Merge, dupe
+
+**Feedback Board**:
+The members-only list of Feedback, ranked by member upvotes. On a Bug Report an upvote reads "I hit this too".
+_Avoid_: Suggestion Board, roadmap
 
 ## Members
 
@@ -480,3 +500,25 @@ _Avoid_: Release (that is the Release Calendar's term), update, changelog entry,
 **Pending Change**:
 A change merged into the club's website, bot or backend that may go into a coming Patch. Each one comes from one merged pull request, waits until staff either put it in a Patch or dismiss it, and is never shown to members as it is. One line in a Patch can cover several Pending Changes, such as the website, bot and backend parts of a single new feature.
 _Avoid_: Commit, PR (when meaning the change members read about), entry
+
+## Roadmap
+
+**Roadmap**:
+The members-only page where staff show what is planned for the club's bot and website, as Roadmap Items grouped into Milestones, with the Milestones already Reached kept below as a record of what shipped. Members read it; only Admins and Superadmins edit it. Asking for something belongs on the Feedback Board, not here.
+_Avoid_: Feedback Board, changelog, plan, patch notes
+
+**Milestone**:
+A named stop on the Roadmap, such as "Launch" or "In The Future", placed in an order staff choose. It may have a target date known to a Date Precision; without one it reads TBA.
+_Avoid_: Lane, phase, release, version, sprint
+
+**Reached**:
+A Milestone staff have marked as arrived, on the date they did so. Its Roadmap Items are all Shipped by then; anything left unfinished has moved to another Milestone. A Reached Milestone stops being a column and is kept on the Roadmap as a heading over what shipped with it. Staff can take a Milestone back from Reached.
+_Avoid_: Done, completed, closed, released
+
+**Roadmap Item**:
+One planned change on the Roadmap, written by staff in words members understand, sitting in exactly one Milestone. It may say whether it touches the bot, the website or both, and it may answer one or more pieces of Feedback; a piece of Feedback is answered by at most one Roadmap Item.
+_Avoid_: Task, ticket, issue, feature (a Feature is a part staff flag)
+
+**Shipped**:
+A Roadmap Item staff have marked as delivered, on the date they did so. It can be Shipped while its Milestone is still to come, and then shows as ready in that Milestone. Staff can take it back.
+_Avoid_: Done (that is Feedback's), released, live (that is a Feature Flag state)

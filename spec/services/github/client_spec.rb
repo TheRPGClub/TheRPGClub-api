@@ -53,7 +53,7 @@ RSpec.describe Github::Client do
       issue = client.create_issue(repo: "TheRPGClub/TheRPGClub-www", title: "Dark mode", body: "tester: Please",
         labels: [ "Bug" ])
 
-      expect(issue.to_h).to eq(number: 42, url: "https://github.com/TheRPGClub/TheRPGClub-www/issues/42", state: "open")
+      expect(issue.to_h).to eq(number: 42, url: "https://github.com/TheRPGClub/TheRPGClub-www/issues/42", state: "open", state_reason: nil)
       stubs.verify_stubbed_calls
     end
 
@@ -109,35 +109,45 @@ RSpec.describe Github::Client do
     end
   end
 
-  describe "#issue_state" do
-    it "returns open or closed" do
+  describe "#issue" do
+    it "returns the issue with its state and state_reason" do
       stub_token
-      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues/5") { json_response(200, number: 5, state: "closed") }
-      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues/6") { json_response(200, number: 6, state: "open") }
+      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues/5") do
+        json_response(200, number: 5, state: "closed", state_reason: "completed", html_url: "https://x/5")
+      end
+      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues/6") { json_response(200, number: 6, state: "open", state_reason: nil) }
+      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues/7") do
+        json_response(200, number: 7, state: "closed", state_reason: "not_planned")
+      end
 
-      expect(client.issue_state(repo: "TheRPGClub/TheRPGClub-bot", number: 5)).to eq("closed")
-      expect(client.issue_state(repo: "TheRPGClub/TheRPGClub-bot", number: 6)).to eq("open")
+      closed = client.issue(repo: "TheRPGClub/TheRPGClub-bot", number: 5)
+      expect(closed).to have_attributes(number: 5, url: "https://x/5", state: "closed", state_reason: "completed")
+      expect(closed).to be_completed
+      expect(client.issue(repo: "TheRPGClub/TheRPGClub-bot", number: 6))
+        .to have_attributes(state: "open", state_reason: nil, completed?: false)
+      expect(client.issue(repo: "TheRPGClub/TheRPGClub-bot", number: 7))
+        .to have_attributes(state: "closed", state_reason: "not_planned", completed?: false)
     end
 
     it "returns nil for a missing issue" do
       stub_token
       stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues/9") { json_response(404, message: "Not Found") }
 
-      expect(client.issue_state(repo: "TheRPGClub/TheRPGClub-bot", number: 9)).to be_nil
+      expect(client.issue(repo: "TheRPGClub/TheRPGClub-bot", number: 9)).to be_nil
     end
 
     it "raises RequestError for other failures" do
       stub_token
       stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues/9") { json_response(500, message: "boom") }
 
-      expect { client.issue_state(repo: "TheRPGClub/TheRPGClub-bot", number: 9) }
+      expect { client.issue(repo: "TheRPGClub/TheRPGClub-bot", number: 9) }
         .to raise_error(described_class::RequestError)
     end
   end
 
   describe "#find_issue_by_marker" do
     let(:since) { Time.utc(2026, 11, 1, 9, 0, 0) }
-    let(:marker) { "<!-- rpgclub-suggestion:12 -->" }
+    let(:marker) { "<!-- rpgclub-feedback:12 -->" }
 
     it "returns the newest issue updated since the time whose body holds the marker, skipping pull requests" do
       stub_token
@@ -152,7 +162,19 @@ RSpec.describe Github::Client do
 
       issue = client.find_issue_by_marker(repo: "TheRPGClub/TheRPGClub-bot", marker: marker, since: since)
 
-      expect(issue.to_h).to eq(number: 1, url: "u1", state: "closed")
+      expect(issue.to_h).to eq(number: 1, url: "u1", state: "closed", state_reason: nil)
+    end
+
+    it "matches any of several markers (a legacy Suggestion marker)" do
+      stub_token
+      legacy = "<!-- rpgclub-suggestion:12 -->"
+      stubs.get("/repos/TheRPGClub/TheRPGClub-bot/issues") do
+        json_response(200, [ { number: 4, html_url: "u4", state: "open", body: "old\n\n#{legacy}" } ])
+      end
+
+      issue = client.find_issue_by_marker(repo: "TheRPGClub/TheRPGClub-bot", marker: [ marker, legacy ], since: since)
+
+      expect(issue.number).to eq(4)
     end
 
     it "returns nil when no issue holds the marker" do

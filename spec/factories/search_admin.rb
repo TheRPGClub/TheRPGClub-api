@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Factories for the search-admin / suggestion / wizard / game-key domain
+# Factories for the search-admin / feedback / wizard / game-key domain
 # (behavior request specs). Unique-indexed columns use random values rather
 # than plain sequences so concurrently running rspec processes can't collide
 # inside their (uncommitted) transactions.
@@ -21,24 +21,17 @@ FactoryBot.define do
     pairs_json { '[{"from":"ff7","to":"final fantasy vii"}]' }
   end
 
-  factory :suggestion, class: "RpgClubSuggestion" do
-    title { "Suggestion #{SecureRandom.hex(4)}" }
+  factory :feedback, class: "RpgClubFeedback" do
+    kind { "suggestion" }
+    title { "Feedback #{SecureRandom.hex(4)}" }
     details { "Some details" }
     created_by { SecureRandom.random_number(10**18).to_s }
-    created_by_name { "suggester_#{SecureRandom.hex(3)}" }
+    created_by_name { "member_#{SecureRandom.hex(3)}" }
   end
 
-  factory :suggestion_upvote, class: "RpgClubSuggestionUpvote" do
-    association :suggestion
+  factory :feedback_upvote, class: "RpgClubFeedbackUpvote" do
+    association :feedback
     association :user
-  end
-
-  factory :suggestion_review_session, class: "RpgClubSuggestionReviewSession" do
-    session_id { "sess-#{SecureRandom.hex(10)}" }
-    reviewer_id { SecureRandom.random_number(10**18).to_s }
-    suggestion_ids { "[1,2,3]" }
-    current_index { 0 }
-    total_count { 3 }
   end
 
   # The explicit session_id keeps this factory independent of the model's

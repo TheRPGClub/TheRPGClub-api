@@ -179,7 +179,7 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
   end
 
   describe "staff pages" do
-    let(:staff_pages) { %w[staff_desk voting_console synonyms live_events public_reminders suggestion_review] }
+    let(:staff_pages) { %w[staff_desk voting_console synonyms live_events public_reminders feedback_review] }
 
     def staff_pinned_for(user, **token)
       headers = auth_headers_for(user, **token)
@@ -251,6 +251,19 @@ RSpec.describe "api/v1/pinned_pages behavior", type: :request do
       expect(pinned_for(member)["pages"]).to eq(%w[patch_notes members])
 
       set_feature_flag("patch_notes", "preview")
+      expect(pinned_for(member)["pages"]).to eq(%w[members])
+    end
+
+    it "lets a member pin the Roadmap, behind its Feature and their Feature Preference" do
+      pin(member, %w[roadmap members])
+      expect(response).to have_http_status(:ok)
+      expect(pinned_for(member)["pages"]).to eq(%w[roadmap members])
+
+      MemberFeaturePreference.create!(user_id: member.user_id, feature_key: "roadmap")
+      expect(pinned_for(member)["pages"]).to eq(%w[members])
+
+      MemberFeaturePreference.where(user_id: member.user_id).delete_all
+      set_feature_flag("roadmap", "preview")
       expect(pinned_for(member)["pages"]).to eq(%w[members])
     end
 

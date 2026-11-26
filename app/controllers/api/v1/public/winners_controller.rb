@@ -24,13 +24,17 @@ module Api
         # shared caches drop it within a minute of the Feature leaving Live. In
         # Preview only staff get here (the feature gate), so the answer is
         # built fresh and marked no-store: nothing may keep it for others.
+        #
+        # A round decided in steps (a tie settled later) adds winners without
+        # a new round number, so ShareCard::RefreshJob clears the cached
+        # payload (expire_cache) before telling the website to refetch it.
         def index
           unless feature_state == "live"
             no_store
             return render json: build_payload
           end
 
-          payload = Rails.cache.fetch([ "public_winners", ROUNDS, latest_round_number ], expires_in: 10.minutes) do
+          payload = Rails.cache.fetch(self.class.cache_key, expires_in: 10.minutes) do
             build_payload
           end
 
@@ -38,11 +42,21 @@ module Api
           render json: payload
         end
 
-        private
+        def self.cache_key
+          [ "public_winners", ROUNDS, latest_round_number ]
+        end
 
-        def latest_round_number
+        # Drops the cached payload, so the next read builds it afresh.
+        def self.expire_cache
+          Rails.cache.delete(cache_key)
+        end
+
+        def self.latest_round_number
           [ GotmEntry.maximum(:round_number), NrGotmEntry.maximum(:round_number) ].compact.max
         end
+        private_class_method :latest_round_number
+
+        private
 
         def build_payload
           history = Gotm::RoundHistory.new

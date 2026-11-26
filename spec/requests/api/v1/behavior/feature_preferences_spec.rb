@@ -35,8 +35,8 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
             "website" => [ "Giveaways", "Donate", "Your claimed keys" ] },
           { "key" => "journals", "name" => "Journals", "state" => "live", "preview" => false, "hidden" => false,
             "website" => [ "Game Journals", "Game page Journals", "Profile Game Journal" ] },
-          { "key" => "suggestions", "name" => "Suggestions", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Suggestion Board" ] },
+          { "key" => "feedback", "name" => "Feedback", "state" => "live", "preview" => false,
+            "hidden" => false, "website" => [ "Feedback Board" ] },
           { "key" => "news_hub", "name" => "News Hub", "state" => "live", "preview" => false,
             "hidden" => false, "website" => [ "News" ] },
           { "key" => "challenges", "name" => "Challenges", "state" => "live", "preview" => false,
@@ -50,7 +50,9 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
           { "key" => "franchise_progress", "name" => "Franchise Progress", "state" => "live", "preview" => false,
             "hidden" => false, "website" => [ "Franchise Progress tab" ] },
           { "key" => "patch_notes", "name" => "Patch Notes", "state" => "live", "preview" => false,
-            "hidden" => false, "website" => [ "Patch Notes" ] }
+            "hidden" => false, "website" => [ "Patch Notes" ] },
+          { "key" => "roadmap", "name" => "Roadmap", "state" => "live", "preview" => false,
+            "hidden" => false, "website" => [ "Roadmap", "Feedback roadmap badge" ] }
         ]
       )
     end
@@ -68,22 +70,23 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
         [ "reviews", "live", false ],
         [ "achievement_hub", "live", false ],
         [ "journals", "preview", true ],
-        [ "suggestions", "live", false ],
+        [ "feedback", "live", false ],
         [ "news_hub", "live", false ],
         [ "challenges", "live", false ],
         [ "release_calendar", "live", false ],
         [ "club_codex", "live", false ],
         [ "game_lists", "live", false ],
         [ "franchise_progress", "live", false ],
-        [ "patch_notes", "live", false ]
+        [ "patch_notes", "live", false ],
+        [ "roadmap", "live", false ]
       ])
     end
 
     it "lists a member no Features when no hideable Feature is Live" do
       set_all_feature_flags("live")
       %w[reviews achievement_hub giveaways].each { |key| set_feature_flag(key, "off") }
-      %w[journals suggestions news_hub challenges release_calendar club_codex game_lists franchise_progress
-         patch_notes].each do |key|
+      %w[journals feedback news_hub challenges release_calendar club_codex game_lists franchise_progress
+         patch_notes roadmap].each do |key|
         set_feature_flag(key, "preview")
       end
 
@@ -131,6 +134,13 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
       expect(preferences_for(member)["features"].find { |f| f["key"] == "journals" }).to include("hidden" => true)
     end
 
+    it "hides the Roadmap" do
+      patch_preferences(member, { hidden: { roadmap: true } })
+
+      expect(response).to have_http_status(:ok)
+      expect(preferences_for(member)["hidden"]).to eq([ "roadmap" ])
+    end
+
     it "shows a hidden Feature again" do
       patch_preferences(member, { hidden: { journals: true, reviews: true } })
 
@@ -143,9 +153,9 @@ RSpec.describe "api/v1/feature_preferences behavior", type: :request do
     it "changes only the Features named, leaving the others as they were" do
       patch_preferences(member, { hidden: { giveaways: true } })
 
-      patch_preferences(member, { hidden: { suggestions: true } })
+      patch_preferences(member, { hidden: { feedback: true } })
 
-      expect(preferences_for(member)["hidden"]).to eq([ "giveaways", "suggestions" ])
+      expect(preferences_for(member)["hidden"]).to eq([ "giveaways", "feedback" ])
     end
 
     it "treats hiding an already hidden Feature as a no-op" do

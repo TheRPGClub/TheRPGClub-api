@@ -49,6 +49,15 @@ module OpenapiSchemas
                    "Only on the member's list endpoint (GET /users/{user_id}/<list>)." }
   end
 
+  # One kind's counts in FeedbackBoardTotals.
+  def feedback_kind_totals
+    obj(
+      open: int.merge(description: "Pending and Approved, Done included."),
+      closed: int.merge(description: "Rejected, Duplicate and Withdrawn."),
+      done: int.merge(description: "The Done part of open.")
+    )
+  end
+
   # Build an object schema from keyword properties, auto-deriving `required` as
   # the always-present, non-null scalar columns (nullable columns, embedded
   # `$ref`s and arrays are excluded). The `_required` / `_description` sentinel
@@ -322,6 +331,58 @@ module OpenapiSchemas
           "`first_released_on` (day, month, quarter or year); null with it."),
         releases: array_of("UpcomingReleaseRelease"),
         _required: %w[game date date_precision section first_released_on first_released_precision releases]
+      ),
+      # A Roadmap Item (RoadmapItemResource, spec api#505).
+      RoadmapItem: obj(
+        id: int, milestone_id: int,
+        title: str(maxLength: RoadmapItem::TITLE_MAX),
+        blurb: str(maxLength: RoadmapItem::BLURB_MAX, description: "One or two sentences members understand."),
+        area: str(nullable: true, enum: [ *RoadmapItem::AREAS, nil ],
+          description: "Whether it touches the bot, the website or both; null when not said."),
+        github_issue_url: str(nullable: true, description: "A GitHub issue it is tracked by, if any."),
+        position: int,
+        shipped_at: ts(nullable: true).merge(description: "When staff marked it Shipped; null until then."),
+        feedback: array_of("RoadmapItemFeedback").merge(description: "Its linked Feedback, oldest first.")
+      ),
+      # A Feedback linked to a Roadmap Item (ticket api#508).
+      RoadmapItemFeedback: obj(
+        id: int.merge(description: "The Feedback's feedback_id."),
+        title: str,
+        kind: str(enum: RpgClubFeedback::KINDS),
+        status: str(enum: RpgClubFeedback::STATUSES),
+        done: bool.merge(description: "Approved and its GitHub issue was last seen closed.")
+      ),
+      # A Feedback's Roadmap badge (ticket api#508).
+      FeedbackRoadmapBadge: obj(
+        item_id: int.merge(description: "The Roadmap Item it is linked to."),
+        milestone_name: str(description: "The item's current Milestone."),
+        shipped: bool.merge(description: "The item is Shipped: the badge reads \"Shipped\" instead.")
+      ),
+      # A Milestone with its Roadmap Items (RoadmapMilestoneResource, spec api#505).
+      RoadmapMilestone: obj(
+        id: int,
+        name: str(maxLength: RoadmapMilestone::NAME_MAX),
+        blurb: str(nullable: true, maxLength: RoadmapMilestone::BLURB_MAX),
+        target_date: date(nullable: true, description: "Plain calendar date (YYYY-MM-DD) at its Date Precision: " \
+          "the first day of the month or quarter, 1 January of the year, null when TBA."),
+        date_precision: str(enum: RoadmapMilestone::DATE_PRECISIONS),
+        position: int,
+        reached_at: ts(nullable: true).merge(description: "When staff marked it Reached; null while it is open."),
+        items: array_of("RoadmapItem"),
+        _required: %w[id name blurb target_date date_precision position reached_at items]
+      ),
+      # GET /roadmap's `data` (spec api#505).
+      Roadmap: obj(
+        milestones: array_of("RoadmapMilestone").merge(description: "Open Milestones in staff order."),
+        reached: array_of("RoadmapMilestone").merge(description: "Reached Milestones, newest Reached first."),
+        _required: %w[milestones reached]
+      ),
+      # A Roadmap edit the rules refuse (Roadmap::Refused, ticket api#507).
+      RoadmapRefusal: obj(
+        error: str(enum: %w[milestone_has_items invalid_order milestone_not_found milestone_reached invalid_position
+          invalid_destination no_destination already_reached not_reached feedback_not_found invalid_feedback_ids]),
+        message: str(description: "Written for staff, as the website shows it."),
+        _required: %w[error message]
       ),
       # `meta` of POST /games/{id}/refresh-releases: the count the bot reports.
       ReleaseRefreshMeta: obj(
@@ -854,37 +915,61 @@ module OpenapiSchemas
       ),
 
       # ---- RPGClub features ------------------------------------------------
-      # SuggestionResource: every column plus the upvote count and whether
-      # the viewer upvoted (#318). The review columns are null until review.
-      Suggestion: obj(
-        suggestion_id: int, title: str, details: str(nullable: true), created_by: str(nullable: true),
-        created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true),
-        status: str(enum: RpgClubSuggestion::STATUSES),
+      # FeedbackResource: every column plus the upvote count and whether
+      # the viewer upvoted (#318, spec api#498). The review columns are null
+      # until review.
+      Feedback: obj(
+        feedback_id: int,
+        kind: str(enum: RpgClubFeedback::KINDS).merge(description: "Feature Request, Suggestion or Bug Report."),
+        title: str, details: str(nullable: true), created_by: str(nullable: true),
+        created_at: ts, updated_at: ts, created_by_name: str(nullable: true),
+        status: str(enum: RpgClubFeedback::STATUSES),
         reviewed_by: str(nullable: true).merge(description: "Discord user id of the reviewing Superadmin."),
         reviewed_at: ts(nullable: true),
         rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
+        duplicate_of_id: int(nullable: true).merge(
+          description: "Set when a Duplicate: the root original Feedback it duplicates."
+        ),
         target_repo: str(nullable: true).merge(description: "Repo the approval opened its GitHub issue in."),
         github_issue_number: int(nullable: true), github_issue_url: str(nullable: true),
+        where: str(nullable: true, enum: [ *RpgClubFeedback::WHERES, nil ]).merge(
+          description: "Bug Reports: where it happened."
+        ),
+        what_happened: str(nullable: true).merge(description: "Bug Reports: what happened."),
+        expected: str(nullable: true).merge(description: "Bug Reports: what the member expected."),
+        steps: str(nullable: true).merge(description: "Bug Reports: steps to reproduce, if given."),
+        screenshot_url: str(nullable: true).merge(description: "Bug Reports: the screenshot's address, if one."),
         github_issue_state: str(nullable: true, enum: [ "open", "closed", nil ]).merge(
           description: "Approved only: the GitHub issue's state, cached about ten minutes. " \
                        "Null otherwise, or when GitHub cannot say."
+        ),
+        done: bool.merge(
+          description: "Done: Approved and its GitHub issue was last seen closed. Done Feedback stays under " \
+                       "the board's Open filter and takes no upvotes; reopening the issue clears it."
+        ),
+        done_at: ts(nullable: true).merge(
+          description: "When the issue was seen closed; null unless Done."
         ),
         upvote_count: int,
         viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service."),
         last_activity_at: ts.merge(
           description: "The latest activity: the newest of its last change (submitted, reviewed or " \
                        "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
+        ),
+        roadmap: ref("FeedbackRoadmapBadge", nullable: true).merge(
+          description: "On the Roadmap: the linked Roadmap Item's id, current Milestone and whether it is " \
+                       "Shipped. Null when not linked, and for everything when the Roadmap Feature is Off, " \
+                       "Preview for a non-staff viewer, or hidden by the viewer."
         )
       ),
-      # SuggestionsController#approve / #reject meta: the queued outcome job,
-      # so the website can poll GET /api/v1/bot_jobs/{id}.
-      SuggestionReviewMeta: obj(
-        outcome_job_id: int.merge(description: "The suggestion_outcome bot job (the bot announces the outcome).")
+      # FeedbackController#index meta.totals: one entry per kind, unfiltered.
+      FeedbackBoardTotals: obj(
+        **RpgClubFeedback::KINDS.to_h { |kind| [ kind.to_sym, feedback_kind_totals ] }
       ),
-      # `suggestion_ids` is the stored JSON string, returned verbatim.
-      SuggestionReviewSession: obj(
-        session_id: str, reviewer_id: str, suggestion_ids: str, current_index: int,
-        total_count: int, created_at: ts, updated_at: ts
+      # FeedbackController#approve / #reject meta: the queued outcome job,
+      # so the website can poll GET /api/v1/bot_jobs/{id}.
+      FeedbackReviewMeta: obj(
+        outcome_job_id: int.merge(description: "The feedback_outcome bot job (the bot announces the outcome).")
       ),
       StarboardEntry: obj(
         message_id: str, channel_id: str, starboard_message_id: str, author_id: str,
@@ -2145,8 +2230,8 @@ module OpenapiSchemas
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
                               "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
-                              "journals, members, news, codex, lists, giveaways, suggestions, patch_notes, staff_desk, " \
-                              "voting_console, synonyms, live_events, public_reminders, suggestion_review." },
+                              "journals, members, news, codex, lists, giveaways, feedback, patch_notes, roadmap, " \
+                              "staff_desk, voting_console, synonyms, live_events, public_reminders, feedback_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),
         _required: %w[user_id pages customised]
@@ -2171,7 +2256,7 @@ module OpenapiSchemas
       DashboardPanel: obj(
         key: str(description: "Panel key: news, now_playing_club, releases, achievements_club, challenges_club, " \
                               "now_playing_mine, achievements_mine, challenge_runs_mine, completions_club, " \
-                              "completions_mine, backlog_pick, reviews, journals, giveaways, suggestions, codex, " \
+                              "completions_mine, backlog_pick, reviews, journals, giveaways, feedback, codex, " \
                               "birthdays.", example: "news"),
         scope: str(enum: %w[club mine], description: "Whether the panel shows club activity or the member's own."),
         new: bool.merge(description: "Whether the panel reached the site since the member last opened dashboard " \

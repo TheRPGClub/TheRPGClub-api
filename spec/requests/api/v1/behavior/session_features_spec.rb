@@ -47,7 +47,7 @@ RSpec.describe "session features", type: :request, feature_flags: :none do
         [ "achievement_hub", "Achievement Hub", true ],
         [ "giveaways", "Giveaways", true ],
         [ "journals", "Journals", true ],
-        [ "suggestions", "Suggestions", true ],
+        [ "feedback", "Feedback", true ],
         [ "news_hub", "News Hub", true ],
         [ "challenges", "Challenges", true ],
         [ "release_calendar", "Release Calendar", true ],
@@ -55,7 +55,8 @@ RSpec.describe "session features", type: :request, feature_flags: :none do
         [ "game_lists", "Game Lists", true ],
         [ "franchise_progress", "Franchise Progress", true ],
         [ "goty_vote", "GOTY Vote", false ],
-        [ "patch_notes", "Patch Notes", true ]
+        [ "patch_notes", "Patch Notes", true ],
+        [ "roadmap", "Roadmap", true ]
       ])
       expect(features).to all(include("state" => "live", "shown" => true, "preview" => false))
     end
@@ -141,10 +142,10 @@ RSpec.describe "session features", type: :request, feature_flags: :none do
 
   it "follows a flag change on the next request" do
     member_headers = auth_headers_for(create(:user))
-    set_feature_flag("suggestions", "live")
-    expect(features_for(member_headers).map { |f| f["key"] }).to eq([ "suggestions" ])
+    set_feature_flag("feedback", "live")
+    expect(features_for(member_headers).map { |f| f["key"] }).to eq([ "feedback" ])
 
-    set_feature_flag("suggestions", "off")
+    set_feature_flag("feedback", "off")
 
     expect(features_for(member_headers)).to eq([])
   end

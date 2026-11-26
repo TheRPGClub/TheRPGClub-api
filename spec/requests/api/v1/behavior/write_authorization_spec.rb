@@ -8,7 +8,7 @@ require "rails_helper"
 # - owner-checked writes only accept their editable columns, so an owner
 #   cannot move a record onto another member (`user_id`) or rewrite its key;
 # - import items are service-only (the bot drives the review loop);
-# - bot-community data (RSS, starboard, reminders, suggestions, legacy voting
+# - bot-community data (RSS, starboard, reminders, Feedback, legacy voting
 #   info) is writable only by the bot or an admin.
 RSpec.describe "api/v1 write authorization", type: :request do
   let(:owner) { create(:user) }
@@ -178,8 +178,8 @@ RSpec.describe "api/v1 write authorization", type: :request do
       expect_member_blocked_and_admin_allowed(:delete, "/api/v1/public_reminders/#{reminder.reminder_id}")
     end
 
-    # Suggestions: create is open to members (#318) and review is Superadmin
-    # only with no delete (#319); see the suggestion behaviour specs.
+    # Feedback: create is open to members (#318) and review is Superadmin
+    # only with no delete (#319); see the Feedback behaviour specs.
 
     it "guards legacy voting info writes" do
       info = create(:voting_info)

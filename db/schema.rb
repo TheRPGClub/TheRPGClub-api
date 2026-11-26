@@ -986,6 +986,44 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
     t.check_constraint "repo::text = ANY (ARRAY['api'::character varying, 'bot'::character varying, 'www'::character varying]::text[])", name: "ck_pending_changes_repo"
   end
 
+  create_table "roadmap_item_feedback", force: :cascade do |t|
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.bigint "feedback_id", null: false
+    t.bigint "item_id", null: false
+    t.index ["feedback_id"], name: "ux_roadmap_item_feedback_feedback", unique: true
+    t.index ["item_id"], name: "ix_roadmap_item_feedback_item"
+  end
+
+  create_table "roadmap_items", force: :cascade do |t|
+    t.bigint "milestone_id", null: false
+    t.string "title", limit: 120, null: false
+    t.string "blurb", limit: 500, null: false
+    t.integer "position", null: false
+    t.string "area", limit: 8
+    t.string "github_issue_url", limit: 300
+    t.timestamptz "shipped_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["milestone_id", "position"], name: "ix_roadmap_items_milestone_position"
+    t.check_constraint "\"position\" >= 1", name: "ck_roadmap_items_position"
+    t.check_constraint "area::text = ANY (ARRAY['bot'::character varying, 'website'::character varying, 'both'::character varying]::text[])", name: "ck_roadmap_items_area"
+  end
+
+  create_table "roadmap_milestones", force: :cascade do |t|
+    t.string "name", limit: 100, null: false
+    t.string "blurb", limit: 280
+    t.date "target_date"
+    t.string "date_precision", limit: 8, default: "tba", null: false
+    t.integer "position", null: false
+    t.timestamptz "reached_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["position"], name: "ix_roadmap_milestones_position"
+    t.check_constraint "(date_precision::text = 'tba'::text) = (target_date IS NULL)", name: "ck_roadmap_milestones_tba_has_no_date"
+    t.check_constraint "\"position\" >= 1", name: "ck_roadmap_milestones_position"
+    t.check_constraint "date_precision::text = ANY (ARRAY['day'::character varying, 'month'::character varying, 'quarter'::character varying, 'year'::character varying, 'tba'::character varying]::text[])", name: "ck_roadmap_milestones_date_precision"
+  end
+
   create_table "rpg_club_admin_wizard_sessions", primary_key: "session_id", id: { type: :string, limit: 200 }, force: :cascade do |t|
     t.string "channel_id", limit: 64, null: false
     t.string "command_key", limit: 80, null: false
@@ -1069,6 +1107,48 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "status"], name: "ix_completionator_imports_user"
+  end
+
+  create_table "rpg_club_feedback", primary_key: "feedback_id", force: :cascade do |t|
+    t.timestamptz "approval_started_at"
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.string "created_by", limit: 30
+    t.string "created_by_name", limit: 100
+    t.string "details", limit: 2000
+    t.integer "github_issue_number"
+    t.string "github_issue_url", limit: 500
+    t.string "rejection_reason", limit: 2000
+    t.timestamptz "reviewed_at"
+    t.string "reviewed_by", limit: 30
+    t.string "status", limit: 16, default: "pending", null: false
+    t.string "target_repo", limit: 200
+    t.string "title", limit: 200, null: false
+    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
+    t.string "kind", limit: 32, null: false
+    t.bigint "duplicate_of_id"
+    t.timestamptz "done_at"
+    t.timestamptz "done_notified_at"
+    t.string "where", limit: 16
+    t.string "what_happened", limit: 2000
+    t.string "expected", limit: 2000
+    t.string "steps", limit: 2000
+    t.string "screenshot_key", limit: 500
+    t.index ["created_at"], name: "ix_rpg_club_feedback_created"
+    t.index ["duplicate_of_id"], name: "ix_rpg_club_feedback_duplicate_of"
+    t.index ["kind"], name: "ix_rpg_club_feedback_kind"
+    t.index ["status"], name: "ix_rpg_club_feedback_status"
+    t.check_constraint "(status::text = 'duplicate'::text) = (duplicate_of_id IS NOT NULL)", name: "ck_rpg_club_feedback_duplicate_of"
+    t.check_constraint "kind::text = ANY (ARRAY['feature_request'::character varying, 'suggestion'::character varying, 'bug_report'::character varying]::text[])", name: "ck_rpg_club_feedback_kind"
+    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying, 'duplicate'::character varying]::text[])", name: "ck_rpg_club_feedback_status"
+    t.check_constraint "\"where\" IS NULL OR (\"where\"::text = ANY (ARRAY['bot'::character varying, 'website'::character varying]::text[]))", name: "ck_rpg_club_feedback_where"
+  end
+
+  create_table "rpg_club_feedback_upvotes", force: :cascade do |t|
+    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
+    t.bigint "feedback_id", null: false
+    t.string "user_id", limit: 30, null: false
+    t.index ["feedback_id", "user_id"], name: "ux_rpg_club_feedback_upvotes_feedback_user", unique: true
+    t.index ["user_id"], name: "ix_rpg_club_feedback_upvotes_user"
   end
 
   create_table "rpg_club_game_keys", primary_key: "key_id", force: :cascade do |t|
@@ -1300,46 +1380,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
     t.string "user_id", limit: 30, null: false
     t.index ["user_id", "status"], name: "ix_steam_coll_imports_user"
     t.check_constraint "status::text = ANY (ARRAY['active'::character varying::text, 'paused'::character varying::text, 'completed'::character varying::text, 'canceled'::character varying::text])", name: "ck_steam_coll_imports_status"
-  end
-
-  create_table "rpg_club_suggestion_review_sessions", primary_key: "session_id", id: { type: :string, limit: 120 }, force: :cascade do |t|
-    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
-    t.bigint "current_index", default: 0, null: false
-    t.string "reviewer_id", limit: 30, null: false
-    t.string "suggestion_ids", limit: 4000, null: false
-    t.bigint "total_count", default: 0, null: false
-    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
-    t.index ["created_at"], name: "ix_rpg_club_sug_rev_sess_created"
-    t.index ["reviewer_id"], name: "ix_rpg_club_sug_rev_sess_reviewer"
-  end
-
-  create_table "rpg_club_suggestion_upvotes", force: :cascade do |t|
-    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
-    t.bigint "suggestion_id", null: false
-    t.string "user_id", limit: 30, null: false
-    t.index ["suggestion_id", "user_id"], name: "ux_rpg_club_suggestion_upvotes_suggestion_user", unique: true
-    t.index ["user_id"], name: "ix_rpg_club_suggestion_upvotes_user"
-  end
-
-  create_table "rpg_club_suggestions", primary_key: "suggestion_id", force: :cascade do |t|
-    t.timestamptz "approval_started_at"
-    t.timestamptz "created_at", default: -> { "statement_timestamp()" }, null: false
-    t.string "created_by", limit: 30
-    t.string "created_by_name", limit: 100
-    t.string "details", limit: 2000
-    t.integer "github_issue_number"
-    t.string "github_issue_url", limit: 500
-    t.string "labels", limit: 200
-    t.string "rejection_reason", limit: 2000
-    t.timestamptz "reviewed_at"
-    t.string "reviewed_by", limit: 30
-    t.string "status", limit: 16, default: "pending", null: false
-    t.string "target_repo", limit: 200
-    t.string "title", limit: 200, null: false
-    t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
-    t.index ["created_at"], name: "ix_rpg_club_suggestions_created"
-    t.index ["status"], name: "ix_rpg_club_suggestions_status"
-    t.check_constraint "status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'withdrawn'::character varying]::text[])", name: "ck_rpg_club_suggestions_status"
   end
 
   create_table "rpg_club_user_avatar_history", primary_key: "event_id", force: :cascade do |t|
@@ -1897,15 +1937,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
   add_foreign_key "member_news_category_preferences", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "member_pinned_pages", "rpg_club_users", column: "user_id", primary_key: "user_id", on_delete: :cascade
   add_foreign_key "pending_changes", "patches", on_delete: :nullify
+  add_foreign_key "roadmap_item_feedback", "roadmap_items", column: "item_id", name: "fk_roadmap_item_feedback_item", on_delete: :cascade
+  add_foreign_key "roadmap_item_feedback", "rpg_club_feedback", column: "feedback_id", primary_key: "feedback_id", name: "fk_roadmap_item_feedback_feedback", on_delete: :cascade
+  add_foreign_key "roadmap_items", "roadmap_milestones", column: "milestone_id", name: "fk_roadmap_items_milestone", on_delete: :restrict
   add_foreign_key "rpg_club_collection_csv_import_items", "rpg_club_collection_csv_imports", column: "import_id", primary_key: "import_id", name: "fk_coll_csv_import_items"
   add_foreign_key "rpg_club_completionator_import_items", "rpg_club_completionator_imports", column: "import_id", primary_key: "import_id", name: "fk_completionator_import_items"
+  add_foreign_key "rpg_club_feedback", "rpg_club_feedback", column: "duplicate_of_id", primary_key: "feedback_id", name: "fk_rpg_club_feedback_duplicate_of"
+  add_foreign_key "rpg_club_feedback_upvotes", "rpg_club_feedback", column: "feedback_id", primary_key: "feedback_id", name: "fk_rpg_club_feedback_upvotes_feedback", on_delete: :cascade
+  add_foreign_key "rpg_club_feedback_upvotes", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_rpg_club_feedback_upvotes_user", on_delete: :cascade
   add_foreign_key "rpg_club_game_keys", "gamedb_games", primary_key: "game_id", name: "fk_rpg_club_game_keys_gamedb", on_delete: :nullify
   add_foreign_key "rpg_club_gamedb_import_items", "rpg_club_gamedb_imports", column: "import_id", primary_key: "import_id", name: "fk_gamedb_import_items"
   add_foreign_key "rpg_club_gotm_audit_items", "rpg_club_gotm_audit_imports", column: "import_id", primary_key: "import_id", name: "fk_gotm_audit_items"
   add_foreign_key "rpg_club_rss_feed_items", "rpg_club_rss_feeds", column: "feed_id", primary_key: "feed_id", name: "fk_rss_feed_items_feed", on_delete: :cascade
   add_foreign_key "rpg_club_steam_collection_import_items", "rpg_club_steam_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_steam_coll_import_items"
-  add_foreign_key "rpg_club_suggestion_upvotes", "rpg_club_suggestions", column: "suggestion_id", primary_key: "suggestion_id", name: "fk_rpg_club_suggestion_upvotes_suggestion", on_delete: :cascade
-  add_foreign_key "rpg_club_suggestion_upvotes", "rpg_club_users", column: "user_id", primary_key: "user_id", name: "fk_rpg_club_suggestion_upvotes_user", on_delete: :cascade
   add_foreign_key "rpg_club_xbox_collection_import_items", "rpg_club_xbox_collection_imports", column: "import_id", primary_key: "import_id", name: "fk_xbox_coll_import_items"
   add_foreign_key "threads", "gamedb_games", primary_key: "game_id", name: "fk_threads_gamedb_game"
   add_foreign_key "user_achievement_set_progress", "achievement_sets", name: "fk_user_achievement_set_progress_set", on_delete: :cascade

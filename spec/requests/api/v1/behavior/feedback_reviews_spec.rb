@@ -2,18 +2,18 @@
 
 require "rails_helper"
 
-# Superadmin review of a Suggestion (web parity 2, #319): approve opens a
+# Superadmin review of Feedback (web parity 2, #319; spec api#498): approve opens a
 # GitHub issue in an allowlisted repo, reject records a reason, and both ask
 # the bot to announce the outcome. Github::Client is stubbed at its
 # constructor; its own spec stubs GitHub over HTTP.
-RSpec.describe "api/v1/suggestions review behavior", type: :request do
+RSpec.describe "api/v1/feedback review behavior", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
   let(:client) { instance_double(Github::Client, configured?: true) }
   let(:superadmin) { create(:user) }
   let(:superadmin_headers) { auth_headers_for(superadmin, is_dev: true) }
-  let(:suggestion) do
-    create(:suggestion, title: "Dark mode", details: "Please", labels: "New Feature, Bug", created_by_name: "tester")
+  let(:feedback) do
+    create(:feedback, kind: "feature_request", title: "Dark mode", details: "Please", created_by_name: "tester")
   end
   let(:issue_url) { "https://github.com/TheRPGClub/TheRPGClub-www/issues/42" }
 
@@ -25,58 +25,90 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
   end
 
   def marker_for(record)
-    "<!-- rpgclub-suggestion:#{record.suggestion_id} -->"
+    "<!-- rpgclub-feedback:#{record.feedback_id} -->"
   end
 
-  def approve(id = suggestion.suggestion_id, data: { target_repo: "TheRPGClub/TheRPGClub-www" }, headers: superadmin_headers)
-    post "/api/v1/suggestions/#{id}/approve", params: { data: data }, headers: headers, as: :json
+  # Issues are created before Suggestions became Feedback carried this one.
+  def legacy_marker_for(record)
+    "<!-- rpgclub-suggestion:#{record.feedback_id} -->"
   end
 
-  def reject(id = suggestion.suggestion_id, data: { rejection_reason: "Out of scope" }, headers: superadmin_headers)
-    post "/api/v1/suggestions/#{id}/reject", params: { data: data }, headers: headers, as: :json
+  # An issue as Github::Client#issue returns it; a closed one is closed as
+  # completed unless a reason is given.
+  def gh_issue(state, reason = (state == "closed" ? "completed" : nil), number: 5)
+    Github::Client::Issue.new(number: number, url: "https://github.com/TheRPGClub/TheRPGClub-bot/issues/#{number}",
+      state: state, state_reason: reason)
   end
 
-  describe "POST /api/v1/suggestions/:id/approve" do
+  def approve(id = feedback.feedback_id, data: { target_repo: "TheRPGClub/TheRPGClub-www" }, headers: superadmin_headers)
+    post "/api/v1/feedback/#{id}/approve", params: { data: data }, headers: headers, as: :json
+  end
+
+  def reject(id = feedback.feedback_id, data: { rejection_reason: "Out of scope" }, headers: superadmin_headers)
+    post "/api/v1/feedback/#{id}/reject", params: { data: data }, headers: headers, as: :json
+  end
+
+  describe "POST /api/v1/feedback/:id/approve" do
     it "opens the GitHub issue the bot would, stores it and asks the bot to announce it" do
       freeze_time do
         expect { approve }.to change(BotJob, :count).by(1)
 
         expect(response).to have_http_status(:ok)
         expect(client).to have_received(:create_issue).with(
-          repo: "TheRPGClub/TheRPGClub-www", title: "Dark mode", body: "tester: Please\n\n#{marker_for(suggestion)}",
-          labels: [ "New Feature", "Bug" ]
+          repo: "TheRPGClub/TheRPGClub-www", title: "Dark mode", body: "tester: Please\n\n#{marker_for(feedback)}",
+          labels: [ "enhancement" ]
         )
         expect(client).to have_received(:find_issue_by_marker).with(
-          repo: "TheRPGClub/TheRPGClub-www", marker: marker_for(suggestion), since: suggestion.created_at
+          repo: "TheRPGClub/TheRPGClub-www", marker: [ marker_for(feedback), legacy_marker_for(feedback) ],
+          since: feedback.created_at
         )
         data = json.fetch("data")
         expect(data).to include(
-          "suggestion_id" => suggestion.suggestion_id, "status" => "approved",
+          "feedback_id" => feedback.feedback_id, "status" => "approved",
           "reviewed_by" => superadmin.user_id, "reviewed_at" => Time.current.utc.iso8601(3),
           "target_repo" => "TheRPGClub/TheRPGClub-www", "github_issue_number" => 42,
           "github_issue_url" => issue_url, "rejection_reason" => nil, "upvote_count" => 0
         )
         job = BotJob.last
         expect(json.dig("meta", "outcome_job_id")).to eq(job.id)
-        expect(job.kind).to eq("suggestion_outcome")
-        expect(job.summary).to eq('Announce that the Suggestion "Dark mode" was approved')
+        expect(job.kind).to eq("feedback_outcome")
+        expect(job.summary).to eq('Announce that the Feature Request "Dark mode" was approved')
         expect(job.requested_by_user_id).to eq(superadmin.user_id)
         expect(job.payload).to eq(
-          "suggestion_id" => suggestion.suggestion_id, "outcome" => "approved",
-          "created_by" => suggestion.created_by, "title" => "Dark mode",
+          "feedback_id" => feedback.feedback_id, "kind" => "feature_request", "outcome" => "approved",
+          "created_by" => feedback.created_by, "title" => "Dark mode",
           "github_issue_number" => 42, "github_issue_url" => issue_url, "rejection_reason" => nil,
-          "feature_key" => "suggestions"
+          "feature_key" => "feedback"
         )
       end
     end
 
-    it "uses the bot's placeholders for a missing author name and details, and no labels" do
-      bare = create(:suggestion, details: nil, labels: nil, created_by_name: nil)
+    it "uses the bot's placeholders for a missing author name and details" do
+      bare = create(:feedback, details: nil, created_by_name: nil)
 
-      approve(bare.suggestion_id)
+      approve(bare.feedback_id)
 
       expect(client).to have_received(:create_issue)
-        .with(hash_including(body: "Unknown: No details provided.\n\n#{marker_for(bare)}", labels: []))
+        .with(hash_including(body: "Unknown: No details provided.\n\n#{marker_for(bare)}"))
+    end
+
+    {
+      "TheRPGClub/TheRPGClub-bot" => { "feature_request" => "new feature", "suggestion" => "improvement",
+                                       "bug_report" => "bug" },
+      "TheRPGClub/TheRPGClub-api" => { "feature_request" => "enhancement", "suggestion" => "enhancement",
+                                       "bug_report" => "bug" },
+      "TheRPGClub/TheRPGClub-www" => { "feature_request" => "enhancement", "suggestion" => "enhancement",
+                                       "bug_report" => "bug" }
+    }.each do |repo, labels|
+      labels.each do |kind, label|
+        it "labels a #{kind} issue in #{repo} #{label}" do
+          record = create(:feedback, kind: kind)
+
+          approve(record.feedback_id, data: { target_repo: repo })
+
+          expect(client).to have_received(:create_issue).with(hash_including(repo: repo, labels: [ label ]))
+        end
+      end
     end
 
     it "lets the bot approve for a Discord reviewer, and still enqueues the announcement" do
@@ -110,8 +142,8 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     end
 
     %w[approved rejected withdrawn].each do |status|
-      it "409s when the suggestion is #{status}, without calling GitHub" do
-        suggestion.update!(status: status)
+      it "409s when feedback is #{status}, without calling GitHub" do
+        feedback.update!(status: status)
 
         expect { approve }.not_to change(BotJob, :count)
 
@@ -121,14 +153,14 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       end
     end
 
-    it "502s and leaves the suggestion pending when GitHub fails" do
+    it "502s and leaves feedback pending when GitHub fails" do
       allow(client).to receive(:create_issue).and_raise(Github::Client::RequestError, "GitHub returned HTTP 500")
 
       expect { approve }.not_to change(BotJob, :count)
 
       expect(response).to have_http_status(:bad_gateway)
       expect(json).to include("error" => "github_issue_failed", "message" => "GitHub returned HTTP 500")
-      expect(suggestion.reload.status).to eq("pending")
+      expect(feedback.reload.status).to eq("pending")
     end
 
     it "reuses an issue an earlier approval opened but whose response was lost, instead of a duplicate" do
@@ -142,6 +174,29 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       expect(client).not_to have_received(:create_issue)
       expect(json.fetch("data")).to include("status" => "approved", "github_issue_number" => 41,
         "github_issue_url" => found.url)
+    end
+
+    it "makes the Feedback Done at once when the reused issue is already closed as completed" do
+      found = Github::Client::Issue.new(number: 41, url: "https://github.com/TheRPGClub/TheRPGClub-www/issues/41",
+        state: "closed", state_reason: "completed")
+      allow(client).to receive(:find_issue_by_marker).and_return(found)
+
+      approve
+
+      expect(response).to have_http_status(:ok)
+      expect(feedback.reload).to be_done
+      expect(BotJob.where(kind: "feedback_outcome").map { |job| job.payload["outcome"] }).to contain_exactly("approved", "done")
+    end
+
+    it "leaves the Feedback Open when the reused issue was closed as not planned" do
+      found = Github::Client::Issue.new(number: 41, url: "https://github.com/TheRPGClub/TheRPGClub-www/issues/41",
+        state: "closed", state_reason: "not_planned")
+      allow(client).to receive(:find_issue_by_marker).and_return(found)
+
+      approve
+
+      expect(feedback.reload.status).to eq("approved")
+      expect(feedback).not_to be_done
     end
 
     it "does not hold a transaction (or the row lock) across the GitHub calls" do
@@ -159,8 +214,8 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       expect(during).to eq([ baseline, baseline ])
     end
 
-    it "409s while another approval of the same suggestion is in progress, without calling GitHub" do
-      suggestion.update_column(:approval_started_at, 10.seconds.ago)
+    it "409s while another approval of the same feedback is in progress, without calling GitHub" do
+      feedback.update_column(:approval_started_at, 10.seconds.ago)
 
       expect { approve }.not_to change(BotJob, :count)
 
@@ -171,12 +226,12 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     end
 
     it "takes over an approval mark left by a request that died" do
-      suggestion.update_column(:approval_started_at, 10.minutes.ago)
+      feedback.update_column(:approval_started_at, 10.minutes.ago)
 
       approve
 
       expect(response).to have_http_status(:ok)
-      expect(suggestion.reload.status).to eq("approved")
+      expect(feedback.reload.status).to eq("approved")
     end
 
     it "can be retried at once after a GitHub failure" do
@@ -192,16 +247,16 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       expect(json.dig("data", "github_issue_number")).to eq(42)
     end
 
-    it "409s, and announces nothing, when the suggestion stopped being pending during the GitHub call" do
+    it "409s, and announces nothing, when feedback stopped being pending during the GitHub call" do
       allow(client).to receive(:create_issue) do
-        RpgClubSuggestion.where(suggestion_id: suggestion.suggestion_id).update_all(status: "withdrawn")
+        RpgClubFeedback.where(feedback_id: feedback.feedback_id).update_all(status: "withdrawn")
         Github::Client::Issue.new(number: 42, url: issue_url, state: "open")
       end
 
       expect { approve }.not_to change(BotJob, :count)
 
       expect(response).to have_http_status(:conflict)
-      expect(suggestion.reload).to have_attributes(status: "withdrawn", github_issue_number: nil)
+      expect(feedback.reload).to have_attributes(status: "withdrawn", github_issue_number: nil)
     end
 
     it "502s when the lookup for an earlier issue fails" do
@@ -211,7 +266,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
 
       expect(response).to have_http_status(:bad_gateway)
       expect(client).not_to have_received(:create_issue)
-      expect(suggestion.reload.status).to eq("pending")
+      expect(feedback.reload.status).to eq("pending")
     end
 
     it "does not show its approval bookkeeping" do
@@ -227,7 +282,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
 
       expect(response).to have_http_status(:service_unavailable)
       expect(json.fetch("error")).to eq("github_not_configured")
-      expect(suggestion.reload.status).to eq("pending")
+      expect(feedback.reload.status).to eq("pending")
     end
 
     it "refuses an Admin who is not a Superadmin" do
@@ -244,7 +299,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     end
 
     it "400s without the data envelope" do
-      post "/api/v1/suggestions/#{suggestion.suggestion_id}/approve", headers: superadmin_headers, as: :json
+      post "/api/v1/feedback/#{feedback.feedback_id}/approve", headers: superadmin_headers, as: :json
 
       expect(response).to have_http_status(:bad_request)
     end
@@ -262,7 +317,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     end
   end
 
-  describe "POST /api/v1/suggestions/:id/reject" do
+  describe "POST /api/v1/feedback/:id/reject" do
     it "records the reason and asks the bot to announce it" do
       freeze_time do
         expect { reject }.to change(BotJob, :count).by(1)
@@ -274,13 +329,13 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
         )
         job = BotJob.last
         expect(json.dig("meta", "outcome_job_id")).to eq(job.id)
-        expect(job.kind).to eq("suggestion_outcome")
-        expect(job.summary).to eq('Announce that the Suggestion "Dark mode" was rejected')
+        expect(job.kind).to eq("feedback_outcome")
+        expect(job.summary).to eq('Announce that the Feature Request "Dark mode" was rejected')
         expect(job.payload).to eq(
-          "suggestion_id" => suggestion.suggestion_id, "outcome" => "rejected",
-          "created_by" => suggestion.created_by, "title" => "Dark mode",
+          "feedback_id" => feedback.feedback_id, "kind" => "feature_request", "outcome" => "rejected",
+          "created_by" => feedback.created_by, "title" => "Dark mode",
           "github_issue_number" => nil, "github_issue_url" => nil, "rejection_reason" => "Out of scope",
-          "feature_key" => "suggestions"
+          "feature_key" => "feedback"
         )
         expect(client).not_to have_received(:create_issue)
       end
@@ -296,7 +351,7 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       expect { reject(data: { rejection_reason: "   " }) }.not_to change(BotJob, :count)
 
       expect(response).to have_http_status(:unprocessable_content)
-      expect(suggestion.reload.status).to eq("pending")
+      expect(feedback.reload.status).to eq("pending")
     end
 
     it "422s for a reason over 2000 characters" do
@@ -312,8 +367,8 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       expect(json.dig("data", "reviewed_by")).to eq("555")
     end
 
-    it "409s when the suggestion is not pending" do
-      suggestion.update!(status: "withdrawn")
+    it "409s when feedback is not pending" do
+      feedback.update!(status: "withdrawn")
 
       reject
 
@@ -343,28 +398,28 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     let(:viewer_headers) { auth_headers_for(create(:user)) }
     let(:cache) { ActiveSupport::Cache::MemoryStore.new }
     let!(:approved) do
-      create(:suggestion, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 5,
+      create(:feedback, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 5,
         github_issue_url: "https://github.com/TheRPGClub/TheRPGClub-bot/issues/5")
     end
 
     before do
       allow(Rails).to receive(:cache).and_return(cache)
-      allow(client).to receive(:issue_state).and_return("closed")
+      allow(client).to receive(:issue).and_return(gh_issue("closed"))
     end
 
     def row_for(record)
-      json.fetch("data").find { |row| row.fetch("suggestion_id") == record.suggestion_id }
+      json.fetch("data").find { |row| row.fetch("feedback_id") == record.feedback_id }
     end
 
     def board(**params)
-      get "/api/v1/suggestions", params: params, headers: viewer_headers
+      get "/api/v1/feedback", params: params, headers: viewer_headers
     end
 
     it "never calls GitHub during a read; a refresh job fills the state for the next one" do
-      pending_one = create(:suggestion)
+      pending_one = create(:feedback)
 
       board
-      expect(client).not_to have_received(:issue_state)
+      expect(client).not_to have_received(:issue)
       expect(row_for(approved).fetch("github_issue_state")).to be_nil
       expect(Github::IssueStateRefreshJob).to have_been_enqueued.with([ [ "TheRPGClub/TheRPGClub-bot", 5 ] ])
 
@@ -373,19 +428,19 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
 
       expect(row_for(approved).fetch("github_issue_state")).to eq("closed")
       expect(row_for(pending_one).fetch("github_issue_state")).to be_nil
-      expect(client).to have_received(:issue_state).once.with(repo: "TheRPGClub/TheRPGClub-bot", number: 5)
+      expect(client).to have_received(:issue).once.with(repo: "TheRPGClub/TheRPGClub-bot", number: 5)
     end
 
-    it "shows it on a single suggestion" do
+    it "shows it on a single feedback" do
       Github::IssueStateCache.store("TheRPGClub/TheRPGClub-bot", 5, "closed")
 
-      get "/api/v1/suggestions/#{approved.suggestion_id}", headers: viewer_headers
+      get "/api/v1/feedback/#{approved.feedback_id}", headers: viewer_headers
 
       expect(json.dig("data", "github_issue_state")).to eq("closed")
     end
 
     it "reads every state on the page in one cache read" do
-      3.times { |i| create(:suggestion, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 50 + i) }
+      3.times { |i| create(:feedback, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 50 + i) }
       allow(cache).to receive(:read_multi).and_call_original
       allow(cache).to receive(:read).and_call_original
 
@@ -433,11 +488,11 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
 
         Github::IssueStateRefreshJob.perform_now(pairs)
 
-        expect(client).not_to have_received(:issue_state)
+        expect(client).not_to have_received(:issue)
       end
 
       it "caches a failure as null for about ten minutes, and the read still succeeds" do
-        allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub returned HTTP 500")
+        allow(client).to receive(:issue).and_raise(Github::Client::RequestError, "GitHub returned HTTP 500")
 
         Github::IssueStateRefreshJob.perform_now(pairs)
         board
@@ -451,12 +506,12 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
       end
 
       it "stops at the first GitHub failure, leaving the rest for a later refresh" do
-        allow(client).to receive(:issue_state).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
+        allow(client).to receive(:issue).and_raise(Github::Client::RequestError, "GitHub request failed: timeout")
         many = 4.times.map { |i| [ "TheRPGClub/TheRPGClub-bot", 100 + i ] }
 
         Github::IssueStateRefreshJob.perform_now(many)
 
-        expect(client).to have_received(:issue_state).once
+        expect(client).to have_received(:issue).once
       end
 
       it "calls nothing when the GitHub App is not configured" do
@@ -465,12 +520,115 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
         Github::IssueStateRefreshJob.perform_now(pairs)
         board
 
-        expect(client).not_to have_received(:issue_state)
+        expect(client).not_to have_received(:issue)
         expect(row_for(approved).fetch("github_issue_state")).to be_nil
       end
 
+      describe "Done" do
+        let(:done_jobs) { BotJob.where(kind: "feedback_outcome").select { |job| job.payload["outcome"] == "done" } }
+
+        it "makes Approved Feedback Done and queues exactly one Done notice when it sees the issue closed" do
+          Github::IssueStateRefreshJob.perform_now(pairs)
+          travel(11.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+
+          expect(approved.reload).to be_done
+          expect(done_jobs.size).to eq(1)
+          expect(done_jobs.first.payload).to include(
+            "feedback_id" => approved.feedback_id, "kind" => approved.kind, "outcome" => "done",
+            "created_by" => approved.created_by, "title" => approved.title, "github_issue_number" => 5,
+            "github_issue_url" => approved.github_issue_url, "feature_key" => "feedback"
+          )
+          board
+          expect(row_for(approved)).to include("done" => true, "github_issue_state" => "closed")
+        end
+
+        it "moves reopened Feedback back to Open without a notice, and sends none when it closes again" do
+          Github::IssueStateRefreshJob.perform_now(pairs)
+          allow(client).to receive(:issue).and_return(gh_issue("open"))
+          travel(11.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+
+          expect(approved.reload).not_to be_done
+          expect(approved).to be_upvotable
+
+          allow(client).to receive(:issue).and_return(gh_issue("closed"))
+          travel(22.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+
+          expect(approved.reload).to be_done
+          expect(done_jobs.size).to eq(1)
+        end
+
+        it "sends nothing while the issue is open, or for Feedback that is not Approved" do
+          allow(client).to receive(:issue).and_return(gh_issue("open"))
+          Github::IssueStateRefreshJob.perform_now(pairs)
+          expect(approved.reload).not_to be_done
+
+          rejected = create(:feedback, status: "rejected", rejection_reason: "No",
+            target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 6)
+          allow(client).to receive(:issue).and_return(gh_issue("closed"))
+          Github::IssueStateRefreshJob.perform_now([ [ "TheRPGClub/TheRPGClub-bot", 6 ] ])
+
+          expect(rejected.reload.done_at).to be_nil
+          expect(done_jobs).to be_empty
+        end
+
+        it "is not Done when the issue is closed as not planned, and stops being Done when re-closed so" do
+          allow(client).to receive(:issue).and_return(gh_issue("closed", "not_planned"))
+          Github::IssueStateRefreshJob.perform_now(pairs)
+          expect(approved.reload).not_to be_done
+          expect(approved.done_notified_at).to be_nil
+
+          allow(client).to receive(:issue).and_return(gh_issue("closed"))
+          travel(11.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+          expect(approved.reload).to be_done
+
+          allow(client).to receive(:issue).and_return(gh_issue("closed", "not_planned"))
+          travel(22.minutes) { Github::IssueStateRefreshJob.perform_now(pairs) }
+          expect(approved.reload).not_to be_done
+          expect(approved).to be_upvotable
+          expect(done_jobs.size).to eq(1)
+        end
+
+        it "is not Done when GitHub gives a closed issue no reason" do
+          allow(client).to receive(:issue).and_return(gh_issue("closed", nil))
+
+          Github::IssueStateRefreshJob.perform_now(pairs)
+
+          expect(approved.reload).not_to be_done
+        end
+
+        it "refreshes a closed state cached without a reason, to settle Done" do
+          cache.write(Github::IssueStateCache.key_for(*pairs.first), { state: "closed", fresh_until: 5.minutes.from_now })
+
+          Github::IssueStateRefreshJob.perform_now(pairs)
+
+          expect(client).to have_received(:issue).once
+          expect(approved.reload).to be_done
+        end
+
+        it "goes on with the rest when recording one issue's state fails" do
+          other = create(:feedback, status: "approved", target_repo: "TheRPGClub/TheRPGClub-bot", github_issue_number: 6)
+          allow(client).to receive(:issue) { |repo:, number:| gh_issue("closed", number: number) }
+          allow(RpgClubFeedback).to receive(:record_issue_state).and_call_original
+          allow(RpgClubFeedback).to receive(:record_issue_state).with("TheRPGClub/TheRPGClub-bot", 5, any_args)
+            .and_raise(ActiveRecord::StatementInvalid, "boom")
+
+          Github::IssueStateRefreshJob.perform_now(pairs + [ [ "TheRPGClub/TheRPGClub-bot", 6 ] ])
+
+          expect(other.reload).to be_done
+        end
+
+        it "changes nothing when the lookup fails" do
+          allow(client).to receive(:issue).and_raise(Github::Client::RequestError, "boom")
+
+          Github::IssueStateRefreshJob.perform_now(pairs)
+
+          expect(approved.reload).not_to be_done
+          expect(done_jobs).to be_empty
+        end
+      end
+
       it "leaves the state null when the issue no longer exists" do
-        allow(client).to receive(:issue_state).and_return(nil)
+        allow(client).to receive(:issue).and_return(nil)
 
         Github::IssueStateRefreshJob.perform_now(pairs)
         board
@@ -480,12 +638,12 @@ RSpec.describe "api/v1/suggestions review behavior", type: :request do
     end
   end
 
-  describe "DELETE /api/v1/suggestions/:id" do
-    it "is gone: Suggestions are kept and reviewed through approve and reject" do
-      delete "/api/v1/suggestions/#{suggestion.suggestion_id}", headers: service_headers
+  describe "DELETE /api/v1/feedback/:id" do
+    it "is gone: Feedback are kept and reviewed through approve and reject" do
+      delete "/api/v1/feedback/#{feedback.feedback_id}", headers: service_headers
 
       expect(response).to have_http_status(:not_found)
-      get "/api/v1/suggestions/#{suggestion.suggestion_id}", headers: service_headers
+      get "/api/v1/feedback/#{feedback.feedback_id}", headers: service_headers
       expect(response).to have_http_status(:ok)
     end
   end

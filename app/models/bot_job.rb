@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Work the API asks the bot to do in Discord (DM a giveaway key, post a
-# Suggestion outcome, ...). The API cannot reach the bot, so the bot polls:
+# Feedback outcome, ...). The API cannot reach the bot, so the bot polls:
 # it claims queued jobs, acts, then acks each one done or failed. A
 # machine-local signal (BotJob::WorkSignal) lets that poll skip Postgres
 # while nothing is waiting.
@@ -27,8 +27,8 @@ class BotJob < ApplicationRecord
     giveaway_hub_refresh
     nomination_deleted
     goty_nomination_deleted
-    suggestion_submitted
-    suggestion_outcome
+    feedback_submitted
+    feedback_outcome
     voting_poll_wakeup
     voting_results_publish
     voting_panels_repost
@@ -54,7 +54,7 @@ class BotJob < ApplicationRecord
   ].freeze
   # The kinds that post, and the Feature each post belongs to (the posts in
   # Features::REGISTRY's coverage): the claim notice's claim log and the
-  # submitted Suggestion's announcement included. The other kinds post to a
+  # submitted Feedback's announcement included. The other kinds post to a
   # staff channel, post nothing, or (birthday_post) post for no Feature.
   PUBLIC_POST_FEATURES = {
     "completion_announce" => "game_completions",
@@ -62,8 +62,8 @@ class BotJob < ApplicationRecord
     "giveaway_hub_refresh" => "giveaways",
     "nomination_deleted" => "voting_gotm",
     "goty_nomination_deleted" => "goty_vote",
-    "suggestion_submitted" => "suggestions",
-    "suggestion_outcome" => "suggestions",
+    "feedback_submitted" => "feedback",
+    "feedback_outcome" => "feedback",
     "voting_results_publish" => "voting_gotm",
     "voting_panels_repost" => "voting_gotm",
     "voting_tie_broken" => "voting_gotm",

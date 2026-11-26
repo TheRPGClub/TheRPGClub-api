@@ -20,7 +20,7 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "achievement_hub" => ->(_user) { "/api/v1/achievements/feed" },
     "giveaways" => ->(user) { "/api/v1/users/#{user.user_id}/giveaway_settings" },
     "journals" => ->(user) { "/api/v1/users/#{user.user_id}/journal" },
-    "suggestions" => ->(_user) { "/api/v1/suggestions" },
+    "feedback" => ->(_user) { "/api/v1/feedback" },
     "news_hub" => ->(_user) { "/api/v1/news_items" },
     "challenges" => ->(_user) { "/api/v1/challenges" },
     "release_calendar" => ->(_user) { "/api/v1/upcoming_releases" },
@@ -28,7 +28,8 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "game_lists" => ->(_user) { "/api/v1/game_lists" },
     "franchise_progress" => ->(_user) { "/api/v1/franchises/#{FactoryBot.create(:franchise).franchise_id}/progress/members" },
     "goty_vote" => ->(_user) { "/api/v1/goty_votes" },
-    "patch_notes" => ->(_user) { "/api/v1/patches" }
+    "patch_notes" => ->(_user) { "/api/v1/patches" },
+    "roadmap" => ->(_user) { "/api/v1/roadmap" }
   }
 
   it "covers every registered Feature" do
@@ -262,9 +263,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     # Journals
     "api/v1/journal" => "journals",
     "api/v1/journal_message_contexts" => "journals",
-    # Suggestions
-    "api/v1/suggestions" => "suggestions",
-    "api/v1/suggestion_review_sessions" => "suggestions",
+    # Feedback
+    "api/v1/feedback" => "feedback",
+    "api/v1/feedback_screenshots" => "feedback",
     # News Hub
     "api/v1/news_items" => "news_hub",
     "api/v1/challenges" => "challenges",
@@ -354,7 +355,11 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/franchise_progress" => "franchise_progress",
     "api/v1/goty_votes" => "goty_vote",
     "api/v1/goty_nominations" => "goty_vote",
-    "api/v1/goty_ballot_votes" => "goty_vote"
+    "api/v1/goty_ballot_votes" => "goty_vote",
+    # Roadmap (spec api#505)
+    "api/v1/roadmap" => "roadmap",
+    "api/v1/roadmap_milestones" => "roadmap",
+    "api/v1/roadmap_items" => "roadmap"
   }
 
   it "has every routed controller declare the Feature it belongs to, or none" do

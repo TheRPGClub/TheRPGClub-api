@@ -62,6 +62,8 @@ RSpec.describe Voting::AdvanceRounds do
     end
 
     context "when the lead is shared" do
+      include ActiveJob::TestHelper
+
       let(:closed_at) { Time.utc(2026, 11, 3) }
       let(:tied) { create_list(:gotm_nomination, 2, round_number: round.round_number) }
       let(:tied_ids) { tied.map(&:gamedb_game_id).sort }
@@ -74,6 +76,7 @@ RSpec.describe Voting::AdvanceRounds do
 
       it "opens a runoff on the tied games instead of deciding" do
         expect(kinds).to eq(%w[voting_closed runoff_opened])
+        expect(ShareCard::RefreshJob).not_to have_been_enqueued
         event = VotingEvent.find_by(round_number: round.round_number, kind: "runoff_opened")
         expect(event.expires_at).to eq(closed_at + 24.hours)
         expect(event.payload).to eq(
@@ -85,8 +88,10 @@ RSpec.describe Voting::AdvanceRounds do
       it "settles the runoff once it closes and queues its results and the decision" do
         create(:gotm_vote, nomination: tied[1], runoff: true)
 
-        described_class.call(now: closed_at + 24.hours)
-        described_class.call(now: closed_at + 25.hours)
+        expect do
+          described_class.call(now: closed_at + 24.hours)
+          described_class.call(now: closed_at + 25.hours)
+        end.to have_enqueued_job(ShareCard::RefreshJob).exactly(:once)
 
         expect(kinds).to eq(%w[voting_closed runoff_opened runoff_closed round_decided])
         winners = { "gotm" => [ tied[1].gamedb_game_id ] }
