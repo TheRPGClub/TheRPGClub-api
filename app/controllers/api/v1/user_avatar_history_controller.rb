@@ -62,6 +62,7 @@ module Api
       # return the stamped values.
       def create
         record = RpgClubUserAvatarHistory.create!(writable_data.merge(user_id: params[:user_id]))
+        RpgClubUser.record_discord_avatar(params[:user_id], record.avatar_hash)
         record.reload
         render json: { data: UserAvatarHistoryResource.new(record).serializable_hash }, status: :created
       end

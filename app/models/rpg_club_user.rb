@@ -167,6 +167,21 @@ class RpgClubUser < ApplicationRecord
 
   # Members still in the guild: departed members (server_left_at) and bots are
   # hidden from club-wide reads such as the Achievement Hub.
+  # A Discord avatar hash ("a_" marks an animated one), the shape Discord
+  # issues; nothing else is stored as `discord_avatar` from the bot or built
+  # into a CDN URL.
+  DISCORD_AVATAR_HASH = /\A(a_)?\h{32}\z/
+
+  # Keeps `discord_avatar` on the member's current avatar when the bot logs a
+  # change (UserAvatarHistoryController#create). A website login also sets
+  # it, but only then, and Discord stops serving a replaced avatar, so a hash
+  # from an old login turned pictures into initials.
+  def self.record_discord_avatar(user_id, hash)
+    return unless DISCORD_AVATAR_HASH.match?(hash.to_s)
+
+    where(user_id: user_id.to_s).update_all(discord_avatar: hash)
+  end
+
   scope :active, -> { where(is_bot: false, server_left_at: nil) }
   scope :without_images, -> { select(*(column_names - BINARY_COLUMNS)) }
 

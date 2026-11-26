@@ -67,6 +67,25 @@ RSpec.describe "api/v1/user_avatar_history behavior", type: :request do
       expect(json.fetch("data")).not_to have_key("avatar_blob")
     end
 
+    it "moves the member's discord_avatar to the logged hash, so their picture stays current" do
+      owner.update_column(:discord_avatar, "0" * 32)
+
+      post "/api/v1/users/#{owner.user_id}/avatar_history",
+        params: { data: { avatar_hash: "a_#{'f' * 32}", avatar_url: "https://cdn.example.test/a.png" } },
+        headers: service_headers, as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(owner.reload.discord_avatar).to eq("a_#{'f' * 32}")
+    end
+
+    it "leaves discord_avatar alone for a hash Discord wouldn't issue" do
+      owner.update_column(:discord_avatar, "0" * 32)
+
+      post "/api/v1/users/#{owner.user_id}/avatar_history", params: payload, headers: service_headers, as: :json
+
+      expect(owner.reload.discord_avatar).to eq("0" * 32)
+    end
+
     it "ignores server-managed fields in the body" do
       post "/api/v1/users/#{owner.user_id}/avatar_history",
         params: { data: { avatar_hash: "abc", changed_at: "2000-01-01T00:00:00Z",
