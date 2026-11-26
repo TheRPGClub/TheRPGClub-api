@@ -1027,6 +1027,27 @@ components:
       required:
       - milestones
       - reached
+    RoadmapRefusal:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+          - milestone_has_items
+          - invalid_order
+          - milestone_not_found
+          - milestone_reached
+          - invalid_position
+          - invalid_destination
+          - no_destination
+          - already_reached
+          - not_reached
+        message:
+          type: string
+          description: Written for staff, as the website shows it.
+      required:
+      - error
+      - message
     ReleaseRefreshMeta:
       type: object
       properties:
@@ -32916,6 +32937,780 @@ paths:
             application/json:
               schema:
                 "$ref": "#/components/schemas/Error"
+  "/api/v1/roadmap/milestones":
+    post:
+      summary: Create a Milestone
+      tags:
+      - Roadmap
+      description: Adds a Milestone last in the order. Other fields are ignored. Admins
+        and Superadmins only (403 `forbidden` for Moderators and members). Belongs
+        to the Roadmap Feature, so a member who cannot use it gets 404 `not_found`
+        first.
+      parameters: []
+      responses:
+        '201':
+          description: the new Milestone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/RoadmapMilestone"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid fields (`{ error }` listing them)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 100
+                    blurb:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+                    target_date:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Kept on the first day of its period at a vague
+                        Date Precision; null for TBA.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - quarter
+                      - year
+                      - tba
+                      description: tba when left out.
+                  required:
+                  - name
+        required: true
+  "/api/v1/roadmap/milestones/order":
+    put:
+      summary: Set the open Milestones' order
+      tags:
+      - Roadmap
+      description: "`milestone_ids` names every open Milestone once, first to last.
+        Reached Milestones keep their places in the order, so un-reaching one puts
+        it back where it was. Returns the Roadmap. Admins and Superadmins only (403
+        `forbidden` for Moderators and members). Belongs to the Roadmap Feature, so
+        a member who cannot use it gets 404 `not_found` first."
+      parameters: []
+      responses:
+        '200':
+          description: the Roadmap in its new order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Roadmap"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`invalid_order`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    milestone_ids:
+                      type: array
+                      items:
+                        type: integer
+                  required:
+                  - milestone_ids
+        required: true
+  "/api/v1/roadmap/milestones/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    patch:
+      summary: Edit a Milestone
+      tags:
+      - Roadmap
+      description: Changes its name, blurb, target date and Date Precision; its place
+        and Reached date change only through the order and Reach endpoints. Admins
+        and Superadmins only (403 `forbidden` for Moderators and members). Belongs
+        to the Roadmap Feature, so a member who cannot use it gets 404 `not_found`
+        first.
+      parameters: []
+      responses:
+        '200':
+          description: the Milestone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/RoadmapMilestone"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid fields (`{ error }` listing them)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      maxLength: 100
+                    blurb:
+                      type: string
+                      nullable: true
+                      maxLength: 280
+                    target_date:
+                      type: string
+                      format: date
+                      nullable: true
+                      description: Kept on the first day of its period at a vague
+                        Date Precision; null for TBA.
+                    date_precision:
+                      type: string
+                      enum:
+                      - day
+                      - month
+                      - quarter
+                      - year
+                      - tba
+                      description: tba when left out.
+                  required: []
+        required: true
+    delete:
+      summary: Delete a Milestone
+      tags:
+      - Roadmap
+      description: 'Refused with `milestone_has_items` while it has Roadmap Items:
+        move or delete them first. Admins and Superadmins only (403 `forbidden` for
+        Moderators and members). Belongs to the Roadmap Feature, so a member who cannot
+        use it gets 404 `not_found` first.'
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`milestone_has_items`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+  "/api/v1/roadmap/milestones/{id}/items/order":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Set a Milestone's Roadmap Item order
+      tags:
+      - Roadmap
+      description: "`item_ids` names every Roadmap Item of the Milestone once, first
+        to last. To move an item to another Milestone use PUT /roadmap/items/{id}/move.
+        Returns the Roadmap. Admins and Superadmins only (403 `forbidden` for Moderators
+        and members). Belongs to the Roadmap Feature, so a member who cannot use it
+        gets 404 `not_found` first."
+      parameters: []
+      responses:
+        '200':
+          description: the Roadmap in its new order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Roadmap"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`invalid_order`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    item_ids:
+                      type: array
+                      items:
+                        type: integer
+                  required:
+                  - item_ids
+        required: true
+  "/api/v1/roadmap/milestones/{id}/reach":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Reach a Milestone
+      tags:
+      - Roadmap
+      description: 'Marks it Reached (now). First its Roadmap Items that aren''t Shipped
+        move, in order, to the end of `destination_milestone_id`: by default the next
+        open Milestone in order, or the open one before it when it is the last. Only
+        Shipped items stay with it. Refused with `already_reached`, `invalid_destination`
+        (not another open Milestone) or `no_destination` (items to move and no open
+        Milestone to take them). Returns the Roadmap. Admins and Superadmins only
+        (403 `forbidden` for Moderators and members). Belongs to the Roadmap Feature,
+        so a member who cannot use it gets 404 `not_found` first.'
+      parameters: []
+      responses:
+        '200':
+          description: the Roadmap
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Roadmap"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`already_reached`, `invalid_destination` or `no_destination`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    destination_milestone_id:
+                      type: integer
+                      nullable: true
+                  required: []
+    delete:
+      summary: Un-reach a Milestone
+      tags:
+      - Roadmap
+      description: 'Clears its Reached date: it goes back among the open Milestones
+        at its place, and its items keep their Shipped dates. Refused with `not_reached`
+        for an open one. Returns the Roadmap. Admins and Superadmins only (403 `forbidden`
+        for Moderators and members). Belongs to the Roadmap Feature, so a member who
+        cannot use it gets 404 `not_found` first.'
+      responses:
+        '200':
+          description: the Roadmap
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Roadmap"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`not_reached`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+  "/api/v1/roadmap/items":
+    post:
+      summary: Create a Roadmap Item
+      tags:
+      - Roadmap
+      description: Adds a Roadmap Item last in an open Milestone, not Shipped. Other
+        fields are ignored. Refused with `milestone_not_found` or `milestone_reached`.
+        Admins and Superadmins only (403 `forbidden` for Moderators and members).
+        Belongs to the Roadmap Feature, so a member who cannot use it gets 404 `not_found`
+        first.
+      parameters: []
+      responses:
+        '201':
+          description: the new Roadmap Item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/RoadmapItem"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`milestone_not_found`, `milestone_reached`, or invalid fields"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                      maxLength: 120
+                    blurb:
+                      type: string
+                      maxLength: 500
+                    area:
+                      type: string
+                      nullable: true
+                      enum:
+                      - bot
+                      - website
+                      - both
+                      -
+                    github_issue_url:
+                      type: string
+                      nullable: true
+                      maxLength: 300
+                      description: A GitHub issue URL (https://github.com/<owner>/<repo>/issues/<n>).
+                    milestone_id:
+                      type: integer
+                  required:
+                  - milestone_id
+                  - title
+                  - blurb
+        required: true
+  "/api/v1/roadmap/items/{id}":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    patch:
+      summary: Edit a Roadmap Item
+      tags:
+      - Roadmap
+      description: Changes its title, blurb, area and GitHub issue; its Milestone,
+        place and Shipped date change only through the move and ship endpoints. Admins
+        and Superadmins only (403 `forbidden` for Moderators and members). Belongs
+        to the Roadmap Feature, so a member who cannot use it gets 404 `not_found`
+        first.
+      parameters: []
+      responses:
+        '200':
+          description: the Roadmap Item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/RoadmapItem"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: invalid fields (`{ error }` listing them)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    title:
+                      type: string
+                      maxLength: 120
+                    blurb:
+                      type: string
+                      maxLength: 500
+                    area:
+                      type: string
+                      nullable: true
+                      enum:
+                      - bot
+                      - website
+                      - both
+                      -
+                    github_issue_url:
+                      type: string
+                      nullable: true
+                      maxLength: 300
+                      description: A GitHub issue URL (https://github.com/<owner>/<repo>/issues/<n>).
+                  required: []
+        required: true
+    delete:
+      summary: Delete a Roadmap Item
+      tags:
+      - Roadmap
+      description: Admins and Superadmins only (403 `forbidden` for Moderators and
+        members). Belongs to the Roadmap Feature, so a member who cannot use it gets
+        404 `not_found` first.
+      responses:
+        '200':
+          description: deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deleted:
+                        type: boolean
+                    required:
+                    - id
+                    - deleted
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+  "/api/v1/roadmap/items/{id}/move":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    put:
+      summary: Move a Roadmap Item
+      tags:
+      - Roadmap
+      description: Puts it at `position` (from 1; past the end means last) in an open
+        Milestone, its own or another; that Milestone's items are numbered from 1
+        again. Refused with `milestone_reached`, `milestone_not_found` or `invalid_position`.
+        Returns the Roadmap. Admins and Superadmins only (403 `forbidden` for Moderators
+        and members). Belongs to the Roadmap Feature, so a member who cannot use it
+        gets 404 `not_found` first.
+      parameters: []
+      responses:
+        '200':
+          description: the Roadmap
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/Roadmap"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`milestone_reached`, `milestone_not_found` or `invalid_position`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: object
+                  properties:
+                    milestone_id:
+                      type: integer
+                    position:
+                      type: integer
+                      minimum: 1
+                  required:
+                  - milestone_id
+                  - position
+        required: true
+  "/api/v1/roadmap/items/{id}/ship":
+    parameters:
+    - name: id
+      in: path
+      schema:
+        type: integer
+      required: true
+    post:
+      summary: Ship a Roadmap Item
+      tags:
+      - Roadmap
+      description: Marks it Shipped (now). An item already Shipped keeps its date.
+        Admins and Superadmins only (403 `forbidden` for Moderators and members).
+        Belongs to the Roadmap Feature, so a member who cannot use it gets 404 `not_found`
+        first.
+      responses:
+        '200':
+          description: the Roadmap Item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/RoadmapItem"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+    delete:
+      summary: Un-ship a Roadmap Item
+      tags:
+      - Roadmap
+      description: 'Clears its Shipped date. Refused with `milestone_reached` while
+        its Milestone is Reached, which keeps only Shipped items: move it to an open
+        Milestone or un-reach that one first. Admins and Superadmins only (403 `forbidden`
+        for Moderators and members). Belongs to the Roadmap Feature, so a member who
+        cannot use it gets 404 `not_found` first.'
+      responses:
+        '200':
+          description: the Roadmap Item
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    "$ref": "#/components/schemas/RoadmapItem"
+                required:
+                - data
+        '403':
+          description: not an Admin or Superadmin
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: not found, or the Feature is hidden from the caller
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '422':
+          description: "`milestone_reached`"
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RoadmapRefusal"
   "/api/v1/roadmap":
     get:
       summary: Read the Roadmap

@@ -350,7 +350,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/goty_nominations" => "goty_vote",
     "api/v1/goty_ballot_votes" => "goty_vote",
     # Roadmap (spec api#505)
-    "api/v1/roadmap" => "roadmap"
+    "api/v1/roadmap" => "roadmap",
+    "api/v1/roadmap_milestones" => "roadmap",
+    "api/v1/roadmap_items" => "roadmap"
   }
 
   it "has every routed controller declare the Feature it belongs to, or none" do
