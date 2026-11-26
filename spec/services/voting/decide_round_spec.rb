@@ -106,6 +106,37 @@ RSpec.describe Voting::DecideRound do
       .not_to change { GotmEntry.where(round_number: round.round_number).count }
   end
 
+  describe "the Share Card refresh" do
+    include ActiveJob::TestHelper
+
+    it "queues one refresh when the round is decided" do
+      vote_for(:gotm_vote, nominate(:gotm_nomination), 1)
+
+      expect { described_class.new(round, now: after_close).call }
+        .to have_enqueued_job(ShareCard::RefreshJob).exactly(:once)
+      expect { described_class.new(round, now: after_close + 1.hour).call }
+        .not_to have_enqueued_job(ShareCard::RefreshJob)
+    end
+
+    it "queues nothing while a runoff is pending" do
+      2.times { vote_for(:gotm_vote, nominate(:gotm_nomination), 1) }
+
+      expect { described_class.new(round, now: after_close).call }.not_to have_enqueued_job(ShareCard::RefreshJob)
+    end
+
+    it "queues only once the surrounding transaction commits, and nothing if it rolls back" do
+      vote_for(:gotm_vote, nominate(:gotm_nomination), 1)
+
+      expect do
+        VotingRound.transaction do
+          described_class.new(round, now: after_close).call
+          expect(ShareCard::RefreshJob).not_to have_been_enqueued
+          raise ActiveRecord::Rollback
+        end
+      end.not_to have_enqueued_job(ShareCard::RefreshJob)
+    end
+  end
+
   it "refuses to decide while voting is still open" do
     expect { described_class.new(round, now: opens_at + 1.hour).call }
       .to raise_error(described_class::VotingNotClosedError)

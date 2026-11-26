@@ -33,6 +33,11 @@ RSpec.describe Voting::ResolveTie do
     expect(VotingRound.exists?(round.round_number + 1)).to be(true)
   end
 
+  it "queues one Share Card refresh, once the last tie is broken" do
+    expect { resolve("gotm", [ tied_ids.first ]) }.not_to have_enqueued_job(ShareCard::RefreshJob)
+    expect { resolve("nr_gotm", [ tied_ids.first ]) }.to have_enqueued_job(ShareCard::RefreshJob).exactly(:once)
+  end
+
   it "queues the round_decided post when automation is on" do
     allow(Voting).to receive(:automation_enabled?).and_return(true)
     resolve("gotm", [ tied_ids.first ])
