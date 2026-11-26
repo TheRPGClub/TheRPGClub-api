@@ -265,6 +265,61 @@ RSpec.describe "api/v1/patches posting behavior", type: :request do
     end
   end
 
+  describe "deleting a draft with a Discord post" do
+    def destroy(number)
+      delete "/api/v1/patches/#{number}", headers: auth_headers_for(admin)
+    end
+
+    it "is refused while its post is still up or a post job is on its way, so no post is left behind" do
+      number = posted
+      act(:unpublish, number)
+
+      destroy(number)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("posted")
+
+      delete_job = claimed.sole
+      destroy(number)
+      expect(json.fetch("error")).to eq("posted")
+
+      ack_done(delete_job)
+      clear_post(number)
+      destroy(number)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "is refused while a patch_post queued before unpublishing is still open" do
+      number = published
+      act(:post, number)
+      act(:unpublish, number)
+
+      destroy(number)
+      expect(json.fetch("error")).to eq("posted")
+
+      ack_done(claimed.sole)
+      destroy(number)
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "publishing again while the post is coming down" do
+    it "is refused until the bot has finished removing the old post" do
+      number = posted
+      act(:unpublish, number)
+
+      act(:publish, number)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(json.fetch("error")).to eq("post_removing")
+      expect(show(number)).to include("status" => "draft")
+
+      ack_done(claimed.sole)
+      clear_post(number)
+      act(:publish, number)
+      expect(response).to have_http_status(:ok)
+      expect(show(number)).to include("status" => "published", "posted_at" => nil)
+    end
+  end
+
   describe "the Patch's post job" do
     it "shows writers the latest bot job for its post, so its progress survives a reload" do
       number = published

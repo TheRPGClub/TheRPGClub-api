@@ -155,7 +155,8 @@ RSpec.describe 'api/v1/patches', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'published: unpublish the Patch first' do
+      response '422', 'published: unpublish the Patch first; posted: its Discord post is still up or a post ' \
+                      'job is still open' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end
@@ -186,7 +187,7 @@ RSpec.describe 'api/v1/patches', type: :request do
         schema '$ref' => '#/components/schemas/Error'
       end
 
-      response '422', 'already_published' do
+      response '422', 'already_published; post_removing: the bot is still removing the post an unpublish queued' do
         schema '$ref' => '#/components/schemas/Error'
       end
     end

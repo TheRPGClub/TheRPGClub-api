@@ -65,6 +65,13 @@ class Patch < ApplicationRecord
   # Whether a patch_post is queued or claimed and not yet acked.
   def post_queued? = post_jobs.where(kind: "patch_post", status: OPEN_JOB).exists?
 
+  # Whether a patch_delete is queued or claimed and not yet acked.
+  def post_removing? = post_jobs.where(kind: "patch_delete", status: OPEN_JOB).exists?
+
+  # Whether it has a Discord post, or a post job on its way that may still
+  # make or touch one. Deleting it then would leave the post behind.
+  def post_pending? = posted? || post_jobs.where(status: OPEN_JOB).exists?
+
   def queue_post!(requested_by:)
     BotJob.enqueue!(kind: "patch_post", summary: %(Post #{label} to #patch-notes), payload: post_text,
       requested_by: requested_by)
