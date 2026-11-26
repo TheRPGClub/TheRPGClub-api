@@ -10,7 +10,7 @@ module Github
   # (b/src/services/GithubIssuesService.ts): signs an RS256 app JWT, trades it
   # for an installation token (kept in process until a minute before it
   # expires), then calls the REST API as the installation. Only what
-  # Suggestion review needs is ported: create an issue and read its state.
+  # Feedback review needs is ported: create an issue and read its state.
   #
   # Credentials default to GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and
   # GITHUB_APP_PRIVATE_KEY (the bot's names). The private key may be a PEM
@@ -25,7 +25,15 @@ module Github
     # Refresh the installation token when it has less than this left.
     TOKEN_MARGIN = 60
 
-    Issue = Data.define(:number, :url, :state)
+    # `state` is "open" or "closed"; `state_reason` is GitHub's reason for
+    # the state ("completed", "not_planned", "reopened", ...), nil when GitHub
+    # gives none.
+    Issue = Data.define(:number, :url, :state, :state_reason) do
+      def initialize(number:, url:, state:, state_reason: nil) = super
+
+      # Closed as completed: the only closure that makes Feedback Done.
+      def completed? = state == "closed" && state_reason == "completed"
+    end
 
     @token_cache = {}
     @token_mutex = Mutex.new
@@ -72,21 +80,27 @@ module Github
     end
 
     # The most recently created issue in `repo`, among the 100 updated since
-    # `since`, whose body contains `marker`; nil when there is none. Lets a
-    # retried create find an issue an earlier, lost response already opened.
+    # `since`, whose body contains `marker` (or any of several markers); nil
+    # when there is none. Lets a retried create find an issue an earlier, lost
+    # response already opened.
     def find_issue_by_marker(repo:, marker:, since:)
+      markers = Array(marker)
       query = { state: "all", since: since.utc.iso8601, sort: "created", direction: "desc", per_page: 100 }.to_query
       raw = request(:get, "/repos/#{repo}/issues?#{query}")
-      match = Array(raw).find { |issue| !issue["pull_request"] && issue["body"].to_s.include?(marker) }
+      match = Array(raw).find do |issue|
+        body = issue["body"].to_s
+        !issue["pull_request"] && markers.any? { |text| body.include?(text) }
+      end
       to_issue(match) if match
     end
 
-    # "open" or "closed", or nil when the issue does not exist (or is a pull request).
-    def issue_state(repo:, number:)
+    # The Issue (with its state and state_reason), or nil when it does not
+    # exist (or is a pull request).
+    def issue(repo:, number:)
       raw = request(:get, "/repos/#{repo}/issues/#{Integer(number)}")
       return if raw["pull_request"]
 
-      raw["state"] == "closed" ? "closed" : "open"
+      to_issue(raw)
     rescue NotFound
       nil
     end
@@ -171,7 +185,8 @@ module Github
     end
 
     def to_issue(raw)
-      Issue.new(number: raw.fetch("number"), url: raw["html_url"].to_s, state: raw["state"] == "closed" ? "closed" : "open")
+      Issue.new(number: raw.fetch("number"), url: raw["html_url"].to_s,
+        state: raw["state"] == "closed" ? "closed" : "open", state_reason: raw["state_reason"].presence)
     end
 
     def base64url(value)

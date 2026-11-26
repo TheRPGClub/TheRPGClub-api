@@ -402,22 +402,15 @@ Rails.application.routes.draw do
       get    "nr_gotm_entries/:round/votes/:user_id", to: "votes#show_nr_gotm",    as: :nr_gotm_entry_user_votes
       post   "nr_gotm_entries/:round/votes",          to: "votes#create_nr_gotm"
       delete "nr_gotm_entries/:round/votes",          to: "votes#destroy_all_nr_gotm"
-      # Suggestion review sessions (bot parity, #91). Declared before
-      # `resources :suggestions` so `/suggestions/review_sessions...` is never
-      # captured by the suggestion `:id` member routes; the two bulk-delete
-      # routes precede the resource so `expired` and the collection DELETE
-      # aren't captured as member `:id` lookups.
-      scope path: "suggestions" do
-        delete "review_sessions/expired", to: "suggestion_review_sessions#destroy_expired"
-        delete "review_sessions", to: "suggestion_review_sessions#destroy_all"
-        resources :review_sessions, only: %i[index show create update destroy],
-          controller: "suggestion_review_sessions"
-      end
-      # No destroy: Suggestions are kept and reviewed with approve/reject (#319).
-      resources :suggestions, only: %i[index show create] do
+      # No destroy: Feedback is kept and reviewed with approve/reject (#319, spec api#498).
+      resources :feedback, only: %i[index show create update] do
+        # A Bug Report's one screenshot (api#500): add or replace, remove.
+        resource :screenshot, only: %i[update destroy], controller: "feedback_screenshots"
         member do
           post :approve
           post :reject
+          post :duplicate
+          post :kind, action: :change_kind
           post :withdraw
           post :upvote
           delete :upvote, action: :remove_upvote

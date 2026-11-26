@@ -14,19 +14,21 @@ RSpec.describe SeedFeatureFlagsLive do
   # The Features that existed when Feature Flags shipped. A Feature
   # registered later (the News Hub, spec #355; the Release Calendar, spec
   # #389; the Club Codex, spec #397; Game Lists, spec api#442) is not seeded and so starts in Preview.
+  # `suggestions` is among them; RenameSuggestionKeysToFeedback later moves
+  # its row to `feedback` (spec api#498).
   seeded = described_class::KEYS
 
   it "leaves the 11 Features that existed then Live" do
     migrate_up
 
     expect(seeded.size).to eq(11)
-    expect(Features.states.slice(*seeded)).to eq(seeded.index_with { "live" })
+    expect(FeatureFlag.where(key: seeded).pluck(:key, :state)).to match_array(seeded.map { |key| [ key, "live" ] })
   end
 
   it "leaves a Feature registered later with no stored state, so it reads as Preview" do
     migrate_up
 
-    expect(Features.keys - seeded).to eq(%w[news_hub challenges release_calendar club_codex game_lists franchise_progress
+    expect(Features.keys - seeded - %w[feedback]).to eq(%w[news_hub challenges release_calendar club_codex game_lists franchise_progress
                                               goty_vote])
     expect(FeatureFlag.where(key: %w[news_hub challenges release_calendar club_codex game_lists franchise_progress
                                      goty_vote])).to be_empty

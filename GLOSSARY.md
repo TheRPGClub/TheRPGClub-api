@@ -185,13 +185,29 @@ _Avoid_: Other, side game, non-mainline
 
 ## Community
 
-**Suggestion**:
-A member's proposal for the club's bot or website. Pending until staff approve it (it becomes a GitHub issue) or reject it with a reason, or until its author withdraws it.
-_Avoid_: Request, idea, ticket
+**Feedback**:
+Something a member tells the club about its bot or website. Each piece of Feedback is exactly one kind: a Feature Request, a Suggestion or a Bug Report. Staff can change the kind on review. Pending until staff approve it (it becomes a GitHub issue), reject it with a reason, or mark it a Duplicate, or until its author withdraws it. Approved Feedback is Done once its GitHub issue is closed.
+_Avoid_: Ticket, report (when meaning any kind), request (when meaning any kind)
 
-**Suggestion Board**:
-The members-only list of Suggestions, ranked by member upvotes.
-_Avoid_: Roadmap, feedback board
+**Feature Request**:
+Feedback asking for something the bot or website does not do yet.
+_Avoid_: New feature, idea
+
+**Suggestion**:
+Feedback asking to change something the bot or website already does.
+_Avoid_: Improvement, idea, request
+
+**Bug Report**:
+Feedback saying something in the bot or website is broken: it does not do what it is meant to.
+_Avoid_: Issue (that is GitHub's), bug ticket
+
+**Duplicate**:
+Feedback that staff close because it says the same thing as earlier Feedback, the original. Its upvotes move to the original, each member counted once.
+_Avoid_: Merge, dupe
+
+**Feedback Board**:
+The members-only list of Feedback, ranked by member upvotes. On a Bug Report an upvote reads "I hit this too".
+_Avoid_: Suggestion Board, roadmap
 
 ## Members
 

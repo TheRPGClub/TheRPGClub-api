@@ -49,6 +49,15 @@ module OpenapiSchemas
                    "Only on the member's list endpoint (GET /users/{user_id}/<list>)." }
   end
 
+  # One kind's counts in FeedbackBoardTotals.
+  def feedback_kind_totals
+    obj(
+      open: int.merge(description: "Pending and Approved, Done included."),
+      closed: int.merge(description: "Rejected, Duplicate and Withdrawn."),
+      done: int.merge(description: "The Done part of open.")
+    )
+  end
+
   # Build an object schema from keyword properties, auto-deriving `required` as
   # the always-present, non-null scalar columns (nullable columns, embedded
   # `$ref`s and arrays are excluded). The `_required` / `_description` sentinel
@@ -854,20 +863,40 @@ module OpenapiSchemas
       ),
 
       # ---- RPGClub features ------------------------------------------------
-      # SuggestionResource: every column plus the upvote count and whether
-      # the viewer upvoted (#318). The review columns are null until review.
-      Suggestion: obj(
-        suggestion_id: int, title: str, details: str(nullable: true), created_by: str(nullable: true),
-        created_at: ts, updated_at: ts, labels: str(nullable: true), created_by_name: str(nullable: true),
-        status: str(enum: RpgClubSuggestion::STATUSES),
+      # FeedbackResource: every column plus the upvote count and whether
+      # the viewer upvoted (#318, spec api#498). The review columns are null
+      # until review.
+      Feedback: obj(
+        feedback_id: int,
+        kind: str(enum: RpgClubFeedback::KINDS).merge(description: "Feature Request, Suggestion or Bug Report."),
+        title: str, details: str(nullable: true), created_by: str(nullable: true),
+        created_at: ts, updated_at: ts, created_by_name: str(nullable: true),
+        status: str(enum: RpgClubFeedback::STATUSES),
         reviewed_by: str(nullable: true).merge(description: "Discord user id of the reviewing Superadmin."),
         reviewed_at: ts(nullable: true),
         rejection_reason: str(nullable: true).merge(description: "Set when rejected."),
+        duplicate_of_id: int(nullable: true).merge(
+          description: "Set when a Duplicate: the root original Feedback it duplicates."
+        ),
         target_repo: str(nullable: true).merge(description: "Repo the approval opened its GitHub issue in."),
         github_issue_number: int(nullable: true), github_issue_url: str(nullable: true),
+        where: str(nullable: true, enum: [ *RpgClubFeedback::WHERES, nil ]).merge(
+          description: "Bug Reports: where it happened."
+        ),
+        what_happened: str(nullable: true).merge(description: "Bug Reports: what happened."),
+        expected: str(nullable: true).merge(description: "Bug Reports: what the member expected."),
+        steps: str(nullable: true).merge(description: "Bug Reports: steps to reproduce, if given."),
+        screenshot_url: str(nullable: true).merge(description: "Bug Reports: the screenshot's address, if one."),
         github_issue_state: str(nullable: true, enum: [ "open", "closed", nil ]).merge(
           description: "Approved only: the GitHub issue's state, cached about ten minutes. " \
                        "Null otherwise, or when GitHub cannot say."
+        ),
+        done: bool.merge(
+          description: "Done: Approved and its GitHub issue was last seen closed. Done Feedback stays under " \
+                       "the board's Open filter and takes no upvotes; reopening the issue clears it."
+        ),
+        done_at: ts(nullable: true).merge(
+          description: "When the issue was seen closed; null unless Done."
         ),
         upvote_count: int,
         viewer_upvoted: bool.merge(description: "Whether the signed-in member upvoted it; false for the service."),
@@ -876,15 +905,14 @@ module OpenapiSchemas
                        "withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent` orders by it."
         )
       ),
-      # SuggestionsController#approve / #reject meta: the queued outcome job,
-      # so the website can poll GET /api/v1/bot_jobs/{id}.
-      SuggestionReviewMeta: obj(
-        outcome_job_id: int.merge(description: "The suggestion_outcome bot job (the bot announces the outcome).")
+      # FeedbackController#index meta.totals: one entry per kind, unfiltered.
+      FeedbackBoardTotals: obj(
+        **RpgClubFeedback::KINDS.to_h { |kind| [ kind.to_sym, feedback_kind_totals ] }
       ),
-      # `suggestion_ids` is the stored JSON string, returned verbatim.
-      SuggestionReviewSession: obj(
-        session_id: str, reviewer_id: str, suggestion_ids: str, current_index: int,
-        total_count: int, created_at: ts, updated_at: ts
+      # FeedbackController#approve / #reject meta: the queued outcome job,
+      # so the website can poll GET /api/v1/bot_jobs/{id}.
+      FeedbackReviewMeta: obj(
+        outcome_job_id: int.merge(description: "The feedback_outcome bot job (the bot announces the outcome).")
       ),
       StarboardEntry: obj(
         message_id: str, channel_id: str, starboard_message_id: str, author_id: str,
@@ -2078,8 +2106,8 @@ module OpenapiSchemas
                  description: "Pinned Page keys the member can see right now, in their order: the club default " \
                               "(voting, games, members, news) until they save their own list. Keys: voting, " \
                               "gotm_history, goty, challenges, games, franchises, reviews, releases, achievements, " \
-                              "journals, members, news, codex, lists, giveaways, suggestions, staff_desk, " \
-                              "voting_console, synonyms, live_events, public_reminders, suggestion_review." },
+                              "journals, members, news, codex, lists, giveaways, feedback, staff_desk, " \
+                              "voting_console, synonyms, live_events, public_reminders, feedback_review." },
         customised: bool.merge(description: "Whether the member saved their own list. False while they follow " \
                                             "the club default, which then reaches them when it changes."),
         _required: %w[user_id pages customised]
@@ -2104,7 +2132,7 @@ module OpenapiSchemas
       DashboardPanel: obj(
         key: str(description: "Panel key: news, now_playing_club, releases, achievements_club, challenges_club, " \
                               "now_playing_mine, achievements_mine, challenge_runs_mine, completions_club, " \
-                              "completions_mine, backlog_pick, reviews, journals, giveaways, suggestions, codex, " \
+                              "completions_mine, backlog_pick, reviews, journals, giveaways, feedback, codex, " \
                               "birthdays.", example: "news"),
         scope: str(enum: %w[club mine], description: "Whether the panel shows club activity or the member's own."),
         new: bool.merge(description: "Whether the panel reached the site since the member last opened dashboard " \

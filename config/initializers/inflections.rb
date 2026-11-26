@@ -14,3 +14,8 @@
 # ActiveSupport::Inflector.inflections(:en) do |inflect|
 #   inflect.acronym "RESTful"
 # end
+
+# Feedback (GLOSSARY.md) is uncountable: `resources :feedback`, not feedbacks.
+ActiveSupport::Inflector.inflections(:en) do |inflect|
+  inflect.uncountable "feedback"
+end

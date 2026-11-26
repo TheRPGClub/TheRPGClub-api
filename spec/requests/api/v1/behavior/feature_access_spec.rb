@@ -43,7 +43,7 @@ RSpec.describe "feature access lookup", type: :request do
         [ "achievement_hub", "live" ],
         [ "giveaways", "off" ],
         [ "journals", "preview" ],
-        [ "suggestions", "live" ],
+        [ "feedback", "live" ],
         [ "news_hub", "live" ],
         [ "challenges", "live" ],
         [ "release_calendar", "live" ],
