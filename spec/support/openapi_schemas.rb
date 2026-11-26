@@ -2361,6 +2361,15 @@ module OpenapiSchemas
         ),
         _required: %w[user_id hidden categories]
       ),
+      # NewsMarksController (spec api#494, ticket api#495): a member's News Mark.
+      NewsMark: obj(
+        user_id: str,
+        news_mark: ts(nullable: true).merge(
+          description: "The moment up to which the member has seen the News Hub's News Items (UTC, " \
+                       "microseconds). Null until the website first sets it: a first visit."
+        ),
+        _required: %w[user_id news_mark]
+      ),
       # NewsItemsController#index meta: pagination plus the category rail.
       NewsFeedMeta: extends("PaginationMeta",
         category_counts: {

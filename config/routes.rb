@@ -195,6 +195,9 @@ Rails.application.routes.draw do
           post "games/:game_id/playthroughs", to: "playthroughs#create"
           get "news_category_preferences", to: "news_category_preferences#show"
           patch "news_category_preferences", to: "news_category_preferences#update"
+          # The News Mark (spec api#494, ticket api#495): how far the member has seen the News Hub.
+          get "news_mark", to: "news_marks#show"
+          put "news_mark", to: "news_marks#update"
           get "game_keys", to: "game_keys#user_index"
           get "claimed_game_keys", to: "game_keys#claimed_index"
           get "wizard_sessions", to: "wizard_sessions#user_index"
