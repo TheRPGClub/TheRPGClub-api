@@ -131,6 +131,15 @@ RSpec.describe "api/v1/pending_changes behavior", type: :request do
 
       expect(versions).to eq("api" => "1.1.0", "bot" => "4.3.0", "www" => nil)
     end
+
+    it "shows the highest version by number, whatever order the intakes came in" do
+      intake(repo: "api", pr_number: 1, version: "1.10.0")
+      intake(repo: "api", pr_number: 2, version: "1.9.3")
+      intake(repo: "bot", pr_number: 1, version: "2.0.0")
+      intake(repo: "bot", pr_number: 2, version: "10.0.0")
+
+      expect(versions).to include("api" => "1.10.0", "bot" => "10.0.0")
+    end
   end
 
   def staff_list(status: "all", headers: auth_headers_for(admin))
