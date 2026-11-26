@@ -959,12 +959,64 @@ components:
           format: date-time
           nullable: true
           description: When staff marked it Shipped; null until then.
+        feedback:
+          type: array
+          items:
+            "$ref": "#/components/schemas/RoadmapItemFeedback"
+          description: Its linked Feedback, oldest first.
       required:
       - id
       - milestone_id
       - title
       - blurb
       - position
+    RoadmapItemFeedback:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: The Feedback's feedback_id.
+        title:
+          type: string
+        kind:
+          type: string
+          enum:
+          - feature_request
+          - suggestion
+          - bug_report
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          - withdrawn
+          - duplicate
+        done:
+          type: boolean
+          description: Approved and its GitHub issue was last seen closed.
+      required:
+      - id
+      - title
+      - kind
+      - status
+      - done
+    FeedbackRoadmapBadge:
+      type: object
+      properties:
+        item_id:
+          type: integer
+          description: The Roadmap Item it is linked to.
+        milestone_name:
+          type: string
+          description: The item's current Milestone.
+        shipped:
+          type: boolean
+          description: 'The item is Shipped: the badge reads "Shipped" instead.'
+      required:
+      - item_id
+      - milestone_name
+      - shipped
     RoadmapMilestone:
       type: object
       properties:
@@ -1042,6 +1094,8 @@ components:
           - no_destination
           - already_reached
           - not_reached
+          - feedback_not_found
+          - invalid_feedback_ids
         message:
           type: string
           description: Written for staff, as the website shows it.
@@ -2842,6 +2896,14 @@ components:
           description: 'The latest activity: the newest of its last change (submitted,
             reviewed or withdrawn, i.e. `updated_at`) and its newest upvote. `sort=recent`
             orders by it.'
+        roadmap:
+          allOf:
+          - "$ref": "#/components/schemas/FeedbackRoadmapBadge"
+          nullable: true
+          description: 'On the Roadmap: the linked Roadmap Item''s id, current Milestone
+            and whether it is Shipped. Null when not linked, and for everything when
+            the Roadmap Feature is Off, Preview for a non-staff viewer, or hidden
+            by the viewer.'
       required:
       - feedback_id
       - kind
@@ -34841,7 +34903,8 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: "`milestone_not_found`, `milestone_reached`, or invalid fields"
+          description: "`milestone_not_found`, `milestone_reached`, `feedback_not_found`,
+            `invalid_feedback_ids`, or invalid fields"
           content:
             application/json:
               schema:
@@ -34876,6 +34939,14 @@ paths:
                       nullable: true
                       maxLength: 300
                       description: A GitHub issue URL (https://github.com/<owner>/<repo>/issues/<n>).
+                    feedback_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Sets its linked Feedback to exactly these (left
+                        alone when not sent; [] clears them). A Feedback linked to
+                        another item moves here. Refused with `feedback_not_found`
+                        or `invalid_feedback_ids`. Sends no notices.
                     milestone_id:
                       type: integer
                   required:
@@ -34894,11 +34965,11 @@ paths:
       summary: Edit a Roadmap Item
       tags:
       - Roadmap
-      description: Changes its title, blurb, area and GitHub issue; its Milestone,
-        place and Shipped date change only through the move and ship endpoints. Admins
-        and Superadmins only (403 `forbidden` for Moderators and members). Belongs
-        to the Roadmap Feature, so a member who cannot use it gets 404 `not_found`
-        first.
+      description: Changes its title, blurb, area, GitHub issue and linked Feedback;
+        its Milestone, place and Shipped date change only through the move and ship
+        endpoints. Admins and Superadmins only (403 `forbidden` for Moderators and
+        members). Belongs to the Roadmap Feature, so a member who cannot use it gets
+        404 `not_found` first.
       parameters: []
       responses:
         '200':
@@ -34925,7 +34996,7 @@ paths:
               schema:
                 "$ref": "#/components/schemas/Error"
         '422':
-          description: invalid fields (`{ error }` listing them)
+          description: "`feedback_not_found`, `invalid_feedback_ids`, or invalid fields"
           content:
             application/json:
               schema:
@@ -34960,15 +35031,23 @@ paths:
                       nullable: true
                       maxLength: 300
                       description: A GitHub issue URL (https://github.com/<owner>/<repo>/issues/<n>).
+                    feedback_ids:
+                      type: array
+                      items:
+                        type: integer
+                      description: Sets its linked Feedback to exactly these (left
+                        alone when not sent; [] clears them). A Feedback linked to
+                        another item moves here. Refused with `feedback_not_found`
+                        or `invalid_feedback_ids`. Sends no notices.
                   required: []
         required: true
     delete:
       summary: Delete a Roadmap Item
       tags:
       - Roadmap
-      description: Admins and Superadmins only (403 `forbidden` for Moderators and
-        members). Belongs to the Roadmap Feature, so a member who cannot use it gets
-        404 `not_found` first.
+      description: Its Feedback links go with it. Admins and Superadmins only (403
+        `forbidden` for Moderators and members). Belongs to the Roadmap Feature, so
+        a member who cannot use it gets 404 `not_found` first.
       responses:
         '200':
           description: deleted

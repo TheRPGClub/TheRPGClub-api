@@ -47,6 +47,20 @@ class FeedbackResource
     states ? states[pair] : Github::IssueStateCache.state_for(*pair)
   end
 
+  # Its Roadmap badge (ticket api#508): `{ item_id, milestone_name, shipped }`
+  # when linked to a Roadmap Item the viewer may see, else nil. Callers pass
+  # `roadmap_badges` (FeedbackRoadmapBadges); without it, nil.
+  attribute :roadmap do |feedback|
+    params[:roadmap_badges]&.[](feedback.feedback_id)
+  end
+
+  # Badges for the Feedback ids given, keyed by id: only linked ones.
+  def self.roadmap_badges(ids)
+    RoadmapItemFeedback.where(feedback_id: ids).joins(item: :milestone)
+      .pluck(:feedback_id, :item_id, "roadmap_milestones.name", "roadmap_items.shipped_at")
+      .to_h { |id, item_id, name, shipped_at| [ id, { item_id: item_id, milestone_name: name, shipped: !shipped_at.nil? } ] }
+  end
+
   # The cached issue states for a page of Feedback, in one cache read (a
   # `prepare:` for render_collection).
   def self.issue_states(records)

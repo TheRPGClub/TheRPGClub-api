@@ -13,6 +13,11 @@ class RoadmapItem < ApplicationRecord
   GITHUB_ISSUE_URL = %r{\Ahttps://github\.com/[\w.-]+/[\w.-]+/issues/\d+\z}
 
   belongs_to :milestone, class_name: "RoadmapMilestone", inverse_of: :items
+  # Linked Feedback (ticket api#508), oldest Feedback first. The links go
+  # with the item (the foreign key cascades too).
+  has_many :feedback_links, class_name: "RoadmapItemFeedback", foreign_key: :item_id, inverse_of: :item,
+    dependent: :delete_all
+  has_many :feedback, -> { order(:feedback_id) }, through: :feedback_links
 
   normalizes :title, :blurb, with: ->(value) { value.strip }
   normalizes :area, :github_issue_url, with: ->(value) { value.strip.presence }
