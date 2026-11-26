@@ -62,8 +62,8 @@ RSpec.describe "api/v1/feedback Bug Reports behavior", type: :request do
       )
     end
 
-    it "refuses a Bug Report missing what happened or what was expected" do
-      %i[what_happened expected].each do |missing|
+    it "refuses a Bug Report missing where, what happened or what was expected" do
+      %i[where what_happened expected].each do |missing|
         expect {
           file(kind: "bug_report", title: "Blank page", **bug_fields.merge(missing => " "))
         }.not_to change(RpgClubFeedback, :count)
@@ -72,11 +72,11 @@ RSpec.describe "api/v1/feedback Bug Reports behavior", type: :request do
       end
     end
 
-    it "does not need where or steps" do
-      file(kind: "bug_report", title: "Blank page", what_happened: "Blank", expected: "Games")
+    it "does not need steps" do
+      file(kind: "bug_report", title: "Blank page", **bug_fields)
 
       expect(response).to have_http_status(:created)
-      expect(json.fetch("data")).to include("where" => nil, "steps" => nil)
+      expect(json.fetch("data")).to include("steps" => nil)
     end
 
     it "refuses an unknown where" do
@@ -115,10 +115,13 @@ RSpec.describe "api/v1/feedback Bug Reports behavior", type: :request do
     end
 
     it "refuses emptying a Bug Report's required fields" do
-      edit(data: { what_happened: "" })
+      %i[where what_happened expected].each do |field|
+        edit(data: { field => "" })
 
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(bug_report.reload.what_happened).to eq("The page is blank")
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+      expect(bug_report.reload).to have_attributes(where: "website", what_happened: "The page is blank",
+        expected: "My games")
     end
 
     it "refuses anyone but the author, staff and the service included" do

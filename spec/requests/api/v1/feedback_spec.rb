@@ -15,7 +15,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
     created_by_name: { type: :string, nullable: true,
                        description: "Author's display name. Service only; a member's comes from their record." },
     where: { type: :string, enum: RpgClubFeedback::WHERES, nullable: true,
-             description: 'Bug Reports: where it happened (optional).' },
+             description: 'Bug Reports: where it happened. Required for a Bug Report.' },
     what_happened: { type: :string, nullable: true, maxLength: 2000,
                      description: 'Bug Reports: what happened. Required for a Bug Report.' },
     expected: { type: :string, nullable: true, maxLength: 2000,
@@ -69,7 +69,7 @@ RSpec.describe 'api/v1/feedback', type: :request do
 
     post 'Create Feedback' do
       tags 'Feedback'
-      description 'Members role holders, Moderator and above, or the service. `kind` and `title` are required; a Bug Report also needs `what_happened` and `expected`. ' \
+      description 'Members role holders, Moderator and above, or the service. `kind` and `title` are required; a Bug Report also needs `where`, `what_happened` and `expected`. ' \
                   'The bug fields (`where`, `what_happened`, `expected`, `steps`) are dropped for the other kinds; ' \
                   'a screenshot is added afterwards with `PUT /api/v1/feedback/{id}/screenshot`. ' \
                   'Always created Pending. A member is recorded as the author (body `created_by` and ' \

@@ -30,7 +30,7 @@ class RpgClubFeedback < ApplicationRecord
     "TheRPGClub/TheRPGClub-www" => { "feature_request" => "enhancement", "suggestion" => "enhancement",
                                      "bug_report" => "bug" }
   }.freeze
-  # Where a Bug Report happened (`where`); the approval's repo is pre-filled
+  # Where a Bug Report happened (`where`, required when filing one); the approval's repo is pre-filled
   # from it on the website.
   WHERES = %w[bot website].freeze
   WHERE_NAMES = { "bot" => "Bot", "website" => "Website" }.freeze
@@ -58,10 +58,10 @@ class RpgClubFeedback < ApplicationRecord
   validates :kind, inclusion: { in: KINDS }
   validates :status, inclusion: { in: STATUSES }
   validates :where, inclusion: { in: WHERES }, allow_nil: true
-  # Filing (a create, or the author's edit) a Bug Report needs what happened
-  # and what was expected. Staff changing the kind on review is reshaping,
+  # Filing (a create, or the author's edit) a Bug Report needs where it
+  # happened, what happened and what was expected. Staff changing the kind on review is reshaping,
   # not filing, so it saves without this context.
-  validates :what_happened, :expected, presence: true, on: :filing, if: :bug_report?
+  validates :where, :what_happened, :expected, presence: true, on: :filing, if: :bug_report?
 
   normalizes :where, :what_happened, :expected, :steps, with: ->(value) { value.to_s.strip.presence }
 
