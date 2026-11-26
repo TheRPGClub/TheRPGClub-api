@@ -7,8 +7,16 @@
 class FeedbackResource
   include BaseResource
 
-  # approval_started_at is approve's internal bookkeeping.
-  columns_of RpgClubFeedback, except: %w[approval_started_at]
+  # approval_started_at is approve's internal bookkeeping; done_notified_at
+  # the Done notice's.
+  columns_of RpgClubFeedback, except: %w[approval_started_at done_notified_at]
+
+  # Approved with its GitHub issue closed (RpgClubFeedback#done?). Done
+  # Feedback stays on the board's Open filter, marked Done, and takes no
+  # upvotes.
+  attribute :done do |feedback|
+    feedback.done?
+  end
 
   attribute :upvote_count do |feedback|
     feedback.attributes["upvote_count"].to_i

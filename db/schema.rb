@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_26_171000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_26_172000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1047,6 +1047,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_26_171000) do
     t.timestamptz "updated_at", default: -> { "statement_timestamp()" }, null: false
     t.string "kind", limit: 32, null: false
     t.bigint "duplicate_of_id"
+    t.timestamptz "done_at"
+    t.timestamptz "done_notified_at"
     t.index ["created_at"], name: "ix_rpg_club_feedback_created"
     t.index ["duplicate_of_id"], name: "ix_rpg_club_feedback_duplicate_of"
     t.index ["kind"], name: "ix_rpg_club_feedback_kind"

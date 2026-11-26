@@ -30,8 +30,13 @@ class RpgClubFeedback < ApplicationRecord
     "TheRPGClub/TheRPGClub-www" => { "feature_request" => "enhancement", "suggestion" => "enhancement",
                                      "bug_report" => "bug" }
   }.freeze
-  # Statuses members can still upvote (the Feedback Board's default view).
-  UPVOTABLE_STATUSES = %w[pending approved].freeze
+  # The Feedback Board's Open filter: Pending and Approved, Done included
+  # (Approved with a closed issue; it shows there marked Done).
+  OPEN_STATUSES = %w[pending approved].freeze
+  # The Feedback Board's Closed filter.
+  CLOSED_STATUSES = %w[rejected duplicate withdrawn].freeze
+  # Statuses members can still upvote; Done Feedback is frozen too (upvotable?).
+  UPVOTABLE_STATUSES = OPEN_STATUSES
   # Most upvoted first, then newest.
   BOARD_ORDER = Arel.sql(
     "upvote_count DESC, rpg_club_feedback.created_at DESC, rpg_club_feedback.feedback_id DESC"
@@ -71,6 +76,66 @@ class RpgClubFeedback < ApplicationRecord
   end
 
   def kind_name = KIND_NAMES.fetch(kind)
+
+  # Approved, and its GitHub issue was last seen closed (`done_at`, kept by
+  # record_issue_state).
+  def done? = status == "approved" && done_at.present?
+
+  # Upvotes are frozen once Feedback is Done, Rejected, a Duplicate or
+  # Withdrawn.
+  def upvotable? = UPVOTABLE_STATUSES.include?(status) && !done?
+
+  # Counts per kind for the Feedback Board's kind tabs:
+  # { kind => { "open" => n, "closed" => n, "done" => n } }, every kind
+  # present. Open includes Done; `done` is the part of Open that is Done.
+  def self.board_totals
+    totals = KINDS.index_with { { "open" => 0, "closed" => 0, "done" => 0 } }
+    group(:kind, :status).count.each do |(kind, status), count|
+      next unless totals.key?(kind)
+
+      totals[kind][OPEN_STATUSES.include?(status) ? "open" : "closed"] += count
+    end
+    where(status: "approved").where.not(done_at: nil).group(:kind).count.each do |kind, count|
+      totals[kind]["done"] = count if totals.key?(kind)
+    end
+    totals
+  end
+
+  # Called with each issue state Github::IssueStateRefreshJob reads. Approved
+  # Feedback on that issue becomes Done when it is closed (and its author is
+  # told, once ever: notify_done!) and Open again when it is reopened.
+  # nil (unknown) changes nothing.
+  def self.record_issue_state(repo, number, state)
+    on_issue = where(status: "approved", target_repo: repo, github_issue_number: number)
+    case state
+    when "open"
+      on_issue.where.not(done_at: nil).update_all(done_at: nil)
+    when "closed"
+      on_issue.where(done_at: nil).update_all(done_at: Time.current)
+      on_issue.where(done_notified_at: nil).find_each(&:notify_done!)
+    end
+  end
+
+  # Queues the `feedback_outcome` job (outcome `done`) telling the author
+  # their Feedback is Done, unless one was already queued. Payload as the
+  # review outcomes: { feedback_id, kind, outcome, created_by, title,
+  # github_issue_number, github_issue_url, rejection_reason }.
+  def notify_done!
+    self.class.transaction do
+      claimed = self.class.where(feedback_id: feedback_id, done_notified_at: nil)
+        .update_all(done_notified_at: Time.current)
+      next if claimed.zero?
+
+      BotJob.enqueue!(
+        kind: "feedback_outcome",
+        summary: %(Announce that the #{kind_name} "#{title}" is done),
+        payload: {
+          feedback_id: feedback_id, kind: kind, outcome: "done", created_by: created_by, title: title,
+          github_issue_number: github_issue_number, github_issue_url: github_issue_url, rejection_reason: nil
+        }
+      )
+    end
+  end
 
   # Follows a chain of Duplicates to the Feedback they all duplicate (itself
   # when it is not a Duplicate). Stops at a loop, should one ever exist.
