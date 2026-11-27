@@ -32,8 +32,13 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "roadmap" => ->(_user) { "/api/v1/roadmap" }
   }
 
+  # Features with no endpoint of their own to gate. Themes decides which
+  # Themes a Member may choose (Themes::Choice); PUT /me/theme stays open so
+  # anyone can return to the default.
+  ungated = %w[themes]
+
   it "covers every registered Feature" do
-    expect(endpoints.keys).to match_array(Features.keys)
+    expect(endpoints.keys + ungated).to match_array(Features.keys)
   end
 
   endpoints.each do |key, path_for|

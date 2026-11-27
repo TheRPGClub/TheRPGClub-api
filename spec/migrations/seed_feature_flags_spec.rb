@@ -30,9 +30,9 @@ RSpec.describe SeedFeatureFlagsLive do
     migrate_up
 
     expect(Features.keys - seeded - %w[feedback]).to eq(%w[news_hub challenges release_calendar club_codex game_lists franchise_progress
-                                              goty_vote patch_notes roadmap])
+                                              goty_vote patch_notes roadmap themes])
     expect(FeatureFlag.where(key: %w[news_hub challenges release_calendar club_codex game_lists franchise_progress
-                                     goty_vote patch_notes roadmap])).to be_empty
+                                     goty_vote patch_notes roadmap themes])).to be_empty
     expect(Features.state("news_hub")).to eq("preview")
     expect(Features.state("release_calendar")).to eq("preview")
     expect(Features.state("club_codex")).to eq("preview")
@@ -40,6 +40,7 @@ RSpec.describe SeedFeatureFlagsLive do
     expect(Features.state("goty_vote")).to eq("preview")
     expect(Features.state("patch_notes")).to eq("preview")
     expect(Features.state("roadmap")).to eq("preview")
+    expect(Features.state("themes")).to eq("preview")
   end
 
   it "logs each seeded Feature as a change by system" do

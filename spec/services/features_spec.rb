@@ -17,9 +17,9 @@ RSpec.describe Features do
     )
   end
 
-  it "has seven Core Features and twelve hideable ones" do
+  it "has eight Core Features and thirteen hideable ones" do
     expect(described_class.all.select(&:core?).map(&:key))
-      .to eq(%w[game_index voting_gotm backlog collection now_playing game_completions goty_vote])
+      .to eq(%w[game_index voting_gotm backlog collection now_playing game_completions goty_vote themes])
     expect(described_class.all.select(&:hideable?).map(&:key))
       .to eq(%w[reviews achievement_hub giveaways journals feedback news_hub challenges release_calendar club_codex
                      game_lists franchise_progress patch_notes roadmap])
