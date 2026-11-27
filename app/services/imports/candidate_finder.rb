@@ -12,8 +12,8 @@ module Imports
   #   score is above 0 or they are in the top 3, and capped at MAX_CANDIDATES.
   # - #find_with_fallback(title): the Completionator matcher (the bot's
   #   searchGameDbWithFallback). Progressive variants, then colon/"The"
-  #   permutations, then a union of single-token searches. Unscored and
-  #   uncapped beyond SEARCH_LIMIT per query.
+  #   permutations, then a union of single-token searches (at most
+  #   MAX_TOKEN_SEARCHES of them). Unscored; at most SEARCH_LIMIT candidates.
   #
   # Class helpers for the import workflows:
   # - .confidence(title, candidates) -> "exact" | "fuzzy" | nil, the value
@@ -28,6 +28,7 @@ module Imports
     MAX_CANDIDATES = 5
     KEEP_TOP = 3
     SEARCH_LIMIT = 100
+    MAX_TOKEN_SEARCHES = 6
 
     def self.confidence(search_title, candidates)
       return if candidates.empty?
@@ -138,10 +139,16 @@ module Imports
       variants.reject { |variant| variant.blank? || variant == raw }.uniq
     end
 
+    # One search per word, so a long title is bounded: only the
+    # MAX_TOKEN_SEARCHES longest words (the most distinctive; ties keep title
+    # order) are searched, in title order, and the union is capped at
+    # SEARCH_LIMIT. Unbounded, a ~40-word title took ~30s and tripped
+    # Rack::Timeout on Completionator advance.
     def token_union(raw)
       tokens = raw.split.map { |token| token.gsub(/[^\p{L}\p{N}'-]/, "") }.select { |token| token.length > 1 }.uniq
-      hits = tokens.flat_map { |token| search(token) }
-      to_candidates(hits.uniq(&:first))
+      kept = tokens.each_with_index.sort_by { |token, index| [ -token.length, index ] }.first(MAX_TOKEN_SEARCHES).map(&:last)
+      hits = kept.sort.flat_map { |index| search(tokens[index]) }
+      to_candidates(hits.uniq(&:first).first(SEARCH_LIMIT))
     end
 
     def to_candidates(hits)

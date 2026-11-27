@@ -119,6 +119,27 @@ RSpec.describe Imports::CandidateFinder do
 
       expect(result.map(&:game_id)).to eq([ first.game_id, second.game_id ])
     end
+
+    # A ~40-word title once ran a search per word, ~30s cold, and tripped
+    # Rack::Timeout on Completionator advance (2026-11-27, import #103).
+    it "searches only the longest MAX_TOKEN_SEARCHES words, in title order" do
+      suffixes = %w[aa bbbbbbbb ccc ddddddd eeee ffffffffff gggggg hhhhh iiiiiiiii]
+      games = suffixes.to_h { |suffix| [ suffix, game!("Quest #{tag}#{suffix}") ] }
+
+      result = finder.find_with_fallback(suffixes.map { |suffix| "#{tag}#{suffix}" }.join(" "))
+
+      longest = suffixes.max_by(described_class::MAX_TOKEN_SEARCHES, &:length)
+      expected = suffixes.select { |suffix| longest.include?(suffix) }
+      expect(result.map(&:game_id)).to eq(expected.map { |suffix| games[suffix].game_id })
+    end
+
+    it "caps the token union at SEARCH_LIMIT candidates" do
+      stub_const("#{described_class}::SEARCH_LIMIT", 3)
+      2.times { |i| game!("#{tag}left #{i}") }
+      2.times { |i| game!("#{tag}right #{i}") }
+
+      expect(finder.find_with_fallback("#{tag}left #{tag}right").size).to eq(3)
+    end
   end
 
   describe ".confidence" do
