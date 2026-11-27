@@ -21,11 +21,21 @@ module Api
           membership: membership,
           features: access.session_features,
           **pinned_pages(user, access),
-          **patch_notes(user, access)
+          **patch_notes(user, access),
+          **theme(user, access)
         }
       end
 
       private
+
+      # The Member's Theme (ticket api#524, docs/adr/0017): the resolved key
+      # the website renders, and the picker's Themes with the stored choice.
+      # The default for the service token.
+      def theme(user, access)
+        return Themes::Choice.default.document unless current_principal.discord_user?
+
+        Themes::Choice.new(access, user&.theme).document
+      end
 
       # The member's Patch Mark and whether a published Patch is newer
       # (ticket api#512), so the sidebar shows "NEW" without another request.

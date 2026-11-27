@@ -14,6 +14,8 @@ Rails.application.routes.draw do
     namespace :v1 do
       get "health", to: "health#show"
       get "session", to: "sessions#show"
+      # The signed-in Member's Theme (spec api#523, ticket api#524).
+      put "me/theme", to: "member_themes#update"
       get "dashboard", to: "dashboards#show"
       # Feature Flags (spec #347): Admins and Superadmins list every Feature
       # and change its state; the bot names the acting Discord user.

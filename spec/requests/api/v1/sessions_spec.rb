@@ -116,9 +116,25 @@ RSpec.describe 'api/v1/sessions', type: :request do
             description: 'The member\'s Patch Mark: the number of the newest Patch they have seen (as GET ' \
                          '/api/v1/users/{user_id}/patch_mark). Null until first set, and whenever ' \
                          '`patch_notes_unseen` is forced false because Patch Notes is not shown.'
+          },
+          theme: {
+            type: :string, example: 'monthly-issue',
+            description: 'The key of the Theme the viewer sees right now, already resolved: the club default ' \
+                         '(monthly-issue) whenever their stored Theme is unset, unavailable to them or unknown ' \
+                         '(docs/adr/0017). As `theme` in PUT /api/v1/me/theme.'
+          },
+          themes: {
+            type: :object,
+            description: 'The picker\'s Themes and the viewer\'s stored choice (`themes` in the MemberTheme ' \
+                         'schema, as PUT /api/v1/me/theme returns it).',
+            properties: {
+              chosen: { type: :string, nullable: true, example: 'aero' },
+              list: { type: :array, items: { '$ref' => '#/components/schemas/ThemeOption' } }
+            },
+            required: %w[chosen list]
           }
         }, required: %w[principal features pinned_pages pinned_pages_customised pinned_pages_room
-                        pinned_pages_default pinned_pages_limit patch_notes_unseen patch_mark]
+                        pinned_pages_default pinned_pages_limit patch_notes_unseen patch_mark theme themes]
       end
 
       response '401', 'unauthenticated' do
