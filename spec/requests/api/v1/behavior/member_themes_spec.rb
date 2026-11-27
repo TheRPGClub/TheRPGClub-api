@@ -100,10 +100,15 @@ RSpec.describe "api/v1/me/theme behavior", type: :request do
 
           store(user, "aero")
 
-          expect(session_theme(user)).to eq(
-            "theme" => "monthly-issue",
-            "themes" => { "chosen" => "aero", "list" => [ monthly_issue, aero(available: false, released: released) ] }
-          )
+          # A stored unreleased Theme is named only to staff, so its name
+          # never leaks to a member; the stored value is kept either way.
+          expected = if released || viewer == "staff"
+            { "chosen" => "aero", "list" => [ monthly_issue, aero(available: false, released: released) ] }
+          else
+            { "chosen" => nil, "list" => [ monthly_issue ] }
+          end
+          expect(session_theme(user)).to eq("theme" => "monthly-issue", "themes" => expected)
+          expect(stored(user)).to eq("aero")
         end
       end
 
@@ -191,10 +196,38 @@ RSpec.describe "api/v1/me/theme behavior", type: :request do
     expect(stored(admin)).to eq("aero")
   end
 
-  it "refuses a non-string Theme with 422" do
+  it "refuses a non-string Theme with 422, without echoing it" do
     choose(admin, 5)
 
     expect(response).to have_http_status(:unprocessable_content)
+    expect(json["error"]).to eq("theme must be a Theme key or null")
+  end
+
+  describe "a staff member who turned show Preview features off" do
+    before { admin.update_columns(show_preview_features: false) }
+
+    it "is offered only the default while Themes is in Preview, and sees the default over a stored Aero" do
+      set_feature_flag("themes", "preview")
+      store(admin, "aero")
+
+      expect(session_theme(admin)).to eq(
+        "theme" => "monthly-issue",
+        "themes" => { "chosen" => "aero", "list" => [ monthly_issue, aero(available: false) ] }
+      )
+
+      choose(admin, "aero")
+      expect(response).to have_http_status(:forbidden)
+      expect(stored(admin)).to eq("aero")
+    end
+
+    it "may choose every Theme once Themes is Live" do
+      set_feature_flag("themes", "live")
+
+      choose(admin, "aero")
+
+      expect(response).to have_http_status(:ok)
+      expect(json["theme"]).to eq("aero")
+    end
   end
 
   it "answers 400 without a theme parameter" do

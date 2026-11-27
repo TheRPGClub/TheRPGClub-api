@@ -8,11 +8,16 @@ module Themes
   #   Off      only the default, for everyone.
   #   Preview  every Theme for staff; only the default for anyone else.
   #   Live     every Released Theme for everyone; every Theme for staff.
-  # The default is always available.
+  # The default is always available. As for the session's other fields, a
+  # staff member who turned "show Preview features" off is not offered the
+  # Themes Feature while it is in Preview (Features::Access#shown?; Themes is
+  # Core, so no Feature Preference hides it otherwise).
   #
   # `chosen` is the Member's stored Theme (RpgClubUser#theme, nil for none).
   # A stored Theme that is unavailable, or a key the API no longer knows, is
   # kept but resolves to the default, so it comes back when it is available.
+  # The payload names it only when it leaks nothing: an unreleased Theme
+  # stored by a viewer who is not staff is reported as no choice.
   #
   #   choice = Themes::Choice.new(access, user&.theme)
   #   choice.current  # => "monthly-issue"
@@ -34,7 +39,7 @@ module Themes
 
     def available?(key)
       return true if key == DEFAULT
-      return false unless @access && Themes.known?(key) && @access.can_use?(FEATURE)
+      return false unless @access && Themes.known?(key) && @access.shown?(FEATURE)
 
       Themes.fetch(key).released? || @access.staff?
     end
@@ -45,13 +50,12 @@ module Themes
     end
 
     # The Themes for the picker, in list order: every Theme the Member may
-    # choose, plus their stored Theme when it is known but unavailable, so
-    # the picker can show it as unavailable. An unreleased Theme never
-    # reaches a Member who may not choose it otherwise.
+    # choose, plus their stored Theme when it is known but unavailable and
+    # reportable, so the picker can show it as unavailable.
     def list
       Themes.all.filter_map do |theme|
         available = available?(theme.key)
-        next unless available || theme.key == chosen
+        next unless available || (theme.key == chosen && reportable?)
 
         { key: theme.key, name: theme.name, released: theme.released?, available: available }
       end
@@ -59,7 +63,18 @@ module Themes
 
     # The session's theme fields; PUT /api/v1/me/theme returns the same.
     def document
-      { theme: current, themes: { chosen: chosen, list: list } }
+      { theme: current, themes: { chosen: reportable? ? chosen : nil, list: list } }
+    end
+
+    private
+
+    # Whether the payload may name the stored Theme: anything but an
+    # unreleased Theme stored by a viewer who is not staff, whose name would
+    # leak it. Unknown keys name nothing and are reported as stored.
+    def reportable?
+      return true unless chosen && Themes.known?(chosen)
+
+      Themes.fetch(chosen).released? || @access&.staff? || false
     end
   end
 end

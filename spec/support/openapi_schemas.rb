@@ -2257,11 +2257,14 @@ module OpenapiSchemas
         themes: obj(
           chosen: str(nullable: true, example: "aero",
             description: "The viewer's stored Theme, kept even while unavailable or unknown. Null follows the " \
-                         "club default."),
+                         "club default, and also stands in for an unreleased Theme stored by a viewer who is not " \
+                         "staff, so its name never reaches them (the stored value is kept)."),
           list: array_of("ThemeOption").merge(
             description: "The Themes for the picker, in list order: every Theme the viewer may choose (the " \
                          "default always), plus their stored Theme marked `available: false` when it is known " \
-                         "but unavailable. Only the default for the service token."
+                         "but unavailable and named in `chosen`. Staff with \"show Preview features\" off are " \
+                         "offered only the default while Themes is in Preview. Only the default for the service " \
+                         "token."
           ),
           _required: %w[chosen list]
         ),
