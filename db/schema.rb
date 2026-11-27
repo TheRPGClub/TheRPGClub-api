@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_27_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -1433,6 +1433,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_11_27_140000) do
     t.string "dashboard_panels_seen_keys", comment: "Dashboard Panel keys the member has seen in edit mode; NULL until they first open it.", array: true
     t.timestamptz "news_mark_at", comment: "The member's News Mark: the moment up to which they have seen the News Hub; NULL until first set."
     t.integer "patch_mark", comment: "The member's Patch Mark: the number of the newest Patch they have seen; NULL until first set."
+    t.string "theme", limit: 32, comment: "The member's Theme key; NULL follows the club's default Theme."
     t.check_constraint "birth_month IS NULL AND birth_day IS NULL AND birth_year IS NULL OR birth_month IS NOT NULL AND birth_day IS NOT NULL AND birth_month >= 1 AND birth_month <= 12 AND birth_day >= 1 AND birth_day <=\nCASE\n    WHEN birth_month = 2 THEN 29\n    WHEN birth_month = ANY (ARRAY[4, 6, 9, 11]) THEN 30\n    ELSE 31\nEND", name: "ck_rpg_club_users_birth_date"
     t.check_constraint "NOT birthday_shared OR birth_month IS NOT NULL", name: "ck_rpg_club_users_birthday_shared"
   end

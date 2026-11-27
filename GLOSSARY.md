@@ -13,8 +13,12 @@ Anyone on the website who is not a Member: someone not signed in, or someone sig
 _Avoid_: Guest, non-member, anonymous user
 
 **Theme**:
-The look a Member chooses for the website, from colours and type to the shape of every control; the site's pages and what they do stay the same in every Theme. Visitors, and Members who have not chosen, see the club's default Theme.
+The look a Member chooses for the website, from colours and type to the shape of every control; the site's pages and what they do stay the same in every Theme. Visitors, and Members who have not chosen, see the club's default Theme. A Member's Theme follows them to every device. The Themes Feature decides who can choose one other than the default; a Theme the Member can't currently use stays chosen and returns when they can.
 _Avoid_: Skin, style, dark mode, appearance
+
+**Released Theme**:
+A Theme every Member may choose once the Themes Feature is Live. A Theme that is not yet released can be chosen only by staff, so a new Theme can be tried on the real site before Members see it.
+_Avoid_: Live theme, public theme, beta theme
 
 **Pinned Page**:
 A page of the website that a Member has put at the top of their own sidebar so it is one click away. A Pinned Page is still listed in its usual place. Members who have pinned nothing see the club's default Pinned Pages, and a Pinned Page that the Member cannot currently see stays pinned and returns when they can.

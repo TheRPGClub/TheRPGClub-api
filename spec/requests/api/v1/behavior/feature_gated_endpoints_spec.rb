@@ -32,8 +32,13 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "roadmap" => ->(_user) { "/api/v1/roadmap" }
   }
 
+  # Features with no endpoint of their own to gate. Themes decides which
+  # Themes a Member may choose (Themes::Choice); PUT /me/theme stays open so
+  # anyone can return to the default.
+  ungated = %w[themes]
+
   it "covers every registered Feature" do
-    expect(endpoints.keys).to match_array(Features.keys)
+    expect(endpoints.keys + ungated).to match_array(Features.keys)
   end
 
   endpoints.each do |key, path_for|
@@ -301,6 +306,9 @@ RSpec.describe "feature-gated endpoints", type: :request do
     "api/v1/features" => nil,
     "api/v1/feature_preferences" => nil,
     "api/v1/pinned_pages" => nil,
+    # The Member's Theme: the Themes Feature limits which Themes they may
+    # choose, never returning to the default (ticket api#524).
+    "api/v1/member_themes" => nil,
     # Dashboard Panels are part of how the site works, not a Feature (spec
     # api#421); each panel needs its own Feature, checked per panel.
     "api/v1/dashboard_panels" => nil,

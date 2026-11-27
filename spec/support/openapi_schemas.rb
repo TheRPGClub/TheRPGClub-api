@@ -2237,6 +2237,40 @@ module OpenapiSchemas
         _required: %w[user_id pages customised]
       ),
 
+      # The Member's Theme (spec api#523, ticket api#524; docs/adr/0017): the
+      # session's `theme` and `themes`, and what PUT /api/v1/me/theme returns.
+      ThemeOption: obj(
+        key: str(example: "aero"),
+        name: str(example: "Frutiger Aero"),
+        released: bool.merge(description: "A Released Theme: every Member may choose it once Themes is Live. " \
+                                          "An unreleased one is staff-only."),
+        available: bool.merge(description: "Whether the viewer may choose it now. False only for their stored " \
+                                           "Theme when it is unavailable to them."),
+        _required: %w[key name released available]
+      ),
+      MemberTheme: obj(
+        theme: str(example: "monthly-issue",
+          description: "The key of the Theme the viewer sees right now, resolved: the club default " \
+                       "(monthly-issue) whenever their stored Theme is unset, unavailable (Themes Off, Preview " \
+                       "for a non-staff Member, an unreleased Theme for a non-staff Member) or unknown. Keys: " \
+                       "monthly-issue, aero."),
+        themes: obj(
+          chosen: str(nullable: true, example: "aero",
+            description: "The viewer's stored Theme, kept even while unavailable or unknown. Null follows the " \
+                         "club default, and also stands in for an unreleased Theme stored by a viewer who is not " \
+                         "staff, so its name never reaches them (the stored value is kept)."),
+          list: array_of("ThemeOption").merge(
+            description: "The Themes for the picker, in list order: every Theme the viewer may choose (the " \
+                         "default always), plus their stored Theme marked `available: false` when it is known " \
+                         "but unavailable and named in `chosen`. Staff with \"show Preview features\" off are " \
+                         "offered only the default while Themes is in Preview. Only the default for the service " \
+                         "token."
+          ),
+          _required: %w[chosen list]
+        ),
+        _required: %w[theme themes]
+      ),
+
       # DashboardPanelsController (spec api#421, ticket api#422). A member's
       # Dashboard Panels: the ones they show and can see right now, in their
       # order; every panel they can see; and whether they saved their own list.

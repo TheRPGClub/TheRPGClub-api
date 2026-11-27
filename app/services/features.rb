@@ -137,7 +137,13 @@ module Features
     # stored state and starts in Preview while staff fill it. Its Feedback
     # Board badge follows it.
     define("roadmap", "Roadmap", core: false,
-      website: [ "Roadmap", "Feedback roadmap badge" ])
+      website: [ "Roadmap", "Feedback roadmap badge" ]),
+    # Spec api#523 (docs/adr/0017). Who may choose a Theme other than the
+    # default; each Theme's own `released` marker lives in Themes. Core,
+    # because hiding Themes from yourself means nothing. Registered after
+    # Feature Flags shipped, so it starts in Preview.
+    define("themes", "Themes", core: true,
+      website: [ "Theme picker in Settings" ])
   ].freeze
 
   BY_KEY = REGISTRY.index_by(&:key).freeze

@@ -29,7 +29,7 @@ RSpec.describe "feature access lookup", type: :request do
   describe "for a member" do
     let(:member) { create(:user, role_member: true) }
 
-    it "lists all 19 Features in registry order with their state" do
+    it "lists all 21 Features in registry order with their state" do
       data = access_for(member.user_id)
 
       expect(data.fetch("features").map { |f| [ f["key"], f["state"] ] }).to eq([
@@ -52,7 +52,8 @@ RSpec.describe "feature access lookup", type: :request do
         [ "franchise_progress", "live" ],
         [ "goty_vote", "live" ],
         [ "patch_notes", "live" ],
-        [ "roadmap", "live" ]
+        [ "roadmap", "live" ],
+        [ "themes", "live" ]
       ])
     end
 

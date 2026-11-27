@@ -7156,6 +7156,65 @@ components:
       - user_id
       - pages
       - customised
+    ThemeOption:
+      type: object
+      properties:
+        key:
+          type: string
+          example: aero
+        name:
+          type: string
+          example: Frutiger Aero
+        released:
+          type: boolean
+          description: 'A Released Theme: every Member may choose it once Themes is
+            Live. An unreleased one is staff-only.'
+        available:
+          type: boolean
+          description: Whether the viewer may choose it now. False only for their
+            stored Theme when it is unavailable to them.
+      required:
+      - key
+      - name
+      - released
+      - available
+    MemberTheme:
+      type: object
+      properties:
+        theme:
+          type: string
+          example: monthly-issue
+          description: 'The key of the Theme the viewer sees right now, resolved:
+            the club default (monthly-issue) whenever their stored Theme is unset,
+            unavailable (Themes Off, Preview for a non-staff Member, an unreleased
+            Theme for a non-staff Member) or unknown. Keys: monthly-issue, aero.'
+        themes:
+          type: object
+          properties:
+            chosen:
+              type: string
+              nullable: true
+              example: aero
+              description: The viewer's stored Theme, kept even while unavailable
+                or unknown. Null follows the club default, and also stands in for
+                an unreleased Theme stored by a viewer who is not staff, so its name
+                never reaches them (the stored value is kept).
+            list:
+              type: array
+              items:
+                "$ref": "#/components/schemas/ThemeOption"
+              description: 'The Themes for the picker, in list order: every Theme
+                the viewer may choose (the default always), plus their stored Theme
+                marked `available: false` when it is known but unavailable and named
+                in `chosen`. Staff with "show Preview features" off are offered only
+                the default while Themes is in Preview. Only the default for the service
+                token.'
+          required:
+          - chosen
+          - list
+      required:
+      - theme
+      - themes
     DashboardPanels:
       type: object
       properties:
@@ -20018,6 +20077,7 @@ paths:
         - goty_vote
         - patch_notes
         - roadmap
+        - themes
       description: The Feature key.
     patch:
       summary: Set a Feature's Feature Flag
@@ -28532,6 +28592,72 @@ paths:
                       - failed
               required:
               - data
+        required: true
+  "/api/v1/me/theme":
+    put:
+      summary: Choose the signed-in Member's Theme
+      tags:
+      - Member Themes
+      description: 'Stores the signed-in Member''s Theme (docs/adr/0017). `null` returns
+        them to the club default (monthly-issue), so a later change of default reaches
+        them. Which Themes they may choose follows the Themes Feature: Off, only the
+        default; Preview, every Theme for staff (Admin or Superadmin) and only the
+        default for anyone else; Live, every Released Theme for everyone and every
+        Theme for staff. The default and `null` are always allowed. An unknown key
+        is 422 and a Theme the Member may not choose 403; neither changes anything.
+        Returns the session''s `theme` and `themes` fields. The bot''s service token
+        gets 403.'
+      parameters: []
+      responses:
+        '200':
+          description: the Member's Theme, as the session reports it
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/MemberTheme"
+        '422':
+          description: unknown Theme key
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '403':
+          description: a Theme the Member may not choose, or the service token
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '404':
+          description: the signed-in Discord user has no member record
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '400':
+          description: missing `theme` parameter
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '401':
+          description: unauthenticated
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                theme:
+                  type: string
+                  nullable: true
+                  example: aero
+                  description: A Theme key, or null for the club default.
+              required:
+              - theme
         required: true
   "/api/v1/memberscan":
     post:
@@ -38351,6 +38477,30 @@ paths:
                       Patch they have seen (as GET /api/v1/users/{user_id}/patch_mark).
                       Null until first set, and whenever `patch_notes_unseen` is forced
                       false because Patch Notes is not shown.'
+                  theme:
+                    type: string
+                    example: monthly-issue
+                    description: 'The key of the Theme the viewer sees right now,
+                      already resolved: the club default (monthly-issue) whenever
+                      their stored Theme is unset, unavailable to them or unknown
+                      (docs/adr/0017). As `theme` in PUT /api/v1/me/theme.'
+                  themes:
+                    type: object
+                    description: The picker's Themes and the viewer's stored choice
+                      (`themes` in the MemberTheme schema, as PUT /api/v1/me/theme
+                      returns it).
+                    properties:
+                      chosen:
+                        type: string
+                        nullable: true
+                        example: aero
+                      list:
+                        type: array
+                        items:
+                          "$ref": "#/components/schemas/ThemeOption"
+                    required:
+                    - chosen
+                    - list
                 required:
                 - principal
                 - features
@@ -38361,6 +38511,8 @@ paths:
                 - pinned_pages_limit
                 - patch_notes_unseen
                 - patch_mark
+                - theme
+                - themes
         '401':
           description: unauthenticated
           content:

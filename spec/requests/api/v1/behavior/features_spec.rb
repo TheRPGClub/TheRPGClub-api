@@ -29,7 +29,8 @@ RSpec.describe "staff flag control", type: :request do
         [ "news_hub", "live" ], [ "challenges", "live" ],
         [ "release_calendar", "live" ], [ "club_codex", "live" ], [ "game_lists", "live" ],
         [ "franchise_progress", "live" ], [ "goty_vote", "live" ], [ "patch_notes", "live" ],
-        [ "roadmap", "live" ]
+        [ "roadmap", "live" ],
+        [ "themes", "live" ]
       ])
       expect(entry("journals")).to include(
         "name" => "Journals", "core" => false, "hideable" => true,
@@ -79,7 +80,7 @@ RSpec.describe "staff flag control", type: :request do
         [ admin, superadmin ].each do |user|
           get "/api/v1/features", params: { acting_user_id: user.user_id }, headers: service_headers
           expect(response).to have_http_status(:ok)
-          expect(json.fetch("data").size).to eq(20)
+          expect(json.fetch("data").size).to eq(21)
         end
       end
 
