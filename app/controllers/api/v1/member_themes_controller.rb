@@ -22,10 +22,11 @@ module Api
 
         key = params[:theme]
         unless key.nil? || Themes.known?(key)
-          return render(json: { error: "unknown Theme: #{key}" }, status: :unprocessable_content)
+          error = key.is_a?(String) ? "unknown Theme: #{key}" : "theme must be a Theme key or null"
+          return render(json: { error: error }, status: :unprocessable_content)
         end
 
-        user = RpgClubUser.without_images.find_by(user_id: current_principal.id.to_s)
+        user = current_principal.user || RpgClubUser.without_images.find_by(user_id: current_principal.discord_id)
         return render(json: { error: "not_found" }, status: :not_found) unless user
 
         access = Features::Access.for_viewer(user, staff: admin_or_above?)
